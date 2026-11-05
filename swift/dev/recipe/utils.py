@@ -1224,27 +1224,53 @@ def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
 def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_gc: bool,
                   manual_gc_eval: bool, micro_step_kwargs: Callable[..., Dict[str, Any]],
                   global_step: int,
-                  micro_batch_size: int = 1) -> Optional[dict]:
+                  micro_batch_size: int = 1,
+                  eval_group_size: int = 1) -> Optional[dict]:
     """Val-loss eval: the normalized per-token loss over eval_dataloader (None if there is none).
 
     Mirrors the train metric path on the eval side: each val batch runs ``forward_only`` (no grad)
     then ``calculate_loss`` (fills this batch's loss); a final ``calculate_metric(False)`` aggregates
     and resets. Megatron already produced the loss inside forward_only -- its ``calculate_loss``
     raises NotImplementedError, treated as already populated.
+
+    ``eval_group_size`` batches N dataloader batches into one forward call (1 = the historic
+    one-batch-per-call). N > 1 serves Megatron's VPP scheduler, which rejects a forward whose
+    micro-batch count is below PP or not a multiple of it (each dataloader batch is one
+    micro-batch here); training groups by GA, so GA is the batch count the schedule already
+    proved schedulable. A trailing partial group cannot satisfy that floor and is dropped:
+    eval is a sampled estimate, and padding would double-count the padded rows in the
+    per-token loss.
     """
     if eval_dataloader is None:
         return None
     if manual_gc and manual_gc_eval:
         import gc
         gc.collect()
-    for index, batch in enumerate(eval_dataloader):
-        if eval_iters > 0 and index >= eval_iters:
-            break
-        model.forward_only(**micro_step_kwargs(batch, micro_batch_size=micro_batch_size))
+
+    def _forward(chunk: list) -> None:
+        model.forward_only(**micro_step_kwargs(chunk, micro_batch_size=micro_batch_size))
         try:
             model.calculate_loss()
         except NotImplementedError:
             pass
+
+    group: list = []
+    consumed = 0
+    for index, batch in enumerate(eval_dataloader):
+        if eval_iters > 0 and index >= eval_iters:
+            break
+        group.extend(batch)
+        consumed += 1
+        if consumed == eval_group_size:
+            _forward(group)
+            group, consumed = [], 0
+    if group:
+        if eval_group_size > 1:
+            logger.warning(f'Dropped {len(group)} trailing eval sample(s): a partial group of '
+                           f'{consumed} batch(es) cannot fill the {eval_group_size}-micro-batch forward '
+                           'that the megatron VPP schedule requires.')
+        else:
+            _forward(group)
     metrics = model.calculate_metric(is_training=False)
     result = {'step': global_step}
     if metrics.get('loss') is not None:

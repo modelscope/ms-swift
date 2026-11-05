@@ -60,7 +60,7 @@ def validate_configs(
     _check_dynamic_batching(train_config, rl_config, is_megatron)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
-    _check_unsloth_strategy(distributed_config, template_config)
+    _check_unsloth_strategy(distributed_config, template_config, tuner_config)
     _check_deepspeed_autotp(distributed_config)
     _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
@@ -1256,7 +1256,8 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
 
 
 def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
-                            template_config: 'TemplateConfig') -> None:
+                            template_config: 'TemplateConfig',
+                            tuner_config: Optional['TunerConfig'] = None) -> None:
     """Refuse the strategies unsloth (backend='unsloth') cannot co-exist with.
 
     It rebuilds the graph for whole, unsharded weights: ZeRO/FSDP and Ulysses SP are refused.
@@ -1276,6 +1277,20 @@ def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
             f'backend="unsloth" cannot run under sequence_parallel_size='
             f'{template_config.sequence_parallel_size}: unsloth\'s fused kernels assume a whole sequence per '
             'rank. Set sequence_parallel_size=1, or use the default backend.')
+    if tuner_config is not None:
+        from swift.dev.builders.adapter import is_base_modifying_init
+
+        if is_base_modifying_init(tuner_config.init_weights):
+            # A base-modifying LoRA init (pissa/olora/lora-ga/loftq...) needs the initial-adapter snapshot
+            # plus a post-training conversion against it. UnslothModel injects LoRA its own way (not a
+            # peft PeftModel), so TransformersModel.save_initial_adapter's isinstance guard returns False
+            # and the snapshot would be silently MISSING -- the conversion would only explode later, at
+            # merge time, for lack of initial_model. Fail here instead.
+            raise NotImplementedError(
+                f'backend="unsloth" does not support base-modifying LoRA init ({tuner_config.init_weights!r}): '
+                'the initial-adapter snapshot that the post-training conversion folds against is not '
+                'wired for unsloth-injected LoRA (no peft PeftModel to snapshot). Use the default backend '
+                'for this init strategy.')
 
 
 def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:
@@ -1361,6 +1376,14 @@ def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: b
         raise ValueError('DistributedConfig.use_megatron_fsdp is incompatible with context_parallel_size='
                          f'{distributed_config.context_parallel_size}. Megatron-FSDP does not support context '
                          'parallelism; use the default DDP wrapper for a CP run.')
+
+    model_parallel = max(distributed_config.tensor_model_parallel_size,
+                         distributed_config.pipeline_model_parallel_size)
+    if model_parallel > 1:
+        raise ValueError('DistributedConfig.use_megatron_fsdp requires tensor_model_parallel_size=1 and '
+                         'pipeline_model_parallel_size=1: mcore 0.20 FSDP supports neither (its distributed '
+                         'index assumes world = dp*cp*ep*tp with no pipeline axis). Use the default DDP '
+                         'wrapper -- it composes with every parallel dimension and use_distributed_optimizer.')
 
 
 def _check_cp_partition_mode(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
