@@ -13,6 +13,7 @@ Two environment duties the parent conftest does not carry:
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -34,6 +35,24 @@ def _twinkle_resolves() -> bool:
 
 if not _twinkle_resolves():
     sys.path.insert(0, str(_TWINKLE_SRC))
+    # ``find_spec`` above imports the parent and the repo root's ``twinkle/``
+    # directory (the nested checkout root, no top-level ``__init__.py``)
+    # resolves as a NAMESPACE package, which lands in ``sys.modules`` and then
+    # shadows the real package under ``twinkle/src`` for every later import.
+    # Evict that stub so the insertion actually takes effect.
+    _stale = sys.modules.get('twinkle')
+    if _stale is not None and getattr(_stale, '__file__', None) is None:
+        del sys.modules['twinkle']
+
+    # Ray workers import twinkle by PYTHONPATH, not by the driver's sys.path;
+    # keep the environment consistent with what this process just resolved.
+    _repo_root = str(_TWINKLE_SRC.parent.parent)
+    _existing = os.environ.get('PYTHONPATH', '')
+    _parts = [part for part in _existing.split(os.pathsep) if part]
+    for _entry in (str(_TWINKLE_SRC), _repo_root):
+        if _entry not in _parts:
+            _parts.insert(0, _entry)
+    os.environ['PYTHONPATH'] = os.pathsep.join(_parts)
 
 
 def _esbuild_available() -> bool:

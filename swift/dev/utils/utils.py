@@ -139,9 +139,10 @@ def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[Lis
         for i in range(len(idx_list) - 1):
             shard.append(ori_list[idx_list[i]:idx_list[i + 1]])
     else:
-        ori_list = np.array(ori_list)
+        # Slice the list directly: np.array() coerces a heterogeneous list into a single dtype and, for a
+        # list of tensors/arrays, would either raise or silently reshape the items.
         for i in range(num_shards):
-            shard.append(ori_list[np.arange(i, len(ori_list), num_shards)].tolist())
+            shard.append(ori_list[i::num_shards])
     return shard
 
 

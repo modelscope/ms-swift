@@ -66,7 +66,12 @@ class DatasetConfig:
     data_sharding: bool = False  # megatron only
     dataloader_num_workers: Optional[int] = None
     dataloader_pin_memory: bool = True
-    dataloader_persistent_workers: bool = False
+    # Default True: respawning workers on every eval cold-starts the dataset (map/collate recompute), which
+    # dominated eval wall time. Legacy uses the same default (#10036).
+    dataloader_persistent_workers: bool = True
+    # Worker start method; None keeps the platform default and lets packing pick spawn when fork would
+    # dead-lock (CUDA/dist already initialized, #9979).
+    dataloader_multiprocessing_context: Optional[str] = None
     dataloader_prefetch_factor: Optional[int] = None
     # Discard a final short batch: a step assuming a fixed batch size otherwise sees a different shape.
     dataloader_drop_last: bool = False

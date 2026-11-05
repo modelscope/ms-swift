@@ -47,6 +47,7 @@ class TemplateMeta:
     is_thinking: bool = False  # Automatically remove think content
     thinking_prefix: str = ''
     non_thinking_prefix: str = ''  # Automatically add non_thinking_prefix for hybrid thinking models
+    preserve_thinking: Optional[bool] = None  # Whether the model itself keeps historical thinking content.
     # During encoding, historical thinking content will be removed.
     # This parameter represents the prefix for the historical part.
     history_thinking_prefix: str = ''

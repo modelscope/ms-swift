@@ -21,6 +21,7 @@ class LLMTemplateType:
     qwen3_reranker = 'qwen3_reranker'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
+    nemotron_h = 'nemotron_h'
     yufeng_xguard = 'yufeng_xguard'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
@@ -34,6 +35,7 @@ class LLMTemplateType:
     sus = 'sus'
     gpt_oss = 'gpt_oss'
     seed_oss = 'seed_oss'
+    flint = 'flint'
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
@@ -57,6 +59,7 @@ class LLMTemplateType:
     glm4_7 = 'glm4_7'
     glm5_1 = 'glm5_1'
     glm5_2 = 'glm5_2'
+    glm5_3 = 'glm5_3'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 
@@ -70,6 +73,7 @@ class LLMTemplateType:
     deepseek_r1 = 'deepseek_r1'
     deepseek_v3_1 = 'deepseek_v3_1'
     deepseek_v4 = 'deepseek_v4'
+    deepseek_v4_flash = 'deepseek_v4_flash'
 
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -77,8 +81,10 @@ class LLMTemplateType:
     baichuan_m1 = 'baichuan_m1'
     minicpm = 'minicpm'
     minicpm5 = 'minicpm5'
+    minicpm5_2b = 'minicpm5_2b'
     telechat = 'telechat'
     telechat2 = 'telechat2'
+    xing4_0 = 'xing4_0'
 
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'
@@ -99,6 +105,7 @@ class LLMTemplateType:
 
     ling = 'ling'
     ling2 = 'ling2'
+    ling3 = 'ling3'
     ring2 = 'ring2'
     ring2_5 = 'ring2_5'
     yuan = 'yuan'
@@ -128,6 +135,11 @@ class LLMTemplateType:
     youtu_llm = 'youtu_llm'
     olmoe = 'olmoe'
     olmoe_0924 = 'olmoe_0924'
+    olmo3 = 'olmo3'
+    spark2_5 = 'spark2_5'
+
+    generic_decision = 'generic_decision'
+    laya = 'laya'
 
 
 class RMTemplateType:
@@ -135,6 +147,7 @@ class RMTemplateType:
 
 
 class MLLMTemplateType:
+    moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
@@ -148,6 +161,16 @@ class MLLMTemplateType:
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
     qwen3_5 = 'qwen3_5'
+    qwen3_8 = 'qwen3_8'
+    qwen3_5_emb = 'qwen3_5_emb'
+    wemm_embedding = 'wemm_embedding'
+
+    jev = 'jev'
+    clef = 'clef'
+    omnijev = 'omnijev'
+    kev = 'kev'
+    thx02 = 'thx02'
+    startlux = 'startlux'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
@@ -157,6 +180,7 @@ class MLLMTemplateType:
     ovis2_5 = 'ovis2_5'
     ovis_ocr2 = 'ovis_ocr2'
     mimo_vl = 'mimo_vl'
+    mimo_v2 = 'mimo_v2'
     midashenglm = 'midashenglm'
 
     llama3_1_omni = 'llama3_1_omni'
@@ -180,6 +204,7 @@ class MLLMTemplateType:
     llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
     llava_onevision1_5 = 'llava_onevision1_5'
+    llava_onevision2 = 'llava_onevision2'
 
     yi_vl = 'yi_vl'
     ernie_vl = 'ernie_vl'
@@ -210,6 +235,7 @@ class MLLMTemplateType:
     glm_edge_v = 'glm_edge_v'
     glm4v = 'glm4v'
     glm4_5v = 'glm4_5v'
+    glm5_next = 'glm5_next'
     glm_ocr = 'glm_ocr'
 
     minicpmv = 'minicpmv'
@@ -218,9 +244,12 @@ class MLLMTemplateType:
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
     minicpmv4_6 = 'minicpmv4_6'
+    minicpmv4_7 = 'minicpmv4_7'
+    minicpm_ocr = 'minicpm_ocr'
     minicpmo = 'minicpmo'
     minicpmo4_5 = 'minicpmo4_5'
 
+    deepseek_v41 = 'deepseek_v41'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
@@ -273,6 +302,11 @@ class MLLMTemplateType:
     hunyuan_ocr = 'hunyuan_ocr'
     step3_vl = 'step3_vl'
     minimax_m3_vl = 'minimax_m3_vl'
+    muse_glimmer = 'muse_glimmer'
+    monkeyocrv2 = 'monkeyocrv2'
+
+    nemotron_h_omni = 'nemotron_h_omni'
+    nemo_speechlm = 'nemo_speechlm'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

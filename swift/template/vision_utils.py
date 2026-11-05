@@ -6,13 +6,14 @@ import os
 import re
 import requests
 import torch
+from contextlib import contextmanager
 from io import BytesIO
 from PIL import Image
 from requests.adapters import HTTPAdapter
-from typing import Any, Callable, List, TypeVar, Union
+from typing import Any, Callable, Iterator, List, TypeVar, Union
 from urllib3.util.retry import Retry
 
-from swift.utils import get_env_args
+from swift.utils import SafeMediaPath, get_env_args
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -154,6 +155,9 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
                 data = base64.b64decode(data)
                 res = BytesIO(data)
             else:
+                # local_path. An untrusted caller can name any file here, so the request is inlined only after
+                # the path is allowed; otherwise this reads the file before any of the media loading checks run.
+                SafeMediaPath.check(path)
                 with open(path, 'rb') as f:
                     res = BytesIO(f.read())
     elif isinstance(path, bytes):
@@ -165,7 +169,15 @@ def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
     image = load_file(image)
     if isinstance(image, BytesIO):
         image = Image.open(image)
-    if image.mode != 'RGB':
+    if image.mode in ('RGBA', 'LA', 'PA') or 'transparency' in image.info:
+        # Composite onto white instead of dropping the alpha channel, which
+        # renders transparent areas as black. Same check as vllm's
+        # _has_transparency (vllm/multimodal/image.py).
+        image = image.convert('RGBA')
+        background = Image.new('RGB', image.size, (255, 255, 255))
+        background.paste(image, mask=image.getchannel('A'))
+        image = background
+    elif image.mode != 'RGB':
         image = image.convert('RGB')
     return image
 
@@ -411,14 +423,47 @@ def load_audio(
 
 
 def _resolve_video_local_path(path: Union[str, bytes]) -> tuple:
-    """Return (local_path, is_temp_file). HTTP URLs and raw bytes are written to a temp file."""
-    if isinstance(path, bytes) or (isinstance(path, str) and path.startswith('http')):
+    """Return a local path, materializing URLs, Data URIs, base64 strings, and bytes when needed."""
+    if not isinstance(path, (str, bytes)):
+        return path, False
+    if isinstance(path, str):
+        path = path.strip()
+        is_remote = path.startswith('http')
+        checked_path = None if is_remote else _check_path(path)
+    else:
+        is_remote = False
+        checked_path = None
+    if isinstance(path, bytes) or is_remote or checked_path is None:
         import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
-            f.write(load_file(path).read())
-            return f.name, True
-    checked = _check_path(path) if isinstance(path, str) else None
-    return checked or path, False
+        video_bytes = load_file(path).read()
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
+                temp_path = f.name
+                f.write(video_bytes)
+            return temp_path, True
+        except Exception:
+            if temp_path is not None:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+            raise
+    return checked_path, False
+
+
+@contextmanager
+def local_video_path(path: Union[str, bytes]) -> Iterator[str]:
+    """Materialize a video input as a local path and remove any temporary file afterwards."""
+    local_path, is_temp = _resolve_video_local_path(path)
+    try:
+        yield local_path
+    finally:
+        if is_temp:
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
 
 
 def _video_to_ndarrays_local(local_path: str, num_frames: int = -1) -> np.ndarray:
@@ -463,26 +508,19 @@ def _video_get_metadata_local(local_path: str, num_frames: int = -1) -> dict:
     if num_frames <= 0 or num_frames > total_frames:
         num_frames = total_frames
     return {
-        'total_num_frames': num_frames,
-        'fps': duration / num_frames if num_frames else fps,
+        'total_num_frames': total_frames,
+        'fps': fps,
         'duration': duration,
         'video_backend': 'opencv',
-        'frames_indices': list(range(num_frames)),
+        'frames_indices': np.linspace(0, total_frames - 1, num_frames, dtype=int).tolist(),
         'do_sample_frames': num_frames == total_frames,
     }
 
 
 def load_vllm_video(path: Union[str, bytes], num_frames: int = -1) -> tuple:
     """Decode video frames + metadata for vLLM rollout; one download, temp file cleaned up."""
-    local_path, is_temp = _resolve_video_local_path(path)
-    try:
+    with local_video_path(path) as local_path:
         return _video_to_ndarrays_local(local_path, num_frames), _video_get_metadata_local(local_path, num_frames)
-    finally:
-        if is_temp:
-            try:
-                os.remove(local_path)
-            except OSError:
-                pass
 
 
 def load_video_valley(video: Union[str, bytes]):

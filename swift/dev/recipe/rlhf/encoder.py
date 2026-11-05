@@ -13,11 +13,11 @@ logger = get_logger()
 
 
 class PreferenceBatchEncoder:
-    """Encode raw preference rows into micro-batch loss kwargs, adding the reference forward dpo/kto need.
+    """Build one update's preference inputs and reference signals for training or evaluation.
 
-    Its ``__call__`` is the shared loop's ``micro_step_fn`` seam, so the SAME encoding feeds both
-    the training forward and the val-loss eval, with no backend branch here (the loop's
-    transformers/Megatron gradient-accumulation fork calls this one callable for both).
+    Its ``__call__`` is the shared loop's ``micro_step_fn`` seam, so the same encoding and
+    reference-forward preparation feed both training and val-loss evaluation, with no backend
+    branch here. The model owns micro-batch splitting.
     """
 
     def __init__(self,
@@ -27,7 +27,7 @@ class PreferenceBatchEncoder:
                  rl_type: str,
                  reference: Optional[Any] = None,
                  calculate_kl: bool = True,
-                 gradient_accumulation_steps: int = 1):
+                 data_parallel_size: int = 1):
         self.model = model
         self.template = template
         self.rl_type = rl_type
@@ -35,10 +35,7 @@ class PreferenceBatchEncoder:
         #: KTO only: whether to estimate the z_KL reference point from a mismatched KL batch. Off
         #: (``calculate_KL=False``) anchors the KTO loss at z_KL=0 and skips the two extra KL forwards.
         self.calculate_kl = calculate_kl
-        #: Added to the forward kwargs only when the backend does NOT own gradient accumulation
-        #: (transformers), so twinkle's grad-sync gate steps the optimizer every ga-th micro-batch;
-        #: Megatron derives GA from the microbatch-list length and must not receive it.
-        self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.data_parallel_size = data_parallel_size
         #: RM scores a num_labels=1 seq_cls head (no labels, no logps); the rest read per-token labels.
         self._is_reward = rl_type == 'rm'
 
@@ -130,7 +127,7 @@ class PreferenceBatchEncoder:
             seq.append(row[positions].sum() if positions else row.new_zeros(()))
         return torch.stack(seq)
 
-    def _kto_kl_term(self, kl_features: List[dict]) -> Optional[float]:
+    def _kto_kl_term(self, kl_features: List[dict], *, micro_batch_size: int) -> Optional[float]:
         """z_KL: the detached, clamped KL(pi||pi_ref) estimate over the mismatched KL batch.
 
         Mirrors TRL/legacy KTO: ``z_KL = mean(seq_logp_pi - seq_logp_ref).clamp(min=0)``, detached
@@ -139,33 +136,33 @@ class PreferenceBatchEncoder:
         """
         if not self.calculate_kl or not kl_features:
             return None
-        policy_out = self.model.forward_only(inputs=kl_features, compute_loss=False)
+        policy_out = self.model.forward_only(inputs=kl_features, compute_loss=False, micro_batch_size=micro_batch_size)
         policy_logps = policy_out.get('logps')
-        ref_logps = self._ref_logps(kl_features)
+        ref_logps = self._ref_logps(kl_features, micro_batch_size=micro_batch_size)
         if policy_logps is None or ref_logps is None:
             return None
         policy_seq = self._sequence_logps(policy_logps, kl_features)
         ref_seq = self._sequence_logps(ref_logps, kl_features)
         return float((policy_seq - ref_seq).mean().clamp(min=0).detach())
 
-    def _kto_step_kwargs(self, rows: List[dict], kwargs: Dict[str, Any]) -> List[dict]:
-        """Assemble one KTO micro-batch: fill ``kwargs`` with its loss inputs, return the completions.
+    def _kto_step_kwargs(self, rows: List[dict], kwargs: Dict[str, Any], *, micro_batch_size: int) -> List[dict]:
+        """Assemble one KTO update: fill ``kwargs`` with its loss inputs, return the completions.
 
         The KTOLoss needs three extras threaded through ``kwargs``: the per-example binary ``label``,
         the reference logps for the SAME completions (the log-ratio anchor), and the detached
         ``z_kl`` reference point. z_KL is omitted when ``calculate_KL`` is off (KTOLoss reads 0).
         """
         completion_features, kl_features, labels = self._encode_kto_batch(rows)
-        ref_logps = self._ref_logps(completion_features)
+        ref_logps = self._ref_logps(completion_features, micro_batch_size=micro_batch_size)
         if ref_logps is not None:
             kwargs['ref_logps'] = ref_logps
-        z_kl = self._kto_kl_term(kl_features)
+        z_kl = self._kto_kl_term(kl_features, micro_batch_size=micro_batch_size)
         if z_kl is not None:
             kwargs['z_kl'] = z_kl
         kwargs['label'] = labels
         return completion_features
 
-    def _ref_logps(self, features: List[dict]) -> Optional[Any]:
+    def _ref_logps(self, features: List[dict], *, micro_batch_size: int) -> Optional[Any]:
         """Per-token reference logps for this batch, or None when the type is reference-free.
 
         The shared-weights LoRA view IS the policy with its adapter disabled (no second model); the
@@ -175,34 +172,50 @@ class PreferenceBatchEncoder:
         if self.reference is None:
             return None
         if self.reference is self.model:
-            outputs = self.model.forward_only(inputs=features, disable_lora=True, compute_loss=False)
+            outputs = self.model.forward_only(
+                inputs=features,
+                disable_lora=True,
+                compute_loss=False,
+                micro_batch_size=micro_batch_size,
+            )
         else:
-            outputs = self.reference.forward_only(inputs=features, compute_loss=False)
+            outputs = self.reference.forward_only(
+                inputs=features,
+                compute_loss=False,
+                micro_batch_size=micro_batch_size,
+            )
         return outputs.get('logps')
 
-    def __call__(self, unit: Any, *, owns_ga: bool) -> Dict[str, Any]:
-        """Encode one micro-batch of raw preference rows into ``forward_backward``/``forward_only`` args.
+    def __call__(self, unit: Any, *, micro_batch_size: int) -> Dict[str, Any]:
+        """Encode raw preference rows into ``forward_backward``/``forward_only`` args.
 
-        ``unit`` is a single dataloader batch (transformers) or the ga batches of one Megatron
-        optimizer window concatenated (Megatron) -- a flat iterable of raw rows, encoded here
-        identically for both backends and the val-loss eval. KTO is unpaired (:meth:`_kto_step_kwargs`
-        assembles its layout / ``label`` / ``z_kl``); the paired types interleave + add ref logps.
+        ``unit`` is a flat iterable of raw rows, encoded identically for training and val-loss
+        evaluation. KTO is unpaired (:meth:`_kto_step_kwargs` assembles its layout / ``label`` /
+        ``z_kl``); the paired types interleave chosen/rejected and add reference logps when needed.
+        Their micro-batch size of B original records becomes 2B sequences, preserving pairs.
         """
         rows = list(unit)
+        if self.rl_type != "kto" and len(rows) % self.data_parallel_size:
+            raise ValueError(
+                f"Preference updates need a record count divisible by DP={self.data_parallel_size}; "
+                f"got {len(rows)} records. Each rank must receive whole chosen/rejected pairs."
+            )
+        # Convert records to sequences once; every forward uses this call's micro-batch size.
+        micro_batch_size *= 1 if self.rl_type == "kto" else 2
         kwargs: Dict[str, Any] = {}
         if self.rl_type == 'kto':
-            kwargs['inputs'] = self._kto_step_kwargs(rows, kwargs)
+            kwargs['inputs'] = self._kto_step_kwargs(rows, kwargs, micro_batch_size=micro_batch_size)
         else:
             features = self._interleave(rows)
             if not self._is_reward:
-                ref_logps = self._ref_logps(features)
+                ref_logps = self._ref_logps(features, micro_batch_size=micro_batch_size)
                 if ref_logps is not None:
                     kwargs['ref_logps'] = ref_logps
             kwargs['inputs'] = features
         if self._is_reward:
             kwargs['task'] = 'seq_cls'
-        if not owns_ga:
-            kwargs['gradient_accumulation_steps'] = self.gradient_accumulation_steps
+        kwargs['gradient_accumulation_steps'] = 1
+        kwargs["micro_batch_size"] = micro_batch_size
         return kwargs
 
 

@@ -56,7 +56,7 @@
 **为什么选择ms-swift？**
 - 🍎 **模型类型**：支持**600+纯文本大模型**、**400+多模态大模型**以及All-to-All全模态模型训练到部署全流程，热门模型Day0支持。
 - **数据集类型**：内置150+预训练、微调、人类对齐、多模态等各种任务数据集，并支持自定义数据集，用户只需准备数据集即可一键训练。
-- **硬件支持**：支持A10/A100/H100、RTX系列、T4/V100、CPU、MPS以及国产硬件Ascend NPU等。
+- **硬件支持**：支持 NVIDIA GPU（A100/H100/RTX 系列等，CUDA）、AMD GPU（MI300 系列等，ROCm）、国产硬件（Ascend NPU、MetaX GPU、摩尔线程 GPU（MUSA））、Apple MPS 与 CPU。
 - **轻量训练**：支持了LoRA、QLoRA、DoRA、LoRA+、LLaMAPro、LongLoRA、LoRA-GA、ReFT、RS-LoRA、Adapter、LISA等轻量微调方式。
 - **量化训练**：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练，7B模型训练只需9GB训练资源。
 - **显存优化**: GaLore、Q-Galore、UnSloth、Liger-Kernel、Flash-Attention 2/3 以及 **Ulysses和Ring-Attention序列并行技术**支持，降低长文本训练显存占用。
@@ -73,9 +73,23 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
+- 🔥 2026.10.29: Day-0 支持 [NVIDIA-Nemotron-3.5-Transcribe](nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B)，训练示例参考 [SFT示例](examples/models/nemotron_transcribe)。
+- 🔥 2026.10.22: 支持 [EntroPack](https://github.com/modelscope/entropack) 灵活码率模型量化，可根据显存预算精细控制模型码率，支持 Transformers 推理和 LoRA 训练。参考[最佳实践](docs/source/BestPractices/Flexble-Quantization-With-Entropack.md)和 [QLoRA 示例](examples/train/qlora/entropack.sh)。
+- 🔥 2026.10.19: 支持 [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2)（740M，多模态嵌入模型，支持文本/图像/视频/音频统一向量空间），支持 infonce loss 微调。
+- 🔥 2026.10.15: Day-0 支持 [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)，训练示例参考 [SFT示例](examples/models/nemotron_super_vl)。
+- 🔥 2026.10.13: 支持Decision模型（类型化决策System-1打分模型）的训练与推理，使用 `--task_type decision`，通过单次前向传播输出每个问题选项集上的校准概率。支持 [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL)、[Clef](https://www.modelscope.cn/models/Cloudflare/clef)、[OmniJev](https://modelscope.cn/models/AI-ModelScope/OmniJev) 和 [Kev](https://www.modelscope.cn/models/jaredpalmer/kev-4b)（0.8b/4b/9b），内置 distill_rps、smooth_brier、ce_rps 等proper scoring rule损失函数。文档参考[这里](docs/source/BestPractices/Decision.md)，训练示例参考[这里](examples/train/decision)。
+- 🔥 2026.10.01: 支持 [Xing4.0-29B-A4B](https://www.modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B)：transformers 后端的训练与推理，支持单/多卡（DDP 与 DeepSpeed ZeRO-3）的 LoRA 与全参数 SFT，以及 grouped_mm 专家加速（~3.7x），示例参考 [这里](examples/models/xing4_0)。
+- 🔥 2026.09.21: 支持 [DeepSeek-V4.1-Flash](https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash)：Megatron-SWIFT 全参数训练（SFT 与 GRPO）以及 vLLM 推理，示例参考 [这里](examples/models/deepseek_v41)。
+- 🔥 2026.09.01: 支持腾讯混元多模态嵌入模型 [WeMM-Embedding](https://www.modelscope.cn/models/Tencent-Hunyuan/WeMM-Embedding-2B)（2B/4B/9B）的推理与训练，支持图文混合输入的向量表征，训练示例参考 [embedding 示例](examples/train/embedding)。
+- 🔥 2026-08-26：Day-0 支持 [Qwen3.8-Flash-Next](https://www.modelscope.cn/models/Qwen/Qwen3.8-Flash-Next)，训练示例请参考 [SFT 示例](examples/models/qwen4_exp/megatron_sft.sh)。
+- 🎁 2026.08.21: 支持OpenMOSS多模态模型 [MOSS-VL-Instruct-0708](https://modelscope.cn/models/openmoss/MOSS-VL-Instruct-0708)的推理与训练，支持LoRA与全参数微调，覆盖单图/多图、单视频/多视频及混合模态场景。
+- 🎁 2026.08.11: 支持多模态模型[Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B)的推理与训练，Megatron-SWIFT同步支持。
 - 🎁 2026.07.22: 支持moonshotai多模态模型[Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3)的推理，包含XTML对话模板、思考通道（`reasoning_effort`）与工具调用（`--agent_template kimi_k3`）。
 - 🎁 2026.06.10: Megatron-Ray支持GRPO和GKD训练，查看[文档](docs/source/Instruction/Ray.md)和[示例](examples/ray)。
 - 🎁 2026.03.03: **ms-swift v4.0**大版本正式发布，release note参考[这里](https://github.com/modelscope/ms-swift/releases/tag/v4.0.0)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
+
+
+<details><summary>更多</summary>
 - 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
 - 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
 - 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
@@ -86,9 +100,6 @@
 - 🎁 2025.07.09: Megatron-SWIFT支持LoRA训练。相比ms-swift，在MoE模型提速显著。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora)。
 - 🎁 2025.06.23: 支持Reranker模型训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)。
 - 🎁 2025.06.15: 支持对纯文本大模型和多模态模型进行GKD训练。训练脚本参考这里：[纯文本](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd), [多模态](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/gkd)。
-
-<details><summary>更多</summary>
-
 - 🎁 2025.06.11: 支持使用Megatron并行技术进行RLHF训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf)。
 - 🎁 2025.05.29: 支持pt、sft、dpo、grpo的序列并行，具体请查看[脚本](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
 - 🎁 2025.05.11: GRPO中的奖励模型支持自定义处理逻辑，GenRM的例子参考[这里](./docs/source/Instruction/GRPO/DeveloperGuide/reward_model.md)。
@@ -100,7 +111,7 @@
 - 🎁 2025.02.21: GRPO算法支持使用LMDeploy，训练脚本参考[这里](examples/train/grpo/internal/full_lmdeploy.sh)。此外测试了GRPO算法的性能，使用一些tricks使训练速度提高到300%。WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)。
 - 🎁 2025.02.21: 支持`swift sample`命令。强化微调脚本参考[这里](docs/source/Instruction/Reinforced-Fine-tuning.md)，大模型API蒸馏采样脚本参考[这里](examples/sampler/distill/distill.sh)。
 - 🔥 2025.02.12: 支持GRPO (Group Relative Policy Optimization) 训练算法，文档参考[这里](docs/source/Instruction/GRPO/GetStarted/GRPO.md)。
-- 🎁 2024.12.04: **ms-swift3.0**大版本更新。请查看[发布说明和更改](https://github.com/modelscope/ms-swift/blob/v3.0.0/docs/source/Instruction/ReleaseNote3.0.md)。
+- 🎁 2024.12.04: **ms-swift3.0**大版本更新。请查看[发布说明和更改](https://github.com/modelscope/ms-swift/releases/tag/v3.0.0)。
 - 🎉 2024.08.12: ms-swift论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
 - 🔥 2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行大模型和多模态模型的评测。
 - 🔥 2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可。
@@ -142,10 +153,10 @@ uv pip install -e . --torch-backend=auto
 | transformers | >=4.33       | 4.57.6/5.12.1        |                    |
 | modelscope   | >=1.23       |                     |                    |
 | datasets     | >=3.0,<4.8.5 | 3.6.0/4.8.4         |                    |
-| peft         | >=0.11,<0.20 |                     |                    |
+| peft         | >=0.11,<0.21 |                     |                    |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                    |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF               |
-| deepspeed    | >=0.14       | 0.18.9              | 训练                 |
+| deepspeed    | >=0.19.3,<0.20 | 0.19.7            | 训练                 |
 | vllm         | >=0.5.1      | 0.11.0/0.23.0        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |
@@ -310,7 +321,7 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 | [PPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo) | ✅ | ✅            | ✅ | ✅ | ✅ | ❌                                                                                            |
 | [DPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo) | ✅ | ✅            | ✅ | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/dpo)  |
 | [KTO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | ✅ | ✅            | ✅ | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/kto.sh)  |
-| [奖励模型](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅ | ✅             | ✅ | ✅ | ✅ | ✅                                                                                            |
+| [奖励模型](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm) | ✅ | ✅             | ✅ | ✅ | ✅ | ✅                                                                                            |
 | [CPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅ | ✅            | ✅ | ✅ | ✅ | ✅                                                                                            |
 | [SimPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ | ✅          | ✅ | ✅| ✅ | ✅                                                                                            |
 | [ORPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ | ✅           | ✅ | ✅ | ✅ | ✅                                                                                            |
@@ -495,4 +506,4 @@ swift export \
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/ms-swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=modelscope/ms-swift&type=Date)](https://star-history.dera.page/#modelscope/ms-swift&Date)

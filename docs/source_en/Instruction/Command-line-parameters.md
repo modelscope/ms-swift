@@ -121,11 +121,12 @@ The command-line arguments will be introduced in four categories: basic argument
 - 🔥padding_free: Flattens data within a batch to avoid padding, reducing GPU memory usage and accelerating training (**sequences in the same batch remain invisible to each other**). Default is `False`. Currently supported in CPT/SFT/DPO/GRPO/KTO/GKD.
   - Note: Use `padding_free` together with `--attn_impl flash_attn` and `transformers>=4.44`. See [this PR](https://github.com/huggingface/transformers/pull/31629) for details. (Same as packing.)
   - **Compared to packing, padding_free avoids extra preprocessing time, but packing offers faster training and more stable memory usage**.
-- 🔥loss_scale: Loss weight configuration for training tokens. Default is `'default'`. loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies: 'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc. For available options, refer to [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py). ms-swift supports mixing basic strategies with other strategies, for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`. If no basic strategy is specified, it defaults to 'default', for example: 'hermes' is equivalent to 'default+hermes'.
+- 🔥loss_scale: Loss weight configuration for training tokens. Default is `'default'`. loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies: 'ignore_empty_think', 'ignore_think_prefix', and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc. For available options, refer to [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py). ms-swift supports mixing basic strategies with other strategies, for example: `'default+ignore_empty_think'`, `'last_round+ignore_think_prefix'`. If no basic strategy is specified, it defaults to 'default', for example: 'hermes' is equivalent to 'default+hermes'.
   - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are not included in loss calculation**). (**Default value for SFT**)
   - 'last_round': Only calculate loss for the last round response. The last round means all content after the last "user". (**Default value for RLHF**)
   - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
   - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
+  - 'ignore_think_prefix': Ignore loss computation for `'<think>\n'` at the start of a response (or `'<think>'` when no newline follows). The following reasoning content and `'</think>'` still contribute to the loss.
   - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
   - Note: Starting from `ms-swift >= 4.3.1`, multiple non-base strategies can be chained together (each strategy processes the output segments of the previous one, with weights multiplied accordingly). For example: `'last_round+hermes+ignore_empty_think'`, where `'last_round'` is the base strategy, and `'hermes+ignore_empty_think'` represents a chain of multiple non-base strategies that share the same base strategy.
 - disable_ignore_empty_think: Whether to disable the automatic appending of `ignore_empty_think` strategy to loss_scale for hybrid thinking models. Defaults to `False`, meaning for hybrid thinking models (e.g., Qwen3.5-4B), `+ignore_empty_think` is automatically appended to the loss_scale, so that empty `'<think>\n\n</think>\n\n'` blocks do not contribute to loss computation. If the user has already manually specified `ignore_empty_think` in the loss_scale, it will not be appended again. This parameter only takes effect during training and has no effect on pure thinking models or non-thinking models. Set to `True` to disable this default behavior.
@@ -164,7 +165,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 
 The following are parameters for quantizing models upon loading. See the [quantization documentation](https://huggingface.co/docs/transformers/main/en/main_classes/quantization) for details. These do not include `gptq` or `awq` quantization parameters used in `swift export`.
 
-- 🔥quant_method: Quantization method used when loading the model. Options: `'bnb'`, `'hqq'`, `'eetq'`, `'quanto'`, `'fp8'`. Default is `None`.
+- 🔥quant_method: Quantization method used when loading the model. Options: `'bnb'`, `'hqq'`, `'eetq'`, `'quanto'`, `'fp8'`, `'entropack'`. Default is `None`.
   - If performing QLoRA training on already AWQ/GPTQ-quantized models, you do not need to set additional quantization parameters like `quant_method`.
 - 🔥quant_bits: Number of bits for quantization. Default is `None`.
 - hqq_axis: Axis for HQQ quantization. Default is `None`.
@@ -172,6 +173,8 @@ The following are parameters for quantizing models upon loading. See the [quanti
 - bnb_4bit_quant_type: Type for 4-bit BNB quantization. Options: `'fp4'`, `'nf4'`. Default is `'nf4'`.
 - bnb_4bit_use_double_quant: Whether to use double quantization. Default is `True`.
 - bnb_4bit_quant_storage: Data type used to store quantized weights. Default is `None`.
+- entropack_target_bpp: Target bits per parameter for EntroPack compression. Fractional values are supported. This parameter is required when using `quant_method=entropack`.
+- entropack_linear_type: EntroPack linear implementation. Options: `'default'`, `'fp8'`, `'int8'`. Default is `'default'`.
 
 ### RAY Arguments
 
@@ -299,7 +302,7 @@ Other important parameters:
 - 🔥ddp_find_unused_parameters: Default is `None`.
 - 🔥dataloader_num_workers: Default is `None`. On Windows, set to 0; otherwise, 1.
 - dataloader_pin_memory: Default is `True`.
-- dataloader_persistent_workers: Default is `False`.
+- dataloader_persistent_workers: Default is `True`; automatically set to `False` when `dataloader_num_workers=0`.
 - dataloader_prefetch_factor: Default is `None`. If `dataloader_num_workers > 0`, it is set to 2. Number of batches loaded in advance by each worker. 2 means there will be a total of 2 * num_workers batches prefetched across all workers.
 - train_dataloader_shuffle: Whether to shuffle the dataloader for CPT/SFT training, default is True. This parameter is ineffective for IterableDataset (i.e., it doesn't work for streaming datasets). IterableDataset reads data sequentially.
 - optim: The optimizer, defaults to `"adamw_torch"` (for torch>=2.8 `"adamw_torch_fused"`). For a complete list of optimizers, please see `OptimizerNames` in [training_args.py](https://github.com/huggingface/transformers/blob/main/src/transformers/training_args.py).
@@ -515,17 +518,18 @@ Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy
 
 ### Training Arguments
 
-Training arguments include the [base arguments](#base-arguments), [Seq2SeqTrainer arguments](#Seq2SeqTrainer-arguments), [tuner arguments](#tuner-arguments), and also include the following parts:
+Training arguments include the [base arguments](#base-arguments), [Seq2SeqTrainer arguments](#seq2seqtrainer-arguments), [tuner arguments](#tuner-arguments), and also include the following parts:
 
 - add_version: Add directory to `output_dir` with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. **If in an offline environment, please set to False.**
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - 🔥packing: Uses the `padding_free` approach to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures complete sequences are not split), achieving load balancing across nodes and processes during training (avoiding long texts slowing down short text training speed), thereby improving GPU utilization and maintaining stable memory usage. When using `--attn_impl flash_attn`, it ensures that different sequences within packed samples are independent and invisible to each other. This parameter defaults to `False` and currently supports packing for CPT/SFT/DPO/KTO/GKD as well as embedding/reranker/seq_cls tasks. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation and learning rate accordingly**.
-  - Note: For Qwen3-Next packing, please use Megatron-SWIFT. For Qwen3.5 transformers padding_free/packing support, please use "ms-swift>=4.3.1" (or use Megatron-SWIFT). Refer to [Qwen3.5 Best Practice](../BestPractices/Qwen3_5-Best-Practice.md) for details.
+  - Note: For Qwen3-Next packing, please use Megatron-SWIFT. For Qwen3.5 transformers padding_free/packing support, please use "ms-swift>=4.3.1" (or use Megatron-SWIFT). Refer to [Qwen3.5/Qwen3.6/Qwen3.8 Best Practices](../BestPractices/Qwen3_8-Best-Practice.md) for details.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
 - packing_strategy: Packing algorithm, one of 'binpack' and 'sequential', default is 'binpack'. 'binpack' uses best-fit-decreasing bin packing (which reorders samples by length); 'sequential' uses order-preserving greedy packing (next-fit: a single open pack, flushed when the next sample doesn't fit), keeping samples in input order so the sample order and pack boundaries follow a sequential sampler (use `packing_num_proc=1` for a single global ordering).
 - lazy_tokenize: Whether to use lazy tokenization. If set to `False`, all dataset samples will be tokenized (and for multimodal models, images will be loaded from disk) before training begins. Default is `None`: in LLM training, it defaults to `False`; in MLLM training, it defaults to `True` to save memory.
+  - For non-streaming lazy datasets, encoding failures use replacement samples when `strict=False`. The candidate order depends on `data_seed` and the requested index, not previous accesses. With unchanged dataset order, seed, and encoding behavior, resuming does not change replacement selection. The same failing index also uses the same candidate order across epochs; different failing indices may still select the same replacement.
   - Note: If you want to perform image data augmentation, you need to set `lazy_tokenize` (or `streaming`) to True and modify the `encode` method in the Template class.
 - use_logits_to_keep: Pass `logits_to_keep` in the `forward` method based on labels to reduce the computation and storage of unnecessary logits, thereby reducing memory usage and accelerating training. The default is `None`, which enables automatic selection.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
@@ -585,6 +589,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
 - top_k: Top-k parameter for rollout sampling. -1 means no top-k filtering is applied. Default is -1.
 - top_p: Top-p parameter for rollout sampling. 1.0 means no top-p filtering is applied. Default is 1.0.
+- min_p: Min-p parameter for rollout sampling. Tokens whose probability is below `min_p` times the probability of the most likely token are filtered out. 0.0 means no min-p filtering is applied. Default is 0.0. Only effective with the vLLM backend.
 
 #### GKD Arguments
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
@@ -604,7 +609,7 @@ The reward model parameters will be used in PPO and GRPO. The teacher model para
 - reward_model_type: Default is None.
 - reward_model_revision: Default is None.
 - teacher_model: Default is None.
-- teacher_adapters: Default is `[]`.
+- teacher_adapters: Paths to LoRA weights loaded into `teacher_model`. Default is `[]`. When specified together with `teacher_model`, a separate frozen teacher is loaded even if `teacher_model` equals `model`, adding another copy of the base weights in memory instead of using the `disable_adapter()` optimization.
 - teacher_model_type: Default is None.
 - teacher_model_revision: Default is None.
 - teacher_model_server: Teacher model service URL. Deploy via `swift deploy` for logprobs. Single URL (e.g. `http://localhost:8000`) or multi-teacher JSON (e.g. `'[{"url":"http://t1:8000","tags":["data/math.jsonl"]},{"url":"http://t2:8001","tags":["data/code.jsonl"]}]'`). How `tags` map to datasets or sample fields: [distillation docs](./Distillation.md#multi-teacher-routing).
@@ -665,7 +670,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
   - async_generate: Use async rollout to improve train speed. Note that rollout will use the model updated in the previous round when enabled. Multi-turn scenarios are not supported. Default is `false`.
   - enable_flattened_weight_sync: Whether to use flattened tensor for weight synchronization. When enabled, multiple parameters are packed into a single contiguous tensor for transfer, which can improve synchronization efficiency; Only takes effect in Server Mode. Default is True.
   - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: An environment variable that controls the bucket size (in MB) for flattened tensor weight synchronization during full-parameter training in Server Mode. Default is 512 MB.
-- vllm_mode colocate parameter (For more parameter support, refer to the [vLLM Arguments](#vLLM-Arguments).)
+- vllm_mode colocate parameter (For more parameter support, refer to the [vLLM Arguments](#vllm-arguments).)
   - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
   - vllm_max_model_len: vLLM passthrough parameter, the total length limit of model, default is None.
   - vllm_enforce_eager: vLLM passthrough parameter, default is False.
@@ -688,7 +693,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - dynamic_sample: Exclude data within the group where the reward standard deviation is 0, and additionally sample new data. Default is False.
 - max_resample_times: Under the dynamic_sample setting, limit the number of resampling attempts to a maximum of 3. Default is 3 times.
 - overlong_filter: Skip overlong truncated samples, which will not be included in loss calculation. Default is False.
-The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](./GRPO/DeveloperGuide/reward_function.md#built-in-reward-functions).
+The hyperparameters for the reward function can be found in the [Reward function parameters section](#reward-function-parameters).
 - delta: Delta value for the upper clipping bound in two-sided GRPO. Recommended to be > 1 + epsilon. This method was introduced in the [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291).
 - importance_sampling_level: Controls how the importance sampling ratio is computed. Options are `token` and `sequence`. In `token` mode, the raw per-token log-probability ratios are used. In `sequence` mode, the log-probability ratios of all valid tokens in the sequence are averaged to produce a single ratio per sequence. The [GSPO paper](https://arxiv.org/abs/2507.18071) uses sequence-level importance sampling to stabilize training. The default is `token`.
 - advantage_estimator: Advantage estimator. Default is `grpo` (group-relative advantage). Options: `grpo`, [`rloo`](./GRPO/AdvancedResearch/RLOO.md), [`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md).
@@ -743,7 +748,7 @@ Soft overlong reward parameters:
 
 ### Inference Arguments
 
-Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
+Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#lmdeploy-arguments), and also contain the following:
 
 - 🔥infer_backend: Inference acceleration backend, supporting four inference engines: 'transformers', 'vllm', 'sglang', and 'lmdeploy'. The default is 'transformers'.
   - Note: All four engines use SWIFT's template, controlled by `--template_backend`.
@@ -865,6 +870,11 @@ In addition to the parameters listed above, some models support additional model
 
 - Model-specific parameters can be set via `--model_kwargs` or environment variables. For example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 - Note: If you specify model-specific parameters during training, please also set the corresponding parameters during inference to achieve optimal performance.
+
+
+### deepseek_v4, deepseek_v4_flash, glm5_2, glm5_3, hy_v3_preview
+- 🔥REASONING_EFFORT: Thinking effort, effective only when thinking is enabled (except for `glm5_3`, which has no non-thinking mode and always applies it). The accepted values vary by model: `'high'`/`'max'` for `deepseek_v4` (default `'high'`); `'low'`/`'high'`/`'max'` for `deepseek_v4_flash` (default `'low'`); `'high'`/`'max'` for `glm5_2` (default `'max'`); `'low'`/`'high'`/`'max'` for `glm5_3` (default `'max'`); `'no_think'`/`'low'`/`'high'` for `hy_v3_preview` (default `'high'`).
+  - It can also be set per sample by passing `chat_template_kwargs` in the dataset or the inference request, e.g. `{"chat_template_kwargs": {"reasoning_effort": "max"}}`, which takes precedence over the environment variable.
 
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5
@@ -998,3 +1008,7 @@ The meanings of the following parameters can be found in the example code [here]
 - ROOT_IMAGE_DIR: The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.
 - SWIFT_SINGLE_DEVICE_MODE: Single device mode, valid values are "0"(default)/"1". In this mode, each process can only see one device.
 - SWIFT_AUDIO_LOAD_BACKEND: Audio waveform loading backend. `librosa` (default) or `soundfile_pyav` (soundfile first, pyav fallback). For GRPO/GKD with `--use_vllm true`,swift auto-sets it to `soundfile_pyav` so training encode and vLLM rollout decode audio URLs consistently.
+- SWIFT_ALLOW_INTERNAL_URL: Defaults to `'0'`. When `swift deploy` downloads image, audio, or video URLs from a request into local temporary files, it refuses URLs that resolve to non-public addresses such as loopback and private ranges to prevent SSRF. Set it to `'1'` only when trusted request URLs must reach an internal media server. Cloud metadata endpoints (`169.254.0.0/16`, Alibaba Cloud `100.100.100.200`, etc.) are always blocked.
+- SWIFT_URL_ALLOWED_HOSTS: A comma-separated allowlist of hosts, e.g. `bucket.oss-cn-hangzhou.aliyuncs.com,cdn.example.com`. When set, `swift deploy` fetches request media URLs only from listed hosts. An allowlisted host may resolve to an ordinary private address, but cloud metadata addresses remain blocked. This is recommended when deployment media comes from known bucket or CDN domains.
+- SWIFT_MAX_DOWNLOAD_SIZE_MB: Maximum size of one response body fetched for request media by `swift deploy`, defaulting to `1024` (1GB). This prevents an untrusted caller from exhausting memory and temporary disk space with a huge or endless response. Set it to `0` to disable the cap.
+- SWIFT_MEDIA_ALLOWED_DIRS: A comma-separated allowlist of **absolute** directories, e.g. `/data/images,/data/videos`. When set, local media paths referenced by deployment requests must be inside these directories; symlinks and `..` are resolved before comparison. It is unset by default for compatibility, so deployment requests can otherwise read any accessible local media file. Configure it when `swift deploy` is exposed to untrusted callers; point it at an empty directory to prohibit requests from referencing local files.

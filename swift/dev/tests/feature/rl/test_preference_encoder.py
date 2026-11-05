@@ -30,8 +30,7 @@ class _PairedTemplate:
 def _encoder(rl_type='dpo'):
     from swift.dev.recipe.rlhf.encoder import PreferenceBatchEncoder
 
-    return PreferenceBatchEncoder(model=None, template=_PairedTemplate(), rl_type=rl_type,
-                                  calculate_kl=False, gradient_accumulation_steps=1)
+    return PreferenceBatchEncoder(model=None, template=_PairedTemplate(), rl_type=rl_type, calculate_kl=False)
 
 
 def test_paired_interleave_order_and_prefix_strip():
@@ -41,11 +40,14 @@ def test_paired_interleave_order_and_prefix_strip():
     kwargs = encoder([
         {'chosen_ids': [1, 2], 'rejected_ids': [3, 4]},
         {'chosen_ids': [5], 'rejected_ids': [6, 7]},
-    ], owns_ga=True)
+        ],
+        micro_batch_size=2,
+    )
     features = kwargs['inputs']
     assert [f['input_ids'] for f in features] == [[1, 2], [3, 4], [5], [6, 7]]
     assert [f['labels'] for f in features] == [[1, 2], [3, 4], [5], [6, 7]]
     assert 'chosen_input_ids' not in features[0]  # prefixes stripped, not merged
+    assert kwargs["micro_batch_size"] == 4
 
 
 def test_rm_routes_seq_cls_without_labels():
@@ -59,12 +61,13 @@ def test_rm_routes_seq_cls_without_labels():
 
     from swift.dev.recipe.rlhf.encoder import PreferenceBatchEncoder
 
-    encoder = PreferenceBatchEncoder(model=None, template=_RmTemplate(), rl_type='rm',
-                                     calculate_kl=False, gradient_accumulation_steps=1)
-    kwargs = encoder([{'chosen_ids': [1], 'rejected_ids': [2]}], owns_ga=True)
+    encoder = PreferenceBatchEncoder(model=None, template=_RmTemplate(), rl_type='rm', calculate_kl=False)
+    kwargs = encoder([{'chosen_ids': [1], 'rejected_ids': [2]}], micro_batch_size=1)
     assert kwargs['task'] == 'seq_cls'
     assert all('labels' not in f for f in kwargs['inputs'])
     assert [f['input_ids'] for f in kwargs['inputs']] == [[1], [2]]
+    assert kwargs["gradient_accumulation_steps"] == 1
+    assert kwargs["micro_batch_size"] == 2
 
 
 def test_missing_side_fails_loudly():
@@ -72,20 +75,22 @@ def test_missing_side_fails_loudly():
     interleave and pair the wrong completions."""
     encoder = _encoder('dpo')
     with pytest.raises(ValueError, match='rejected'):
-        encoder([{'chosen_ids': [1]}], owns_ga=True)  # stub omits rejected_* -> template got no side
+        encoder([{'chosen_ids': [1]}], micro_batch_size=1)  # stub omits rejected_* -> template got no side
 
 
 def test_missing_chosen_side_fails_loudly():
     encoder = _encoder('cpo')
     with pytest.raises(ValueError, match='chosen'):
-        encoder([{'rejected_ids': [2]}], owns_ga=True)
+        encoder([{'rejected_ids': [2]}], micro_batch_size=1)
 
 
-def test_ga_steps_forwarded_when_not_owned():
-    """When the caller does not own gradient accumulation (transformers loop), the encoder forwards
-    the ga steps the forward must simulate."""
-    encoder = _encoder('orpo')
-    kwargs = encoder([{'chosen_ids': [1], 'rejected_ids': [2]}], owns_ga=False)
+@pytest.mark.parametrize("rl_type", ["dpo", "cpo", "orpo", "simpo"])
+@pytest.mark.parametrize("micro_batch_size", [1, 2])
+def test_update_uses_backend_micro_batches_without_cross_call_accumulation(rl_type, micro_batch_size):
+    """Submit the whole update with backend GA=1 and 2B sequences per paired micro-batch."""
+    encoder = _encoder(rl_type)
+    rows = [{'chosen_ids': [2 * i], 'rejected_ids': [2 * i + 1]} for i in range(4 * micro_batch_size)]
+    kwargs = encoder(rows, micro_batch_size=micro_batch_size)
     assert kwargs['gradient_accumulation_steps'] == 1
-    kwargs_owned = encoder([{'chosen_ids': [1], 'rejected_ids': [2]}], owns_ga=True)
-    assert 'gradient_accumulation_steps' not in kwargs_owned
+    assert kwargs["micro_batch_size"] == 2 * micro_batch_size
+    assert [feature["input_ids"] for feature in kwargs["inputs"]] == [[i] for i in range(8 * micro_batch_size)]

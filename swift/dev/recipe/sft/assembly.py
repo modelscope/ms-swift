@@ -168,7 +168,7 @@ def build_supervised_objects(
     if remote:
         model = build_remote_model(model_config, distributed_config)
         if tuner_config is not None:
-            apply_remote_tuner(model, tuner_config, train_config.gradient_accumulation_steps)
+            apply_remote_tuner(model, tuner_config, 1)
         # Full-param remote: the server model trains all parameters by default. The local
         # freeze/trainable knobs read requires_grad in-process, which cannot cross HTTP; a
         # non-default freeze is refused by validate rather than silently ignored.
@@ -193,7 +193,7 @@ def build_supervised_objects(
             apply_tuner(
                 model,
                 tuner_config,
-                gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+                gradient_accumulation_steps=1,
                 task_type=task_type,
             )
         else:

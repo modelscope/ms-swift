@@ -368,7 +368,8 @@ class RolloutComponent(ResourceComponent):
         tool_manager = tools if tools is not None else (env.tool_manager() if env_tools else None)
         template = build_template_from(
             str(self.params.get('tokenizer') or ''),
-            dict(self.params.get('template_config') or {}), self.node_id)
+            dict(self.params.get('template_config') or {}), self.node_id,
+            model_kv=dict(self.params.get('model_config') or {}))
         cfg = dict(self.params.get('rollout_config') or {})
         cfg.pop('max_turns', None)
         gen = dict(self.params.get('generation_config') or {})
@@ -614,5 +615,29 @@ class CodeComponent(ResourceComponent):
         code = self.params.get('code', '') or getattr(self, 'code', '')
         if not code:
             raise ComponentError(f'{self.node_id}: this code component has no function body')
-        self.obj = load_code_component(code, self.params.get('name', 'fn'))
+        self.obj = load_code_component(code, self.params.get('entry', 'fn'))
         return self.obj
+
+    def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
+        """Stage form: the entry is called once per batch with the wired
+        ports as keyword arguments; it returns a dict keyed by its DECLARED
+        output ports.
+
+        Stage nodes do not ride the resource pre-build channel, so the code
+        loads lazily on the first invoke. A return that misses a declared
+        output port is a contract violation and fails loudly -- a silently
+        absent lane reads as "the round produced nothing" downstream."""
+        if self.obj is None:
+            self.build({})
+        outputs = self.obj(**inputs)
+        if not isinstance(outputs, dict):
+            raise ComponentError(
+                f'{self.node_id}: the code entry must return a dict keyed by its '
+                'declared output ports')
+        declared = [str(port.get('key') or '') for port in (self.params.get('ports_out') or [])]
+        missing = [key for key in declared if key and key not in outputs]
+        if missing:
+            raise ComponentError(
+                f'{self.node_id}: the code entry did not produce the declared '
+                f'output ports {missing}')
+        return outputs

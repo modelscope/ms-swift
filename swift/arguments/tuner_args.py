@@ -52,7 +52,7 @@ class TunerArguments:
         modules_to_save (List[str]): List of modules to save. Default is an empty list.
 
         lora_rank (int): Rank for LoRA. Default is 8.
-        lora_alpha (int): Alpha value for LoRA. Default is 32.
+        lora_alpha (float): Alpha value for LoRA. Default is 32.0.
         lora_dropout (float): Dropout rate for LoRA. Default is 0.05.
         lora_bias (Literal['none', 'all']): The possible values are 'none' and 'all'. If set to 'all', all biases
             will be trainable. Default is 'none'.
@@ -131,7 +131,7 @@ class TunerArguments:
 
     # lora
     lora_rank: int = 8
-    lora_alpha: int = 32
+    lora_alpha: float = 32.0
     lora_dropout: float = 0.05
     lora_bias: Literal['none', 'all'] = 'none'
     lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None

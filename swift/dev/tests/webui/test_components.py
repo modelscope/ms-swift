@@ -97,7 +97,7 @@ class TestStageContracts:
         driver = StreamingDriverComponent('dr', {})
         with pytest.raises(ComponentError) as excinfo:
             driver._build_driver({'engine': [('s', object())]})
-        assert 'prompt stream' in str(excinfo.value)
+        assert 'source control port' in str(excinfo.value)
 
 
 class TestRegistrySurface:

@@ -52,8 +52,8 @@ class SamplingArguments(BaseArguments):
             Step 1: Set `prm_model`, and `orm_model` to None. All generated sequences are saved to a file.
             Step 2: Set `sampler_engine` to 'no' and provide the output file from Step 1 to `cache_files`.
             This run will perform PRM and ORM evaluation on the cached results.
-            Note: The `--dataset` argument must still be provided, as IDs in the cache files are MD5 hashes of the
-            original data and need to be linked.
+            Note: Use the same `--dataset` and `--system` as Step 1. Cache IDs are MD5 hashes of the dataset rows
+            after applying `--system`.
     """
     # rm models
     prm_model: Optional[str] = None

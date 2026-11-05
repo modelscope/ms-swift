@@ -242,8 +242,8 @@ all-router不是通配符匹配模块名，而是一个特殊关键字，告诉�
 - Megatron-SWIFT不支持QLoRA训练。
 
 ### Q32: mtp相关问题
-- 需要MTP训练，请手动设置命令行参数`--mtp_num_layers`，可以参考config.json中的`num_nextn_predict_layers`，`mtp_num_hidden_layers`字段填写该值。
-- 如果base模型不附带MTP结构，可以从头初始化训练MTP。
+- https://github.com/modelscope/ms-swift/pull/10416 起 `--mtp_num_layers` 默认 `auto`，会自动跟随模型 checkpoint，无需手动设置；4.6.0 及更早版本默认 `None`（不加载 MTP），需手动设置（可参考 `num_nextn_predict_layers` / `mtp_num_hidden_layers`）。
+- 如果base模型不附带MTP结构，需要显式设置 `--mtp_num_layers N --mtp_allow_random_init true` 从头训练MTP。
 - 多模态的MTP目前还没支持。
 
 ### Q33: 量化模型训练相关问题
@@ -328,6 +328,71 @@ TypeError: __init__() got an unexpected keyword argument 'corda_config'
 ```shell
 --target_regex ".*audio.*"   # 只匹配包含 audio 的模块
 ```
+
+### Q52: Qwen3.5支持cp吗？
+支持，具体相关可以查看[Qwen3.5最佳实践](https://swift.readthedocs.io/zh-cn/latest/BestPractices/Qwen3_8-Best-Practice.html)。
+
+### Q53: gkd能否像opsd一样支持teacher和student使用不一样的系统提示词？
+支持。
+
+### Q54: MoE模型可以使用deepspeed zero3训练吗？
+可以，但是会较慢。
+
+### Q55: megatron swift支持显卡B300吗？
+支持。
+
+### Q56: megatron stf和swift stf跑MoE模型结果不太相同怎么办？
+MoE模型尽量使用megatron跑，megatron+MoE相对成熟，transformers的MoE训练是5.0版本之后才开始支持，不一定稳定。
+
+### Q57: 什么情况下训练要开启think模式？
+如果你的训练数据涉及CoT，建议开启think模式。
+
+### Q58: 带 `<think></think> `的数据在训练时都需要开启think模式吗？
+这个需要看具体训练场景，如果数据的逻辑推理不是特别多，可以使用no-think。
+
+### Q59: 训练qwenvl-2.5时出现报错
+```shell
+[rankØ]: Original Traceback (most recent call last):
+[rank0]:
+File "/apdcephfs_qy3/share_300998916/weituchong/miniforge3/envs/qwen/lib/python3.10/site-packages/torch/utils/data/_utils/worker.py", line 349, in _worker_loop
+[rank0] :
+data = fetcher. fetch index)
+type: ignore [possibly-undefined]
+[rank0]:
+File"/apdcephfs_qy3/share_300998916/weituchong/miniforge3/envs/qwen/lib/python3.10/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+[rankø]:
+data = [self-dataset [idx] for idx in possibly_batched_index]
+[rankø]:
+File"/apdcephfs_qy3/share_300998916/weituchong/miniforge3/envs/qwen/Lib/python3.10/site-packages/torch/utils/data/_utils/fetch.py", line 52, in
+[rankø] :
+data = [self dataset [idx] for idx in possibly_batched_index]
+[rank0]:
+File "/apdcephfs_qy3/share_300998916/weituchong/miniforge3/envs/qwen/lib/python3.10/site-packages/swift/llm/dataset/utils-py", line 191, in _getitem
+[rank0]:
+raise ValueError( 'Failed to retrieve the dataset. You can avoid this issue by increasing
+'max_length'
+or "
+[rankø]: ValueError: Failed to retrieve the dataset. You can avoid this issue by increasing 'max_length' or modifying the 'truncation_strategy -
+```
+如果上面无其他报错信息，则是数据集超长，把`--max_length`提高，只要不OOM就没问题。
+
+### Q60: 训练多模态模型时，如何做图像样本的动态数据增强，即在每个batch输入模型前都会对数据增强一次？
+Swift目前没有开箱即用的动态数据增强支持，可以根据需要自行扩展源码。
+
+### Q61: grpo训练一般需要多少样本数据？
+几千就会有效果，多一些效果更好。
+
+### Q62: Swift可以做视觉模型的预训练吗？
+可以，需要自己调节学习率，详见[教程文档](https://swift.readthedocs.io/zh-cn/latest/BestPractices/Rapidly-Training-VL-model.html)。
+
+### Q63: magetron支持像Swift一样通过`--loss_type my_loss`使用自定义函数吗？
+megatron 目前需要改动 trainer 里的 loss_func, 未来会支持更简单的自定义逻辑。
+
+### Q64: Swift框架支持Agentic RL训练吗？
+支持，具体参考[多轮训练](https://swift.readthedocs.io/zh-cn/latest/Instruction/GRPO/DeveloperGuide/multi_turn.html)。
+
+### Q65: 如何在ROCm/MI300X上使用megatron-swift训练Qwen3-Omni？
+可以参考这个[最佳实践](https://swift.readthedocs.io/zh-cn/latest/BestPractices/AMD-support.html)。
 
 ## 推理
 
@@ -561,3 +626,6 @@ swift eval不支持DDP方式启动。
 ### Q13: 哪里可以看到swift评测的时候送入的query除了问题之外还有哪些额外的字段呢？
 最简单的方法是看输出的reviews文件中的input字段，是输入给模型的内容转换后的Markdown格式。<br>
 如果backend是opencompass的话没有这些输出，就需要用native backend。
+
+### Q14: pip安装evalscope的时候一直卡在preparing metadata(pyproject.toml)
+这一过程是在安装评估依赖，可能会比较慢。

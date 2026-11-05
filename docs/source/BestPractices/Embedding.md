@@ -17,6 +17,10 @@ SWIFT已经支持Embedding模型的训练，包括纯文本和多模态两个类
 5. qwen3-vl-embedding模型
    - 2B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Embedding-2B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B)
    - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Embedding-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B)
+6. uembed embedding模型
+   - 2B: [ModelScope](https://modelscope.cn/models/iic/UEmbed-2B) [Hugging Face](https://huggingface.co/Alibaba-NLP/UEmbed-2B)
+   - 4B: [ModelScope](https://modelscope.cn/models/iic/UEmbed-4B) [Hugging Face](https://huggingface.co/Alibaba-NLP/UEmbed-4B)
+   - 9B: [ModelScope](https://modelscope.cn/models/iic/UEmbed-9B) [Hugging Face](https://huggingface.co/Alibaba-NLP/UEmbed-9B)
 
 
 开发者可以自行集成自己的模型，模型forward输出值需要满足：

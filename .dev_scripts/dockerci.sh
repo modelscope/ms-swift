@@ -22,6 +22,7 @@ do
   echo "get gpu lock $gpu"
 
   CONTAINER_NAME="swift-ci-$idx"
+  docker rm -f $CONTAINER_NAME >/dev/null 2>&1 || true
   let is_get_file_lock=true
 
   # pull image if there are update

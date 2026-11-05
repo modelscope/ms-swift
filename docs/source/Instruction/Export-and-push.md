@@ -25,8 +25,7 @@ SWIFT支持AWQ、GPTQ、FP8、BNB模型的量化导出。其中使用AWQ、GPTQ�
 pip install autoawq -U
 
 # 使用gptq量化:
-# auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
-pip install auto_gptq optimum -U
+pip install gptqmodel optimum -U
 
 # 使用gptq v2量化:
 pip install gptqmodel optimum -U
@@ -41,6 +40,8 @@ pip install bitsandbytes -U
 - 更多系列模型的支持: 支持[Bert](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/bert)，[Reward Model](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/reward_model)的量化导出。
 - 使用SWIFT量化导出的模型支持使用vllm/sglang/lmdeploy进行推理加速；也支持使用QLoRA继续进行SFT/RLHF。
 
+
+使用 GPTQ v2 量化时，后端可能将对称量化权重保存为 GPTQ v1 格式。导出配置会记录实际保存的格式，以便正确重新加载模型。
 
 ## 推送模型
 

@@ -27,37 +27,44 @@ jobs:
       - name: Build Arguments
         id: build_args
         env:
-          # Comment text is attacker-controlled: passed as an env VALUE (the shell sees
-          # $COMMENT_BODY as data) instead of ${{ }} interpolation into the script body,
-          # so a comment containing quotes/semicolons can never become script text.
-          COMMENT_BODY: ${{ github.event.comment.body }}
-        run: |
-          # Random delimiter: a fixed "EOF" would let a comment containing that string
-          # forge the content of $GITHUB_OUTPUT.
-          DELIM="EOF_$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-          ARGS="REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
           REQUEST_SOURCE: ${{ github.event_name }}
           THREAD_ID: ${{ github.event.comment.node_id }}
           COMMENT_ID: ${{ github.event.comment.id }}
           AUTHOR: ${{ github.event.comment.user.login }}
-          BODY: $COMMENT_BODY
+          BODY: ${{ github.event.comment.body }}
           URL: ${{ github.event.comment.html_url }}
           IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_review_comment' }}
-          ISSUE_OR_PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}"
+          ISSUE_OR_PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          REVIEW_ID: ${{ github.event.comment.pull_request_review_id }}
+          REPLY_TO_COMMENT_ID: ${{ github.event.comment.in_reply_to_id }}
+        run: |
+          ARGS="REPO: $REPO
+          REQUEST_SOURCE: $REQUEST_SOURCE
+          THREAD_ID: $THREAD_ID
+          COMMENT_ID: $COMMENT_ID
+          AUTHOR: $AUTHOR
+          BODY: $BODY
+          URL: $URL
+          IS_PR: $IS_PR
+          ISSUE_OR_PR_NUMBER: $ISSUE_OR_PR_NUMBER"
 
-          if [ -n "${{ github.event.comment.pull_request_review_id }}" ]; then
+          if [ -n "$REVIEW_ID" ]; then
             ARGS="$ARGS
-          REVIEW_ID: ${{ github.event.comment.pull_request_review_id }}"
+          REVIEW_ID: $REVIEW_ID"
           fi
 
-          if [ -n "${{ github.event.comment.in_reply_to_id }}" ]; then
+          if [ -n "$REPLY_TO_COMMENT_ID" ]; then
             ARGS="$ARGS
-          REPLY_TO_COMMENT_ID: ${{ github.event.comment.in_reply_to_id }}"
+          REPLY_TO_COMMENT_ID: $REPLY_TO_COMMENT_ID"
           fi
 
-          echo "args<<$DELIM" >> $GITHUB_OUTPUT
-          echo "$ARGS" >> $GITHUB_OUTPUT
-          echo "$DELIM" >> $GITHUB_OUTPUT
+          DELIM="ghadelim_$(openssl rand -hex 16)"
+          {
+            echo "args<<$DELIM"
+            echo "$ARGS"
+            echo "$DELIM"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run Qoder Assistant
         uses: QoderAI/qoder-action@v0

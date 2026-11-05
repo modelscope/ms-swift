@@ -240,6 +240,7 @@ def _build_split_loader(  # noqa: C901
             packing_strategy=dataset_config.packing_strategy,
             num_proc=dataset_config.packing_num_proc,
             strict=dataset_config.strict,
+            multiprocessing_context=dataset_config.dataloader_multiprocessing_context,
             data_seed=dataset_config.data_seed,
         )
 
@@ -397,7 +398,7 @@ def _extract_lengths(enc: Any) -> list:
 
 
 def _drop_last(distributed_config: DistributedConfig) -> bool:
-    """Megatron drops a trailing partial batch (exact global_batch_size invariant); hf keeps it (legacy)."""
+    """Keep the backend's existing micro-batch tail policy, independently of GA."""
     return distributed_config.backend == "megatron"
 
 
@@ -447,6 +448,7 @@ def _pack(
     packing_strategy: str,
     num_proc: int,
     strict: bool,
+    multiprocessing_context: Optional[str] = None,
     data_seed: int = 0,
 ) -> Any:
     """Pack an encoded dataset for efficient training (map-style or iterable)."""
@@ -465,6 +467,7 @@ def _pack(
         packing_length=length,
         packing_strategy=packing_strategy,
         strict=strict,
+        multiprocessing_context=multiprocessing_context,
         **seed_kwargs,
     )
 

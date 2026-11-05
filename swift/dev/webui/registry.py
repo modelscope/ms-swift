@@ -67,7 +67,9 @@ ROLLOUT = D('rollout', '多轮生成器', 'Resource', '在环境 lease 内执行
     ports_in=(P('sampler', 'SAMPLER', '生成 backend'), P('tools', 'TOOL', '工具插件与声明', optional=True),
               P('env', 'ENV', '环境 lease', optional=True)),
     ports_out=(P('rollout', 'ROLLOUT', 'episode 生成机制'),),
-    params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与采样器一致）', '', required=True),
+            Q('model_config', '模型加载配置', {}, type='dict',
+              doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与采样器节点自身一致'),
             Q('template_config', '编码配置', {}, type='dict'),
             Q('max_turns', '最大轮数', 8, type='int', minimum=1),
             Q('generation_config', '生成参数', {}, type='dict'),
@@ -125,13 +127,17 @@ DATALOADER = D('dataloader', '数据加载器', 'Iterator', '常驻游标、epoc
             Q('num_workers', '加载进程数', 0, type='int', minimum=0),
             Q('drop_last', '丢弃尾批', False, type='bool')))
 STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准入、滞后、背压和批次确认控制面。',
-    ports_in=(P('prompts', 'DATA', '提示流来源（连接 dataloader）', ('batch',)),
+    ports_in=(P('prompts', 'SOURCE', '提示流来源（dataloader 的 source 控制口；原生 loader 在其上）', control=True),
               P('engine', 'SAMPLER', '具名采样资源', many=True, optional=True),
               P('episode', 'ROLLOUT', '多轮来源', optional=True),
               P('groups', 'GROUP_RULE', '完整组规则', optional=True),
               P('after', 'CTRL', '下一批反馈', optional=True)),
     ports_out=(P('samples', 'TRAJ', '当前轨迹', ('rollout',)), P('source', 'SOURCE', '发布与确认控制', control=True)),
-    params=(Q('async_mode', '异步模式', 'none', options=('none', 'one_step_off', 'fully_async')),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与采样器一致）', '', required=True),
+            Q('model_config', '模型加载配置', {}, type='dict',
+              doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与采样器节点自身一致'),
+            Q('template_config', '编码配置', {}, type='dict'),
+            Q('async_mode', '异步模式', 'none', options=('none', 'one_step_off', 'fully_async')),
             Q('max_staleness', '最大滞后', 1, type='int', minimum=0),
             Q('num_generations', '组宽', 8, type='int', minimum=1),
             Q('generation_config', '生成配置', {}, type='dict'),
@@ -150,7 +156,9 @@ CHALLENGER = D('challenger', '自动出题器', 'Iterator', '显式出题/解题
     ports_out=(P('questions', 'TRAJ', '同批出题轨迹', ('rollout',)),
                P('answers', 'TRAJ', '同批解题轨迹', ('rollout',)), P('source', 'SOURCE', '批次控制', control=True)),
     params=(Q('seed', '种子任务', '', required=True), Q('max_tasks', '每批题数', 8, type='int', minimum=1),
-            Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+            Q('tokenizer', 'Tokenizer 来源（id/路径，与采样器一致）', '', required=True),
+            Q('model_config', '模型加载配置', {}, type='dict',
+              doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与采样器节点自身一致'),
             Q('template_config', '编码配置', {}, type='dict'),
             Q('challenger_config', '出题机制配置', {}, type='dict')))
 
@@ -173,7 +181,9 @@ MODEL_FORWARD = D('model_forward', '模型前向', 'Stage', '按显式字段集�
               P('traj', 'TRAJ', '前向数据；内部按 tokenizer 参数编码', accepted_kinds=('DATA', 'BATCH'))),
     ports_out=tuple(P(key, 'SIGNAL', key, (key,), optional=True, enabled_by='outputs')
                     for key in ('logps', 'values', 'logits', 'topk', 'embeddings')),
-    params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与模型一致）', '', required=True),
+            Q('model_config', '模型加载配置', {}, type='dict',
+              doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与模型节点自身一致'),
             Q('template_config', '编码配置', {}, type='dict'),
             Q('outputs', '输出字段', ['logps'], type='list', item_type='str',
               item_options=('logps', 'values', 'logits', 'topk', 'embeddings'), required=True, unique_items=True, phase='call'),
@@ -207,7 +217,8 @@ ADVANTAGE = D('advantage', '优势估计', 'Stage', '仅消费奖励、分组身
               P('baseline', 'SIGNAL', '显式基线', ('row', 'scalar'), optional=True),
               P('traj', 'TRAJ', '批次分组与 token 身份', ('rollout',))),
     ports_out=(P('adv', 'ADV', '优势', profile_param='profile'),
-               P('returns', 'SIGNAL', '独立 returns', ('values',), optional=True)),
+               P('returns', 'SIGNAL', '独立 returns', ('values',), optional=True),
+               P('old_logps', 'SIGNAL', '采样侧 logps（重要性采样基线）', optional=True)),
     params=(Q('estimator', '估计器', 'grpo', options=ADVANTAGE_OPTIONS, phase='call'),
             Q('profile', '结果 Profile', 'row', options=('row', 'token'), phase='call'),
             Q('gamma', '折扣', 1.0, type='float', minimum=0, maximum=1, phase='call'),
@@ -235,12 +246,15 @@ TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward �
     ports_in=(P('model', 'MODEL', '实际更新模型；未接线时沿连线共享的作用域唯一解析', access='write', scope=True),
               P('loss', 'LOSS', '损失对象'),
               P('batch', 'TRAJ', '待训练数据；轨迹在内部按 tokenizer 参数编码', accepted_kinds=('DATA', 'BATCH')),
-              P('arguments', 'SIGNAL', 'slot 是 loss 实际参数名', many=True, optional=True, accepted_kinds=('ADV',)),
+              P('arguments', 'SIGNAL', 'slot 是 loss 实际参数名', many=True, optional=True,
+                accepted_kinds=('ADV', 'SIGNAL')),
               P('after', 'CTRL', '正向完成依赖', optional=True)),
     ports_out=(P('step', 'STEP', '真实训练回执', ('step',)), P('model', 'MODEL', '训练后的模型引用'),
                P('metric', 'METRIC', '小型摘要', ('summary',)),
                P('then', 'CTRL', '更新完成')),
     params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+            Q('model_config', '模型加载配置', {}, type='dict',
+              doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与模型节点自身一致'),
             Q('template_config', '编码配置', {}, type='dict'),
             Q('optim', '优化器族', 'adamw'),
             Q('lr', '学习率', 1e-5, type='float', minimum=0),
@@ -298,7 +312,9 @@ EVAL = D('eval', '评测', 'Task', '复用 Evaluator 与公共 runner，不关�
     ports_in=(P('sampler', 'SAMPLER', '采样来源', optional=True), P('endpoint', 'ENDPOINT', 'API 来源', optional=True),
               P('data', 'DATASET', '明确评测数据')),
     ports_out=(P('metrics', 'METRIC', '真实评测摘要', ('summary',)), P('artifact', 'ARTIFACT', '真实报告', ('report',), optional=True)),
-    params=(Q('tokenizer', 'Tokenizer 来源（id/路径）', '', required=True),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与模型一致）', '', required=True),
+            Q('model_config', '模型加载配置', {}, type='dict',
+              doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与模型节点自身一致'),
             Q('task_config', 'Evaluator 配置', {}, type='dict')), exclusive_inputs=(('sampler', 'endpoint'),))
 DEPLOY = D('deploy', '部署服务', 'Task', '经明确授权启动服务并等待就绪，命令线程不被阻塞。',
     ports_in=(P('model', 'ARTIFACT', '权重来源', ('model',)),), ports_out=(P('endpoint', 'ENDPOINT', '就绪服务'),),
@@ -345,7 +361,10 @@ def validate_registry() -> None:
                 if kind not in CHANNEL_SCHEMAS:
                     raise ValueError(f'{descriptor.type}.{port.key}: 未声明通道 {kind}')
             for accepted in port.accepted_kinds:
-                if port.kind not in KIND_ALLOWS.get(accepted, ()):
+                # Same-kind acceptance is always legal (the matrix documents
+                # "its own kind always is"); the table only carries the
+                # CROSS-kind adaptations.
+                if accepted != port.kind and port.kind not in KIND_ALLOWS.get(accepted, ()):
                     raise ValueError(f'{descriptor.type}.{port.key}: 通道适配 {accepted}->{port.kind} '
                                      f'不在 KIND_ALLOWS 矩阵内')
             for profile in port.profiles:

@@ -453,3 +453,37 @@ register_model(
         requires=['transformers>=4.53.0', 'qwen_vl_utils'],
         tags=['vision'],
     ))
+
+
+class LlavaOnevision2Loader(ModelLoader):
+    """Loader for LLaVA-OneVision-2 (Qwen3 backbone + OneVision encoder).
+
+    Reuses LlavaOnevisionLoader's pattern: trust_remote_code auto_map,
+    patch vision tower's get_input_embeddings for tuner compatibility.
+    The model class (LlavaOnevision2ForConditionalGeneration) already
+    defines _no_split_modules, so we only set auto_model_cls and patch.
+    """
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        from transformers import AutoModelForImageTextToText
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        model = super().get_model(model_dir, *args, **kwargs)
+        patch_get_input_embeddings(model.visual, 'embeddings.patch_embedding')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.llava_onevision2,
+        [
+            ModelGroup([
+                Model('lmms-lab/LLaVA-OneVision-2-8B-Instruct', 'lmms-lab/LLaVA-OneVision-2-8B-Instruct'),
+            ], ),
+        ],
+        LlavaOnevision2Loader,
+        template=TemplateType.llava_onevision2,
+        architectures=['LlavaOnevision2ForConditionalGeneration'],
+        model_arch=ModelArch.llava_onevision1_5,
+        requires=['transformers>=5.0', 'qwen_vl_utils'],
+        tags=['vision', 'video'],
+    ))

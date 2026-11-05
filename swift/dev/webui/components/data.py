@@ -54,9 +54,23 @@ class DataloaderComponent(IteratorComponent):
             raise ComponentError(f'{self.node_id}: unknown source face {face!r} (prompts|rows)')
         self._iterator = iter(self.obj)
         self._state: Optional[Dict[str, Any]] = None
+        self._current: Optional[Any] = None
 
     def take_batch(self) -> Any:
-        return next(self._iterator)
+        batch = next(self._iterator)
+        # The batch port projects the LAST delivered batch (the same live-view
+        # contract the streaming driver's samples lane follows), so consumers
+        # wired to it read batch data, not the resident loader object.
+        self._current = batch
+        return batch
+
+    def port_value(self, key: str) -> Any:
+        """The loader's lanes: batch = the last delivered batch (the data
+        face), source = this control handle (the resident loader rides on
+        ``obj`` -- the face a streaming driver's prompts input wants)."""
+        if key == 'source':
+            return self
+        return getattr(self, '_current', None) or []
 
     def commit(self, steps: int) -> None:
         # The dataloader advances by take; commit only records the cursor for
@@ -99,14 +113,30 @@ class StreamingDriverComponent(IteratorComponent):
         if cluster is None:
             raise ComponentError(
                 f'{self.node_id}: streaming_driver needs a wired engine (the cluster)')
-        # The prompt stream is the wired dataloader's resident loader object
-        # (its batch port projects the loader itself): batching, seed and the
-        # face choice live on THAT node, not here.
-        prompt_loader = inputs.get('prompts')
+        # The prompt stream is the wired dataloader's SOURCE handle: the native
+        # loader rides on its ``obj`` (batching, seed and the face choice live
+        # on THAT node, not here). The batch port is the data face -- the rows
+        # of the last delivered batch -- and cannot stand in for the loader.
+        prompt_source = inputs.get('prompts')
+        if getattr(prompt_source, 'type', None) != 'dataloader':
+            raise ComponentError(
+                f'{self.node_id}: prompts must be the dataloader\'s source control port '
+                '(the resident loader rides on it), not a data lane or another resource')
+        prompt_loader = prompt_source.obj
         if prompt_loader is None:
             raise ComponentError(
-                f'{self.node_id}: streaming_driver needs a wired prompt stream (a dataloader)')
+                f'{self.node_id}: the wired dataloader is not started yet')
         config_pkg = _configs()
+        # The rollout encodes episodes with a template held HERE: under a
+        # disaggregated ray placement the sampler's own template lives on its
+        # remote actor and cannot be read off the driver-side proxy, so this
+        # node builds its own (the tokenizer/model_config params carry the
+        # identity, the same contract train_step and model_forward follow).
+        from .resources import build_template_from
+        template = build_template_from(
+            str(self.params.get('tokenizer') or ''),
+            dict(self.params.get('template_config') or {}), self.node_id,
+            model_kv=dict(self.params.get('model_config') or {}))
         # The panel's scalar knobs are the REAL Config fields' convenience face
         # (dict params win; the scalars fill their Config's field when unset).
         # The click budget is NOT passed here: max_steps is the frame's total
@@ -122,6 +152,7 @@ class StreamingDriverComponent(IteratorComponent):
         self.obj = build_streaming_driver(
             engine=cluster,
             prompt_dataloader=prompt_loader,
+            template=template,
             rollout_config=_fill(config_pkg.RolloutConfig, rollout_kv, self.node_id),
             rl_config=_fill(config_pkg.RLConfig, rl_kv, self.node_id),
             generation_config=(
@@ -160,28 +191,20 @@ class StreamingDriverComponent(IteratorComponent):
     def release(self) -> None:
         """Terminate the source.
 
-        The single-slot queue may already hold a delivered batch; the runner's
-        final take has already consumed it. Draining happens through the public
-        iterator: one more ``next`` (if a batch is queued) receives it, THEN
-        abort joins without the queue-full deadlock. The private queue is never
-        touched here.
-        """
+        The driver's abort drains its own single-slot queue while joining:
+        neither a queued-but-undelivered batch (a full queue the run thread
+        cannot put past) nor an empty queue (nothing to receive, the run
+        thread waiting on its bridge ack) can hang the release. The private
+        queue is never touched here."""
         driver = self.obj
         if driver is None:
             return
+        self.obj = None
+        self._iterator = None
         try:
-            if getattr(self, '_iterator', None) is not None:
-                try:
-                    next(self._iterator)  # receive a queued delivery, if any
-                except StopIteration:
-                    pass
-        finally:
-            try:
-                driver.abort()
-            except Exception:
-                pass
-            self.obj = None
-            self._iterator = None
+            driver.abort()
+        except Exception:
+            pass
 
 
 class ChallengerComponent(IteratorComponent):
@@ -211,7 +234,8 @@ class ChallengerComponent(IteratorComponent):
         seed = str(self.params.get('seed') or '')
         template = build_template_from(
             str(self.params.get('tokenizer') or ''),
-            dict(self.params.get('template_config') or {}), self.node_id)
+            dict(self.params.get('template_config') or {}), self.node_id,
+            model_kv=dict(self.params.get('model_config') or {}))
         cfg = dict(self.params.get('challenger_config') or {})
         try:
             self.obj = AgenticChallenger(
@@ -378,7 +402,18 @@ class ScoreStage(StageComponent):
             scorer_ids.append(str(slot))
         # values[B, C]: one row per sample, one column per wired scorer.
         values = [[column[i] for column in columns] for i in range(len(rows))]
-        return {'reward': {'values': values, 'scorer_ids': scorer_ids}}
+        # The reward curve lives on the component instance: the receipt is
+        # replaced every round, the history must survive it. One point per
+        # round per column -- the column mean over this round's batch.
+        history = getattr(self, '_reward_history', None)
+        if history is None:
+            history = self._reward_history = []
+        point: Dict[str, Any] = {'round': len(history) + 1}
+        for slot, column in zip(scorer_ids, columns):
+            point[str(slot)] = (sum(column) / len(column)) if column else None
+        history.append(point)
+        return {'reward': {'values': values, 'scorer_ids': scorer_ids,
+                           'history': list(history)}}
 
 
 class SelectStage(StageComponent):

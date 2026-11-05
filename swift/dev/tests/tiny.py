@@ -65,10 +65,21 @@ class TinyModel:
 
     @staticmethod
     def tokenizer_dir(model_id: Optional[str] = None) -> str:
-        """Snapshot only the tokenizer/config files -- never the weights."""
+        """Snapshot only the tokenizer/config files -- never the weights.
+
+        A LOCAL directory passes through untouched: a box that already holds
+        the snapshot (the modelscope cache) must not depend on the hub being
+        reachable -- a hub outage would otherwise fail the build at the
+        revision check even with every needed file on disk.
+        """
         from modelscope import snapshot_download
+        resolved = model_id or TinyModel.TOKENIZER
+        import os
+
+        if os.path.isdir(resolved):
+            return resolved
         return snapshot_download(
-            model_id or TinyModel.TOKENIZER,
+            resolved,
             allow_patterns=['*.json', '*.txt', '*.jinja', '*.model', '*.py'],
         )
 

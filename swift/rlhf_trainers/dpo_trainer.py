@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,9 +31,8 @@ logger = get_logger()
 
 
 def _get_exp_cap(value, decimal=4):
-    vdtype_max = torch.zeros([1]).to(value.dtype) + torch.finfo(value.dtype).max
-    vdtype_log_max = torch.log(vdtype_max).to(value.device)
-    return torch.floor(vdtype_log_max * 10**decimal) / 10**decimal if decimal > 0 else vdtype_log_max
+    vdtype_log_max = math.log(torch.finfo(value.dtype).max)
+    return math.floor(vdtype_log_max * 10**decimal) / 10**decimal if decimal > 0 else vdtype_log_max
 
 
 def _cap_exp(value, cap=-1):
@@ -54,6 +54,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                  *_args,
                  **kwargs):
         args = kwargs['args']
+        if args.precompute_ref_log_probs:
+            raise ValueError(
+                'precompute_ref_log_probs=True is not supported by Swift DPOTrainer. '
+                'Set precompute_ref_log_probs=False to compute reference log probabilities during training.')
         self.label_smoothing = args.label_smoothing
         if 'loss_weights' in DPOConfig.__dict__:
             # trl >= 0.20
@@ -96,6 +100,20 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if self.template.packing:
             self.accelerator.gather_for_metrics = new_gather_function
 
+    def get_batch_samples(self, *args, **kwargs):
+        batch_samples, num_items_in_batch = super().get_batch_samples(*args, **kwargs)
+        if self.template.packing and batch_samples:
+            num_pairs = 0
+            for batch in batch_samples:
+                position_ids = batch.get('text_position_ids')
+                if position_ids is None:
+                    position_ids = batch['position_ids']
+                # Packed chosen/rejected sequences each start at position zero.
+                num_pairs += (position_ids == 0).sum() // 2
+            # DDP averages gradients, so use the mean window count per rank.
+            num_items_in_batch = self.accelerator.gather(num_pairs.to(self.accelerator.device)).float().mean()
+        return batch_samples, num_items_in_batch
+
     def concatenated_forward(
         self,
         model: nn.Module,
@@ -130,31 +148,23 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             all_logits, labels, label_pad_token_id=self.label_pad_token_id)
         origin_per_token_logps = per_token_logps
 
-        loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
-        if 'ipo' in loss_types:
-            size_completion = loss_mask.sum(dim=-1)
-            per_token_logps = per_token_logps / size_completion
-
         output = {}
         if self.template.padding_free:
             cu_seqlens = self.get_cu_seqlens(text_position_ids, batch.get('logits_to_keep'))
             num_examples = (cu_seqlens.shape[0] - 1) // 2
-            all_logps = per_token_logps.new_zeros((num_examples * 2, ))
-            completion_lengths = (cu_seqlens[1:] - cu_seqlens[:-1])
-            chosen_lengths = completion_lengths[:num_examples]
-            rejected_lengths = completion_lengths[num_examples:]
-            public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
-
-            for i in range(cu_seqlens.shape[0] - 1):
-                start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                length = end - start
-                public_length = public_lengths[i % num_examples]
-                if self.args.ld_alpha is not None and not is_ref_model and length > public_length:
-                    front_logps = per_token_logps[:, start:start + public_length].sum()
-                    rear_logps = per_token_logps[:, start + public_length:end].sum()
-                    all_logps[i] = front_logps + self.args.ld_alpha * rear_logps
-                else:
-                    all_logps[i] = per_token_logps[:, start:end].sum()
+            completion_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+            completion_token_counts = self._packed_sequence_sum(loss_mask.flatten().long(), completion_lengths)
+            if self.args.ld_alpha is not None and not is_ref_model:
+                chosen_lengths = completion_token_counts[:num_examples]
+                rejected_lengths = completion_token_counts[num_examples:]
+                public_lengths = torch.min(chosen_lengths, rejected_lengths)  # l_p in the paper
+                public_lengths = torch.cat((public_lengths, public_lengths))
+                split_lengths = torch.stack((public_lengths, completion_token_counts - public_lengths),
+                                            dim=-1).flatten()
+                split_logps = self._packed_sequence_sum(per_token_logps[loss_mask], split_lengths).view(-1, 2)
+                all_logps = split_logps[:, 0] + self.args.ld_alpha * split_logps[:, 1]
+            else:
+                all_logps = self._packed_sequence_sum(per_token_logps.flatten(), completion_lengths)
             num_tokens = cu_seqlens[num_examples]
             if not is_ref_model:
                 output['nll_loss'] = -origin_per_token_logps[:, :num_tokens][loss_mask[:, :num_tokens]].mean()
@@ -164,6 +174,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['mean_rejected_logits'] = mean_all_logits[:, num_tokens:][loss_mask[:, num_tokens:]].mean()
         else:
             num_examples = labels.shape[0] // 2
+            completion_token_counts = loss_mask.sum(dim=1)
             if not is_ref_model:
                 output['nll_loss'] = -origin_per_token_logps[:num_examples][loss_mask[:num_examples]].mean()
             if self.args.ld_alpha is not None and not is_ref_model:
@@ -193,6 +204,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             output['rejected_logps'] = all_logps[num_examples:]
             output['mean_chosen_logits'] = mean_all_logits[:num_examples][loss_mask[:num_examples]].mean()
             output['mean_rejected_logits'] = mean_all_logits[num_examples:][loss_mask[num_examples:]].mean()
+        output['chosen_completion_token_counts'] = completion_token_counts[:num_examples]
+        output['rejected_completion_token_counts'] = completion_token_counts[num_examples:]
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
@@ -208,6 +221,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
                 ref_model_output = self.concatenated_forward(self.ref_model, batch, is_ref_model=True)
         return ref_model_output['chosen_logps'], ref_model_output['rejected_logps']
 
+    @staticmethod
+    def _get_ipo_sequence_logps(sequence_logps, completion_token_counts):
+        return sequence_logps / completion_token_counts.to(sequence_logps).clamp_min(1)
+
     def dpo_loss(
         self,
         chosen_logps: torch.FloatTensor,
@@ -216,8 +233,14 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         ref_rejected_logps: torch.FloatTensor,
         loss_type: str = 'sigmoid',
         model_output: Optional[Dict[str, torch.FloatTensor]] = None,
+        train_eval: Literal['train', 'eval'] = 'train',
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         device = self.accelerator.device
+
+        if self.f_divergence_type == 'alpha_divergence':
+            chosen_logps, rejected_logps, ref_chosen_logps, ref_rejected_logps = (
+                logps.float() if logps.dtype in (torch.float16, torch.bfloat16) else logps
+                for logps in (chosen_logps, rejected_logps, ref_chosen_logps, ref_rejected_logps))
 
         chosen_logratios = chosen_logps.to(device) - (not self.reference_free) * ref_chosen_logps.to(device)
         rejected_logratios = rejected_logps.to(device) - (not self.reference_free) * ref_rejected_logps.to(device)
@@ -226,8 +249,10 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             alpha_coef = _ALPHA_DIVERGENCE_COEF_DEFAULT
             if self.f_divergence_params and _ALPHA_DIVERGENCE_COEF_KEY in self.f_divergence_params:
                 alpha_coef = float(self.f_divergence_params[_ALPHA_DIVERGENCE_COEF_KEY])
-            logits = (_cap_exp(rejected_logratios * -alpha_coef)
-                      - _cap_exp(chosen_logratios * -alpha_coef)) / alpha_coef
+            exp_diff = _cap_exp(rejected_logratios * -alpha_coef) - _cap_exp(chosen_logratios * -alpha_coef)
+            scaled_logits = exp_diff * (self.beta / alpha_coef)
+            if loss_type == 'ipo':
+                logits = exp_diff / alpha_coef
         else:
             logratios = chosen_logps - rejected_logps
             if self.reference_free:
@@ -241,25 +266,25 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
 
             if self.f_divergence_type == 'js_divergence':
                 logits -= F.softplus(chosen_logratios) - F.softplus(rejected_logratios)
+            scaled_logits = self.beta * logits
 
         if loss_type == 'sigmoid':
-            losses = (-F.logsigmoid(self.beta * logits) *
-                      (1 - self.label_smoothing) - F.logsigmoid(-self.beta * logits) * self.label_smoothing)
+            losses = (-F.logsigmoid(scaled_logits) *
+                      (1 - self.label_smoothing) - F.logsigmoid(-scaled_logits) * self.label_smoothing)
 
         elif loss_type == 'robust':
-            losses = (-F.logsigmoid(self.beta * logits) * (1 - self.label_smoothing)
-                      + F.logsigmoid(-self.beta * logits) * self.label_smoothing) / (1 - 2 * self.label_smoothing)
+            losses = (-F.logsigmoid(scaled_logits) * (1 - self.label_smoothing)
+                      + F.logsigmoid(-scaled_logits) * self.label_smoothing) / (1 - 2 * self.label_smoothing)
 
         elif loss_type == 'exo_pair':
-            import math
-            if self.label_smoothing == 0:
-                self.label_smoothing = 1e-3
-            losses = (self.beta * logits).sigmoid() * (F.logsigmoid(
-                self.beta * logits) - math.log(1 - self.label_smoothing)) + (-self.beta * logits).sigmoid() * (
-                    F.logsigmoid(-self.beta * logits) - math.log(self.label_smoothing))
+            # EXO needs positive smoothing without changing the other losses in a mixture.
+            label_smoothing = self.label_smoothing if self.label_smoothing != 0 else 1e-3
+            losses = scaled_logits.sigmoid() * (F.logsigmoid(scaled_logits)
+                                                - math.log(1 - label_smoothing)) + (-scaled_logits).sigmoid() * (
+                                                    F.logsigmoid(-scaled_logits) - math.log(label_smoothing))
 
         elif loss_type == 'hinge':
-            losses = torch.relu(1 - self.beta * logits)
+            losses = torch.relu(1 - scaled_logits)
 
         elif loss_type == 'ipo':
             losses = (logits - 1 / (2 * self.beta))**2
@@ -269,8 +294,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             rejected_logratios = rejected_logps - ref_rejected_logps
             chosen_rewards = self.beta * chosen_logratios
             rejected_rewards = self.beta * rejected_logratios
-            rewards = torch.cat((chosen_rewards, rejected_rewards), 0).mean().detach()
-            self.running.update(rewards)
+            if train_eval == 'train':
+                rewards = torch.cat((chosen_rewards, rejected_rewards), 0).mean().detach()
+                self.running.update(rewards)
             delta = self.running.mean
             losses = -F.logsigmoid(
                 (self.beta * chosen_logratios) - delta) - F.logsigmoid(-(self.beta * rejected_logratios - delta))
@@ -321,8 +347,9 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             logits = logits * self.beta
             log_ratio_modulation = torch.sigmoid(logits / self.args.discopop_tau)
             logistic_component = -F.logsigmoid(logits)
-            exp_component = torch.exp(-logits)
-            losses = logistic_component * (1 - log_ratio_modulation) + exp_component * log_ratio_modulation
+            # Combine the exponential and its modulation in log space to avoid inf * 0.
+            modulated_exp_component = torch.exp(F.logsigmoid(logits / self.args.discopop_tau) - logits)
+            losses = logistic_component * (1 - log_ratio_modulation) + modulated_exp_component
 
         elif loss_type == 'sft':
             sft_loss = model_output['nll_loss']
@@ -347,6 +374,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         model: Union[PreTrainedModel, nn.Module],
         batch: Dict[str, Union[List, torch.LongTensor]],
         train_eval: Literal['train', 'eval'] = 'train',
+        pair_loss_scale: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         metrics = {}
 
@@ -365,14 +393,29 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         loss_types = self.loss_type if isinstance(self.loss_type, list) else [self.loss_type]
         loss_weights = self.loss_weights if hasattr(self, 'loss_weights') and self.loss_weights else None
         for idx, loss_type in enumerate(loss_types):
+            chosen_logps = model_output['chosen_logps']
+            rejected_logps = model_output['rejected_logps']
+            current_ref_chosen_logps = ref_chosen_logps
+            current_ref_rejected_logps = ref_rejected_logps
+            if loss_type == 'ipo':
+                chosen_token_counts = model_output['chosen_completion_token_counts']
+                rejected_token_counts = model_output['rejected_completion_token_counts']
+                chosen_logps = self._get_ipo_sequence_logps(chosen_logps, chosen_token_counts)
+                rejected_logps = self._get_ipo_sequence_logps(rejected_logps, rejected_token_counts)
+                current_ref_chosen_logps = self._get_ipo_sequence_logps(ref_chosen_logps, chosen_token_counts)
+                current_ref_rejected_logps = self._get_ipo_sequence_logps(ref_rejected_logps, rejected_token_counts)
             _losses, _chosen_rewards, _rejected_rewards = self.dpo_loss(
-                model_output['chosen_logps'],
-                model_output['rejected_logps'],
-                ref_chosen_logps,
-                ref_rejected_logps,
+                chosen_logps,
+                rejected_logps,
+                current_ref_chosen_logps,
+                current_ref_rejected_logps,
                 loss_type,
                 model_output,
+                train_eval=train_eval,
             )
+            if pair_loss_scale is not None and loss_type != 'sft':
+                # Preserve the existing reduction of SFT/RPO and router losses.
+                _losses = _losses * (_losses.numel() * pair_loss_scale)
             weight = loss_weights[idx] if loss_weights else 1.0
             losses = losses + _losses * weight
             chosen_rewards = chosen_rewards + _chosen_rewards * weight
@@ -399,6 +442,12 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
             self.accelerator.gather_for_metrics(model_output['chosen_logps']).detach().mean().item())
         metrics[f'{prefix}logps/rejected'] = (
             self.accelerator.gather_for_metrics(model_output['rejected_logps']).detach().mean().item())
+        if 'ipo' in loss_types:
+            for key in ['chosen', 'rejected']:
+                mean_logps = self._get_ipo_sequence_logps(model_output[f'{key}_logps'],
+                                                          model_output[f'{key}_completion_token_counts'])
+                metrics[f'{prefix}logps_mean/{key}'] = (
+                    self.accelerator.gather_for_metrics(mean_logps).detach().mean().item())
         metrics[f'{prefix}logits/chosen'] = (
             self.accelerator.gather_for_metrics(model_output['mean_chosen_logits']).detach().mean().item())
         metrics[f'{prefix}logits/rejected'] = (
@@ -429,10 +478,17 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         return Trainer.log(self, logs, start_time)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        pair_loss_scale = None
+        if self.template.packing and num_items_in_batch is not None:
+            accumulation_steps = self.args.gradient_accumulation_steps
+            if not self.model_accepts_loss_kwargs:
+                accumulation_steps = getattr(self, 'current_gradient_accumulation_steps', accumulation_steps)
+            pair_loss_scale = accumulation_steps / num_items_in_batch
         compute_loss_context_manager = (
             torch.autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext())
         with compute_loss_context_manager:
-            loss, metrics = self.get_batch_loss_metrics(model, inputs, train_eval='train')
+            loss, metrics = self.get_batch_loss_metrics(
+                model, inputs, train_eval='train', pair_loss_scale=pair_loss_scale)
 
         loss = loss.to(self.args.device)
         self.store_metrics(metrics, train_eval='train')

@@ -43,9 +43,13 @@ def process_configs(
 
     Idempotent: running it twice leaves the same result, so callers may repeat the lifecycle.
     """
-    # Bridge enable_npu_model_patch to the env var BEFORE the first swift.model import (the patch
-    # applies once at import and reads this var); create_workers copies os.environ to every worker.
-    os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = str(bool(model_config.enable_npu_model_patch))
+    # Bridge the NPU model-patch switch to the env var BEFORE the first swift.model import (the
+    # patch applies once at import and reads this var); create_workers copies os.environ to every
+    # worker. The switch is platform-detected, not user-configured: the model patch imports
+    # torch_npu unconditionally, so a torch_npu-less host (GPU/MPS/CPU) must keep it OFF while
+    # NPU keeps it ON. Legacy v4 still accepts the argv flag; the env var set here wins there.
+    from twinkle.utils import Platform
+    os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = str(Platform.get_platform().__name__ == 'NPU')
 
     from swift.dev.builders import is_megatron_backend
     from swift.dev.utils.plugin import PluginRegistry
@@ -63,11 +67,11 @@ def process_configs(
     _derive_eval_schedule(train_config, dataset_config, checkpoint_config)
     _derive_streaming_dataloader_workers(dataset_config)
     _derive_bnb_compute_dtype(model_config, quantize_config)
-    _derive_rlhf_task_type(model_config, rl_config)
-    _derive_rlhf_beta(rl_config)
-    _derive_rlhf_loss_scale(template_config, rl_config, rollout_config)
-    _derive_rlhf_ref_model(model_config, tuner_config, rl_config)
-    _derive_rlhf_teacher(model_config, tuner_config, rl_config)
+    _derive_rl_task_type(model_config, rl_config)
+    _derive_rl_beta(rl_config)
+    _derive_rl_loss_scale(template_config, rl_config, rollout_config)
+    _derive_rl_ref_model(model_config, tuner_config, rl_config)
+    _derive_rl_teacher(model_config, tuner_config, rl_config)
     _derive_grpo_reward_defaults(rl_config)
     _derive_best_model_metric(train_config, rl_config)
     _normalize_recompute_granularity(distributed_config)
@@ -272,7 +276,6 @@ def _derive_gradient_accumulation_steps(train_config: 'TrainConfig', distributed
         raise ValueError('global_batch_size is a Megatron-only derived setting. Use '
                          'gradient_accumulation_steps with the transformers backend.')
 
-    import os
     world_size = int(os.environ.get('WORLD_SIZE') or distributed_config.nproc_per_node or 1)
     tp = distributed_config.tensor_model_parallel_size
     pp = distributed_config.pipeline_model_parallel_size
@@ -386,7 +389,8 @@ def _derive_grad_accum_dtype(model_config: 'ModelConfig', train_config: 'TrainCo
     if (not is_megatron or train_config.accumulate_allreduce_grads_in_fp32
             or 'accumulate_allreduce_grads_in_fp32' in explicit):
         return
-    if model_config.torch_dtype == 'bfloat16' and train_config.main_grads_dtype == 'fp32':
+    dtype = model_config.torch_dtype or 'bfloat16'
+    if dtype == 'bfloat16' and train_config.main_grads_dtype == 'fp32':
         train_config.accumulate_allreduce_grads_in_fp32 = True
 
 
@@ -399,22 +403,18 @@ def _derive_per_token_loss(model_config: 'ModelConfig', train_config: 'TrainConf
     if not is_megatron or train_config.calculate_per_token_loss is not None:
         return
     is_causal_lm = model_config.task_type in (None, 'causal_lm')
-    is_rlhf = rl_config is not None and getattr(rl_config, 'rl_type', None) is not None
-    train_config.calculate_per_token_loss = is_causal_lm and not is_rlhf
+    is_rl = rl_config is not None and getattr(rl_config, 'rl_type', None) is not None
+    train_config.calculate_per_token_loss = is_causal_lm and not is_rl
 
 
 def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig',
                                        tuner_config: Optional['TunerConfig']) -> None:
-    """Checkpoint the vision tower unless it is frozen, matching the LLM tower (legacy sft_args:211).
-
-    Only fills in None; no TunerConfig (full-param) leaves the builder default.
-    """
-    if train_config.vit_gradient_checkpointing is not None or tuner_config is None:
+    """Follow the LLM tower's checkpointing; legacy keyed it off ``freeze_vit`` and lost it (#9945)."""
+    if train_config.vit_gradient_checkpointing is not None:
         return
-    freeze_vit = getattr(tuner_config, 'freeze_vit', None)
-    if freeze_vit is None:
+    if train_config.gradient_checkpointing is None:
         return
-    train_config.vit_gradient_checkpointing = not freeze_vit
+    train_config.vit_gradient_checkpointing = train_config.gradient_checkpointing
 
 
 def _derive_packing(dataset_config: 'DatasetConfig', template_config: 'TemplateConfig') -> None:
@@ -541,7 +541,7 @@ def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rl_config: Opt
         rollout_config.allow_partial_rollout = True
 
 
-def _derive_rlhf_task_type(model_config: 'ModelConfig', rl_config: Optional['RLConfig']) -> None:
+def _derive_rl_task_type(model_config: 'ModelConfig', rl_config: Optional['RLConfig']) -> None:
     """A reward model is a single-logit sequence classifier (legacy rlhf_args.py::_init_rm).
 
     `rl_type=rm` trains a seq_cls head with num_labels=1; only fills in defaults.
@@ -556,20 +556,20 @@ def _derive_rlhf_task_type(model_config: 'ModelConfig', rl_config: Optional['RLC
 
 # rl_type -> its default `beta` (KL / deviation-from-reference weight). opsd/mopd are self-distillation
 # (no reference-KL term by default) and rft is plain rejection-sampling SFT, so all three take 0.
-_RLHF_BETA_DEFAULTS = {'grpo': 0.04, 'gkd': 0.5, 'simpo': 2.0, 'opsd': 0.0, 'mopd': 0.0, 'rft': 0.0}
+_RL_BETA_DEFAULTS = {'grpo': 0.04, 'gkd': 0.5, 'simpo': 2.0, 'opsd': 0.0, 'mopd': 0.0, 'rft': 0.0}
 
 
-def _derive_rlhf_beta(rl_config: Optional['RLConfig']) -> None:
+def _derive_rl_beta(rl_config: Optional['RLConfig']) -> None:
     """Fill the reference-deviation weight with the chosen algorithm's default.
 
     The scattered legacy defaults collected into one table; only fills None (`--beta 0` preserved).
     """
     if rl_config is None or rl_config.beta is not None:
         return
-    rl_config.beta = _RLHF_BETA_DEFAULTS.get(getattr(rl_config, 'rl_type', None), 0.1)
+    rl_config.beta = _RL_BETA_DEFAULTS.get(getattr(rl_config, 'rl_type', None), 0.1)
 
 
-def _derive_rlhf_loss_scale(template_config: 'TemplateConfig', rl_config: Optional['RLConfig'],
+def _derive_rl_loss_scale(template_config: 'TemplateConfig', rl_config: Optional['RLConfig'],
                             rollout_config: Optional['RolloutConfig'] = None) -> None:
     """Default the loss-mask strategy to the algorithm's sensible one (legacy _set_loss_scale).
 
@@ -587,7 +587,7 @@ def _derive_rlhf_loss_scale(template_config: 'TemplateConfig', rl_config: Option
         template_config.loss_scale = 'last_round'
 
 
-def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
+def _derive_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
                            rl_config: Optional['RLConfig']) -> None:
     """Point the reference model at the policy model when the algorithm needs one and none was given.
 
@@ -617,7 +617,7 @@ def _derive_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['
             '--sync_ref_model.')
 
 
-def _derive_rlhf_teacher(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
+def _derive_rl_teacher(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
                          rl_config: Optional['RLConfig']) -> None:
     """Resolve self-distillation defaults without loading a teacher."""
     if rl_config is None:

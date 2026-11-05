@@ -13,7 +13,7 @@ DeviceGroups get planned (``distill_group_requests``) and which teacher shape ge
 pins the teacher resolution itself: the adapter-disabled base (``return [model], disable_lora``),
 the dynamic self teacher (OPSD's default), the separate frozen teacher (build_ref_model kwargs),
 MOPD's K teachers (pack vs spread, weights), every guard that must refuse an ambiguous combo, and
-``_derive_rlhf_teacher`` -- the config-time rule that turns ``teacher_model == [the student]`` into
+``_derive_rl_teacher`` -- the config-time rule that turns ``teacher_model == [the student]`` into
 the disable-adapter form.
 """
 import pytest
@@ -189,11 +189,11 @@ def test_single_teacher_id_refuses_a_list_for_single_teacher_algos():
 
 
 def _derive(model='student-id', tuner='lora', **rl_extra):
-    from swift.dev.config.process import _derive_rlhf_teacher
+    from swift.dev.config.process import _derive_rl_teacher
     model_config = ModelConfig(model=model)
     tuner_config = TunerConfig(tuner=tuner) if tuner else None
     rl_config = RLConfig(rl_type=rl_extra.pop('rl_type', 'gkd'), **rl_extra)
-    _derive_rlhf_teacher(model_config, tuner_config, rl_config)
+    _derive_rl_teacher(model_config, tuner_config, rl_config)
     return rl_config
 
 

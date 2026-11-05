@@ -144,6 +144,22 @@ def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
             target.lora_embedding_B[adapter_name].to(torch_dtype)
 
 
+def _cast_adapter_dtype_hook(self, adapter_name: str, autocast_adapter_dtype: bool = True):
+    """Keep an explicitly configured Swift LoRA dtype from being upcast by PEFT.
+
+    PEFT calls ``_cast_adapter_dtype`` after the LoRA modules have been
+    created.  Its default behavior upcasts fp16/bf16 adapters to fp32, which
+    silently overrides Swift's ``lora_dtype`` setting.  Only disable that
+    automatic cast when the Swift extension is explicitly configured; the
+    default PEFT behavior remains unchanged for all other adapters.
+    """
+    peft_config = getattr(self, 'peft_config', {})
+    config = peft_config.get(adapter_name) if isinstance(peft_config, dict) else None
+    if getattr(config, 'lora_dtype', None) is not None:
+        autocast_adapter_dtype = False
+    return self._cast_adapter_dtype_origin(adapter_name, autocast_adapter_dtype)
+
+
 def create_optimizer_param_groups(self: PeftModel, **defaults):
     if not isinstance(self.peft_config[self.active_adapter],
                       LoraConfig) or self.peft_config[self.active_adapter].lorap_lr_ratio is None:
@@ -361,6 +377,9 @@ def hot_patch_peft_module():
 
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = __new_init__
+    if not hasattr(LoraModel, '_cast_adapter_dtype_origin'):
+        LoraModel._cast_adapter_dtype_origin = LoraModel._cast_adapter_dtype
+        LoraModel._cast_adapter_dtype = _cast_adapter_dtype_hook
 
     # Support LoRA+
     PeftModel.create_optimizer_param_groups = create_optimizer_param_groups

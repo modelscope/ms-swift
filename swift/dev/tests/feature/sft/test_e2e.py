@@ -10,6 +10,8 @@ and a self-describing checkpoint (weights + args.json) is written so `swift infe
 
 Marked slow: loads a real Qwen2.5-0.5B. Run with -m slow.
 """
+
+import math
 import os
 
 import json
@@ -289,15 +291,8 @@ def test_run_sft_end_to_end_happy_path(tmp_path):
 
 
 @pytest.mark.slow
-def test_run_sft_zero_opt_steps_raises(tmp_path):
-    """Contract 5 (fail-fast): when N micro-batches <= ga the GA gate never fires, so run_sft
-    would train forward/backward but NEVER update the model (0 optimizer steps). run_sft must
-    raise ValueError rather than silently run a no-op "green" training.
-
-    Setup: 2-row dataset, per_device_train_batch_size=2 -> 1 micro-batch/epoch; ga=2, 1 epoch ->
-    num_optimizer_steps(1, 2) == 0 -> raise. The check runs BEFORE build_model, so this is cheap
-    (no weight loading); it only needs the processor + a dataset load, hence gated on the model.
-    """
+def test_run_sft_short_ga_window_updates(tmp_path):
+    """An epoch shorter than GA still performs one backend-owned optimizer update."""
     from modelscope import snapshot_download
 
     from swift.dev.config import (
@@ -312,31 +307,32 @@ def test_run_sft_zero_opt_steps_raises(tmp_path):
 
     model_path = snapshot_download(MODEL)
     data_path = str(tmp_path / 'tiny_sft.jsonl')
-    # exactly 2 rows -> with batch_size=2 that is a single micro-batch (one GA window)
+    # One micro-batch, fewer than the configured two micro-batches per update.
     with open(data_path, 'w') as f:
         for _ in range(2):
             f.write(
                 json.dumps({
-                    'messages': [{
-                        'role': 'user',
-                        'content': 'What is 2+2?'
-                    }, {
-                        'role': 'assistant',
-                        'content': '2 + 2 equals 4.'
-                    }]
-                }) + '\n')
+                        'messages': [
+                            {'role': 'user', 'content': 'What is 2+2?'},
+                            {'role': 'assistant', 'content': '2 + 2 equals 4.'},
+                        ]
+                    }
+                )
+                + '\n'
+            )
 
-    with pytest.raises(ValueError, match='computed 0 optimizer steps'):
-        run_sft(
-            ModelConfig(model=model_path, torch_dtype='bfloat16'),
-            TemplateConfig(template='qwen2_5', max_length=512),
-            DatasetConfig(dataset=[data_path], dataset_shuffle=False, data_seed=42),
-            TrainConfig(
-                per_device_train_batch_size=2, gradient_accumulation_steps=2, num_train_epochs=1.0, max_steps=None),
-            DistributedConfig(),
-            CheckpointConfig(),
-            output_dir=str(tmp_path / 'out'),
-        )
+    history = run_sft(
+        ModelConfig(model=model_path, torch_dtype='bfloat16'),
+        TemplateConfig(template='qwen2_5', max_length=512),
+        DatasetConfig(dataset=[data_path], dataset_shuffle=False, data_seed=42),
+        TrainConfig(per_device_train_batch_size=2, gradient_accumulation_steps=2, num_train_epochs=1.0, max_steps=None),
+        DistributedConfig(),
+        CheckpointConfig(),
+        output_dir=str(tmp_path / 'out'),
+        _save_final=False,
+    )
+    assert len(history) == 1 and history[0]["step"] == 1
+    assert math.isfinite(history[0]["loss"])
 
 
 @pytest.mark.slow

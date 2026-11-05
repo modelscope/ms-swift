@@ -17,7 +17,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 from swift.metrics import Metric
 from swift.model import get_processor
 from swift.template import Template
-from swift.utils import (disable_deepspeed_zero3, get_device, get_dist_setting, get_logger, is_dist,
+from swift.utils import (HfConfigFactory, disable_deepspeed_zero3, get_device, get_dist_setting, get_logger, is_dist,
                          safe_snapshot_download)
 from .infer_engine import InferEngine
 from .patch import patch_auto_tokenizer
@@ -205,7 +205,6 @@ class VllmEngine(InferEngine):
         self.quantization = quantization
         self.num_labels = num_labels
         self.reranker_use_activation = reranker_use_activation
-        self._config_cls = None
 
         patch_vllm_memory_leak()
         patch_vllm_triton_device_guard()
@@ -253,33 +252,43 @@ class VllmEngine(InferEngine):
             task_type=self.task_type)
 
     def _prepare_engine(self) -> None:
-        with patch_auto_tokenizer(self.tokenizer), self._patch_auto_config(), \
+        with patch_auto_tokenizer(self.tokenizer), \
                 _patch_rope_validation_ignore_keys(), disable_deepspeed_zero3():
             llm_engine_cls = AsyncLLMEngine if self.use_async_engine else LLMEngine
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine
 
-    @contextmanager
-    def _patch_auto_config(self):
-        _old_from_pretrained = AutoConfig.from_pretrained
-
-        def _from_pretrained(*args, **kwargs):
-            config = deepcopy(self.config)
-            if self._version_ge('0.19'):
-                if self.model_type == 'deepseek_v4':
-                    return _old_from_pretrained(*args, **kwargs)
-                if self._config_cls is None:
-                    hf_config = _old_from_pretrained(*args, **kwargs)
-                    self._config_cls = hf_config.__class__
-                if not isinstance(config, self._config_cls):
-                    config.__class__ = self._config_cls
-            return config
-
-        AutoConfig.from_pretrained = _from_pretrained
+    def _get_hf_config_overrides(self) -> Dict[str, Any]:
+        overrides = {}
+        config = self.config
         try:
-            yield
-        finally:
-            AutoConfig.from_pretrained = _old_from_pretrained
+            disk_config = AutoConfig.from_pretrained(
+                self.model_dir, trust_remote_code=self.model_meta.loader.default_trust_remote_code)
+        except Exception:
+            disk_config = None
+
+        def _changed(key):
+            value = HfConfigFactory.get_config_attr(config, key)
+            if value is None or disk_config is None:
+                return None
+            return value if value != HfConfigFactory.get_config_attr(disk_config, key) else None
+
+        rope_key = 'rope_parameters' if hasattr(config, 'rope_parameters') else 'rope_scaling'
+        rope_scaling = _changed(rope_key)
+        if rope_scaling:
+            rope_scaling = dict(rope_scaling)
+            if 'rope_type' not in rope_scaling and 'type' in rope_scaling:
+                rope_scaling['rope_type'] = rope_scaling['type']
+            overrides[rope_key] = rope_scaling
+        vocab_size = _changed('vocab_size')
+        if vocab_size is not None:
+            overrides['vocab_size'] = vocab_size
+        if self.task_type in {'seq_cls', 'reranker'}:
+            for key in ['num_labels', 'problem_type']:
+                value = getattr(config, key, None)
+                if value is not None:
+                    overrides[key] = value
+        return overrides
 
     def _prepare_engine_kwargs(self, max_model_len, engine_kwargs) -> None:
         if engine_kwargs is None:
@@ -335,10 +344,13 @@ class VllmEngine(InferEngine):
             engine_kwargs['seed'] = self.seed
 
         model_info = self.model_info
+        hf_overrides = engine_kwargs.pop('hf_overrides', None) or {}
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'chatglm4v': ['GLM4VForCausalLM']}
         if self.model_meta.model_type in arch_mapping:
-            architectures = arch_mapping[self.model_meta.model_type]
-            engine_kwargs['hf_overrides'] = {'architectures': architectures}
+            hf_overrides['architectures'] = arch_mapping[self.model_meta.model_type]
+        hf_overrides.update(self._get_hf_config_overrides())
+        if hf_overrides:
+            engine_kwargs['hf_overrides'] = hf_overrides
         self.template.set_mode('vllm')
         engine_kwargs.update(self.template.prepare_engine_kwargs())
         if self.enable_prefix_caching is not None:
@@ -473,8 +485,10 @@ class VllmEngine(InferEngine):
             if mm_processor_kwargs:
                 llm_inputs['mm_processor_kwargs'] = mm_processor_kwargs
 
-            has_task_arg = 'task' in inspect.signature(PoolingParams).parameters
-            has_activation_arg = 'activation' in inspect.signature(PoolingParams).parameters
+            pooling_params_signature = inspect.signature(PoolingParams)
+            has_task_arg = 'task' in pooling_params_signature.parameters
+            has_activation_arg = 'activation' in pooling_params_signature.parameters
+            has_use_activation_arg = 'use_activation' in pooling_params_signature.parameters
             task_mapping = {
                 'embedding': 'embed',
                 'seq_cls': 'classify',
@@ -485,11 +499,16 @@ class VllmEngine(InferEngine):
                 pooling_kwargs = {}
                 if has_task_arg:
                     pooling_kwargs['task'] = task_mapping[self.task_type]
-                if self.task_type in ('reranker', 'generative_reranker') and \
-                        has_activation_arg and self.reranker_use_activation:
-                    pooling_kwargs['activation'] = True
+                if self.task_type in ('reranker', 'generative_reranker') and self.reranker_use_activation:
+                    if has_use_activation_arg:
+                        pooling_kwargs['use_activation'] = True
+                    elif has_activation_arg:
+                        pooling_kwargs['activation'] = True
+                pooling_kwargs = self.template.prepare_pooling_params(pooling_kwargs)
                 pooling_params = PoolingParams(**pooling_kwargs)
-                return self.engine.encode(llm_inputs, pooling_params, request_id)
+                if self.use_async_engine:
+                    return self.engine.encode(llm_inputs, pooling_params, request_id, **kwargs)
+                return self.engine.add_request(request_id, llm_inputs, pooling_params, **kwargs)
             elif self.use_async_engine:
                 return self.engine.generate(llm_inputs, generation_config, request_id, **kwargs)
             else:
@@ -515,7 +534,7 @@ class VllmEngine(InferEngine):
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
         kwargs = {'max_tokens': request_config.max_tokens}
-        for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
+        for key in ['temperature', 'top_k', 'top_p', 'min_p', 'repetition_penalty']:
             new_value = getattr(request_config, key)
             if new_value is None:
                 kwargs[key] = getattr(self.generation_config, key)
@@ -649,7 +668,8 @@ class VllmEngine(InferEngine):
             toolcall = None
             if output.is_finished:
                 toolcall = self._get_toolcall(
-                    self.template.decode_generate_ids(output.token_ids, **infer_streamers[i].decode_kwargs))
+                    self.template.decode_generate_ids(output.token_ids, **infer_streamers[i].decode_kwargs),
+                    template_inputs=infer_streamers[i].decode_kwargs.get('template_inputs'))
 
             choice = ChatCompletionResponseStreamChoice(
                 index=i,
@@ -684,7 +704,7 @@ class VllmEngine(InferEngine):
 
     def _create_embedding_response(self, result, generation_config, request_id) -> EmbeddingResponse:
         assert result is not None
-        embedding = result.outputs.data.cpu().numpy().tolist()
+        embedding = self.template.extract_embedding(result)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), 0)
         return EmbeddingResponse(
             model=self.model_name, data=[EmbeddingResponseData(embedding=embedding)], usage=usage_info, id=request_id)
@@ -697,6 +717,8 @@ class VllmEngine(InferEngine):
         request_id,
     ) -> ChatCompletionResponse:
         assert result is not None
+        if self.task_type == 'embedding':
+            return self._create_embedding_response(result, None, request_id)
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
@@ -719,7 +741,7 @@ class VllmEngine(InferEngine):
                     content = response
 
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
-            toolcall = self._get_toolcall(content)  # Use content instead of response for tool calls
+            toolcall = self._get_toolcall(content, template_inputs=inputs['template_inputs'])
             token_ids = output.token_ids if request_config.return_details else None
             choice = ChatCompletionResponseChoice(
                 index=output.index,

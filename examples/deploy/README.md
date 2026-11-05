@@ -1,5 +1,7 @@
 # v5 deploy examples
 
+For legacy deployment, refer to [examples/infer](../infer/), change `swift infer` to `swift deploy`, and remove `--val_dataset`.
+
 `swift deploy` serves a model as an OpenAI-compatible endpoint. It no longer hand-rolls a FastAPI app: it
 builds a twinkle-server `ServerConfig` (a gateway app + a sampler app, plus a data-plane app for
 token-in-token-out) and launches it on Ray Serve. With no cluster running, dev starts an in-process local

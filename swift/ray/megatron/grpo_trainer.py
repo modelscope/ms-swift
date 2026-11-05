@@ -105,7 +105,11 @@ class GRPOTrainer(BaseRayTrainer):
             if scheduler_cfg not in multi_turns:
                 raise ValueError(f'Unknown multi_turn_scheduler: {scheduler_cfg!r}; '
                                  f'available: {list(multi_turns)}')
-            scheduler_kwargs = {'max_turns': self._max_turns}
+            scheduler_kwargs = {
+                'max_turns': self._max_turns,
+                'tokenizer': self.template.tokenizer,
+                'template': self.template,
+            }
             gym_env = getattr(args, 'gym_env', None)
             if gym_env is not None:
                 scheduler_kwargs['gym_env'] = gym_env
@@ -384,7 +388,7 @@ class GRPOTrainer(BaseRayTrainer):
         if getattr(self, '_last_teacher_kl', None) is not None:
             metrics['teacher_kl'] = self._last_teacher_kl
         # Flatten per-function metrics into scalar values the worker can inject.
-        for name in self.reward_func_names:
+        for name in reward_metrics.per_func_mean:
             metrics[name] = reward_metrics.per_func_mean[name]
             metrics[f'rewards/{name}/std'] = reward_metrics.per_func_std[name]
         return metrics

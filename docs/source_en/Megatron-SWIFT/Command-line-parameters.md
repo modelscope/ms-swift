@@ -2,6 +2,18 @@
 
 ## Megatron Parameters
 
+### Basic parallel argument preflight
+
+Megatron training (`megatron sft/pt/rlhf`) brings forward Megatron's existing two divisibility checks at the Swift argument entry point, before process-group initialization in the output-directory flow. The default Transformers backend and Megatron export entry point are unchanged.
+
+- Omitted parameters retain the existing defaults: TP, PP, CP, EP, and ETP are 1. An explicit `ETP=None` uses TP for checking, matching Megatron Core's fallback, without modifying the original argument.
+- When the global world size is known, check `WORLD_SIZE % (TP * PP * CP) == 0` and `WORLD_SIZE % (ETP * EP * PP) == 0`. Errors include parameter values, products, remainders, and why equal-sized dense/expert groups cannot be formed.
+- No independent Python-type, sign, DP/Expert DP, or VPP policy is added. If the same arithmetic raises a type or zero-division error, provide context while preserving the original cause. Other type, value, and layout constraints remain with the existing parser and backend. An input not rejected here is not necessarily usable for training.
+- DP/Expert DP remain backend-derived. VPP follows existing pipeline-layout normalization, is not prevalidated here, and does not multiply the physical world size.
+- World size comes from an initialized default process group, otherwise from `WORLD_SIZE` and `_PATCH_WORLD_SIZE`, with empty strings treated as unset. With no launch markers it is 1. A Ray driver with `skip_megatron_init=True`, or a process with only local/launch information and no known global size, defers the preflight.
+
+This change improves the timing and explanation of existing checks. It does not replace complete Megatron/MindSpeed validation or add batch-size, model-structure, or topology constraints. Extra upstream axes not enabled by the current Swift initialization entry point are not assumed active.
+
 **Training Parameters**:
 
 - 🔥micro_batch_size: Batch size per DP group, default is 1.
@@ -36,11 +48,11 @@
   - Some models may not support flash attention; you need to manually set `--attention_backend unfused/fused --padding_free false`, for example: Llama4, GPT-OSS.
 - optimizer: Optimizer type. Options include 'adam', 'sgd', 'muon', and 'dist_muon'. Default is 'adam'.
   - Note: This 'adam' is actually 'adamw'. See [here](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70) for reference.
-  - 'muon' and 'dist_muon' require "megatron-core>=0.16".
+  - 'muon' and 'dist_muon' are incompatible with `vit_lr`/`aligner_lr` and using them together is rejected: those parameters take over the parameter grouping, which is exactly how Muon routes the non-matrix parameters to `muon_scalar_optimizer`.
 - 🔥optimizer_cpu_offload: Offloads optimizer states to the CPU. For example, set: `--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`. Defaults to `False`.
   - This parameter can significantly reduce GPU memory usage (at the cost of increased CPU memory consumption). When the `global_batch_size` is large, its impact on training speed is minimal.
 - 🔥optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
-- optimizer_cuda_graph: Whether to enable CUDA graph for the optimizer step, forwarded to Megatron's `--optimizer-cuda-graph`. Default is `False`. This parameter requires "megatron-core>=0.17".
+- optimizer_cuda_graph: Whether to enable CUDA graph for the optimizer step, forwarded to Megatron's `--optimizer-cuda-graph`. Default is `False`.
 - use_precision_aware_optimizer: Use the precision-aware optimizer in TransformerEngine, which allows setting the main parameters and optimizer states to lower precision, such as fp16 and fp8.
 - main_grads_dtype: The dtype of main gradients when use_precision_aware_optimizer is enabled. Options are 'fp32' and 'bf16'. Default is 'fp32'.
 - main_params_dtype: The dtype of main parameters when use_precision_aware_optimizer is enabled. Options are 'fp32' and 'fp16'. Default is 'fp32'.
@@ -111,6 +123,8 @@
 - muon_tp_mode: NS calculation method for tensor model parallel weights. Options include 'blockwise', 'duplicated', and 'distributed'. Default is 'blockwise'.
 - muon_extra_scale_factor: Additional scale factor for Muon updates. Default is 1.
 - muon_scalar_optimizer: Optimizer for nonlinear parameters (embeddings, biases, norms) when using Muon. Options are 'adam' or 'lion'. Default is 'adam'.
+- muon_lr: Learning rate for the matrix parameters Muon manages. Default is None, which means `lr` is used. Muon orthogonalizes its updates, so these parameters usually want a larger learning rate than the remaining ones handled by `muon_scalar_optimizer`.
+- muon_min_lr: Minimum learning rate for the matrix parameters Muon manages. Default is None, which means `min_lr` is used.
 
 **Checkpoint Parameters**:
 
@@ -150,6 +164,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥use_distributed_optimizer: Use a distributed optimizer (i.e., ZeRO-1). Default is True.
 - use_megatron_fsdp: Use Megatron-FSDP as the data-parallel implementation (in place of DDP). Default is False. When enabled, it forces `use_distributed_optimizer=True`, only supports the `sgd`/`adam` optimizers, and requires `CUDA_DEVICE_MAX_CONNECTIONS` greater than 1.
   - Note: Try not to use Megatron-FSDP together with tensor parallelism or context parallelism, since they require conflicting `CUDA_DEVICE_MAX_CONNECTIONS` settings for best performance: sequence parallelism requires setting `CUDA_DEVICE_MAX_CONNECTIONS` to 1, while Megatron-FSDP requires not setting it to 1 (for better parallelization).
+- strict_fsdp_dtensor_load: Whether to load Megatron-FSDP DTensor checkpoints strictly. Defaults to True. When True, a state-dict key mismatch between the checkpoint and the current load target fails immediately. When False, partial loading is allowed, state-dict key differences are printed, and unloaded state keeps its current value. This option affects only Megatron-FSDP DTensor checkpoint loading, not checkpoint saving or non-FSDP paths. Keep it True for normal training resume; set it to False only when intentionally loading an incomplete checkpoint or one with a different structure.
 - data_parallel_sharding_strategy: The data-parallel sharding strategy for Megatron-FSDP. Options are 'no_shard', 'optim', 'optim_grads', 'optim_grads_params'; default is 'optim_grads_params'. Only takes effect when `use_megatron_fsdp=True`.
 - 🔥tensor_model_parallel_size: TP (Tensor Parallelism) size, default is 1.
 - 🔥pipeline_model_parallel_size: PP (Pipeline Parallelism) size, default is 1.
@@ -242,11 +257,12 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - mhc_recompute_layer_num: Number of layers per MHC recompute block. When set, every `mhc_recompute_layer_num` layers form a recompute block. If `None`, all layers in the transformer block share a single recompute block. Defaults to `None`.
 
 **MTP Parameters**
-- mtp_num_layers: Number of Multi-Token Prediction (MTP) layers. MTP extends the prediction scope at each position to multiple future tokens. This MTP implementation uses D sequential modules to sequentially predict D additional tokens. Default is None.
-  - Note: The value of mtp_num_layers will not be automatically retrieved from config.json and must be set manually. You can refer to the `num_nextn_predict_layers`, `mtp_num_hidden_layers` field in config.json to fill in this value. When using mcore-bridge, MTP weights will be loaded from safetensors files first. If not found, random initialization will be performed.
-- mtp_loss_scaling_factor: Scaling factor of Multi-Token Prediction (MTP) loss. We compute the average of MTP losses across all depths, then multiply it by this scaling factor to obtain the overall MTP loss, which serves as an additional training objective. Default is 0.1.
-- mtp_decoder_input_detach: Controls whether to stop gradients through decoder_input in the MTP branch. Defaults to False. When enabled, the MTP loss will not back-propagate directly through decoder_input to the embedding/ViT, but will still update the backbone via the hidden_states pathway.
-- mtp_shared_weights: Share weights across MTP layers, following the MTP scheme proposed in GLM-5. Defaults to False. For example, you can set `--mtp_num_layers 3 --mtp_shared_weights true`.
+- mtp_num_layers: Number of draft tokens to predict per step D (MTP depth). Defaults to `auto` and follows the model checkpoint; set it to `None` to not load MTP weights.
+  - Version note: in 4.6.0 and earlier the default is `None`.
+- mtp_loss_scaling_factor: Scaling factor for the MTP loss. Default is 0.1.
+- mtp_decoder_input_detach: Whether to stop gradients through decoder_input in the MTP branch. Defaults to False.
+- mtp_shared_weights: Share weights across MTP layers. Defaults to None(automatic): enabled when the number of MTP layers in the checkpoint is less than mtp_num_layers. Explicitly setting it to true/false overrides this. Usually no manual setting is needed.
+- mtp_allow_random_init: When the checkpoint lacks MTP weights, whether to allow random initialization to add MTP layers. Defaults to False.
 
 **Tuner Parameters**:
 
@@ -330,7 +346,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - add_version: Adds a directory `<version>-<timestamp>` to `output_dir` to prevent overwriting weights, default is True.
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - 🔥packing: Use the `padding_free` method to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures that complete sequences are not split), achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attention_backend flash`, it ensures that different sequences within packed samples remain independent and invisible to each other. This parameter defaults to `False`. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
-  - Linear-attention scenario: Qwen3.5 and Qwen3-Next also support padding_free/packing, refer to [Qwen3.5 Best Practice](../BestPractices/Qwen3_5-Best-Practice.md).
+  - Linear-attention scenario: Qwen3.5 and Qwen3-Next also support padding_free/packing, refer to [Qwen3.5/Qwen3.6/Qwen3.8 Best Practices](../BestPractices/Qwen3_8-Best-Practice.md).
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
 - streaming: Stream data loading and processing, default is False. (The shuffling of streaming datasets is not thorough, which may lead to severe loss fluctuations.)

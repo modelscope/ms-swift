@@ -22,7 +22,7 @@ Placement notes:
 from __future__ import annotations
 
 import math
-from functools import lru_cache
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from twinkle import remote_class, remote_function
@@ -76,6 +76,22 @@ def _seq_mean(row: Any) -> float:
     flat = [float(v) for v in _rows(row) if v is not None
             and not (isinstance(v, float) and math.isnan(v))]
     return sum(flat) / len(flat) if flat else 0.0
+
+
+def _rollout_row(sample: Any) -> list:
+    """One sample's sampler-side per-token logps.
+
+    The batch may carry trajectories as OBJECTS (a rollout sample with the
+    ``rollout_logps`` property) or as ledger-merged DICTS (the
+    ``rollout_logprobs`` key the streaming driver delivers); both spell the
+    sampler's own per-token logps.
+    """
+    if isinstance(sample, dict):
+        raw = sample.get('rollout_logprobs') or sample.get('rollout_logps') or ()
+    else:
+        raw = (getattr(sample, 'rollout_logps', None)
+               or getattr(sample, 'rollout_logprobs', None) or ())
+    return list(raw)
 
 
 @remote_class(execute='first')
@@ -163,11 +179,25 @@ class NumericWorker:
         ``num_generations``); GAE goes to ``twinkle.advantage.GAEAdvantage`` with
         token rewards built from the terminal rewards and the per-sample response
         lengths. This worker never touches a model. ``returns`` is filled by GAE
-        and stays ``None`` for the others (an optional output channel)."""
+        and stays ``None`` for the others (an optional output channel).
+
+        ``old_logps`` carries the SAMPLER's per-token logps off the samples
+        (``rollout_logps``) -- the importance-sampling denominator the loss
+        consumes next. The channel is ``None`` when any sample lacks it (a
+        non-rollout batch): the loss then runs its on-policy form, exactly the
+        recipe contract ``grpo_advantages`` established.
+
+        The ``adv`` channel is the BARE per-sample value sequence -- the shape
+        the loss's ``advantages`` kwarg takes. Never wrap it in a dict here:
+        a dict-typed advantages makes the loss iterate the dict's KEYS as
+        samples and fail deep inside its pad-and-align, and under Ray the
+        failure surfaces only as an unretrieved worker error."""
         reward_value = deref(reward)
         rewards = None
         if reward_value is not None:
             rewards = reward_value.get('values') if isinstance(reward_value, dict) else reward_value
+        rollout_rows = [_rollout_row(sample) for sample in samples]
+        old_logps = rollout_rows if all(rollout_rows) else None
         if estimator == 'gae':
             from twinkle.advantage import GAEAdvantage
 
@@ -209,16 +239,41 @@ class NumericWorker:
                 aligned_values.append(row)
             token_rewards = GAEAdvantage.build_token_rewards(
                 flat_rewards, lengths, kl_coef=0.0)
+            # GAEAdvantage takes one equal-length [N, T] matrix; the rows here
+            # are ragged (per-sample response lengths), so pad to the longest
+            # row and mark the real positions with masks. The tail padding is
+            # invisible to the recursion: the terminal value sits on the last
+            # VALID position, never on a padded cell.
+            if len(aligned_values) != len(token_rewards):
+                raise ValueError(
+                    f'the values lane carries {len(aligned_values)} rows for a '
+                    f'{len(token_rewards)}-sample batch; the lane is misaligned '
+                    'with the trajectories')
+            for i, row in enumerate(aligned_values):
+                if len(row) != len(token_rewards[i]):
+                    raise ValueError(
+                        f'values row {i} has {len(row)} entries but the sample\'s '
+                        f'response segment is {len(token_rewards[i])} long; the '
+                        'values lane is misaligned with the batch')
+            max_len = max(lengths)
+            padded_rewards = [row + [0.0] * (max_len - len(row))
+                              for row in token_rewards]
+            padded_values = [row + [0.0] * (max_len - len(row))
+                             for row in aligned_values]
+            masks = [[True] * n + [False] * (max_len - n) for n in lengths]
             advantages, returns = GAEAdvantage(
-                gamma=gamma, gae_lambda=lam)(token_rewards, aligned_values)
-            return {'adv': {'values': advantages, 'estimator': estimator},
-                    'returns': returns}
+                gamma=gamma, gae_lambda=lam)(padded_rewards, padded_values, masks=masks)
+            # Cut back to bare per-sample response rows: the ragged shape the
+            # loss's ``advantages`` kwarg takes, aligned with old_logps.
+            adv_rows = [advantages[i, :n].tolist() for i, n in enumerate(lengths)]
+            ret_rows = [returns[i, :n].tolist() for i, n in enumerate(lengths)]
+            return {'adv': adv_rows, 'returns': ret_rows, 'old_logps': old_logps}
         from swift.dev.rewards.advantage import compute_advantages
 
         advantages = compute_advantages(
             rewards, num_generations, advantage_estimator=estimator,
             **(extra or {}))
-        return {'adv': {'values': advantages, 'estimator': estimator}, 'returns': None}
+        return {'adv': advantages, 'returns': None, 'old_logps': old_logps}
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
     def signal_combine(self, lanes: List[Tuple[str, Any]], mode: str,
@@ -287,13 +342,29 @@ class NumericWorker:
         return out
 
 
-@lru_cache(maxsize=1)
-def get_numeric_worker(remote_group: str = NUMERIC_GROUP) -> NumericWorker:
-    """The process-resident numeric engine (one per session process).
+_numeric_workers: Dict[str, 'NumericWorker'] = {}
+_numeric_lock = threading.Lock()
+
+
+def get_numeric_worker(remote_group: str = NUMERIC_GROUP) -> 'NumericWorker':
+    """The process-resident numeric engine (one per remote group per process).
 
     The session is ALWAYS ray: the worker pool is created on first use under
     ``remote_group`` -- the CPU group the session bootstrap declared at
     ``twinkle.initialize`` time (the placement module's NUMERIC_GROUP, the
     single spelling of that name). A session started without the group fails
-    on the first remote-execution stage."""
-    return NumericWorker(remote_group=remote_group)
+    on the first remote-execution stage.
+
+    The lock is load-bearing: the DAG runs concurrently-ready stages in
+    parallel threads, and a plain cache lets two simultaneous first uses BOTH
+    construct the worker -- the actor's name is deterministic (group + class
+    + call site), so the second creation dies with 'actor already exists'."""
+    worker = _numeric_workers.get(remote_group)
+    if worker is not None:
+        return worker
+    with _numeric_lock:
+        worker = _numeric_workers.get(remote_group)
+        if worker is None:
+            worker = NumericWorker(remote_group=remote_group)
+            _numeric_workers[remote_group] = worker
+        return worker

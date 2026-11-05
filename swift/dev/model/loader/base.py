@@ -17,7 +17,7 @@ from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedCon
 from swift.dev.utils import get_logger
 from swift.dev.utils.tags import validate_tags
 
-logger = get_logger(__name__)
+logger = get_logger()
 
 #: Families already warned about trust_remote_code this process: the warning states a
 #: per-family fact, so once per family is the right cadence -- not once per checkpoint.

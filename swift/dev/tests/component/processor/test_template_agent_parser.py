@@ -89,7 +89,9 @@ def test_xml_arguments_are_coerced_by_tool_schema():
     parser = AgentToolParser(agent_template_map["qwen3_5"]())
     rendered = _render(parser.agent, [{"name": "search", "arguments": {"limit": 3, "exact": False}}])
     calls = parser.parse(rendered)
-    assert calls[0]["function"]["arguments"] == {"limit": "3", "exact": "False"}
+    # Booleans render as JSON literals (`false`), not Python's `False` (legacy #9968): the template writes
+    # the argument block as JSON, and the schema coercion below is what turns it back into a bool.
+    assert calls[0]["function"]["arguments"] == {"limit": "3", "exact": "false"}
     tools = [
         {
             "type": "function",
@@ -106,3 +108,85 @@ def test_xml_arguments_are_coerced_by_tool_schema():
         }
     ]
     assert coerce_tool_call_arguments(calls, tools)[0]["function"]["arguments"] == {"limit": 3, "exact": False}
+
+
+MINICPM5_XML = ('<function name="probe">'
+                '<param name="count">123</param>'
+                '<param name="flag">true</param>'
+                '<param name="note">  padded  </param>'
+                '<param name="limit">7</param>'
+                '</function>')
+
+
+def _probe_tools(**param_types):
+    return [{
+        "type": "function",
+        "function": {
+            "name": "probe",
+            "parameters": {
+                "type": "object",
+                "properties": {name: {"type": kind} for name, kind in param_types.items()},
+            },
+        },
+    }]
+
+
+def test_declared_string_parameters_keep_their_wire_text():
+    """A bare-parameter format must not decode a schema-declared string: `123` stays "123" (not 123),
+    `true` stays "true" (not True, which would re-render as "True"), and whitespace survives."""
+    parser = AgentToolParser(agent_template_map["minicpm5"]())
+    tools = _probe_tools(count="string", flag="string", note="string", limit="integer")
+
+    arguments = parser.parse(MINICPM5_XML, tools=tools)[0]["function"]["arguments"]
+
+    assert arguments == {"count": "123", "flag": "true", "note": "  padded  ", "limit": 7}
+
+
+def test_without_tools_a_bare_parameter_still_decodes_as_json():
+    """No schema means no way to tell a string from a number, so today's JSON decode stays the default."""
+    parser = AgentToolParser(agent_template_map["minicpm5"]())
+
+    arguments = parser.parse(MINICPM5_XML)[0]["function"]["arguments"]
+
+    assert arguments["count"] == 123 and arguments["flag"] is True and arguments["limit"] == 7
+
+
+def test_tool_schemas_accepts_both_tool_shapes_and_json_strings():
+    from swift.dev.template.agent.base import BaseAgentTemplate
+
+    flat = {"name": "probe", "parameters": {"type": "object", "properties": {"q": {"type": "string"}}}}
+    wrapped = {"type": "function", "function": flat}
+
+    for tools in ([flat], [wrapped], [json.dumps(wrapped)]):
+        assert BaseAgentTemplate._tool_schemas(tools) == {"probe": flat["parameters"]}
+    # Unusable entries are skipped rather than raising: tool text arrives from the user's request.
+    assert BaseAgentTemplate._tool_schemas([None, {"name": "x"}, 42]) == {}
+
+
+def test_schema_aware_formats_accept_the_tools_argument():
+    """A family that opts into schema-driven parsing must accept ``tools``, otherwise the parser's
+    branching call would raise TypeError on every decode."""
+    import inspect
+
+    for name, agent_cls in sorted(agent_template_map.items()):
+        agent = agent_cls()
+        if not getattr(agent, "supports_tool_schema", False):
+            continue
+        assert "tools" in inspect.signature(agent.get_toolcall).parameters, (
+            f"{name} declares supports_tool_schema but get_toolcall takes "
+            f"{inspect.signature(agent.get_toolcall).parameters}")
+
+
+def test_decode_output_threads_tools_into_the_parser():
+    """The decode contract carries `tools`; it must reach the parser, not stop at the codec boundary."""
+    from swift.dev.template_contract.output import decode_output
+
+    tools = _probe_tools(count="string", flag="string", note="string", limit="integer")
+    response = decode_output(
+        MINICPM5_XML,
+        tool_parser=AgentToolParser(agent_template_map["minicpm5"]()),
+        tools=tuple(tools),
+    )
+
+    arguments = response.tool_calls[0]["function"]["arguments"]
+    assert arguments == {"count": "123", "flag": "true", "note": "  padded  ", "limit": 7}

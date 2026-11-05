@@ -239,6 +239,9 @@ def get_multimodal_target_regex(
         if sub_module is None:
             logger.warning(f'module: {module} is None')
             continue
+        if not isinstance(sub_module, nn.Module):
+            logger.debug(f'Skip non-module LoRA target path: {module} ({type(sub_module).__name__}).')
+            continue
         if isinstance(sub_module, nn.Linear) and module.endswith('lm_head'):
             target_modules = []
         else:
@@ -247,10 +250,15 @@ def get_multimodal_target_regex(
             target_modules = [tm for tm in target_modules if tm not in {'gate'}]
         if not target_modules:
             continue
-        target_modules = [tm for tm in target_modules if tm]
-        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
         rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
-        res.append(rf'{rejected_pattern}{re.escape(module)}(?=\.){target_pattern}')
+        module_pattern = rf'{rejected_pattern}{re.escape(module)}'
+        # An empty relative name denotes the module itself, e.g. a Linear aligner.
+        if '' in target_modules:
+            res.append(module_pattern)
+        target_modules = [tm for tm in target_modules if tm]
+        if target_modules:
+            target_pattern = rf'.*\.({"|".join(target_modules)})'
+            res.append(rf'{module_pattern}(?=\.){target_pattern}')
 
     return rf'^({"|".join(res)})$'
 
@@ -299,8 +307,10 @@ def unwrap_model_for_generation(
             with deepspeed.zero.GatheredParameters(parameters):
                 from trl.models.utils import add_hooks, remove_hooks
                 remove_hooks(model)
-                yield accelerator.unwrap_model(model)
-                add_hooks(model)
+                try:
+                    yield accelerator.unwrap_model(model)
+                finally:
+                    add_hooks(model)
     else:
         yield unwrapped_model
 

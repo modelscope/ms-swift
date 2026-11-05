@@ -90,7 +90,11 @@ def configure_megatron(model_config: 'ModelConfig', train_config: 'TrainConfig',
                        tuner_config: 'TunerConfig') -> Optional['TunerConfig']:
     """Apply the Megatron training shim in place; return the selected tuner (None for full-param)."""
     enter_megatron_backend(distributed_config)
-    world_size = int(os.environ.get('WORLD_SIZE', '1'))
+    # Same fallback order as _derive_gradient_accumulation_steps: WORLD_SIZE (torchrun child) first,
+    # else nproc_per_node (python-direct driver spawns those workers itself). Reading WORLD_SIZE alone
+    # derived GA for world_size=1 here, the later re-derive in process_configs saw nproc_per_node,
+    # and the two disagreed -> a spurious "conflicts with global_batch_size" hard error.
+    world_size = int(os.environ.get('WORLD_SIZE') or distributed_config.nproc_per_node or 1)
     _fix_mtp(model_config)
     if train_config.weight_decay_incr_style == 'constant':
         train_config.start_weight_decay = None

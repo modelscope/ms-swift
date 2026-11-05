@@ -15,7 +15,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_audio, load_video_minicpmv_mplug_owl3
+from ..vision_utils import load_audio, load_video_minicpmv_mplug_owl3, local_video_path
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, Qwen3MixedTemplateMeta, QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
@@ -137,11 +137,31 @@ class MiniCPMVTemplate(Template):
         inputs_embeds, _ = model.get_vllm_embedding(inputs)
         return {'inputs_embeds': inputs_embeds}
 
+    def _adjust_bounds_for_padding(self, res: Dict[str, Any], seq_lens: List[int], bound_keys: List[str]) -> None:
+        padding_side = self.padding_side if self.is_training else 'left'
+        if self.padding_free or padding_side != 'left':
+            return
+
+        padded_seq_len = res['input_ids'].shape[-1]
+        padding_lengths = [padded_seq_len - seq_len for seq_len in seq_lens]
+        for key in bound_keys:
+            bounds_list = res.get(key)
+            if not bounds_list:
+                continue
+            assert len(bounds_list) == len(padding_lengths), (
+                f'len({key}): {len(bounds_list)}, len(padding_lengths): {len(padding_lengths)}')
+            res[key] = [
+                bounds + padding_length if isinstance(bounds, torch.Tensor) else bounds
+                for bounds, padding_length in zip(bounds_list, padding_lengths)
+            ]
+
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
             res[k] = self.gather_list(batch, k)
         res.update(super()._data_collator(batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound'])
         return res
 
 
@@ -301,10 +321,12 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         for k in ['pixel_values', 'image_bound', 'tgt_sizes', 'temporal_ids']:
             res[k] = self.gather_list(batch, k)
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound'])
         return res
 
 
@@ -321,6 +343,11 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
     SAMPLING_RATE = 16000
     MAX_AUDIO_DURATION = 30  # seconds
 
+    def _get_audio_context(self) -> List[Context]:
+        if self.mode == 'vllm':
+            return ['(<audio>./</audio>)']
+        return ['<|audio_start|><|audio_end|>']
+
     def init_env_args(self):
         super().init_env_args()
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
@@ -333,23 +360,38 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
             # Load audio from file path to numpy array at 16kHz
             if isinstance(inputs.audios[index], str):
                 inputs.audios[index] = load_audio(inputs.audios[index], sampling_rate=self.SAMPLING_RATE)
-            return ['<|audio_start|><|audio_end|>']
+            return self._get_audio_context()
         elif media_type == 'video':
             from minicpmo.utils import get_video_frame_audio_segments
-            video = inputs.videos[inputs.video_idx]
-            video_segments, audio_segments, _ = get_video_frame_audio_segments(
-                video, use_audio=self.use_audio_in_video, stack_frames=1)
+            video_idx = inputs.video_idx
+            video = inputs.videos[video_idx]
+            with local_video_path(video) as video_path:
+                video_segments, audio_segments, _ = get_video_frame_audio_segments(
+                    video_path, use_audio=self.use_audio_in_video, stack_frames=1)
+            # The video has already been converted into image/audio segments. In
+            # vLLM/lmdeploy mode, keeping the original value would pass the raw
+            # path or Data URI to the backend as an additional video input.
+            # Compensate for the increment performed by Template._pre_tokenize
+            # so multiple video placeholders continue to consume index 0.
+            if self.mode in {'vllm', 'lmdeploy'}:
+                inputs.videos.pop(video_idx)
+                inputs.video_idx -= 1
             # Insert frames into images list at current position
             images = inputs.images
             inputs.images = images[:inputs.image_idx] + video_segments + images[inputs.image_idx:]
-            # Build context list
-            image_context = [[-100]]
+            # Build context list. vLLM decodes prompt_token_ids while applying
+            # multimodal prompt updates, so a training-only -100 sentinel in
+            # input_ids causes tokenizer.decode() to raise OverflowError.
+            # Reuse the parent mode-aware image placeholder. It emits valid
+            # placeholder text for vLLM and -100 for the transformers path,
+            # where _encode() expands the sentinel before inference.
+            image_context = super().replace_tag('image', inputs.image_idx, inputs)
             context_list = []
             if self.use_audio_in_video and audio_segments:
                 # Insert audio segments into audios list at current position
                 audios = inputs.audios
                 inputs.audios = audios[:inputs.audio_idx] + audio_segments + audios[inputs.audio_idx:]
-                audio_context = ['<|audio_start|><|audio_end|>']
+                audio_context = self._get_audio_context()
                 # Interleave: one image placeholder + one audio placeholder per second
                 for i in range(len(video_segments)):
                     context_list += image_context
@@ -556,6 +598,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        seq_lens = [len(b['input_ids']) for b in batch]
         res = {}
         # Vision data
         for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
@@ -597,6 +640,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
         res['audio_bounds'] = audio_bounds_list if audio_bounds_list else []
 
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        self._adjust_bounds_for_padding(res, seq_lens, ['image_bound', 'audio_bounds'])
         return res
 
 
@@ -610,11 +654,12 @@ register_template(
 
 class MiniCPMV4_6Template(Template):
     support_padding_free = True
+    default_downsample_mode = '16x'
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
 
     def init_env_args(self):
         super().init_env_args()
-        self.downsample_mode = get_env_args('downsample_mode', str, '16x')
+        self.downsample_mode = get_env_args('downsample_mode', str, self.default_downsample_mode)
         self.max_slice_nums = get_env_args('max_slice_nums', int, 9)
         self.video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)
         self.max_num_frames = get_env_args('max_num_frames', int, 128)
@@ -649,8 +694,8 @@ class MiniCPMV4_6Template(Template):
             if mm_data:
                 media_inputs = self.processor(
                     text=self.tokenizer.eos_token.join([media_token] * len(mm_data)),
-                    images=inputs.images or None,
-                    videos=inputs.videos or None,
+                    images=mm_data if media_type == 'image' else None,
+                    videos=mm_data if media_type == 'video' else None,
                     return_tensors='pt',
                     add_special_tokens=False,
                     downsample_mode=self.downsample_mode,
@@ -713,11 +758,62 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n\n',
     ))
 
+
+class MiniCPMV4_7Template(MiniCPMV4_6Template):
+    support_padding_free = False
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        encoded['mm_token_type_ids'] = torch.tensor(self.processor.create_mm_token_type_ids([encoded['input_ids']])[0])
+        return encoded
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if self.is_training and self.padding_side == 'left':
+            res.pop('position_ids', None)
+        return res
+
+
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.minicpmv4_7,
+        template_cls=MiniCPMV4_7Template,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+    ))
+
+
+class MiniCPMOcrTemplate(MiniCPMV4_6Template):
+    default_downsample_mode = '4x'
+
+
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.minicpm_ocr,
+        template_cls=MiniCPMOcrTemplate,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+    ))
+
 register_template(
     ChatmlTemplateMeta(
         LLMTemplateType.minicpm5,
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
+        agent_template='minicpm5',
+    ))
+
+# Unlike MiniCPM5-1B, MiniCPM5-2B keeps the historical thinking content and adds an empty think block
+# to the assistant turns without thinking content.
+register_template(
+    ChatmlTemplateMeta(
+        LLMTemplateType.minicpm5_2b,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        preserve_thinking=True,
         agent_template='minicpm5',
     ))

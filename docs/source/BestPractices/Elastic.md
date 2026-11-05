@@ -8,7 +8,7 @@
 `pip install dlrover && pip install tornado && pip install kubernetes && pip install ms-swift`
 
 经过反复测试验证的训练镜像中的其它依赖以及版本：
-deepspeed 0.16.5（需参考https://github.com/deepspeedai/DeepSpeed/pull/7585/files 修复universal checkpoint 相关问题）
+deepspeed >=0.19.3（建议版本；0.19.x 已包含 universal checkpoint 相关修复）
 pytorch 2.6.0
 
 

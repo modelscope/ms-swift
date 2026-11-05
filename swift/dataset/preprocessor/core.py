@@ -1,6 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
-import datasets
+import json
 import numpy as np
 import os
 from collections import Counter
@@ -8,14 +8,14 @@ from contextlib import contextmanager
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Sequence, Value
+from datasets import Value
 from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
-from packaging import version
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from swift.template import history_to_messages
-from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
+from swift.template.template_inputs import normalize_openai_tool_calls
+from swift.utils import TOOL_KEYS, get_logger, is_dist, is_master, remove_arrow_padding, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -33,11 +33,29 @@ class RowPreprocessor:
                                 'channel',
                                 'margin',
                                 'teacher_prompt',
+                                'teacher_images',
                                 'chat_template_kwargs',
                                 # Qwen3-TTS
                                 'ref_audios',
                                 'audio_codes',
+                                # `decision` task_type (typed-decision System-1 scoring).
+                                'questions',
+                                'kinds',
+                                'options',
+                                'target_probs',
+                                'state',
+                                'question_ids',
+                                'criteria',
+                                'omnijev_column_keys',
+                                'omnijev_video',
                             ]
+    # Bump whenever the preprocessed-cache schema or semantics change (e.g. #9214 changed
+    # messages[].loss from float64 to bool and added loss_scale). map_cache files are named
+    # after the *input* fingerprint only, and datasets reuses an existing cache file without
+    # validating it when `cache_file_name` is passed explicitly, so without this tag a newer
+    # ms-swift silently loads caches written by an older, schema-incompatible release.
+    # Same cache-busting approach as Template._version.
+    cache_format_version = 'v2'
 
     def __init__(self,
                  *,
@@ -58,7 +76,6 @@ class RowPreprocessor:
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
-        self.datasets_4 = version.parse(datasets.__version__) >= version.parse('4.0')
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
         self.random_state = random_state
@@ -72,6 +89,9 @@ class RowPreprocessor:
         # fix swift/SlimOrca (concat)
         for message in messages:
             keys = set(message.keys()) - {'role', 'content', 'loss', 'loss_scale'}
+            if message.get('role') in {'tool', 'tool_response'}:
+                # Native agent templates (e.g. Gemma4) use the tool response name.
+                keys.discard('name')
             for key in keys:
                 message.pop(key)
 
@@ -83,7 +103,7 @@ class RowPreprocessor:
 
     @staticmethod
     def _cast_mm_data(row: Dict[str, Any]) -> None:
-        for key in ['images', 'rejected_images']:
+        for key in ['images', 'rejected_images', 'teacher_images']:
             images = row.get(key, None)
             if images is None:
                 continue
@@ -103,6 +123,33 @@ class RowPreprocessor:
                 continue
             elif isinstance(mm_data, str):
                 row[key] = [mm_data]
+
+    @staticmethod
+    def _normalize_tools(row: Dict[str, Any]) -> None:
+        """Normalize the `tools` columns and drop the ``null`` fields added by Arrow.
+
+        Tool schemas are heterogeneous nested dicts, but an Arrow column holds a single
+        struct type: the fields a tool never defined are read back as ``null``. Datasets
+        published as Parquet/Arrow already carry that padding, `Dataset.from_list` adds it
+        while inferring the features, and casting a batch to the features inferred from
+        another one may even drop fields silently. The padding is removed here and
+        `_patch_arrow_writer` stores the columns as `List(Json())`, so that every schema
+        survives the Arrow cache and the concatenation verbatim.
+        """
+        for key in TOOL_KEYS:
+            tools = row.get(key)
+            if tools is None:
+                continue
+            if isinstance(tools, str):
+                try:
+                    tools = json.loads(tools)
+                except json.JSONDecodeError:
+                    pass  # not a JSON document: a single plain text tool
+            if not isinstance(tools, (list, tuple)):
+                # A single tool, or the scalar a JSON string decoded to. Left bare, either
+                # would be split into its characters by the `List(Json())` feature.
+                tools = [tools]
+            row[key] = [remove_arrow_padding(tool) for tool in tools]
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
@@ -192,6 +239,7 @@ class RowPreprocessor:
                     self._check_rejected_response(r)
                     self._check_messages(r)
                     self._cast_mm_data(r)
+                    self._normalize_tools(r)
             except Exception as e:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -218,6 +266,10 @@ class RowPreprocessor:
             assert isinstance(dataset, HfIterableDataset)
             dataset = dataset._resolve_features()
         return dataset
+
+    def _map_cache_file(self, fingerprint: str) -> str:
+        return os.path.join(get_cache_dir(), 'datasets', 'map_cache',
+                            f'{fingerprint}_{self.cache_format_version}.arrow')
 
     @staticmethod
     def safe_rename_columns(dataset, columns):
@@ -256,37 +308,24 @@ class RowPreprocessor:
         def _new_init(_self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-
-                if self.datasets_4:
-                    from datasets.features import Json, List
-                    messages_feature = List(Json())
-                    for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
-                        features[key] = messages_feature
-                    features['images'] = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
-                    features['objects'] = Json()
-                    features['chat_template_kwargs'] = Json()
-                else:
-                    messages_feature = [{
-                        'role': Value(dtype='string'),
-                        'content': Value(dtype='string'),
-                    }]
-                    messages_feature_with_loss = [{
-                        'role': Value(dtype='string'),
-                        'content': Value(dtype='string'),
-                        'loss': Value(dtype='bool'),
-                        'loss_scale': Value(dtype='float64'),
-                    }]
-                    features['messages'] = messages_feature_with_loss
-                    features['rejected_messages'] = messages_feature_with_loss
-                    features['positive_messages'] = messages_feature
-                    features['negative_messages'] = messages_feature
-                    features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
-                    features['objects'] = {
-                        'ref': Sequence(feature=Value(dtype='string'), length=-1),
-                        'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
-                        'bbox_type': Value(dtype='string'),
-                        'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
-                    }
+                from datasets.features import Json, List
+                messages_feature = List(Json())
+                for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
+                    features[key] = messages_feature
+                # Tool schemas are heterogeneous as well; `Json` keeps every schema verbatim
+                # instead of aligning them into one struct type (see `_normalize_tools`).
+                # Guarded, unlike the message keys above: only agent datasets carry tools and
+                # adding the column would give every other dataset a null one.
+                tools_feature = List(Json())
+                for key in TOOL_KEYS:
+                    if key in features:
+                        features[key] = tools_feature
+                image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                features['images'] = image_feature
+                if 'teacher_images' in features:
+                    features['teacher_images'] = image_feature
+                features['objects'] = Json()
+                features['chat_template_kwargs'] = Json()
             ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
@@ -299,7 +338,7 @@ class RowPreprocessor:
 
     def _cast_pil_image(self, dataset):
         features = dataset.features
-        for col in ['images', 'rejected_images']:
+        for col in ['images', 'rejected_images', 'teacher_images']:
             if (col in features and isinstance(features[col], Image) and getattr(features[col], 'decode', False)):
                 dataset = dataset.cast_column(col, Image(decode=False))
         return dataset
@@ -333,8 +372,7 @@ class RowPreprocessor:
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
                 if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                    map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                                 f'{dataset._fingerprint}.arrow')
+                    map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
                 map_kwargs.pop('cache_file_name', None)
         dataset = self.safe_rename_columns(dataset, self.origin_columns)
@@ -351,8 +389,7 @@ class RowPreprocessor:
         ignore_max_length_error = True
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                             f'{dataset._fingerprint}.arrow')
+                map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
             dataset_mapped = dataset.map(
                 self.batched_preprocess,
                 fn_kwargs={
@@ -429,7 +466,10 @@ class AlpacaPreprocessor(ResponsePreprocessor):
 
 def default_repair_messages(s: Union[str, Any]) -> Any:
     if isinstance(s, str):
-        return ast.literal_eval(s)
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError:
+            return ast.literal_eval(s)
     return s
 
 
@@ -449,6 +489,7 @@ class MessagesPreprocessor(RowPreprocessor):
             repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
                                       Optional[List[Dict[str, str]]]] = default_repair_messages,
             inner_key: Optional[str] = None,
+            message_format: Literal['auto', 'swift', 'openai', 'anthropic'] = 'auto',
             **kwargs):
         super().__init__(columns=columns, **kwargs)
         self.role_keys = ['role', 'from'] if role_key is None else [role_key]
@@ -461,6 +502,7 @@ class MessagesPreprocessor(RowPreprocessor):
         self.system_role = system_role
         self.repair_messages = repair_messages
         self.inner_key = inner_key
+        self.message_format = message_format
 
         message_keys = ['messages', 'conversation', 'conversations']
         for key in message_keys:
@@ -508,6 +550,139 @@ class MessagesPreprocessor(RowPreprocessor):
                 message['role'] = 'tool_response'
 
     @staticmethod
+    def openai_to_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert OpenAI tool-call messages to the SWIFT canonical roles."""
+        return normalize_openai_tool_calls(messages)
+
+    @staticmethod
+    def _anthropic_image_source(block: Dict[str, Any]) -> str:
+        source = block.get('source') or {}
+        source_type = source.get('type')
+        if source_type == 'base64':
+            media_type = source.get('media_type')
+            data = source.get('data')
+            if not media_type or not data:
+                raise ValueError(f'Invalid Anthropic base64 image block: {block}')
+            return f'data:{media_type};base64,{data}'
+        if source_type == 'url':
+            url = source.get('url')
+            if not url:
+                raise ValueError(f'Invalid Anthropic URL image block: {block}')
+            return url
+        raise ValueError(f'Unsupported Anthropic image source type: {source_type}')
+
+    @classmethod
+    def _anthropic_block_content(cls, content: Any, media: Dict[str, List[Any]]) -> Any:
+        if not isinstance(content, list):
+            return content
+        parts = []
+        for block in content:
+            block_type = block.get('type')
+            if block_type == 'text':
+                parts.append(block.get('text', ''))
+            elif block_type == 'image':
+                parts.append('<image>')
+                media['images'].append(cls._anthropic_image_source(block))
+            else:
+                raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+        return ''.join(parts)
+
+    @staticmethod
+    def _align_anthropic_tool_results(tool_uses: List[Dict[str, Any]],
+                                      content: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # Canonical tool responses are positional, so align a complete result batch
+        # before the tool_use IDs are discarded. Keep incomplete or ID-less batches as-is.
+        call_order = {block.get('id'): i for i, block in enumerate(tool_uses)}
+        end = 0
+        while end < len(content) and content[end].get('type') == 'tool_result':
+            end += 1
+        results = content[:end]
+        if (None not in call_order and len(call_order) == len(tool_uses) == len(results)
+                and set(call_order) == {result.get('tool_use_id')
+                                        for result in results}):
+            content = sorted(results, key=lambda result: call_order[result['tool_use_id']]) + content[end:]
+        return content
+
+    @classmethod
+    def anthropic_to_messages(cls,
+                              messages: List[Dict[str, Any]],
+                              media: Optional[Dict[str, List[Any]]] = None) -> List[Dict[str, Any]]:
+        """Convert Anthropic content blocks to the SWIFT canonical roles."""
+        media = media if media is not None else {'images': []}
+        new_messages = []
+        tool_uses = []
+        for message in messages:
+            content = message.get('content')
+            if not isinstance(content, list):
+                new_messages.append(message)
+                tool_uses = []
+                continue
+            if tool_uses:
+                content = cls._align_anthropic_tool_results(tool_uses, content)
+            tool_uses = [block for block in content if block.get('type') == 'tool_use']
+
+            pending_content = []
+            message_metadata = {key: message[key] for key in ['loss', 'loss_scale'] if key in message}
+
+            def flush_content():
+                if pending_content:
+                    new_messages.append({
+                        'role': message['role'],
+                        'content': ''.join(pending_content),
+                        **message_metadata
+                    })
+                    pending_content.clear()
+
+            for block in content:
+                block_type = block.get('type')
+                if block_type == 'text':
+                    pending_content.append(block.get('text', ''))
+                elif block_type == 'image':
+                    pending_content.append('<image>')
+                    media['images'].append(cls._anthropic_image_source(block))
+                elif block_type == 'tool_use':
+                    flush_content()
+                    new_messages.append({
+                        'role': 'tool_call',
+                        'content': {
+                            'name': block['name'],
+                            'arguments': block.get('input', {}),
+                        },
+                        **message_metadata,
+                    })
+                elif block_type == 'tool_result':
+                    flush_content()
+                    new_messages.append({
+                        'role': 'tool_response',
+                        'content': cls._anthropic_block_content(block.get('content', ''), media),
+                        **message_metadata,
+                    })
+                else:
+                    raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+            flush_content()
+        return new_messages
+
+    def normalize_provider_messages(self, messages: List[Dict[str, Any]],
+                                    media: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
+        message_format = self.message_format
+        if message_format == 'auto':
+            if any(message.get('tool_calls') for message in messages):
+                message_format = 'openai'
+            elif any(
+                    isinstance(message.get('content'), list) and any(
+                        block.get('type') in {'tool_use', 'tool_result'}
+                        or block.get('type') == 'image' and 'source' in block for block in message['content'])
+                    for message in messages):
+                message_format = 'anthropic'
+            else:
+                message_format = 'swift'
+        if message_format == 'openai':
+            return self.openai_to_messages(messages)
+        if message_format == 'anthropic':
+            return self.anthropic_to_messages(messages, media)
+        return messages
+
+    @staticmethod
     def _to_std_key(messages: List[Dict[str, str]], std_key: str, optional_keys: List[str]) -> None:
         for message in messages:
             for key in optional_keys:
@@ -524,6 +699,12 @@ class MessagesPreprocessor(RowPreprocessor):
         messages: Optional[List[Dict[str, str]]] = self.repair_messages(messages)
         if not messages or isinstance(messages, str):
             return
+        media = {'images': []}
+        messages = self.normalize_provider_messages(messages, media)
+        for key, value in media.items():
+            if value:
+                assert not row.get(key), f'Cannot mix Anthropic content blocks with the top-level `{key}` field.'
+                row[key] = value
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)
         system = row.pop('system', None)
@@ -533,6 +714,18 @@ class MessagesPreprocessor(RowPreprocessor):
             self.to_std_messages(messages, system)  # inplace
         row['messages'] = messages
         return row
+
+
+class OpenAIMessagesPreprocessor(MessagesPreprocessor):
+
+    def __init__(self, **kwargs):
+        super().__init__(message_format='openai', **kwargs)
+
+
+class AnthropicMessagesPreprocessor(MessagesPreprocessor):
+
+    def __init__(self, **kwargs):
+        super().__init__(message_format='anthropic', **kwargs)
 
 
 class ClsPreprocessor(ResponsePreprocessor):
