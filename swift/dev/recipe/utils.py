@@ -629,6 +629,31 @@ class StepState:
         control.should_log = False
 
 
+# Optimizer updates each derived rollout batch covers. Colocate pays a sleep/wake + weight-sync
+# handover per batch, so a batch covering a single update makes that overhead dominate; a horizon
+# in the usual 4-32 range keeps it amortized while the first batch still finishes in minutes.
+_STEPS_PER_ROLLOUT_BATCH = 8
+
+
+def resolve_generation_batch_size(generation_batch_size: Optional[int], *, num_prompts: int,
+                                   num_generations: int, num_iterations: int,
+                                   train_batch_size: int, gradient_accumulation_steps: int) -> int:
+    """Resolve the rollout batch size (in prompts) an online-RL round generates in one go.
+
+    An explicit ``generation_batch_size`` passes through unchanged. The derived default fills
+    whole optimizer updates: ``train_batch_size * gradient_accumulation_steps`` samples = that
+    many completions = ``global_batch / num_generations`` prompts, times ``num_iterations``
+    replays and ``_STEPS_PER_ROLLOUT_BATCH`` updates. The previous fallback -- the whole
+    dataset in the first batch -- turned any sizeable dataset into hours of generation before
+    the first training log line, indistinguishable from a hang.
+    """
+    if generation_batch_size is not None:
+        return generation_batch_size
+    global_batch_size = train_batch_size * max(1, gradient_accumulation_steps)
+    prompts_per_update = math.ceil(global_batch_size / max(1, num_generations))
+    return max(1, prompts_per_update * _STEPS_PER_ROLLOUT_BATCH * max(1, num_iterations))
+
+
 def rollout_step_budget(*, num_prompts: int, num_generations: int, train_batch_size: int,
                         gradient_accumulation_steps: int, num_train_epochs: float,
                         generation_batch_size: Optional[int] = None,

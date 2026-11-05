@@ -14,7 +14,8 @@ from swift.dev.recipe.ppo.assembly import (
     Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
 from swift.dev.recipe.utils import (
     StepState, build_save_knobs, collect, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_training_step,
+    resolve_rollout_max_steps, resume_training, rollout_step_budget, resolve_generation_batch_size,
+    save_training_step,
     snapshot_initial_adapter)
 
 if TYPE_CHECKING:
@@ -344,7 +345,13 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
-    generation_batch_size = rollout_config.generation_batch_size
+    # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
+    # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
+    generation_batch_size = resolve_generation_batch_size(
+        rollout_config.generation_batch_size, num_prompts=len(prompts),
+        num_generations=rl_config.num_generations, num_iterations=rl_config.num_ppo_epochs,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     budget = rollout_step_budget(
         num_prompts=len(prompts), num_generations=rl_config.num_generations,
         train_batch_size=train_batch_size,
@@ -372,7 +379,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         shuffle=dataset_config.train_dataloader_shuffle,
-        batch_size=(generation_batch_size or len(prompts)),
+        batch_size=generation_batch_size,
     )
     reward_metric = CompletionRewardMetric()
     _versions_cell: List[List[int]] = []

@@ -25,6 +25,7 @@ from swift.dev.recipe.utils import (
     resolve_rollout_max_steps,
     resume_training,
     rollout_step_budget,
+    resolve_generation_batch_size,
     save_final_checkpoint,
     save_training_step,
     snapshot_initial_adapter,
@@ -722,7 +723,13 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
-    generation_batch_size = rollout_config.generation_batch_size
+    # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
+    # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
+    generation_batch_size = resolve_generation_batch_size(
+        rollout_config.generation_batch_size, num_prompts=len(prompts),
+        num_generations=rl_config.num_generations, num_iterations=rl_config.num_iterations,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     streaming = rollout_config.sampler_mode != "colocate"
     budget = rollout_step_budget(
         num_prompts=len(prompts), num_generations=rl_config.num_generations,
@@ -751,7 +758,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         shuffle=dataset_config.train_dataloader_shuffle,
-        batch_size=(generation_batch_size or len(prompts)),
+        batch_size=generation_batch_size,
     )
     # Late-bound cells: StepState builds before the disaggregated loop creates the driver, so
     # _extra_metrics reads the driver handle and the batch's version spans through these cells.
