@@ -121,6 +121,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         datasets = [train_dataset, val_dataset]
         if not pre_process:
             return datasets
+        if train_dataset is None:
+            raise ValueError('No valid training samples remain after preprocessing. Check the dataset, `max_length`, '
+                             'and `truncation_strategy`.')
         datasets = self._post_process_datasets(datasets)
         self._show_dataset(*datasets)
         return datasets
@@ -285,7 +288,12 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         predict_with_generate = getattr(args, 'predict_with_generate', False)
         if is_master():
-            inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
+            try:
+                inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
+            except StopIteration:
+                raise ValueError(
+                    'No valid training samples remain after preprocessing. Check the dataset, `max_length`, '
+                    'and `truncation_strategy`.') from None
             if isinstance(inputs, list):
                 inputs = inputs[0]
             self.template.print_inputs(inputs)
