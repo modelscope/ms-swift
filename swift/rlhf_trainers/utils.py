@@ -643,28 +643,39 @@ class _ForwardRedirection:
         pass
 
 
-def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
+def entropy_from_logits(logits, chunk_size: Optional[int] = None) -> torch.Tensor:
     """
     Compute the Shannon entropy (in nats) for each row of *logits* without
     materialising the full soft-max in memory.
-    The batch dimension is processed in chunks of size `chunk_size` so that
+    Token rows are processed in chunks of size `chunk_size` so that
     only a subset of rows is expanded to probabilities at any one time.
     Args:
         logits (`torch.Tensor`):
             Logits tensor of shape `(..., num_classes)`. Entropy is taken along the last axis; all
             leading dimensions are preserved.
-        chunk_size (`int`, *optional*, defaults to `1`):
-            Number of rows to process per iteration.
+        chunk_size (`int`, *optional*):
+            Number of token rows per iteration. By default, target 16 MiB of temporary
+            log-probability, probability and product buffers, with a minimum of one row.
     Returns:
         `torch.Tensor`:
             Entropy values with shape `logits.shape[:-1]`.
     """
+    shape = logits.shape[:-1]
+    if logits.numel() == 0:
+        return logits.sum(-1)
+    if chunk_size is None:
+        chunk_size = max(1, (16 * 1024**2) // (3 * logits.shape[-1] * logits.element_size()))
+    try:
+        logits = logits.view(-1, logits.shape[-1])
+    except RuntimeError:
+        # Sliced padded batches may not flatten without copying the full logits tensor.
+        return torch.stack([entropy_from_logits(row, chunk_size) for row in logits])
     per_token_entropies = []
     for logits_chunk in logits.split(chunk_size, dim=0):
         logps = F.log_softmax(logits_chunk, dim=-1)
         chunk_entropy = -(torch.exp(logps) * logps).sum(-1)
         per_token_entropies.append(chunk_entropy)
-    return torch.cat(per_token_entropies, dim=0)
+    return torch.cat(per_token_entropies, dim=0).reshape(shape)
 
 
 def selective_log_softmax(logits, index, temperature: float = 1.0, row_mask=None, chunk_size: int = 1024):
