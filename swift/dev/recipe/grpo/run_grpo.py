@@ -283,6 +283,7 @@ def _train_mini_batches(
     teacher_logps: Any,
     temperature: float,
     batching_kwargs: Optional[Dict[str, Any]] = None,
+    padding_free: bool = False,
     chord_fn: Optional[Callable[[], List[Any]]] = None,
     ema_manager: Any = None,
     save: Optional[Callable[[str], Any]] = None,
@@ -307,6 +308,19 @@ def _train_mini_batches(
             return optimizer_steps
         # Repeat the traversal, including across update boundaries, without copying all replays.
         indices = [index % len(samples) for index in range(lo, hi)]
+        balance_metrics = None
+        if rl_config.balance_batch:
+            from twinkle.model import MicroBatchConfig, plan_dp_balance
+
+            # Reorder indices, not individual signal fields: every column (including routing and
+            # sampling replay on the samples) follows the same permutation. Keep update membership.
+            micro_config = MicroBatchConfig.from_kwargs({
+                'micro_batch_size': train_batch_size // dp_size, **(batching_kwargs or {})})
+            plan = plan_dp_balance(
+                [samples[index].encoded for index in indices], dp_size,
+                padding_free=padding_free, micro_batch_config=micro_config)
+            indices = plan.apply(indices)
+            balance_metrics = plan.metrics
         batch = ([column[index] for index in indices] if column is not None else None for column in columns)
         kwargs = _forward_kwargs(rl_config, *batch, temperature, micro_batch_size=train_batch_size // dp_size)
         kwargs.update(batching_kwargs or {})
@@ -319,7 +333,10 @@ def _train_mini_batches(
             model.forward_backward(**kwargs)
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.micro_step += micro_batches
-        state.record()
+        if balance_metrics is not None:
+            state.record(extra_metrics=balance_metrics)
+        else:
+            state.record()
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
             ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
@@ -423,6 +440,7 @@ def _colocate_loop(
     *,
     train_batch_size: int,
     batching_kwargs: Dict[str, Any],
+    padding_free: bool = False,
     chord_fn: Optional[Callable[[], List[Any]]] = None,
     ema_manager: Any = None,
     save: Optional[Callable[[str], Any]] = None,
@@ -504,6 +522,7 @@ def _colocate_loop(
                 samples,
                 train_batch_size=train_batch_size,
                 batching_kwargs=batching_kwargs,
+                padding_free=padding_free,
                 advantages=advantages,
                 old_logps=old_logps,
                 ref_logps=ref_logps,
@@ -547,6 +566,7 @@ def _disaggregated_loop(
     batching_kwargs: Dict[str, Any],
     num_train_epochs: float,
     output_dir: str,
+    padding_free: bool = False,
     chord_fn: Optional[Callable[[], List[Any]]] = None,
     ema_manager: Any = None,
     save: Optional[Callable[[str], Any]] = None,
@@ -605,6 +625,7 @@ def _disaggregated_loop(
                 samples,
                 train_batch_size=train_batch_size,
                 batching_kwargs=batching_kwargs,
+                padding_free=padding_free,
                 advantages=advantages,
                 old_logps=old_logps, ref_logps=ref_logps, teacher_logps=teacher_logps,
                 temperature=float(cluster.sampling_params.get('temperature', 1.0)),
@@ -873,6 +894,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             _colocate_loop(cluster, rl_config, rollout_config, reward_config, dataloader, state,
                 train_batch_size=train_batch_size,
                 batching_kwargs=batching_kwargs,
+                padding_free=template_config.padding_free,
                 chord_fn=chord_fn,
                 ema_manager=ema_manager,
                 save=save,
@@ -887,6 +909,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                 train_batch_size=train_batch_size,
                 batching_kwargs=batching_kwargs,
                 num_train_epochs=train_config.num_train_epochs,
+                padding_free=template_config.padding_free,
                 output_dir=output_dir,
                 chord_fn=chord_fn,
                 ema_manager=ema_manager,

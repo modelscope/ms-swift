@@ -531,7 +531,7 @@ class StepState:
         if metrics is not None:
             state.metrics = metrics
 
-    def record(self) -> dict:
+    def record(self, *, extra_metrics: Optional[Dict[str, Any]] = None) -> dict:
         """Count one optimizer step: metrics, tracker write, console line, the on_log fan-out.
 
         Reads the NORMALIZED per-token loss (+ every algorithm metric) via the driver-callable
@@ -562,6 +562,8 @@ class StepState:
         record.update(_mtp_metrics(self.model))
         if self._extra_metrics_fn is not None:
             record.update(self._extra_metrics_fn())
+        if extra_metrics is not None:
+            record.update(extra_metrics)
         if should_log:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.

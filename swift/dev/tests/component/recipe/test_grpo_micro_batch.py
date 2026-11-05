@@ -30,20 +30,39 @@ class RecordingModel:
 
 def make_state(ga=4, dp=2, max_steps=100):
     state = SimpleNamespace(
-        model=RecordingModel(dp), ga=ga, global_step=0, micro_step=0, max_grad_norm=1.0, max_steps=max_steps, saved=[]
+        model=RecordingModel(dp),
+        ga=ga,
+        global_step=0,
+        micro_step=0,
+        max_grad_norm=1.0,
+        max_steps=max_steps,
+        saved=[],
+        balance_metrics=[],
     )
     state.reached_max = lambda: state.global_step >= state.max_steps
     state.should_stop = lambda: False
 
-    def record():
+    def record(*, extra_metrics=None):
         state.global_step += 1
+        state.balance_metrics.append(extra_metrics)
 
     state.record = record
     state.step_tail = lambda save=None: save(str(state.global_step)) if save else None
     return state
 
 
-def train(state, count, *, config=None, chord_fn=None, ema=None, offset=0, batching_kwargs=None):
+def train(
+    state,
+    count,
+    *,
+    config=None,
+    chord_fn=None,
+    ema=None,
+    offset=0,
+    batching_kwargs=None,
+    lengths=None,
+    padding_free=False,
+):
     rows = [
         SimpleNamespace(
             encoded={"input_ids": [i], "labels": [i], "routed_experts": [i]},
@@ -53,12 +72,16 @@ def train(state, count, *, config=None, chord_fn=None, ema=None, offset=0, batch
         )
         for i in range(offset, offset + count)
     ]
+    if lengths is not None:
+        for row, length in zip(rows, lengths, strict=True):
+            row.encoded["input_ids"] *= length
     return grpo._train_mini_batches(
         state,
         config or RLConfig(rl_type="grpo"),
         rows,
         train_batch_size=2 * state.model.device_mesh.data_world_size,
         batching_kwargs=batching_kwargs,
+        padding_free=padding_free,
         advantages=[i * 10.0 for i in range(offset, offset + count)],
         old_logps=[[i + 0.2] for i in range(offset, offset + count)],
         ref_logps=[[i + 0.3] for i in range(offset, offset + count)],
@@ -72,6 +95,97 @@ def train(state, count, *, config=None, chord_fn=None, ema=None, offset=0, batch
 
 def ids(call):
     return [row["input_ids"][0] for row in call["inputs"]]
+
+
+@pytest.mark.parametrize("padding_free", [False, True])
+@pytest.mark.parametrize("dynamic", [False, True])
+def test_length_balance_reduces_rank_load_and_keeps_all_signals_aligned(padding_free, dynamic):
+    state = make_state(ga=2)
+    config = RLConfig(
+        rl_type="grpo",
+        balance_batch=True,
+        enable_sampling_replay=True,
+        router_replay_mode="R3",
+        sdar_loss_coef=0.1,
+        overlong_filter=True,
+    )
+    batching = {"micro_batch_size": 2}
+    if dynamic:
+        batching.update(dynamic_batching=True, max_tokens_per_micro_batch=4000, packing_algorithm="kk")
+    assert (
+        train(
+            state,
+            8,
+            config=config,
+            lengths=[2000, 1900, 1800, 1700, 300, 250, 200, 150],
+            padding_free=padding_free,
+            batching_kwargs=batching,
+        )
+        == 1
+    )
+    (call,) = state.model.calls
+    order = ids(call)
+    assert sorted(order) == list(range(8))
+    assert order != list(range(8))
+    assert call["advantages"] == [i * 10.0 for i in order]
+    for key, delta in [("rollout_logps", 0.1), ("old_logps", 0.2), ("ref_logps", 0.3), ("teacher_logps", 0.4)]:
+        assert call[key] == [[i + delta] for i in order]
+    assert call["sampling_masks"] == [f"mask-{i}" for i in order]
+    assert call["truncated"] == [i % 2 == 0 for i in order]
+    assert [row["routed_experts"] for row in call["inputs"]] == [[i] for i in order]
+    metrics = state.balance_metrics[0]
+    assert metrics["dp_balance/workload_imbalance_after"] < metrics["dp_balance/workload_imbalance_before"]
+    assert ("dp_balance/padding_ratio_after" in metrics) == (not padding_free)
+    assert state.global_step == state.model.steps == 1
+    assert "padding_free" not in call  # This is the processor layout, not a model RPC option.
+
+
+def test_balance_preserves_replay_update_membership_and_dropped_tail():
+    state = make_state(ga=1)
+    config = RLConfig(rl_type="grpo", balance_batch=True, num_iterations=2)
+    assert train(state, 7, config=config, lengths=[2000, 1900, 300, 200, 1800, 1700, 100]) == 3
+    expected = (list(range(7)) * 2)[:12]
+    for start, call in zip(range(0, 12, 4), state.model.calls, strict=True):
+        assert sorted(ids(call)) == sorted(expected[start : start + 4])
+        assert call["advantages"] == [i * 10.0 for i in ids(call)]
+    assert state.micro_step == state.global_step == 3
+
+
+def test_balance_disabled_keeps_skewed_batch_order():
+    state = make_state(ga=2)
+    train(state, 8, lengths=[2000, 1900, 1800, 1700, 300, 250, 200, 150])
+    assert ids(state.model.calls[0]) == list(range(8))
+    assert state.balance_metrics == [None]
+
+
+def test_balance_metrics_reach_tracker_and_jsonl_without_leaking_to_next_step(tmp_path):
+    import json
+
+    from swift.dev.recipe.utils import StepState
+
+    state = StepState.__new__(StepState)
+    state.model = SimpleNamespace(calculate_metric=lambda **kwargs: {"loss": 1.0})
+    state.global_step, state.micro_step, state.epoch, state.best_metric = 0, 0, 0, None
+    state.manual_gc, state.manual_gc_steps, state.empty_cache_steps = False, 0, None
+    state._logging_config, state._extra_metrics_fn, state._log_formatter = None, None, None
+    state._output_dir = str(tmp_path)
+    state.history = []
+    tracked = []
+
+    def log(record, step):
+        tracked.append(dict(record))
+        return record
+
+    state.tracker = SimpleNamespace(log=log)
+    state.handler = SimpleNamespace(
+        state=SimpleNamespace(), control=SimpleNamespace(should_log=True), on_log=lambda **kwargs: None
+    )
+    metric = "dp_balance/workload_imbalance_after"
+    state.record(extra_metrics={metric: 1.01})
+    state.record()
+    saved = [json.loads(line) for line in (tmp_path / "metrics.jsonl").read_text().splitlines()]
+    assert tracked[0][metric] == saved[0][metric] == state.history[0][metric] == 1.01
+    assert all(metric not in record for record in (tracked[1], saved[1], state.history[1]))
 
 
 def test_full_update_keeps_input_order_and_all_auxiliary_fields_aligned():
