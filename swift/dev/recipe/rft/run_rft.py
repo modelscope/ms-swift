@@ -6,7 +6,7 @@ import json
 import os
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from swift.dev.recipe.batching import plan_training_batch, record_training_step
+from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
 from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.rft.assembly import initialize_rft_cluster, rft_group_requests
@@ -263,7 +263,7 @@ def _train_selected_samples(cluster, state, selected, train_batch_size, save_ste
         if state.reached_max():
             break
         update_samples = selected[start:end]
-        plan = plan_training_batch(
+        plan = plan_rollout_batch(
             state, [sample.encoded for sample in update_samples],
             micro_batch_kwargs={'micro_batch_size': train_batch_size // cluster.model.device_mesh.data_world_size})
         if plan is not None:
@@ -275,7 +275,7 @@ def _train_selected_samples(cluster, state, selected, train_batch_size, save_ste
             micro_batch_size=train_batch_size // cluster.model.device_mesh.data_world_size,
         )
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        record_training_step(state, plan)
+        record_rollout_step(state, plan)
         # The periodic save is DEFERRED to the round boundary (the round component
         # commits with it, keeping every checkpoint round-atomic); snapshot the
         # callback's one-shot request before the tail clears it.
@@ -357,6 +357,7 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     state = StepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
+        balance_batch=rl_config.balance_batch,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

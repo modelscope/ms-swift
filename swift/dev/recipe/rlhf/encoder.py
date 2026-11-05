@@ -38,8 +38,6 @@ class PreferenceBatchEncoder:
         self.data_parallel_size = data_parallel_size
         #: RM scores a num_labels=1 seq_cls head (no labels, no logps); the rest read per-token labels.
         self._is_reward = rl_type == 'rm'
-        self.balance_group_size = 1 if rl_type == 'kto' else 2
-        self.balance_fields = ('ref_logps', 'label')
 
     @staticmethod
     def _strip_side(encoded: dict, prefix: str) -> dict:

@@ -21,8 +21,6 @@ class TrainConfig:
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
     gradient_accumulation_steps: int = 1
-    # Controller-side DP balancing of complete optimizer batches (Ray dispatch).
-    balance_batch: bool = False
     # GRPO: the update size still uses B * DP * GA; Twinkle plans the micro-batches.
     dynamic_batching: bool = False
     max_tokens_per_micro_batch: Optional[int] = None

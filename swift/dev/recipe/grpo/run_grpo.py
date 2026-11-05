@@ -30,7 +30,7 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
 )
 from swift.dev.recipe.utils import _log_line
-from swift.dev.recipe.batching import plan_training_batch, record_training_step
+from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -234,8 +234,7 @@ def _chord_forward_backward(
     *,
     step: int,
     num_micro_batches: int,
-    state: Optional[StepState] = None,
-) -> Any:
+) -> None:
     """Accumulate the weighted RL and SFT losses before finalizing one CHORD update."""
     # CHORD's dual RPC: the two losses accumulate on ONE gradient (weights sum to 1),
     # so only the second RPC finalizes; the overlap guard below is the collision backstop.
@@ -257,20 +256,20 @@ def _chord_forward_backward(
     sft_micro_batch_size = len(sft_inputs) // model.device_mesh.data_world_size
     for _ in range(num_micro_batches - 1):
         sft_inputs.extend(chord_fn())
-    batching = {
-        'micro_batch_size': sft_micro_batch_size,
-        **{key: forward_kwargs[key] for key in ('dynamic_batching', 'max_tokens_per_micro_batch', 'packing_algorithm')
-           if key in forward_kwargs},
-    }
-    sft_plan = plan_training_batch(state, sft_inputs, micro_batch_kwargs=batching,
-                                  metric_prefix='dp_balance/chord_sft')
-    if sft_plan is not None:
-        sft_inputs = sft_plan.apply(sft_inputs)
     model.forward_backward(
-        inputs=sft_inputs, gradient_accumulation_steps=1, kind='sft', loss_key='sft',
-        loss_weight=mu, finalize_gradients=True, **batching)
-    return sft_plan
-
+        inputs=sft_inputs,
+        gradient_accumulation_steps=1,
+        kind='sft',
+        micro_batch_size=sft_micro_batch_size,
+        loss_key='sft',
+        loss_weight=mu,
+        finalize_gradients=True,
+        **{
+            key: forward_kwargs[key]
+            for key in ("dynamic_batching", "max_tokens_per_micro_batch", "packing_algorithm")
+            if key in forward_kwargs
+        },
+    )
 
 
 def _train_mini_batches(
@@ -309,7 +308,7 @@ def _train_mini_batches(
             return optimizer_steps
         # Repeat the traversal, including across update boundaries, without copying all replays.
         indices = [index % len(samples) for index in range(lo, hi)]
-        plan = plan_training_batch(
+        plan = plan_rollout_batch(
             state, [samples[index].encoded for index in indices],
             micro_batch_kwargs={'micro_batch_size': train_batch_size // dp_size, **(batching_kwargs or {})})
         if plan is not None:
@@ -318,17 +317,15 @@ def _train_mini_batches(
         kwargs = _forward_kwargs(rl_config, *batch, temperature, micro_batch_size=train_batch_size // dp_size)
         kwargs.update(batching_kwargs or {})
         micro_batches = (hi - lo) // train_batch_size  # Nominal count; DBS schedules physical batches internally.
-        chord_plan = None
         if chord_fn is not None:
-            chord_plan = _chord_forward_backward(
-                model, rl_config, kwargs, chord_fn, step=state.global_step,
-                num_micro_batches=micro_batches, state=state)
-
+            _chord_forward_backward(
+                model, rl_config, kwargs, chord_fn, step=state.global_step, num_micro_batches=micro_batches
+            )
         else:
             model.forward_backward(**kwargs)
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.micro_step += micro_batches
-        record_training_step(state, plan, chord_plan)
+        record_rollout_step(state, plan)
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
             ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
@@ -800,6 +797,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     state = StepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
+        balance_batch=rl_config.balance_batch,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

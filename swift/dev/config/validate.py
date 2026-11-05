@@ -59,7 +59,7 @@ def validate_configs(
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_dynamic_batching(train_config, rl_config, is_megatron)
     if training:
-        _check_batch_balancing(train_config, distributed_config)
+        _check_batch_balancing(rl_config, distributed_config)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
     _check_unsloth_strategy(distributed_config, template_config)
@@ -109,8 +109,17 @@ def validate_configs(
         model_config, template_config, dataset_config, distributed_config, is_megatron, rl_config)
 
 
-def _check_batch_balancing(train_config: 'TrainConfig', distributed_config: 'DistributedConfig') -> None:
-    if train_config.balance_batch and distributed_config.mode != 'ray':
+def _check_batch_balancing(rl_config: Optional['RLConfig'], distributed_config: 'DistributedConfig') -> None:
+    if rl_config is None or not rl_config.balance_batch:
+        return
+    online_types = {'grpo', 'ppo', 'gkd', 'opsd', 'mopd', 'rft'}
+    if rl_config.rl_type not in online_types:
+        raise ValueError('balance_batch is only supported for post-rollout training. Offline preference '
+                         'recipes do not produce rollout batches; disable balance_batch for this recipe.')
+    if rl_config.rl_type in {'gkd', 'opsd', 'mopd'} and rl_config.lmbda == 0:
+        raise ValueError('balance_batch requires rollout-generated samples: dataset-only distillation '
+                         '(lmbda=0) has no rollout batches to balance.')
+    if distributed_config.mode != 'ray':
         raise ValueError("balance_batch requires mode='ray': balancing needs the complete controller-side "
                          'batch, not rank-local torchrun shards or a remote server batch.')
 
