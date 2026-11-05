@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import numpy as np
 import torch
 from transformers.trainer_utils import EvalPrediction
-from typing import Dict, List, Literal
+from typing import Dict, List, Literal, Union
 
 from .base import EvalMetrics
 
@@ -12,41 +11,37 @@ def compute_acc(preds,
                 *,
                 acc_strategy: Literal['token', 'seq'] = 'token',
                 is_encoder_decoder: bool = False,
-                cu_seqlens=None) -> Dict[str, List[float]]:
-
-    if isinstance(preds, torch.Tensor):
-        if torch.is_floating_point(labels):
-            return {}
-        preds = preds.cpu().numpy()
-        labels = labels.cpu().numpy()
+                cu_seqlens=None,
+                return_counts: bool = False) -> Dict[str, Union[List[float], torch.Tensor]]:
+    """Return per-item correctness, or device-side [correct, valid] counts for accumulation."""
+    preds, labels = torch.as_tensor(preds), torch.as_tensor(labels)
     if preds.ndim >= 2 and not is_encoder_decoder:
         labels = labels[..., 1:]
         preds = preds[..., :-1]
-    if np.issubdtype(labels.dtype, np.floating) or preds.shape != labels.shape:
+    if torch.is_floating_point(labels) or preds.shape != labels.shape:
         return {}
 
     masks = labels != -100
-    if acc_strategy == 'token' or preds.ndim == 1:  # 'single_label_classification'
-        acc_list = (preds[masks] == labels[masks]).tolist()
-    else:
-        acc_list = []
+    correct = preds == labels
+    if acc_strategy != 'token' and preds.ndim >= 2:
         if cu_seqlens is not None and masks.shape[0] == 1:
-            # padding_free
-            for i in range(cu_seqlens.shape[0] - 1):
-                start, end = cu_seqlens[i], cu_seqlens[i + 1]
-                mask = masks[0, start:end]
-                # np.all() of an empty selection is True, so a sequence without any supervised label
-                # would be scored as a correct prediction.
-                if not mask.any():
-                    continue
-                acc_list.append(np.all(preds[0, start:end][mask] == labels[0, start:end][mask]))
+            # Prefix sums match packed slices without reading GPU boundaries in Python.
+            bounds = torch.as_tensor(cu_seqlens, device=preds.device, dtype=torch.long)
+            bounds = torch.where(bounds < 0, bounds + masks.shape[-1], bounds).clamp(0, masks.shape[-1])
+            counts = torch.stack([masks[0], masks[0] & ~correct[0]]).cumsum(dim=-1)
+            counts = torch.cat([counts.new_zeros((2, 1)), counts], dim=-1)
+            counts = counts[:, bounds[1:]] - counts[:, bounds[:-1]]
+            masks = counts[0] > 0
+            correct = counts[1] == 0
         else:
-            for i, m in enumerate(masks):
-                if not m.any():
-                    continue
-                acc_list.append(np.all(preds[i, m] == labels[i, m]))
-    if not acc_list:
-        return {}
+            correct = (correct | ~masks).flatten(1).all(dim=-1)
+            masks = masks.flatten(1).any(dim=-1)
+    if return_counts:
+        acc_list = torch.stack([(correct & masks).sum(), masks.sum()])
+    else:
+        acc_list = correct[masks].tolist()
+        if not acc_list:
+            return {}
     return {f'{acc_strategy}_acc' if preds.ndim >= 2 else 'acc': acc_list}
 
 
