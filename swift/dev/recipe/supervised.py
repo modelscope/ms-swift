@@ -4,6 +4,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from swift.dev.recipe.batching import prepare_supervised_batch, record_training_step
 from swift.dev.recipe.utils import (
     StepState,
     build_generative_eval,
@@ -202,6 +203,7 @@ def run_supervised(
         manual_gc_steps=manual_gc_steps,
         empty_cache_steps=train_config.torch_empty_cache_steps,
         log_formatter=log_formatter,
+        padding_free=template_config.padding_free,
     )
     handler = state.handler
 
@@ -241,11 +243,14 @@ def run_supervised(
         handler.on_step_begin()
         # forward_backward / clip_grad_and_step carry @timed at their twinkle definition
         # site, so the span is recorded on the rank that actually runs them.
-        model.forward_backward(**micro_step_fn(samples, micro_batch_size=train_config.per_device_train_batch_size))
+        kwargs, plan = prepare_supervised_batch(
+            state, samples, micro_step_fn, micro_batch_size=train_config.per_device_train_batch_size,
+            task_type=getattr(cluster, 'task_type', model_config.task_type), loss=train_config.loss)
+        model.forward_backward(**kwargs)
         handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         handler.on_optimizer_step()
-        state.record()
+        record_training_step(state, plan)
         state.step_tail(save=save, evaluate=evaluate)
 
     # Assemble the resume state, then run.

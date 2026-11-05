@@ -54,9 +54,6 @@ class RLConfig:
     num_generations: int = 8
     log_completions: bool = False
     num_iterations: int = 1
-    # Balance each optimizer batch across DP ranks by full sequence workload. Opt in to preserve
-    # the historical sample assignment; advantages are computed before any reordering.
-    balance_batch: bool = False
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None

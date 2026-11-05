@@ -75,13 +75,13 @@ def train(
     if lengths is not None:
         for row, length in zip(rows, lengths, strict=True):
             row.encoded["input_ids"] *= length
+    state.padding_free = padding_free
     return grpo._train_mini_batches(
         state,
         config or RLConfig(rl_type="grpo"),
         rows,
         train_batch_size=2 * state.model.device_mesh.data_world_size,
         batching_kwargs=batching_kwargs,
-        padding_free=padding_free,
         advantages=[i * 10.0 for i in range(offset, offset + count)],
         old_logps=[[i + 0.2] for i in range(offset, offset + count)],
         ref_logps=[[i + 0.3] for i in range(offset, offset + count)],
@@ -101,9 +101,9 @@ def ids(call):
 @pytest.mark.parametrize("dynamic", [False, True])
 def test_length_balance_reduces_rank_load_and_keeps_all_signals_aligned(padding_free, dynamic):
     state = make_state(ga=2)
+    state.balance_batch = True
     config = RLConfig(
         rl_type="grpo",
-        balance_batch=True,
         enable_sampling_replay=True,
         router_replay_mode="R3",
         sdar_loss_coef=0.1,
@@ -142,7 +142,9 @@ def test_length_balance_reduces_rank_load_and_keeps_all_signals_aligned(padding_
 
 def test_balance_preserves_replay_update_membership_and_dropped_tail():
     state = make_state(ga=1)
-    config = RLConfig(rl_type="grpo", balance_batch=True, num_iterations=2)
+    state.balance_batch = True
+    state.padding_free = False
+    config = RLConfig(rl_type="grpo", num_iterations=2)
     assert train(state, 7, config=config, lengths=[2000, 1900, 300, 200, 1800, 1700, 100]) == 3
     expected = (list(range(7)) * 2)[:12]
     for start, call in zip(range(0, 12, 4), state.model.calls, strict=True):

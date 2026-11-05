@@ -58,6 +58,8 @@ def validate_configs(
     _check_streaming(dataset_config)
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_dynamic_batching(train_config, rl_config, is_megatron)
+    if training:
+        _check_batch_balancing(train_config, distributed_config)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
     _check_unsloth_strategy(distributed_config, template_config)
@@ -105,6 +107,12 @@ def validate_configs(
     # by _check_rl_sequence_parallel above, so this early-returns for a non-None rl_config.
     _check_hf_sequence_parallel(
         model_config, template_config, dataset_config, distributed_config, is_megatron, rl_config)
+
+
+def _check_batch_balancing(train_config: 'TrainConfig', distributed_config: 'DistributedConfig') -> None:
+    if train_config.balance_batch and distributed_config.mode != 'ray':
+        raise ValueError("balance_batch requires mode='ray': balancing needs the complete controller-side "
+                         'batch, not rank-local torchrun shards or a remote server batch.')
 
 
 def _check_dynamic_batching(train_config: "TrainConfig", rl_config: Optional["RLConfig"], is_megatron: bool) -> None:
