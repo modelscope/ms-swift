@@ -206,7 +206,7 @@ class TemplateInputs:
                 setattr(self, key, StdTemplateInputs.from_dict(value_dict))
             else:
                 res = []
-                for i in range(len(value_dict['messages'])):
+                for i in range(len(value_dict.get('messages') or [])):
                     kwargs = {}
                     for k in all_keys:
                         val = value_dict.get(k)

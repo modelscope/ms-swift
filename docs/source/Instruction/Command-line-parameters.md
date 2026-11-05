@@ -99,6 +99,7 @@
 - 🔥model_name: **仅用于自我认知任务**，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{NAME}}`通配符。传入模型中文名和英文名，以空格分隔，例如：`--model_name 小黄 'Xiao Huang'`。默认为None。
 - 🔥model_author: 仅用于自我认知任务，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{AUTHOR}}`通配符。传入模型作者的中文名和英文名，以空格分隔，例如：`--model_author '魔搭' 'ModelScope'`。默认为None。
 - custom_dataset_info: 自定义数据集注册的json文件路径，参考[自定义数据集](../Customization/Custom-dataset.md)和[内置'dataset_info.json'文件](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json)。默认为`[]`。
+  - InfoNCE 数据集配置：在注册 JSON 或 `DatasetMeta` 中可添加 `infonce_config`，例如 `{"use_in_batch_negatives": true, "hard_negatives": 0}`（检索正样本）或 `{"use_in_batch_negatives": false, "hard_negatives": 2}`（分类显式负样本）。指定配置后，训练和评估的每个全局分布式批次只含一个数据集，未配置的数据集沿用环境变量默认值。配置仅覆盖对应数据集的 `INFONCE_USE_BATCH` 和 `INFONCE_HARD_NEGATIVES`；温度等设置仍使用现有环境变量。`hard_negatives=0` 保留正样本并丢弃显式负样本，正整数截断或重复现有负样本；无显式负样本时不能扩展。默认保留尾批并在同一数据集内补齐，`dataloader_drop_last=true` 则按数据集丢弃不完整的全局批次。各 rank 的设置在 gather 前检查一致性。要求 Transformers embedding、`loss_type=infonce`、非流式数据集、`sequence_parallel_size=1`，不支持 `group_by_length`；惰性编码遇到坏样本会报错以避免替换成其他数据集。两个负样本来源不能同时禁用。未指定配置时使用原有采样和损失。
 
 ### 模板参数
 - 🔥template: 对话模板类型。默认为None，自动选择对应model的template类型，对应关系参考[支持的模型列表](./Supported-models-and-datasets.md)。
