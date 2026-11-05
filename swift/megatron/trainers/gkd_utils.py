@@ -1,10 +1,79 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Megatron-specific GKD utilities: TP-aware gather/topk, CP reduce and teacher CP slicing."""
 import torch
+from contextlib import nullcontext
+from dataclasses import dataclass
+from functools import lru_cache
 from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
+from megatron.core.tensor_parallel.mappings import (copy_to_tensor_model_parallel_region,
+                                                    gather_from_sequence_parallel_region)
+from typing import Optional
+from unittest.mock import patch
 
-from swift.rlhf_trainers.gkd_loss import TeacherOutput
+from swift.rlhf_trainers.gkd_loss import TeacherOutput, jsd_loss
+from .vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
+
+
+@dataclass
+class TeacherHiddenStates(TeacherOutput):
+    hidden_states: Optional[torch.Tensor] = None
+
+
+def gkd_hidden_states_context(model, enabled=True):
+    """Skip only the final projection; keep the teacher/student PP forwards intact."""
+    model = getattr(model, 'language_model', model)
+    if not enabled or not model.post_process:
+        return nullcontext()
+    # Still call the module so distributed-optimizer parameter-gather hooks run.
+    return patch.object(model.output_layer, 'forward', lambda hidden_states, *args, **kwargs: (hidden_states, None))
+
+
+@lru_cache(maxsize=1)
+def _get_liger_jsd():
+    from liger_kernel.chunked_loss.jsd_loss import LigerFusedLinearJSDFunction
+
+    class VocabParallelJSD(LigerFusedLinearJSDFunction):
+
+        @staticmethod
+        def distillation_loss_fn(student_logits, teacher_logits, beta=0.5, target=None, ignore_index=-100):
+            dtype = torch.promote_types(student_logits.dtype, torch.float32)
+            return jsd_loss(
+                student_logits.to(dtype), teacher_logits.to(dtype), beta, vocab_parallel_log_softmax,
+                vocab_parallel_kl_div)
+
+    return VocabParallelJSD
+
+
+def chunked_gkd_loss(student, teacher_output, labels, student_model, teacher_model, beta, temperature, chunk_size):
+    """Full-vocabulary JSD from hidden states, with TP/SP gradient routing and CP-local masks."""
+
+    def prepare_inputs(hidden, model, mask):
+        model = getattr(model, 'language_model', model)
+        # The model's postprocess returns [batch, sequence / SP, hidden].
+        if mpu.get_tensor_model_parallel_world_size() > 1:
+            if model.config.sequence_parallel:
+                hidden = gather_from_sequence_parallel_region(hidden.transpose(0, 1).contiguous())
+                hidden = hidden.transpose(0, 1).contiguous()
+            else:
+                # Keep the backward input contiguous for M-Core's in-place TP reduction.
+                hidden = copy_to_tensor_model_parallel_region(hidden)
+        weight = model.output_layer.weight
+        if model.share_embeddings_and_output_weights:
+            weight = model.shared_embedding_or_output_weight()
+        return hidden[mask], weight, model.output_layer.bias
+
+    s_mask, t_mask = labels != -100, teacher_output.labels != -100
+    student, student_weight, student_bias = prepare_inputs(student, student_model, s_mask)
+    with torch.no_grad():
+        teacher, teacher_weight, teacher_bias = prepare_inputs(teacher_output.hidden_states, teacher_model, t_mask)
+    num_valid = s_mask.sum()
+    # Inputs are already masked. Liger uses these dummy labels only for normalization (hard-loss weight is zero).
+    targets = torch.zeros_like(labels[s_mask])
+    loss = _get_liger_jsd().apply(student, student_weight, teacher, teacher_weight, targets, student_bias, teacher_bias,
+                                  0., 1., beta, -100, temperature, False, chunk_size, False)
+    # Liger returns a token mean; Megatron normalizes the summed loss across micro-batches and CP/DP.
+    return loss * num_valid, num_valid
 
 
 def vocab_parallel_topk(logits: torch.Tensor, k: int) -> tuple:
