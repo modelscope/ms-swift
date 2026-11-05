@@ -12,16 +12,17 @@ SWIFT supports quantization exports for AWQ, GPTQ, FP8, and BNB models. AWQ and 
 | ---------------------- | ---------- | ---------------------- | ------------------ |
 | FP8     | ✅      | ✅        | ✅        |
 | GPTQ           | ✅          | ✅                      | ✅                  |
-| AWQ                    | ✅          | ✅                      | ✅                  |
+| AWQ                    | ❌          | ✅                      | ✅                  |
 | BNB                    | ❌          | ✅                      | ✅                  |
 
 In addition to the SWIFT installation, the following additional dependencies need to be installed:
 
 ```shell
-# For AWQ quantization:
-# The versions of autoawq and CUDA are correlated; please choose the version according to `https://github.com/casper-hansen/AutoAWQ`.
-# If there are dependency conflicts with torch, please add the `--no-deps` option.
-pip install autoawq -U
+# For AWQ quantization (from the source checkout):
+pip install -e '.[awq]'
+
+# Once a published ms-swift release provides this extra:
+# pip install 'ms-swift[awq]'
 
 # For GPTQ quantization:
 pip install gptqmodel optimum -U
@@ -33,13 +34,26 @@ pip install gptqmodel optimum -U
 pip install bitsandbytes -U
 ```
 
+`awq` is an independent optional extra; it is not included in the base installation or the `all` extra. Check the environment's dependency constraints before installing and run `python -m pip check` afterward. The following observations apply to the specific versions tested, not to all releases:
+
+| Component | Tested version or known constraint |
+| --- | --- |
+| AWQ export test environment | Python 3.12, PyTorch 2.11.0+cu130, Transformers 5.14.1, GPTQModel 7.3.2 |
+| GPTQModel 7.3.2 | Requires Python >=3.10; on Python 3.12, requires NumPy 2.2.6 and protobuf >=7.34.0 |
+| SwanLab 0.9.2 | Requires protobuf <7, conflicting with GPTQModel 7.3.2 |
+| ms-opencompass 0.1.6 | Requires NumPy <2, conflicting with GPTQModel 7.3.2 |
+
+If AWQ, SwanLab, or ms-opencompass are needed in the same environment, first confirm that the chosen versions' declared requirements have a common solution; changing the installation order cannot resolve the conflicts above. If no common solution is available, use separate environments for quantization, training, and evaluation. Do not treat `--no-deps` as a resolution of `pip check` conflicts. Requirements may change by package and Python version; also verify PyTorch, CUDA, Transformers, and other installed components. The test image has other dependency conflicts, so successful AWQ export does not establish compatibility of the entire image.
+
 We provide a series of scripts to demonstrate SWIFT's quantization export capabilities:
 
 - Supports [AWQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/awq.sh)/[GPTQ](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq.sh)/[GPTQ v2](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/gptq_v2.sh)/[BNB](https://github.com/modelscope/ms-swift/blob/main/examples/export/quantize/bnb.sh) quantization exports.
-- Multimodal quantization: Supports quantizing multimodal models using GPTQ and AWQ, with limited multimodal models supported by AWQ. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/mllm).
+- Multimodal quantization: GPTQ supports multimodal models; AWQ does not currently support multimodal calibration. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/mllm).
 - Support for more model series: Supports quantization exports for [BERT](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/bert) and [Reward Model](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize/reward_model).
 - Models exported with SWIFT's quantization support inference acceleration using vllm/sglang/lmdeploy; they also support further SFT/RLHF using QLoRA.
 
+
+AWQ uses GPTQModel to produce GEMM weights with zero points. It supports text calibration, safetensors, and unquantized source models; merge LoRA adapters first using `--merge_lora true`. Adding special tokens, setting `--device_map`, or passing custom model loading arguments during AWQ export are not supported. The model architecture must be supported by GPTQModel. Check compatibility with the existing PyTorch, Transformers, and other dependencies when installing it.
 
 GPTQ backends may save symmetric weights in GPTQ v1 format even when GPTQ v2 is used during quantization. The exported configuration records the saved format so the model reloads correctly.
 

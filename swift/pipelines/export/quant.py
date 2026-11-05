@@ -22,11 +22,42 @@ class QuantEngine(ProcessorMixin):
 
     def __init__(self, args: ExportArguments):
         self.args = args
-        kwargs = {}
         if args.quant_method == 'awq':
-            from awq import AutoAWQForCausalLM
-            kwargs['auto_model_cls'] = AutoAWQForCausalLM
-        self.model, self.template = prepare_model_template(args, **kwargs)
+            if args.adapters:
+                raise ValueError('AWQ requires merged adapters. Use --merge_lora true first.')
+            if not args.safe_serialization:
+                raise ValueError('GPTQModel AWQ export requires --safe_serialization true.')
+            if args.quant_bits is None:
+                raise ValueError('Please set quant_bits for AWQ export.')
+            if args.new_special_tokens:
+                raise ValueError('AWQ does not support adding special tokens during export.')
+            if args.device_map is not None:
+                raise ValueError('GPTQModel AWQ selects its own device; --device_map is not supported.')
+            if args.task_type != 'causal_lm' or args.tuner_backend == 'unsloth':
+                raise ValueError('GPTQModel AWQ supports causal language models without the unsloth backend.')
+            for name in ('model_kwargs', 'rope_scaling', 'max_memory', 'attn_impl', 'experts_impl', 'max_model_len',
+                         'init_strategy'):
+                if getattr(args, name, None):
+                    raise ValueError(f'GPTQModel AWQ does not support --{name} during export.')
+            if getattr(args.model_info.config, 'quantization_config', None):
+                raise ValueError('AWQ requires an unquantized model; the input is already quantized.')
+            try:
+                from gptqmodel import AWQConfig, GPTQModel
+            except ImportError as exc:
+                raise ImportError('AWQ export requires GPTQModel >= 7.3.2: pip install "gptqmodel>=7.3.2"') from exc
+            _, processor = args.get_model_processor(load_model=False)
+            self.template = args.get_template(processor)
+            quant_config = AWQConfig(bits=args.quant_bits, group_size=args.group_size, sym=False)
+            self.awq_model = GPTQModel.load(
+                args.model_dir, quantize_config=quant_config, trust_remote_code=True, dtype=args.torch_dtype)
+            if self.awq_model.quantized:
+                raise ValueError('AWQ requires an unquantized model; the input is already quantized.')
+            self.model = self.awq_model.model
+            self.model.model_meta = processor.model_meta
+            self.model.model_info = processor.model_info
+            self.model.model_dir = args.model_dir
+        else:
+            self.model, self.template = prepare_model_template(args)
         self.template.set_mode('train')
         self.model.config.use_cache = False
         HfConfigFactory.set_config_attr(self.model.config, 'use_cache', False)
@@ -38,10 +69,9 @@ class QuantEngine(ProcessorMixin):
         if args.quant_bits is None and args.quant_method not in {'fp8', 'entropack'}:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {args.quant_bits}')
         if args.quant_method == 'awq':
-            self.template.model = self.model.model
-            self.awq_model_quantize()
-            self.model.save_quantized(
-                args.output_dir, safetensors=args.safe_serialization, shard_size=args.max_shard_size)
+            self.template.model = self.model
+            awq_model = self.awq_model_quantize()
+            awq_model.save(args.output_dir, max_shard_size=args.max_shard_size)
         elif args.quant_method in {'gptq', 'gptq_v2'}:
             self.template.model = self.model
             gptq_quantizer = self.gptq_model_quantize(v2=(args.quant_method == 'gptq_v2'))
@@ -134,48 +164,29 @@ class QuantEngine(ProcessorMixin):
                 res.append(torch.tensor(input_ids)[None])
         return res
 
-    @staticmethod
-    @contextmanager
-    def _patch_awq_move_embed(awq_model):
-        _origin_move_embed = awq_model.move_embed
-
-        def _move_embed(model, device: str):
-            if hasattr(model, '_hf_hook') and device != 'cpu':
-                return
-            _origin_move_embed(model, device)
-
-        awq_model.move_embed = _move_embed
-        try:
-            yield
-        finally:
-            awq_model.move_embed = _origin_move_embed
-
-    def awq_model_quantize(self) -> None:
-        from awq.quantize import quantizer
-
+    def awq_model_quantize(self):
         args = self.args
+        if getattr(self.model.config, 'quantization_config', None):
+            raise ValueError('AWQ requires an unquantized model; the input is already quantized.')
+        if any(str(param.dtype).startswith('torch.float8') for param in self.model.parameters()):
+            raise ValueError('AWQ requires an unquantized model; FP8 weights are not supported.')
+        if args.adapters:
+            raise ValueError('AWQ requires merged adapters. Use --merge_lora true first.')
+        if not args.safe_serialization:
+            raise ValueError('GPTQModel AWQ export requires --safe_serialization true.')
+
         logger.info(f'Quantization dataset: {args.dataset}')
-        _origin_get_calib_dataset = quantizer.get_calib_dataset
-        quantizer.get_calib_dataset = self._get_quant_dataset
-        quant_config = {
-            'zero_point': True,
-            'q_group_size': args.group_size,
-            'w_bit': args.quant_bits,
-            'version': 'GEMM'
-        }
-        if self.model.model_info.is_moe_model:
-            quant_config['modules_to_not_convert'] = self.args.get_modules_to_not_convert()
-        logger.info(f'quant_config: {quant_config}')
+        if self.model.model_meta.is_multimodal:
+            raise ValueError('GPTQModel AWQ export does not currently support multimodal calibration.')
+        calibration = [{
+            'input_ids': block.reshape(-1).tolist()
+        } for block in self._get_quant_dataset() if block.numel()]
+        if not calibration:
+            raise ValueError('AWQ calibration dataset contains no usable tokens.')
         logger.info('Start quantizing the model...')
-        with self._patch_awq_move_embed(self.model):
-            self.model.quantize(
-                self.tokenizer, quant_config=quant_config, n_parallel_calib_samples=args.quant_batch_size)
-        quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
-        if self.model.quant_config.modules_to_not_convert:
-            model_arch = args.model_meta.model_arch
-            lm_head_key = getattr(model_arch, 'lm_head', None) or 'lm_head'
-            if lm_head_key not in self.model.quant_config.modules_to_not_convert:
-                self.model.quant_config.modules_to_not_convert.append(lm_head_key)
+        batch_size = args.quant_batch_size if args.quant_batch_size is not None else len(calibration)
+        self.awq_model.quantize(calibration=calibration, batch_size=batch_size)
+        return self.awq_model
 
     @contextmanager
     def _patch_gptq(self):
