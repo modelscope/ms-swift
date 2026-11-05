@@ -134,9 +134,8 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
     return input_ids, labels
 
 
-def _split_str_by_regex(text: str, regex_delimiters: List[str]) -> List[str]:
-    combined_pattern = '|'.join(f'({pattern})' for pattern in regex_delimiters)
-    parts = re.split(combined_pattern, text, flags=re.DOTALL)
+def _split_str_by_regex(text: str, pattern: str) -> List[str]:
+    parts = re.split(pattern, text, flags=re.DOTALL)
     parts = [part for part in parts if part is not None]
     if parts[0] == '':
         parts.pop(0)
@@ -158,20 +157,26 @@ def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = Fals
         The split text in list of dicts.
     """
     assert isinstance(text, str), f'text: {text}'
-    delimiters_origin = delimiters
     if not regex_mode:
         delimiters = [re.escape(delimiter) for delimiter in delimiters]
-    parts = _split_str_by_regex(text, delimiters) if delimiters else ['', text]
+    if delimiters:
+        if regex_mode:
+            pattern = '|'.join(f'({delimiter})' for delimiter in delimiters)
+        else:
+            pattern = '(' + '|'.join(delimiters) + ')'
+        parts = _split_str_by_regex(text, pattern)
+    else:
+        parts = ['', text]
     res = []
     if regex_mode:
         parts = [part for part in parts if part]
         for part in parts:
-            for delimiter, delimiter_origin in zip(delimiters, delimiters_origin):
+            for delimiter in delimiters:
                 if re.match(delimiter, part, re.DOTALL):
                     break
             else:
-                delimiter_origin = ''
-            res.append({'key': delimiter_origin, 'content': part})
+                delimiter = ''
+            res.append({'key': delimiter, 'content': part})
     else:
         for key, content in zip(parts[::2], parts[1::2]):
             res.append({'key': key, 'content': content})
