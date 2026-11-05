@@ -33,14 +33,14 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-MODEL_GROUP = 'model'
-SAMPLER_GROUP = 'sampler'
+MODEL_GROUP = "model"
+SAMPLER_GROUP = "sampler"
 #: A separate frozen teacher (a GRPO RLSD/SDAR or a distillation teacher) is its own Ray DeviceGroup;
 #: a disable_adapter / dynamic-self teacher reuses the policy actor and plans no group.
-TEACHER_GROUP = 'teacher'
+TEACHER_GROUP = "teacher"
 #: A FULL-PARAMETER frozen reference is an independent weight copy: its own DeviceGroup. A LoRA /
 #: disable_adapter reference reuses the policy's base and plans no group.
-REF_GROUP = 'ref'
+REF_GROUP = "ref"
 
 
 def collect(result: Any) -> Any:
@@ -53,7 +53,7 @@ def collect(result: Any) -> Any:
     resolve-if-lazy seam in :func:`swift.dev.utils.scoring.response_token_scores`. Calling ``()`` blindly
     assumes the lazy form and raises ``'tuple' object is not callable`` on the eager one.
     """
-    return result() if callable(result) and getattr(result, '_is_lazy_collect', False) else result
+    return result() if callable(result) and getattr(result, "_is_lazy_collect", False) else result
 
 
 #: The console cadence when no LoggingConfig was supplied (legacy logging_steps=1: every step).
@@ -82,10 +82,14 @@ class SaveKnobs(NamedTuple):
     remote: bool = False
 
 
-def build_save_knobs(checkpoint_config: Optional['CheckpointConfig'],
-                     dataset_config: Optional['DatasetConfig'],
-                     distributed_config: 'DistributedConfig',
-                     tuner_config: Optional['TunerConfig'], *, output_dir: str) -> SaveKnobs:
+def build_save_knobs(
+    checkpoint_config: Optional["CheckpointConfig"],
+    dataset_config: Optional["DatasetConfig"],
+    distributed_config: "DistributedConfig",
+    tuner_config: Optional["TunerConfig"],
+    *,
+    output_dir: str,
+) -> SaveKnobs:
     """Collect CheckpointConfig's writer knobs plus the derived adapter / hub faces into one bundle."""
     ckpt = checkpoint_config
     return SaveKnobs(
@@ -93,13 +97,14 @@ def build_save_knobs(checkpoint_config: Optional['CheckpointConfig'],
         no_save_optim=bool(ckpt and (ckpt.no_save_optim or ckpt.save_only_model)),
         no_save_rng=bool(ckpt and (ckpt.no_save_rng or ckpt.save_only_model)),
         safe_serialization=ckpt.safe_serialization if ckpt else True,
-        max_shard_size=ckpt.max_shard_size if ckpt else '5GB',
+        max_shard_size=ckpt.max_shard_size if ckpt else "5GB",
         save_total_limit=ckpt.save_total_limit if ckpt else None,
         async_save=bool(ckpt and ckpt.async_save),
         initial_adapter_dir=initial_adapter_dir(tuner_config, distributed_config, output_dir),
         hub_pusher=build_hub_pusher(ckpt, dataset_config),
-        hub_strategy=ckpt.hub_strategy if ckpt else 'every_save',
-        remote=distributed_config.mode == 'remote')
+        hub_strategy=ckpt.hub_strategy if ckpt else "every_save",
+        remote=distributed_config.mode == "remote",
+    )
 
 
 def is_main_process() -> bool:
@@ -113,8 +118,9 @@ def is_main_process() -> bool:
     return not (dist.is_available() and dist.is_initialized()) or dist.get_rank() == 0
 
 
-def initial_adapter_dir(tuner_config: Optional['TunerConfig'], distributed_config: 'DistributedConfig',
-                        output_dir: str) -> Optional[str]:
+def initial_adapter_dir(
+    tuner_config: Optional["TunerConfig"], distributed_config: "DistributedConfig", output_dir: str
+) -> Optional[str]:
     """``output_dir/initial_model`` when a base-modifying LoRA init rewrites the base weight.
 
     A base-modifying init (pissa ...) makes every saved checkpoint need the initial-adapter snapshot
@@ -125,16 +131,18 @@ def initial_adapter_dir(tuner_config: Optional['TunerConfig'], distributed_confi
 
     if tuner_config is None or not is_base_modifying_init(tuner_config.init_weights):
         return None
-    if distributed_config.mode == 'remote':
+    if distributed_config.mode == "remote":
         # The client handle has no save_initial_adapter (the snapshot lives in the server's
         # store); a base-modifying init is refused at validate time rather than half-wired here.
         return None
     if is_megatron_backend(distributed_config):
-        logger.warning('base-modifying LoRA init %r on the megatron backend: checkpoint conversion '
-                       '(converted/default) is not wired there; only the raw adapter is saved.',
-                       tuner_config.init_weights)
+        logger.warning(
+            "base-modifying LoRA init %r on the megatron backend: checkpoint conversion "
+            "(converted/default) is not wired there; only the raw adapter is saved.",
+            tuner_config.init_weights,
+        )
         return None
-    return os.path.join(output_dir, 'initial_model')
+    return os.path.join(output_dir, "initial_model")
 
 
 def snapshot_initial_adapter(model: Any, initial_adapter_dir: Optional[str]) -> None:
@@ -146,15 +154,16 @@ def snapshot_initial_adapter(model: Any, initial_adapter_dir: Optional[str]) -> 
     """
     if initial_adapter_dir is None or not is_main_process():
         return
-    marker = os.path.join(initial_adapter_dir, 'adapter_config.json')
+    marker = os.path.join(initial_adapter_dir, "adapter_config.json")
     if os.path.exists(marker):
         return
     os.makedirs(initial_adapter_dir, exist_ok=True)
     model.save_initial_adapter(initial_adapter_dir)
 
 
-def build_hub_pusher(checkpoint_config: Optional['CheckpointConfig'],
-                     dataset_config: Optional['DatasetConfig']) -> Optional[Callable[[str], None]]:
+def build_hub_pusher(
+    checkpoint_config: Optional["CheckpointConfig"], dataset_config: Optional["DatasetConfig"]
+) -> Optional[Callable[[str], None]]:
     """A callable that uploads one checkpoint dir to the hub, or None when pushing is off.
 
     Goes through twinkle's ``HubOperation`` rather than ``TrainableModel.upload_to_hub``: the latter
@@ -166,26 +175,29 @@ def build_hub_pusher(checkpoint_config: Optional['CheckpointConfig'],
     if cfg is None or not cfg.push_to_hub:
         return None
     if not cfg.hub_model_id:
-        raise ValueError('CheckpointConfig.push_to_hub is set but hub_model_id is empty, so there is no '
-                         'target repo to upload to. Pass --hub_model_id <repo_id>.')
+        raise ValueError(
+            "CheckpointConfig.push_to_hub is set but hub_model_id is empty, so there is no "
+            "target repo to upload to. Pass --hub_model_id <repo_id>."
+        )
     from twinkle.hub import HubOperation
 
     token = dataset_config.hub_token if dataset_config is not None else None
     repo_id = cfg.hub_model_id
     private = cfg.hub_private_repo
-    revision = cfg.hub_revision or 'master'
+    revision = cfg.hub_revision or "master"
     # hub_always_push blocks until each upload lands, for a run where a dropped push would go
     # unnoticed; off by default so uploads run on a background thread and do not stall training.
     async_upload = not cfg.hub_always_push
 
     def push(checkpoint_dir: str) -> None:
-        push_kwargs = dict(
-            repo_id=repo_id,
-            folder_path=checkpoint_dir,
-            token=token,
-            private=private,
-            revision=revision,
-            commit_message=f'Upload {os.path.basename(checkpoint_dir.rstrip("/"))} from swift.dev training')
+        push_kwargs = {
+            "repo_id": repo_id,
+            "folder_path": checkpoint_dir,
+            "token": token,
+            "private": private,
+            "revision": revision,
+            "commit_message": f"Upload {os.path.basename(checkpoint_dir.rstrip('/'))} from swift.dev training",
+        }
         if async_upload:
             HubOperation.async_push_to_hub(**push_kwargs)
         else:
@@ -194,11 +206,17 @@ def build_hub_pusher(checkpoint_config: Optional['CheckpointConfig'],
     return push
 
 
-def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConfig',
-                         template_config: 'TemplateConfig', tuner_config: Optional['TunerConfig'] = None,
-                         quantize_config: Optional['QuantizeConfig'] = None,
-                         dataset_config: Optional['DatasetConfig'] = None,
-                         *, task_type: Optional[str] = None) -> None:
+def write_ckpt_args_json(  # noqa: C901
+    ckpt_dir: str,
+    processor: Any,
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    tuner_config: Optional["TunerConfig"] = None,
+    quantize_config: Optional["QuantizeConfig"] = None,
+    dataset_config: Optional["DatasetConfig"] = None,
+    *,
+    task_type: Optional[str] = None,
+) -> None:
     """Write the self-describing args.json ``swift infer`` reads back from the checkpoint.
 
     Legacy dumped the full argument dict; the read side (cli/parser.py) consumes only force-load
@@ -218,19 +236,23 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
     os.makedirs(ckpt_dir, exist_ok=True)
 
     from swift.dev.config.checkpoint_config import (
-        CHECKPOINT_DATA_FIELDS, CHECKPOINT_FORCE_LOAD_FIELDS, CHECKPOINT_LOAD_FIELDS)
+        CHECKPOINT_DATA_FIELDS,
+        CHECKPOINT_FORCE_LOAD_FIELDS,
+        CHECKPOINT_LOAD_FIELDS,
+    )
     from swift.dev.utils.version import __version__ as swift_version
-    model_meta = getattr(processor, 'model_meta', None)
+
+    model_meta = getattr(processor, "model_meta", None)
     configs = {
-        'model_config': model_config,
-        'quantize_config': quantize_config,
-        'tuner_config': tuner_config,
-        'template_config': template_config,
+        "model_config": model_config,
+        "quantize_config": quantize_config,
+        "tuner_config": tuner_config,
+        "template_config": template_config,
     }
     args: Dict[str, Any] = {
         # swift_version gates model_type loading in BaseArguments.load_args_from_ckpt
         # (model_type is only honored when swift_version >= 4.0.0.dev); must be present.
-        'swift_version': swift_version,
+        "swift_version": swift_version,
     }
     # force-load keys: the reader applies these regardless of its current value.
     for config_name, names in CHECKPOINT_FORCE_LOAD_FIELDS.items():
@@ -260,25 +282,31 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
     # Resolved metadata and portable ids win over the CLI spellings captured above: the model id
     # re-resolves on any machine, and the template the run actually built (possibly the meta default
     # rather than the user's) is what reproduces this checkpoint.
-    args['model'] = getattr(model_config, '_model_id_or_path', None) or model_config.model
-    if getattr(model_meta, 'model_type', None) is not None:
-        args['model_type'] = model_meta.model_type
-    args['template'] = template_config.template or getattr(model_meta, 'template', None)
-    args['task_type'] = model_config.task_type or task_type
-    if 'tuner_type' not in args:
+    args["model"] = getattr(model_config, "_model_id_or_path", None) or model_config.model
+    if getattr(model_meta, "model_type", None) is not None:
+        args["model_type"] = model_meta.model_type
+    args["template"] = template_config.template or getattr(model_meta, "template", None)
+    args["task_type"] = model_config.task_type or task_type
+    if "tuner_type" not in args:
         # tuner_config is absent exactly on full-parameter runs, whose checkpoints infer must read
         # back as full too (the reader force-loads tuner_type over its own default 'lora').
-        args['tuner_type'] = 'full'
+        args["tuner_type"] = "full"
     args = {key: value for key, value in args.items() if value is not None}
-    with open(os.path.join(ckpt_dir, 'args.json'), 'w', encoding='utf-8') as f:
+    with open(os.path.join(ckpt_dir, "args.json"), "w", encoding="utf-8") as f:
         json.dump(args, f, ensure_ascii=False, indent=2)
 
 
-def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
-                       consumed_train_samples: int = 0,
-                       component_states: Optional[Dict[str, dict]] = None,
-                       is_final: bool = False,
-                       requantize_source: Optional[str] = None) -> str:
+def save_training_step(
+    model: Any,
+    handler: Any,
+    name: str,
+    knobs: SaveKnobs,
+    *,
+    consumed_train_samples: int = 0,
+    component_states: Optional[Dict[str, dict]] = None,
+    is_final: bool = False,
+    requantize_source: Optional[str] = None,
+) -> str:
     """One training checkpoint: the twinkle-native write, the converted adapter, the hub push.
 
     ``consumed_train_samples`` / ``component_states`` carry the data position: the offline family
@@ -294,13 +322,14 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
         # No component state rides the call: SaveRequest has no field for it, and the data
         # position re-seeds from the server's own progress on resume (resume_from_checkpoint).
         response = model.save(
-            name,
-            save_optimizer=not knobs.no_save_optim,
-            consumed_train_samples=consumed_train_samples)
-        return getattr(response, 'twinkle_path', name)
+            name, save_optimizer=not knobs.no_save_optim, consumed_train_samples=consumed_train_samples
+        )
+        return getattr(response, "twinkle_path", name)
 
     save_training_checkpoint(
-        model, name, output_dir=knobs.output_dir,
+        model,
+        name,
+        output_dir=knobs.output_dir,
         consumed_train_samples=consumed_train_samples,
         component_states=component_states or {},
         no_save_optim=knobs.no_save_optim,
@@ -313,24 +342,28 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
         async_save=knobs.async_save and not is_final,
         # A background writer may still be flushing shards; only the synchronous saves can
         # be re-quantized in place.
-        requantize_source=requantize_source if (is_final or not knobs.async_save) else None)
+        requantize_source=requantize_source if (is_final or not knobs.async_save) else None,
+    )
     ckpt_dir = os.path.join(knobs.output_dir, name)
     if knobs.initial_adapter_dir is not None and is_main_process():
         # The portable form of a base-modifying adapter: fold the init factor back out, so a
         # consumer merges the converted copy instead of the residual-base-only raw one.
-        model.save_converted_adapter(os.path.join(ckpt_dir, 'converted', 'default'), knobs.initial_adapter_dir)
+        model.save_converted_adapter(os.path.join(ckpt_dir, "converted", "default"), knobs.initial_adapter_dir)
     handler.on_save(checkpoint_dir=ckpt_dir)
     # 'end' pushes only the final checkpoint; the push-on-save strategies push every one.
-    if knobs.hub_pusher is not None and (knobs.hub_strategy != 'end' or is_final) and is_main_process():
+    if knobs.hub_pusher is not None and (knobs.hub_strategy != "end" or is_final) and is_main_process():
         handler.on_push_begin(checkpoint_dir=ckpt_dir)
         knobs.hub_pusher(ckpt_dir)
     return ckpt_dir
 
 
-def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'],
-                      distributed_config: 'DistributedConfig',
-                      megatron_config: Optional['MegatronConfig'],
-                      tuner_config: Optional['TunerConfig']) -> dict:
+def _restore_training(
+    model: Any,
+    checkpoint_config: Optional["CheckpointConfig"],
+    distributed_config: "DistributedConfig",
+    megatron_config: Optional["MegatronConfig"],
+    tuner_config: Optional["TunerConfig"],
+) -> dict:
     """Restore the trainable model and return twinkle's training-progress state ({} when no resume).
 
     Weights / optimizer / scheduler / RNG are restored here; the caller then seeds its loop counters
@@ -343,41 +376,44 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
     path = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     if not path:
         return {}
-    resume_kwargs = {'resume_only_model': bool(checkpoint_config and checkpoint_config.resume_only_model)}
-    if distributed_config.mode == 'remote':
+    resume_kwargs = {"resume_only_model": bool(checkpoint_config and checkpoint_config.resume_only_model)}
+    if distributed_config.mode == "remote":
         # A twinkle:// URI names a checkpoint in the SERVER's store; the handle restores weights,
         # optimizer, scheduler and progress state in one call, so the local trainer_state.json
         # probe below (and the megatron kwargs) do not apply.
         if tuner_config is not None:
-            resume_kwargs['adapter_name'] = 'default'
+            resume_kwargs["adapter_name"] = "default"
         return model.resume_from_checkpoint(path, **resume_kwargs)
     if checkpoint_config is not None and is_megatron_backend(distributed_config):
         resume_kwargs.update(
             no_load_optim=checkpoint_config.no_load_optim,
             no_load_rng=checkpoint_config.no_load_rng,
-            data_parallel_random_init=bool(megatron_config and megatron_config.data_parallel_random_init))
-    adapter_name = 'default' if tuner_config is not None else None
+            data_parallel_random_init=bool(megatron_config and megatron_config.data_parallel_random_init),
+        )
+    adapter_name = "default" if tuner_config is not None else None
     if adapter_name is not None:
-        resume_kwargs['adapter_name'] = adapter_name
+        resume_kwargs["adapter_name"] = adapter_name
 
-    trainer_state_path = os.path.join(path, 'trainer_state.json')
+    trainer_state_path = os.path.join(path, "trainer_state.json")
     if not os.path.isfile(trainer_state_path):
-        if not resume_kwargs['resume_only_model']:
+        if not resume_kwargs["resume_only_model"]:
             raise FileNotFoundError(
-                f'{trainer_state_path} is missing, so this model-only checkpoint cannot resume '
-                'optimizer, scheduler, RNG, or progress state. Set --resume_only_model true to start '
-                'a new run from its weights, or resume from a checkpoint saved without '
-                '--no_save_optim/--save_only_model.')
+                f"{trainer_state_path} is missing, so this model-only checkpoint cannot resume "
+                "optimizer, scheduler, RNG, or progress state. Set --resume_only_model true to start "
+                "a new run from its weights, or resume from a checkpoint saved without "
+                "--no_save_optim/--save_only_model."
+            )
         # No trainer state means a new run at step 0: only the adapter weights need loading (the
         # full-parameter model was already constructed from ``path`` by build_model).
         if adapter_name:
             model.load(path, adapter_name=adapter_name)
-        return {'cur_step': 0, 'consumed_train_samples': 0}
+        return {"cur_step": 0, "consumed_train_samples": 0}
     return model.resume_from_checkpoint(path, **resume_kwargs)
 
 
-def _seed_counters(state: dict, *, gradient_accumulation_steps: int, dataloader: Any,
-                   ignore_data_skip: bool) -> Tuple[int, int, int]:
+def _seed_counters(
+    state: dict, *, gradient_accumulation_steps: int, dataloader: Any, ignore_data_skip: bool
+) -> Tuple[int, int, int]:
     """Seed the loop counters + dataloader position from a restored trainer_state.
 
     ``micro_step`` mirrors twinkle's ``cur_step`` so the grad-sync phase stays aligned,
@@ -386,36 +422,41 @@ def _seed_counters(state: dict, *, gradient_accumulation_steps: int, dataloader:
     start_epoch)``; a ``dataloader=None`` (prompt-stream) run always seeds ``(n, n, 0)``.
     """
 
-    cur_step = int(state['cur_step'])
+    cur_step = int(state["cur_step"])
     micro_step = cur_step
     global_step = num_optimizer_steps(cur_step, gradient_accumulation_steps)
-    if 'component_states' in state:
-        component_states = state['component_states']
+    if "component_states" in state:
+        component_states = state["component_states"]
         if not isinstance(component_states, dict):
-            raise TypeError('checkpoint component_states must be a dict.')
-        if not ignore_data_skip and dataloader is not None and 'dataloader' in component_states:
-            load_state = getattr(dataloader, 'load_state', None)
+            raise TypeError("checkpoint component_states must be a dict.")
+        if not ignore_data_skip and dataloader is not None and "dataloader" in component_states:
+            load_state = getattr(dataloader, "load_state", None)
             if load_state is None:
-                raise TypeError('the dataloader does not implement load_state().')
-            load_state(component_states['dataloader'])
+                raise TypeError("the dataloader does not implement load_state().")
+            load_state(component_states["dataloader"])
     elif not ignore_data_skip and dataloader is not None:
         # Compatibility with checkpoints written before component_states existed.
-        skip = getattr(dataloader, 'skip_consumed_samples', None)
+        skip = getattr(dataloader, "skip_consumed_samples", None)
         if skip is not None:
-            skip(int(state.get('consumed_train_samples', 0)))
+            skip(int(state.get("consumed_train_samples", 0)))
     if ignore_data_skip or dataloader is None:
         return global_step, micro_step, 0
-    get_state = getattr(dataloader, 'get_state', None)
-    start_epoch = int((get_state() if get_state is not None else {}).get('epoch', 0))
+    get_state = getattr(dataloader, "get_state", None)
+    start_epoch = int((get_state() if get_state is not None else {}).get("epoch", 0))
     return global_step, micro_step, start_epoch
 
 
-def resume_training(model: Any, *, checkpoint_config: Optional['CheckpointConfig'],
-                    distributed_config: 'DistributedConfig',
-                    megatron_config: Optional['MegatronConfig'],
-                    tuner_config: Optional['TunerConfig'],
-                    gradient_accumulation_steps: int, dataloader: Any = None,
-                    ignore_data_skip: bool = False) -> Tuple[int, int, int]:
+def resume_training(
+    model: Any,
+    *,
+    checkpoint_config: Optional["CheckpointConfig"],
+    distributed_config: "DistributedConfig",
+    megatron_config: Optional["MegatronConfig"],
+    tuner_config: Optional["TunerConfig"],
+    gradient_accumulation_steps: int,
+    dataloader: Any = None,
+    ignore_data_skip: bool = False,
+) -> Tuple[int, int, int]:
     """Restore the trainable model, then seed the loop counters and the data position.
 
     Returns ``(global_step, micro_step, start_epoch)``. The offline family passes its dataloader
@@ -426,8 +467,11 @@ def resume_training(model: Any, *, checkpoint_config: Optional['CheckpointConfig
     if not state:
         return 0, 0, 0
     return _seed_counters(
-        state, gradient_accumulation_steps=gradient_accumulation_steps, dataloader=dataloader,
-        ignore_data_skip=ignore_data_skip)
+        state,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        dataloader=dataloader,
+        ignore_data_skip=ignore_data_skip,
+    )
 
 
 def _log_line(record: dict, loss: float) -> str:
@@ -436,34 +480,39 @@ def _log_line(record: dict, loss: float) -> str:
     ``lr`` is read from the TrainMetric key ``learning rate`` (a display string like '5.000000e-05'
     once the tracker has formatted it, or a float before that).
     """
-    def _fmt(value, spec='.4f'):
+
+    def _fmt(value, spec=".4f"):
         # A console head must never crash the training loop: coerce, fall back to the value as-is.
         try:
             return format(float(value), spec)
         except (TypeError, ValueError):
             return str(value)
 
-    gn = record.get('grad_norm')
-    gn_str = f'  grad_norm={_fmt(gn)}' if gn is not None else ''
+    gn = record.get("grad_norm")
+    gn_str = f"  grad_norm={_fmt(gn)}" if gn is not None else ""
     # TrainMetric names single-group lr 'learning rate' and multi-group 'learning rate(param group N)'
     # (LoRA runs have several optimizer groups); the head line shows the first group's lr.
-    lr = record.get('learning rate')
+    lr = record.get("learning rate")
     if lr is None:
         for key in sorted(record):
-            if key.startswith('learning rate'):
+            if key.startswith("learning rate"):
                 lr = record[key]
                 break
-    lr_str = f'  lr={_fmt(lr, ".6e")}' if lr is not None else ''
-    mtp = record.get('mtp_loss')
-    mtp_str = f'  mtp_loss={_fmt(mtp)}' if mtp is not None else ''
-    channel_str = ''.join(f'  {key}={_fmt(value)}' for key, value in record.items() if key.startswith('loss_'))
+    lr_str = f"  lr={_fmt(lr, '.6e')}" if lr is not None else ""
+    mtp = record.get("mtp_loss")
+    mtp_str = f"  mtp_loss={_fmt(mtp)}" if mtp is not None else ""
+    channel_str = "".join(f"  {key}={_fmt(value)}" for key, value in record.items() if key.startswith("loss_"))
     # The legacy rollout_correction diagnostics, when the loop computed them: the signed KL is
     # the acceptance number for a freshly synced sampler (target < 1e-2).
-    correction_str = ''.join(
-        f'  {label}={_fmt(record[key], ".3g")}'
-        for label, key in (('rollout_kl', 'rollout_correction/kl'), ('rollout_k3_kl', 'rollout_correction/k3_kl'),
-                           ('rollout_logp_absdiff', 'rollout_correction/log_ppl_abs_diff'))
-        if isinstance(record.get(key), (int, float)))
+    correction_str = "".join(
+        f"  {label}={_fmt(record[key], '.3g')}"
+        for label, key in (
+            ("rollout_kl", "rollout_correction/kl"),
+            ("rollout_k3_kl", "rollout_correction/k3_kl"),
+            ("rollout_logp_absdiff", "rollout_correction/log_ppl_abs_diff"),
+        )
+        if isinstance(record.get(key), (int, float))
+    )
     return f"step {record.get('step')}  loss={loss:.4f}{lr_str}{gn_str}{mtp_str}{channel_str}{correction_str}"
 
 
@@ -474,7 +523,7 @@ def _mtp_metrics(model: Any) -> Dict[str, float]:
     its own rather than through twinkle's Metric objects, and it must be drained each step or the
     reported value grows without bound. Absent on transformers and whenever MTP is off.
     """
-    pop = getattr(model, 'pop_mtp_metrics', None)
+    pop = getattr(model, "pop_mtp_metrics", None)
     if pop is None:
         return {}
     return {key: float(value) for key, value in (pop() or {}).items()}
@@ -489,13 +538,25 @@ class StepState:
     tail (the boundary save / eval cadence, ``on_step_end``, the transient control flags).
     """
 
-    def __init__(self, model: Any, train_config: 'TrainConfig', *, gradient_accumulation_steps: int,
-                 max_steps: int, max_grad_norm: float, logging_config: Optional['LoggingConfig'],
-                 output_dir: str, save_steps: Optional[int] = None, eval_steps: Optional[int] = None,
-                 eval_delay: int = 0, manual_gc: bool = False, manual_gc_steps: int = 0,
-                 empty_cache_steps: Optional[int] = None,
-                 extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-                 log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None):
+    def __init__(
+        self,
+        model: Any,
+        train_config: "TrainConfig",
+        *,
+        gradient_accumulation_steps: int,
+        max_steps: int,
+        max_grad_norm: float,
+        logging_config: Optional["LoggingConfig"],
+        output_dir: str,
+        save_steps: Optional[int] = None,
+        eval_steps: Optional[int] = None,
+        eval_delay: int = 0,
+        manual_gc: bool = False,
+        manual_gc_steps: int = 0,
+        empty_cache_steps: Optional[int] = None,
+        extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None,
+    ):
         # The tracker initializes its reporters as a construction side effect (validation ran above).
 
         from swift.dev.callbacks import build_callbacks
@@ -565,7 +626,7 @@ class StepState:
         # Tick every registered actor's profiler step counter once per optimizer step (non-blocking).
         Perf.advance_step()
         metrics = self.model.calculate_metric(is_training=True)
-        loss = float(metrics['loss']) if metrics.get('loss') is not None else float('nan')
+        loss = float(metrics["loss"]) if metrics.get("loss") is not None else float("nan")
         if self._logging_config is not None:
             due = self.tracker.should_log(self.global_step)
         else:
@@ -573,9 +634,9 @@ class StepState:
         should_log = due or self.handler.control.should_log
         # twinkle.metric is the single source of every algorithm metric: merge the WHOLE component
         # output, coerced to numeric scalars; ``loss`` is re-pinned as the normalized float.
-        record = {'step': self.global_step}
+        record = {"step": self.global_step}
         record.update(coerce_metric_scalars(metrics))
-        record['loss'] = loss
+        record["loss"] = loss
         record.update(_mtp_metrics(self.model))
         if self._extra_metrics_fn is not None:
             record.update(self._extra_metrics_fn())
@@ -588,8 +649,7 @@ class StepState:
         self.publish_state(loss=loss, metrics=record)
         if should_log:
             # A recipe's own head signal (PPO's value_loss / reward / explained_variance line).
-            line = (self._log_formatter(record, loss) if self._log_formatter is not None
-                    else _log_line(record, loss))
+            line = self._log_formatter(record, loss) if self._log_formatter is not None else _log_line(record, loss)
             logger.info(line)
             self.handler.on_log(logs=record)
         return record
@@ -606,8 +666,9 @@ class StepState:
             return False
         return self.global_step > self.eval_delay
 
-    def step_tail(self, save: Optional[Callable[[str], Any]] = None,
-                  evaluate: Optional[Callable[[], Any]] = None) -> None:
+    def step_tail(
+        self, save: Optional[Callable[[str], Any]] = None, evaluate: Optional[Callable[[], Any]] = None
+    ) -> None:
         """The end-of-optimizer-step tail: periodic save, periodic eval, on_step_end, its requests.
 
         The order is the old loop's save branch followed by its post-step tail: the save_steps
@@ -616,13 +677,13 @@ class StepState:
         / ``should_log`` flags so a one-shot request does not repeat on every subsequent step.
         """
         if save is not None and self.save_steps and self.global_step % self.save_steps == 0:
-            save(f'checkpoint-{self.global_step}')
+            save(f"checkpoint-{self.global_step}")
         if evaluate is not None and self._eval_due():
             evaluate()
         self.handler.on_step_end()
         control = self.handler.control
         if control.should_save and save is not None:
-            save(f'checkpoint-{self.global_step}')
+            save(f"checkpoint-{self.global_step}")
         if control.should_evaluate and evaluate is not None:
             evaluate()
         control.should_save = False
@@ -630,9 +691,16 @@ class StepState:
         control.should_log = False
 
 
-def rollout_step_budget(*, num_prompts: int, num_generations: int, train_batch_size: int,
-                        gradient_accumulation_steps: int, num_train_epochs: float,
-                        generation_batch_size: Optional[int] = None, num_iterations: int = 1) -> int:
+def rollout_step_budget(
+    *,
+    num_prompts: int,
+    num_generations: int,
+    train_batch_size: int,
+    gradient_accumulation_steps: int,
+    num_train_epochs: float,
+    generation_batch_size: Optional[int] = None,
+    num_iterations: int = 1,
+) -> int:
     """Optimizer steps for ``num_train_epochs`` passes over the prompt set (the scheduler horizon).
 
     Each generation batch rolls out ``batch_size * num_generations`` completions, splits into full
@@ -654,15 +722,17 @@ def resolve_rollout_max_steps(explicit_max_steps: int, budget: int, *, recipe: s
         return explicit_max_steps
     if budget <= 0:
         raise ValueError(
-            f'{recipe}: derived {budget} training steps -- a generation batch cannot fill one '
-            'train_batch_size (per_device_train_batch_size * dp_size) mini-batch. Enlarge the prompt '
-            'dataset or num_generations, lower per_device_train_batch_size / the DP world size, or set '
-            '--max_steps explicitly.')
+            f"{recipe}: derived {budget} training steps -- a generation batch cannot fill one "
+            "train_batch_size (per_device_train_batch_size * dp_size) mini-batch. Enlarge the prompt "
+            "dataset or num_generations, lower per_device_train_batch_size / the DP world size, or set "
+            "--max_steps explicitly."
+        )
     return budget
 
 
-def plan_device_groups(nproc_per_node: int, sampler_mode: Optional[str], sampler_world_size: int,
-                       auxiliary: Sequence[Tuple[str, int]]) -> Tuple[List[Tuple[str, List[int]]], bool]:
+def plan_device_groups(
+    nproc_per_node: int, sampler_mode: Optional[str], sampler_world_size: int, auxiliary: Sequence[Tuple[str, int]]
+) -> Tuple[List[Tuple[str, List[int]]], bool]:
     """Plan the twinkle DeviceGroups for an online-RL run (pure: no twinkle import).
 
     Colocate overlays separate trainer and sampler groups on the same GPUs (independent rank
@@ -670,13 +740,15 @@ def plan_device_groups(nproc_per_node: int, sampler_mode: Optional[str], sampler
     last, disjoint, in order. Returns ``(groups, colocate)``.
     """
     if nproc_per_node is None or nproc_per_node < 1:
-        raise ValueError(f'nproc_per_node must be >= 1 (the trainer GPU count), got {nproc_per_node!r}.')
+        raise ValueError(f"nproc_per_node must be >= 1 (the trainer GPU count), got {nproc_per_node!r}.")
     if sampler_world_size < 1:
-        raise ValueError(f'sampler_world_size must be >= 1, got {sampler_world_size}.')
-    if sampler_mode == 'colocate':
+        raise ValueError(f"sampler_world_size must be >= 1, got {sampler_world_size}.")
+    if sampler_mode == "colocate":
         if sampler_world_size > nproc_per_node:
-            raise ValueError(f'colocate needs the sampler ({sampler_world_size} GPUs) to fit within the trainer '
-                             f'GPUs ({nproc_per_node}). Use sampler_mode="disaggregated" for its own GPUs.')
+            raise ValueError(
+                f"colocate needs the sampler ({sampler_world_size} GPUs) to fit within the trainer "
+                f'GPUs ({nproc_per_node}). Use sampler_mode="disaggregated" for its own GPUs.'
+            )
         # The overlay has its own worker-rank space; reusing MODEL_GROUP would inherit the trainer's
         # worker count and DeviceMesh, wrong as soon as sampler TP/PP is wider than one GPU.
         groups = [(MODEL_GROUP, list(range(nproc_per_node))), (SAMPLER_GROUP, list(range(sampler_world_size)))]
@@ -693,8 +765,10 @@ def plan_device_groups(nproc_per_node: int, sampler_mode: Optional[str], sampler
         if world_size <= 0:
             continue
         if name in reserved:
-            raise ValueError(f'auxiliary DeviceGroup name {name!r} collides with a reserved group '
-                             f'({sorted(reserved)}); each frozen model needs a unique name.')
+            raise ValueError(
+                f"auxiliary DeviceGroup name {name!r} collides with a reserved group "
+                f"({sorted(reserved)}); each frozen model needs a unique name."
+            )
         groups.append((name, list(range(next_rank, next_rank + world_size))))
         next_rank += world_size
     return groups, colocate
@@ -710,18 +784,26 @@ def auxiliary_mesh(group: str, spec: Optional[str], meshes: Optional[Dict[str, A
     return DeviceMesh.from_spec(spec)
 
 
-def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                          dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
-                          distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
-                          rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
-                          reward_config: 'RewardConfig', tuner_config: Optional['TunerConfig'],
-                          logging_config: Optional['LoggingConfig'] = None,
-                          quantize_config: Optional['QuantizeConfig'] = None,
-                          megatron_config: Optional['MegatronConfig'] = None,
-                          moe_config: Optional['MoEConfig'] = None, output_dir: str = 'output',
-                          prompt_rows: Sequence[Dict[str, Any]] = (),
-                          group_requests: Callable[[], List[Tuple[str, Optional[str]]]]
-                          ) -> Tuple[Any, Any, Dict[str, Any]]:
+def initialize_rl_devices(
+    *,
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    dataset_config: "DatasetConfig",
+    train_config: "TrainConfig",
+    distributed_config: "DistributedConfig",
+    checkpoint_config: "CheckpointConfig",
+    rollout_config: "RolloutConfig",
+    rl_config: "RLConfig",
+    reward_config: "RewardConfig",
+    tuner_config: Optional["TunerConfig"],
+    logging_config: Optional["LoggingConfig"] = None,
+    quantize_config: Optional["QuantizeConfig"] = None,
+    megatron_config: Optional["MegatronConfig"] = None,
+    moe_config: Optional["MoEConfig"] = None,
+    output_dir: str = "output",
+    prompt_rows: Sequence[Dict[str, Any]] = (),
+    group_requests: Callable[[], List[Tuple[str, Optional[str]]]],
+) -> Tuple[Any, Any, Dict[str, Any]]:
     """Prepare the configs, build the template, and initialize twinkle + perf for an online-RL run.
 
     Returns ``(template, resource_plan, auxiliary_meshes)``: the plan is the ClusterAdapter's (already
@@ -738,36 +820,68 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     from swift.dev.config import process_configs, validate_configs
 
     process_configs(
-        model_config, template_config, dataset_config, train_config, distributed_config,
-        checkpoint_config, tuner_config, rl_config, rollout_config=rollout_config,
-        megatron_config=megatron_config, quantize_config=quantize_config, plugin_config=None)
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        rl_config,
+        rollout_config=rollout_config,
+        megatron_config=megatron_config,
+        quantize_config=quantize_config,
+        plugin_config=None,
+    )
     validate_configs(
-        model_config, template_config, dataset_config, train_config, distributed_config,
-        checkpoint_config, tuner_config, reward_config=reward_config,
-        rollout_config=rollout_config, logging_config=logging_config, quantize_config=quantize_config,
-        megatron_config=megatron_config, moe_config=moe_config)
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        reward_config=reward_config,
+        rollout_config=rollout_config,
+        logging_config=logging_config,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
+    )
     _, processor = load_model_processor(model_config)
-    task_type = model_config.task_type or 'causal_lm'
+    task_type = model_config.task_type or "causal_lm"
     template = build_template(template_config, processor, task_type=task_type)
     write_ckpt_args_json(
-        output_dir, processor, model_config, template_config, tuner_config, quantize_config,
-        dataset_config=dataset_config, task_type=task_type)
+        output_dir,
+        processor,
+        model_config,
+        template_config,
+        tuner_config,
+        quantize_config,
+        dataset_config=dataset_config,
+        task_type=task_type,
+    )
 
     backend = rollout_config.rollout_sampler
-    if backend not in ('vllm', 'sglang'):
-        raise ValueError(f"rollout_sampler={backend!r} cannot back an online-RL rollout: weight sync into the "
-                         "sampler needs a CheckpointEngineMixin engine. Use 'vllm' or 'sglang'.")
+    if backend not in ("vllm", "sglang"):
+        raise ValueError(
+            f"rollout_sampler={backend!r} cannot back an online-RL rollout: weight sync into the "
+            "sampler needs a CheckpointEngineMixin engine. Use 'vllm' or 'sglang'."
+        )
     requests = group_requests()
     # One mesh per auxiliary, built once so the group's rank count and the model's sharding cannot
     # drift; an estimate plan rewrites the specs, so the dict is dropped and re-derived at the build.
-    auxiliary_meshes: Dict[str, Any] = {
-        name: (DeviceMesh.from_spec(spec) if spec else None) for name, spec in requests}
+    auxiliary_meshes: Dict[str, Any] = {name: (DeviceMesh.from_spec(spec) if spec else None) for name, spec in requests}
     resource_plan = estimate_plan(
-        model_config=model_config, distributed_config=distributed_config, rollout_config=rollout_config,
-        template=template, prompt_rows=prompt_rows,
+        model_config=model_config,
+        distributed_config=distributed_config,
+        rollout_config=rollout_config,
+        template=template,
+        prompt_rows=prompt_rows,
         auxiliary_groups=[(name, (mesh.world_size if mesh else 1)) for name, mesh in auxiliary_meshes.items()],
-        max_completion_length=rl_config.max_completion_length)
-    if backend == 'sglang':
+        max_completion_length=rl_config.max_completion_length,
+    )
+    if backend == "sglang":
         sampler_width = rollout_config.sglang_tp_size * rollout_config.sglang_pp_size
         sampler_replicas = rollout_config.sglang_dp_size
     else:
@@ -775,17 +889,20 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
         sampler_replicas = rollout_config.vllm_data_parallel_size
     if resource_plan is None:
         groups, colocate = plan_device_groups(
-            distributed_config.nproc_per_node, rollout_config.sampler_mode,
+            distributed_config.nproc_per_node,
+            rollout_config.sampler_mode,
             sampler_width * sampler_replicas,
-            [(name, (mesh.world_size if mesh else 1)) for name, mesh in auxiliary_meshes.items()])
+            [(name, (mesh.world_size if mesh else 1)) for name, mesh in auxiliary_meshes.items()],
+        )
     else:
-        groups = resource_device_groups(resource_plan, adaptive=rollout_config.resource_mode == 'adaptive')
-        colocate = False
+        groups = resource_device_groups(resource_plan, adaptive=rollout_config.resource_mode == "adaptive")
         auxiliary_meshes = {}
-        logger.info('RL resource plan:\n%s', resource_plan.describe())
-    if distributed_config.mode != 'ray':
-        raise ValueError("online RL requires DistributedConfig.mode='ray': the trainer and the rollout sampler "
-                         'are separate Ray actors that the driver drives and syncs weights between.')
+        logger.info("RL resource plan:\n%s", resource_plan.describe())
+    if distributed_config.mode != "ray":
+        raise ValueError(
+            "online RL requires DistributedConfig.mode='ray': the trainer and the rollout sampler "
+            "are separate Ray actors that the driver drives and syncs weights between."
+        )
     allocated = set()
     device_groups = []
     for group_name, ranks in groups:
@@ -793,31 +910,52 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
         shared = group_name != MODEL_GROUP and bool(rank_set) and rank_set.issubset(allocated)
         # A sampler group's workers each span the engine's parallel width; every other group is one
         # GPU per rank.
-        sampler_group = (group_name in (SAMPLER_GROUP, 'shared_sampler') or group_name.startswith('sampler_')
-                         or group_name.startswith('shared_sampler_') or group_name.startswith('flex_sampler_'))
+        sampler_group = (
+            group_name in (SAMPLER_GROUP, "shared_sampler")
+            or group_name.startswith("sampler_")
+            or group_name.startswith("shared_sampler_")
+            or group_name.startswith("flex_sampler_")
+        )
         width = sampler_width if sampler_group else 1
         device_groups.append(
-            DeviceGroup(name=group_name, ranks=ranks,
-                        device_type=Platform.get_platform().__name__, gpus_per_worker=width, shared=shared))
+            DeviceGroup(
+                name=group_name,
+                ranks=ranks,
+                device_type=Platform.get_platform().__name__,
+                gpus_per_worker=width,
+                shared=shared,
+            )
+        )
         if not shared:
             allocated.update(rank_set)
     total = max(allocated) + 1 if allocated else 0
     twinkle.initialize(
-        mode='ray',
+        mode="ray",
         nproc_per_node=total,
-        extra_torch_kwargs={'seed': train_config.seed, 'full_determinism': train_config.full_determinism,
-                            'tf32': train_config.tf32},
+        extra_torch_kwargs={
+            "seed": train_config.seed,
+            "full_determinism": train_config.full_determinism,
+            "tf32": train_config.tf32,
+        },
         global_device_mesh=build_dp_mesh(distributed_config, template_config.sequence_parallel_size),
         name=distributed_config.ray_exp_name,
-        groups=[*device_groups, DeviceGroup(name=REF_ONLY_REMOTE_GROUP, ranks=1, device_type='CPU')])
-    logger.info('twinkle initialized with DeviceGroups: %s', [(g.name, g.ranks) for g in device_groups])
+        groups=[*device_groups, DeviceGroup(name=REF_ONLY_REMOTE_GROUP, ranks=1, device_type="CPU")],
+    )
+    logger.info("twinkle initialized with DeviceGroups: %s", [(g.name, g.ranks) for g in device_groups])
     Perf.initialize({})  # the cluster's actors register themselves once built (see the run_*)
     return template, resource_plan, auxiliary_meshes
 
 
-def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutConfig', template: Any,
-                     tuner_config: Optional['TunerConfig'], resource_plan: Any = None,
-                     colocate: bool = False, enable_sampling_replay: bool = False) -> Any:
+def build_rl_sampler(
+    *,
+    model_config: "ModelConfig",
+    rollout_config: "RolloutConfig",
+    template: Any,
+    tuner_config: Optional["TunerConfig"],
+    resource_plan: Any = None,
+    colocate: bool = False,
+    enable_sampling_replay: bool = False,
+) -> Any:
     """The weight-syncable rollout sampler: shaped engine args, then the planned or static build.
 
     The planned layout (estimate/adaptive) sizes the replica pool and stamps the elastic instance id;
@@ -830,44 +968,66 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
 
     backend = rollout_config.rollout_sampler
     sampler_engine_args = build_engine_args(backend, None, rollout_config)
-    if backend == 'vllm':
+    if backend == "vllm":
         # RL implements DP with independently dispatched sampler actors. Each actor owns
         # only one TP x PP replica; forwarding the outer DP size would make every vLLM
         # engine launch that many replicas again, outside its assigned device range.
-        sampler_engine_args['data_parallel_size'] = 1
+        sampler_engine_args["data_parallel_size"] = 1
         # Every RL weight sync lands through twinkle's vLLM worker extension. Install the
         # quant-aware subclass so an FP8 / MXFP4 engine can absorb the trainer's BF16 stream;
         # it is a pass-through when the engine is not quantized. An explicit engine arg wins.
         from swift.dev.weight_sync import QUANT_SYNC_WORKER_EXTENSION
-        sampler_engine_args.setdefault('worker_extension_cls', QUANT_SYNC_WORKER_EXTENSION)
+
+        sampler_engine_args.setdefault("worker_extension_cls", QUANT_SYNC_WORKER_EXTENSION)
     if colocate:
-        sampler_engine_args['enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'] = True
-    if (backend == 'vllm' and tuner_config is not None and tuner_config.tuner == 'lora'
-            and rollout_config.weight_sync_strategy == 'adapter_snapshot'):
-        sampler_engine_args.setdefault('enable_lora', True)
-        sampler_engine_args.setdefault('max_lora_rank', tuner_config.lora_rank)
-        sampler_engine_args.setdefault('max_loras', 2)
+        sampler_engine_args["enable_sleep_mode" if backend == "vllm" else "enable_memory_saver"] = True
+    if (
+        backend == "vllm"
+        and tuner_config is not None
+        and tuner_config.tuner == "lora"
+        and rollout_config.weight_sync_strategy == "adapter_snapshot"
+    ):
+        sampler_engine_args.setdefault("enable_lora", True)
+        sampler_engine_args.setdefault("max_lora_rank", tuner_config.lora_rank)
+        sampler_engine_args.setdefault("max_loras", 2)
     if enable_sampling_replay:
-        sampler_engine_args['enable_sampling_replay'] = True
+        sampler_engine_args["enable_sampling_replay"] = True
     if resource_plan is not None:
         return build_sampler(
-            model_config, backend=backend, engine_args=dict(sampler_engine_args),
-            device_mesh=DeviceMesh.from_sizes(dp_size=resource_plan.sampler.replica_count), template=template,
-            remote_group=SAMPLER_GROUP, instance_id='adaptive-sampler')
-    if backend == 'sglang':
+            model_config,
+            backend=backend,
+            engine_args=dict(sampler_engine_args),
+            device_mesh=DeviceMesh.from_sizes(dp_size=resource_plan.sampler.replica_count),
+            template=template,
+            remote_group=SAMPLER_GROUP,
+            instance_id="adaptive-sampler",
+        )
+    if backend == "sglang":
         replicas = rollout_config.sglang_dp_size
     else:
         replicas = rollout_config.vllm_data_parallel_size
     return build_sampler(
-        model_config, backend=backend, engine_args=sampler_engine_args,
-        device_mesh=DeviceMesh.from_sizes(dp_size=replicas), template=template,
-        remote_group=SAMPLER_GROUP)
+        model_config,
+        backend=backend,
+        engine_args=sampler_engine_args,
+        device_mesh=DeviceMesh.from_sizes(dp_size=replicas),
+        template=template,
+        remote_group=SAMPLER_GROUP,
+    )
 
 
-def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'ModelConfig',
-                           template_config: 'TemplateConfig', distributed_config: 'DistributedConfig',
-                           rollout_config: 'RolloutConfig', backend: str, sampler: Any,
-                           quantize_config: Optional['QuantizeConfig'] = None) -> List[Any]:
+def resolve_reward_scorers(
+    channel: str,
+    *,
+    reward_config: Any,
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    distributed_config: "DistributedConfig",
+    rollout_config: "RolloutConfig",
+    backend: str,
+    sampler: Any,
+    quantize_config: Optional["QuantizeConfig"] = None,
+) -> List[Any]:
     """One reward channel's ordered scorer list: the rules resolve locally, each MODEL via the builder.
 
     ``channel`` is 'orm' or 'prm': the merged ``--<channel>`` list resolves through
@@ -882,24 +1042,39 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
     plan = resolve_channel(
         list(getattr(reward_config, channel)),
         ChannelCompanions(
-            adapters=getattr(reward_config, f'{channel}_adapters'),
-            model_types=getattr(reward_config, f'{channel}_model_type'),
-            task_types=getattr(reward_config, f'{channel}_task_type', None),
-            model_revisions=getattr(reward_config, f'{channel}_model_revision'),
-            template_names=getattr(reward_config, f'{channel}_template'),
-            parallel_spec=getattr(reward_config, f'{channel}_parallel_spec')),
-        channel=channel, sampler_model=model_config.model, backend=backend)
+            adapters=getattr(reward_config, f"{channel}_adapters"),
+            model_types=getattr(reward_config, f"{channel}_model_type"),
+            task_types=getattr(reward_config, f"{channel}_task_type", None),
+            model_revisions=getattr(reward_config, f"{channel}_model_revision"),
+            template_names=getattr(reward_config, f"{channel}_template"),
+            parallel_spec=getattr(reward_config, f"{channel}_parallel_spec"),
+        ),
+        channel=channel,
+        sampler_model=model_config.model,
+        backend=backend,
+    )
     scorers = list(get_reward_funcs(plan.rules, reward_config)[0])
-    prefix = 'reward' if channel == 'orm' else channel
+    prefix = "reward" if channel == "orm" else channel
     for index, spec in enumerate(plan.specs):
-        if channel == 'prm' and spec.kind != 'scalar':
-            raise ValueError(f'--prm model {spec.model_id!r} resolves to a {spec.kind!r} reward, but online RL '
-                             'places only a SCALAR (seq_cls/reranker) frozen PRM today.')
-        scorers.append(build_reward_model(
-            spec, model_config=model_config, template_config=template_config,
-            distributed_config=distributed_config, rollout_config=rollout_config, backend=backend,
-            sampler=sampler, remote_group=f'{prefix}_{index}',
-            judge_template=reward_config.judge_template, quantize_config=quantize_config))
+        if channel == "prm" and spec.kind != "scalar":
+            raise ValueError(
+                f"--prm model {spec.model_id!r} resolves to a {spec.kind!r} reward, but online RL "
+                "places only a SCALAR (seq_cls/reranker) frozen PRM today."
+            )
+        scorers.append(
+            build_reward_model(
+                spec,
+                model_config=model_config,
+                template_config=template_config,
+                distributed_config=distributed_config,
+                rollout_config=rollout_config,
+                backend=backend,
+                sampler=sampler,
+                remote_group=f"{prefix}_{index}",
+                judge_template=reward_config.judge_template,
+                quantize_config=quantize_config,
+            )
+        )
     return scorers
 
 
@@ -909,7 +1084,7 @@ def teacher_group(index: int) -> str:
     A spread placement gives each teacher its own group (a parallel ``forward_only``); the packed
     placement builds all K into the single shared :data:`TEACHER_GROUP` and scores them serially.
     """
-    return f'teacher_{index}'
+    return f"teacher_{index}"
 
 
 def spec_world_size(parallel_spec: Optional[str], default: int = 1) -> int:
@@ -925,7 +1100,9 @@ def spec_world_size(parallel_spec: Optional[str], default: int = 1) -> int:
     return DeviceMesh.from_spec(parallel_spec).world_size
 
 
-def prompt_rows_from_dataset(dataset_config: 'DatasetConfig') -> Tuple[List[Dict[str, Any]], List[List[dict]], List[Dict[str, Any]]]:
+def prompt_rows_from_dataset(
+    dataset_config: "DatasetConfig",
+) -> Tuple[List[Dict[str, Any]], List[List[dict]], List[Dict[str, Any]]]:
     """Load prompt rows, the prompt message views, and the non-message columns for the rollout.
 
     Returns ``(rows, prompts, extras)``: ``rows`` is the raw loaded rows (the resource estimator
@@ -936,19 +1113,19 @@ def prompt_rows_from_dataset(dataset_config: 'DatasetConfig') -> Tuple[List[Dict
 
     rows = load_prompt_only_rows(dataset_config, None, split_dataset_ratio=0.0)
     if not rows:
-        raise ValueError('online RL got an empty dataset. Set DatasetConfig.dataset with prompts to roll out on.')
+        raise ValueError("online RL got an empty dataset. Set DatasetConfig.dataset with prompts to roll out on.")
     prompts: List[List[dict]] = []
     extras: List[Dict[str, Any]] = []
     for row in rows:
-        messages = row.get('messages') if isinstance(row, dict) else None
+        messages = row.get("messages") if isinstance(row, dict) else None
         if not messages:
             continue
-        if messages[-1].get('role') == 'assistant':
+        if messages[-1].get("role") == "assistant":
             messages = messages[:-1]
         prompts.append(list(messages))
-        extras.append({key: value for key, value in row.items() if key != 'messages'})
+        extras.append({key: value for key, value in row.items() if key != "messages"})
     if not prompts:
-        raise ValueError('online RL found no prompt messages in the dataset rows (expected a `messages` column).')
+        raise ValueError("online RL found no prompt messages in the dataset rows (expected a `messages` column).")
     return rows, prompts, extras
 
 
@@ -968,9 +1145,14 @@ class GenerativeEval(NamedTuple):
     exit: Optional[Callable[[], None]]
 
 
-def initialize_supervised_twinkle(distributed_config: 'DistributedConfig', *, seed: int,
-                                  full_determinism: bool, tf32: Optional[bool],
-                                  auxiliary_groups: Sequence[Tuple[str, int]] = ()) -> None:
+def initialize_supervised_twinkle(
+    distributed_config: "DistributedConfig",
+    *,
+    seed: int,
+    full_determinism: bool,
+    tf32: Optional[bool],
+    auxiliary_groups: Sequence[Tuple[str, int]] = (),
+) -> None:
     """Initialize twinkle for EVERY offline backend -- required for a DeviceMesh to reach the model.
 
     mode='ray' builds the 'model' DeviceGroup the workers hold (build_model targets it with
@@ -981,47 +1163,70 @@ def initialize_supervised_twinkle(distributed_config: 'DistributedConfig', *, se
     import twinkle
     from twinkle import DeviceGroup, Platform
 
-    extra_torch_kwargs = {'seed': seed, 'full_determinism': full_determinism, 'tf32': tf32}
-    if distributed_config.mode == 'ray':
+    extra_torch_kwargs = {"seed": seed, "full_determinism": full_determinism, "tf32": tf32}
+    if distributed_config.mode == "ray":
         nproc = distributed_config.nproc_per_node
         if nproc is None:
-            raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
-                             "'model' DeviceGroup). Pass it explicitly -- there is no default.")
-        groups = [DeviceGroup(name='model', ranks=list(range(nproc)),
-                              device_type=Platform.get_platform().__name__, gpus_per_worker=1)]
+            raise ValueError(
+                "DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
+                "'model' DeviceGroup). Pass it explicitly -- there is no default."
+            )
+        groups = [
+            DeviceGroup(
+                name="model", ranks=list(range(nproc)), device_type=Platform.get_platform().__name__, gpus_per_worker=1
+            )
+        ]
         next_rank = nproc
-        planned = ['model']
+        planned = ["model"]
         for name, world_size in auxiliary_groups:
             if world_size < 0:
-                raise ValueError(f'auxiliary DeviceGroup {name!r} world_size must be >= 0, got {world_size}.')
+                raise ValueError(f"auxiliary DeviceGroup {name!r} world_size must be >= 0, got {world_size}.")
             if world_size == 0:
                 continue
             if name in planned:
-                raise ValueError(f'auxiliary DeviceGroup name {name!r} collides with a reserved or already-planned '
-                                 f'group ({planned}); each frozen model needs a unique name.')
-            groups.append(DeviceGroup(name=name, ranks=list(range(next_rank, next_rank + world_size)),
-                                      device_type=Platform.get_platform().__name__, gpus_per_worker=1))
+                raise ValueError(
+                    f"auxiliary DeviceGroup name {name!r} collides with a reserved or already-planned "
+                    f"group ({planned}); each frozen model needs a unique name."
+                )
+            groups.append(
+                DeviceGroup(
+                    name=name,
+                    ranks=list(range(next_rank, next_rank + world_size)),
+                    device_type=Platform.get_platform().__name__,
+                    gpus_per_worker=1,
+                )
+            )
             planned.append(name)
             next_rank += world_size
         twinkle.initialize(
-            mode='ray', nproc_per_node=next_rank, extra_torch_kwargs=extra_torch_kwargs,
+            mode="ray",
+            nproc_per_node=next_rank,
+            extra_torch_kwargs=extra_torch_kwargs,
             # --ray_exp_name names this Ray run (the cluster/worker-name prefix); a local run has no
             # Ray experiment to name, so it is read only here. None keeps twinkle's default.
-            name=distributed_config.ray_exp_name, groups=groups)
+            name=distributed_config.ray_exp_name,
+            groups=groups,
+        )
     else:
-        twinkle.initialize(mode='local', extra_torch_kwargs=extra_torch_kwargs)
+        twinkle.initialize(mode="local", extra_torch_kwargs=extra_torch_kwargs)
 
 
-def process_and_validate(model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                         dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
-                         distributed_config: 'DistributedConfig',
-                         checkpoint_config: Optional['CheckpointConfig'],
-                         tuner_config: Optional['TunerConfig'], logging_config: Optional['LoggingConfig'],
-                         quantize_config: Optional['QuantizeConfig'],
-                         megatron_config: Optional['MegatronConfig'],
-                         moe_config: Optional['MoEConfig'], *,
-                         rl_config: Optional['RLConfig'] = None,
-                         reward_config: Optional['RewardConfig'] = None) -> None:
+def process_and_validate(
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    dataset_config: "DatasetConfig",
+    train_config: "TrainConfig",
+    distributed_config: "DistributedConfig",
+    checkpoint_config: Optional["CheckpointConfig"],
+    tuner_config: Optional["TunerConfig"],
+    logging_config: Optional["LoggingConfig"],
+    quantize_config: Optional["QuantizeConfig"],
+    megatron_config: Optional["MegatronConfig"],
+    moe_config: Optional["MoEConfig"],
+    *,
+    rl_config: Optional["RLConfig"] = None,
+    reward_config: Optional["RewardConfig"] = None,
+) -> None:
     """Process and validate the Configs before building anything heavy (idempotent per stage).
 
     ``rl_config`` / ``reward_config`` ride along when a family consumes them (the RLHF family).
@@ -1029,15 +1234,35 @@ def process_and_validate(model_config: 'ModelConfig', template_config: 'Template
     from swift.dev.config import process_configs, validate_configs
 
     process_configs(
-        model_config, template_config, dataset_config, train_config, distributed_config,
-        checkpoint_config, tuner_config, rl_config,
-        rollout_config=None, megatron_config=megatron_config, quantize_config=quantize_config,
-        plugin_config=None)
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        rl_config,
+        rollout_config=None,
+        megatron_config=megatron_config,
+        quantize_config=quantize_config,
+        plugin_config=None,
+    )
     validate_configs(
-        model_config, template_config, dataset_config, train_config, distributed_config,
-        checkpoint_config, tuner_config, rl_config,
-        reward_config=reward_config, rollout_config=None, logging_config=logging_config,
-        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config)
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        rl_config,
+        reward_config=reward_config,
+        rollout_config=None,
+        logging_config=logging_config,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
+    )
 
 
 def _resolve_step_interval(value: Optional[float], total_steps: int, name: str) -> Optional[int]:
@@ -1049,40 +1274,40 @@ def _resolve_step_interval(value: Optional[float], total_steps: int, name: str) 
     if value is None:
         return None
     if value < 0:
-        raise ValueError(f'{name} must be non-negative, got {value}.')
+        raise ValueError(f"{name} must be non-negative, got {value}.")
     if 0 < value < 1:
         return max(1, math.ceil(total_steps * value))
     if not float(value).is_integer():
-        raise ValueError(f'{name}={value} is not a ratio in (0, 1) or an integer step interval.')
+        raise ValueError(f"{name}={value} is not a ratio in (0, 1) or an integer step interval.")
     return int(value)
 
 
-def _resolve_eval_steps(train_config: 'TrainConfig', total_steps: int) -> Optional[int]:
+def _resolve_eval_steps(train_config: "TrainConfig", total_steps: int) -> Optional[int]:
     """Turn ``eval_strategy`` into the optimizer-step interval the loop counts evals against.
 
     ``process_configs`` already chose the strategy (defaulting it to ``save_strategy`` and forcing
     'no' when the run has nothing to evaluate); 'epoch' maps to the per-epoch share of the budget,
     'steps' (or a bare ``--eval_steps``) to the configured interval.
     """
-    strategy = (train_config.eval_strategy or '').lower()
-    if strategy == 'no':
+    strategy = (train_config.eval_strategy or "").lower()
+    if strategy == "no":
         return None
-    if strategy == 'epoch':
+    if strategy == "epoch":
         epochs = train_config.num_train_epochs or 1.0
         return max(1, math.ceil(total_steps / epochs))
-    return _resolve_step_interval(train_config.eval_steps, total_steps, 'eval_steps')
+    return _resolve_step_interval(train_config.eval_steps, total_steps, "eval_steps")
 
 
-def resolve_step_intervals(train_config: 'TrainConfig',
-                           checkpoint_config: Optional['CheckpointConfig'], total_steps: int) -> None:
+def resolve_step_intervals(
+    train_config: "TrainConfig", checkpoint_config: Optional["CheckpointConfig"], total_steps: int
+) -> None:
     """Resolve the eval/save intervals into the concrete optimizer-step counts the loop uses."""
     train_config.eval_steps = _resolve_eval_steps(train_config, total_steps)
     if checkpoint_config is not None:
-        checkpoint_config.save_steps = _resolve_step_interval(
-            checkpoint_config.save_steps, total_steps, 'save_steps')
+        checkpoint_config.save_steps = _resolve_step_interval(checkpoint_config.save_steps, total_steps, "save_steps")
 
 
-def plan_supervised_steps(recipe: str, train_config: 'TrainConfig', dataloader: Any) -> int:
+def plan_supervised_steps(recipe: str, train_config: "TrainConfig", dataloader: Any) -> int:
     """The optimizer-step budget, with the zero-step fail-fast.
 
     ``N <= ga`` micro-batches yield 0 optimizer steps (the GA gate lags one step, so a dataset that
@@ -1101,17 +1326,24 @@ def plan_supervised_steps(recipe: str, train_config: 'TrainConfig', dataloader: 
     total_opt_steps = num_optimizer_steps(total_micro, train_config.gradient_accumulation_steps)
     if total_opt_steps <= 0:
         raise ValueError(
-            f'{recipe}: computed {total_opt_steps} optimizer steps -- the dataloader is too small for '
-            f'gradient_accumulation_steps={train_config.gradient_accumulation_steps}, or it is a '
-            f'streaming/iterable dataset with no max_steps. Set TrainConfig.max_steps explicitly, or '
-            'provide enough data.')
+            f"{recipe}: computed {total_opt_steps} optimizer steps -- the dataloader is too small for "
+            f"gradient_accumulation_steps={train_config.gradient_accumulation_steps}, or it is a "
+            f"streaming/iterable dataset with no max_steps. Set TrainConfig.max_steps explicitly, or "
+            "provide enough data."
+        )
     return total_opt_steps
 
 
-def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConfig',
-                          train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
-                          template_config: 'TemplateConfig',
-                          output_dir: str) -> Optional[GenerativeEval]:
+def build_generative_eval(
+    *,
+    model: Any,
+    template: Any,
+    model_config: "ModelConfig",
+    train_config: "TrainConfig",
+    distributed_config: "DistributedConfig",
+    template_config: "TemplateConfig",
+    output_dir: str,
+) -> Optional[GenerativeEval]:
     """Build the resident generative-eval sampler and its inputs; None when the run scores val-loss.
 
     Per ``TrainConfig.eval_sampler_backend``: 'transformers' (default) wraps the live training module
@@ -1129,28 +1361,36 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
     # TrainConfig carries no eval_output_dir / eval_num_proc (those belong to ``swift eval``'s
     # EvalConfig): the work dir derives from output_dir, the concurrency is EvalScope's default.
     task_config = build_task_config(
-        work_dir=os.path.join(output_dir, 'eval'),
+        work_dir=os.path.join(output_dir, "eval"),
         limit=cfg.eval_limit,
         dataset_args=cfg.eval_dataset_args,
         generation_config=cfg.eval_generation_config,
-        extra_eval_args=cfg.extra_eval_args)
+        extra_eval_args=cfg.extra_eval_args,
+    )
 
     backend = cfg.eval_sampler_backend
-    if backend == 'transformers':
+    if backend == "transformers":
         from twinkle.sampler import TransformersSampler
 
         sampler = TransformersSampler(model=model)
         sampler.set_template(template)
         return GenerativeEval(
-            sampler=sampler, template=template, datasets=eval_datasets, model_id=eval_model_id,
-            task_config=task_config, enter=None, exit=None)
+            sampler=sampler,
+            template=template,
+            datasets=eval_datasets,
+            model_id=eval_model_id,
+            task_config=task_config,
+            enter=None,
+            exit=None,
+        )
 
     from twinkle.checkpoint_engine import CheckpointEngineManager
 
     from swift.dev.builders import build_dp_mesh, build_sampler
+
     # The hand-over sleeps the engine to free the GPU for the trainer, which each backend permits
     # only with its own memory-saver flag on (vLLM: enable_sleep_mode, sglang: enable_memory_saver).
-    sleep_arg = 'enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'
+    sleep_arg = "enable_sleep_mode" if backend == "vllm" else "enable_memory_saver"
     sampler = build_sampler(
         model_config,
         backend=backend,
@@ -1159,16 +1399,23 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
         # Co-resident in the trainer's 'model' DeviceGroup, carrying the SAME mesh the training
         # model was placed with: an engine slicing inputs on another rank layout would be wrong.
         device_mesh=build_dp_mesh(distributed_config, template_config.sequence_parallel_size),
-        remote_group='model')
-    manager = CheckpointEngineManager(model=model, sampler=sampler, mode='colocate')
+        remote_group="model",
+    )
+    manager = CheckpointEngineManager(model=model, sampler=sampler, mode="colocate")
     # The eval hand-over is ColocateHandover's (the RL rollout's own sequence, so it cannot drift).
 
     # Eval has no RolloutConfig. Sleep at level 1 so the trainer still gets the device back;
     # a training run uses RolloutConfig.sleep_level, where 0 means do not sleep.
     handover = ColocateHandover(model, sampler, manager, colocate=True, sleep_level=1)
     return GenerativeEval(
-        sampler=sampler, template=template, datasets=eval_datasets, model_id=eval_model_id,
-        task_config=task_config, enter=handover.enter, exit=handover.exit)
+        sampler=sampler,
+        template=template,
+        datasets=eval_datasets,
+        model_id=eval_model_id,
+        task_config=task_config,
+        enter=handover.enter,
+        exit=handover.exit,
+    )
 
 
 # The absorbed training infrastructure: the loop cadence helpers, the tracker, the colocate
@@ -1186,7 +1433,7 @@ def filter_perf_actors(candidates: Dict[str, Any]) -> Dict[str, Any]:
     only the actors that own worker ranks have per-rank timings to dump. ``None`` candidates are dropped too, so
     a caller can list every object it might have built without guarding each one.
     """
-    return {label: handle for label, handle in candidates.items() if handle is not None and hasattr(handle, 'perf_on')}
+    return {label: handle for label, handle in candidates.items() if handle is not None and hasattr(handle, "perf_on")}
 
 
 def backend_owns_gradient_accumulation(model) -> bool:
@@ -1234,17 +1481,24 @@ def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
     for row in summary or []:
         if not isinstance(row, dict):
             continue
-        if row.get('name') is not None and row.get('score') is not None:
-            flat[str(row['name'])] = float(row['score'])
-        for metric in row.get('metrics') or []:
-            if isinstance(metric, dict) and metric.get('name') is not None and metric.get('score') is not None:
-                flat[str(metric['name'])] = float(metric['score'])
+        if row.get("name") is not None and row.get("score") is not None:
+            flat[str(row["name"])] = float(row["score"])
+        for metric in row.get("metrics") or []:
+            if isinstance(metric, dict) and metric.get("name") is not None and metric.get("score") is not None:
+                flat[str(metric["name"])] = float(metric["score"])
     return flat
 
 
-def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_gc: bool,
-                  manual_gc_eval: bool, micro_step_kwargs: Callable[..., Dict[str, Any]],
-                  global_step: int) -> Optional[dict]:
+def evaluate_loss(  # noqa: C901
+    model: Any,
+    eval_dataloader: Any,
+    *,
+    eval_iters: int,
+    manual_gc: bool,
+    manual_gc_eval: bool,
+    micro_step_kwargs: Callable[..., Dict[str, Any]],
+    global_step: int,
+) -> Optional[dict]:
     """Val-loss eval: the normalized per-token loss over eval_dataloader (None if there is none).
 
     Mirrors the train metric path on the eval side: each val batch runs ``forward_only`` (no grad)
@@ -1256,6 +1510,7 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
         return None
     if manual_gc and manual_gc_eval:
         import gc
+
         gc.collect()
     for index, batch in enumerate(eval_dataloader):
         if eval_iters > 0 and index >= eval_iters:
@@ -1266,14 +1521,24 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
         except NotImplementedError:
             pass
     metrics = model.calculate_metric(is_training=False)
-    result = {'step': global_step}
-    if metrics.get('loss') is not None:
-        result['eval_loss'] = float(metrics['loss'])
+    result = {"step": global_step}
+    if metrics.get("loss") is not None:
+        result["eval_loss"] = float(metrics["loss"])
     for key, value in metrics.items():
-        if key.startswith('loss_'):
-            result[f'eval_{key}'] = float(value)
+        if key.startswith("loss_"):
+            result[f"eval_{key}"] = float(value)
+        elif key != "loss":
+            # Non-loss metrics (decision's acc/record_acc/ece, or a task head's own component)
+            # pass through under an eval_ prefix. Values that are already numeric stay numeric so
+            # best-model tracking can compare them; formatted strings ('0.9000', '-') ride along
+            # verbatim -- forcing them through float() would crash the eval loop.
+            try:
+                result[f"eval_{key}"] = float(value)
+            except (TypeError, ValueError):
+                result[f"eval_{key}"] = value
     if manual_gc and manual_gc_eval:
         import gc
+
         gc.collect(0)
     return result
 
@@ -1294,7 +1559,7 @@ def evaluate_generate(generative: Optional[GenerativeEval], *, global_step: int)
 
     distributed = dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1
     is_main = (not distributed) or dist.get_rank() == 0
-    result: Dict[str, Any] = {'step': global_step}
+    result: Dict[str, Any] = {"step": global_step}
     if generative.enter is not None:
         generative.enter()
     try:
@@ -1304,9 +1569,10 @@ def evaluate_generate(generative: Optional[GenerativeEval], *, global_step: int)
                 generative.template,
                 datasets=generative.datasets,
                 model_id=generative.model_id,
-                task_config=generative.task_config)
+                task_config=generative.task_config,
+            )
             result.update(flatten_evalscope_report(summary))
-            result['eval_report'] = summary
+            result["eval_report"] = summary
         if distributed:
             dist.barrier()
     finally:
@@ -1315,46 +1581,63 @@ def evaluate_generate(generative: Optional[GenerativeEval], *, global_step: int)
     return result
 
 
-def track_best(metrics: dict, best: Tuple[Optional[float], int, Optional[str]], *,
-               metric_for_best_model: Optional[str], greater_is_better: bool, global_step: int,
-               output_dir: str) -> Tuple[Optional[float], int, Optional[str]]:
+def track_best(
+    metrics: dict,
+    best: Tuple[Optional[float], int, Optional[str]],
+    *,
+    metric_for_best_model: Optional[str],
+    greater_is_better: bool,
+    global_step: int,
+    output_dir: str,
+) -> Tuple[Optional[float], int, Optional[str]]:
     """Update the ``(best_metric, best_step, best_ckpt)`` triple when the watched metric improves."""
     best_metric, best_step, best_ckpt = best
     if not metric_for_best_model:
         return best
     value = metrics.get(metric_for_best_model)
     if value is None:
-        logger.warning(f'metric_for_best_model={metric_for_best_model!r} was not produced by this eval '
-                       f'(got {sorted(key for key in metrics if key != "step")}); best-model tracking '
-                       'skipped for this pass.')
+        logger.warning(
+            f"metric_for_best_model={metric_for_best_model!r} was not produced by this eval "
+            f"(got {sorted(key for key in metrics if key != 'step')}); best-model tracking "
+            "skipped for this pass."
+        )
         return best
     value = float(value)
-    improved = (best_metric is None
-                or (value > best_metric if greater_is_better else value < best_metric))
+    improved = best_metric is None or (value > best_metric if greater_is_better else value < best_metric)
     if improved:
-        return value, global_step, os.path.join(output_dir, f'checkpoint-{global_step}')
+        return value, global_step, os.path.join(output_dir, f"checkpoint-{global_step}")
     return best
 
 
-def load_best_model(model: Any, best_ckpt: Optional[str], *, metric_for_best_model: Optional[str],
-                    best_metric: Optional[float], best_step: int,
-                    adapter_name: Optional[str]) -> None:
+def load_best_model(
+    model: Any,
+    best_ckpt: Optional[str],
+    *,
+    metric_for_best_model: Optional[str],
+    best_metric: Optional[float],
+    best_step: int,
+    adapter_name: Optional[str],
+) -> None:
     """Reload the best checkpoint at train end (the caller gates on load_best_model_at_end)."""
     if not best_ckpt:
-        logger.warning('load_best_model_at_end is set but no eval produced metric_for_best_model; '
-                       'keeping the final weights.')
+        logger.warning(
+            "load_best_model_at_end is set but no eval produced metric_for_best_model; keeping the final weights."
+        )
         return
     if not os.path.isdir(best_ckpt):
         raise FileNotFoundError(
-            f'load_best_model_at_end wants {best_ckpt} (best {metric_for_best_model}='
-            f'{best_metric} at step {best_step}), but it does not exist: save_steps must align '
-            'with eval_steps so the best step is checkpointed, and save_total_limit must not have '
-            'pruned it.')
-    logger.info(f'load_best_model_at_end: reloading best checkpoint {best_ckpt} '
-                f'({metric_for_best_model}={best_metric} at step {best_step}).')
+            f"load_best_model_at_end wants {best_ckpt} (best {metric_for_best_model}="
+            f"{best_metric} at step {best_step}), but it does not exist: save_steps must align "
+            "with eval_steps so the best step is checkpointed, and save_total_limit must not have "
+            "pruned it."
+        )
+    logger.info(
+        f"load_best_model_at_end: reloading best checkpoint {best_ckpt} "
+        f"({metric_for_best_model}={best_metric} at step {best_step})."
+    )
     # LoRA checkpoints reload through their adapter group, so load() targets it rather than the
     # full-parameter weights.
-    kwargs = {'adapter_name': adapter_name} if adapter_name else {}
+    kwargs = {"adapter_name": adapter_name} if adapter_name else {}
     model.load(best_ckpt, **kwargs)
 
 
@@ -1377,6 +1660,7 @@ def start_manual_gc(enabled: bool) -> Optional[bool]:
     if not enabled:
         return None
     import gc
+
     was_enabled = gc.isenabled()
     gc.disable()
     gc.collect()
@@ -1387,10 +1671,11 @@ def collect_manual_gc(enabled: bool, interval: int, step: int) -> None:
     """Run the configured periodic full collection after an optimizer step."""
     if enabled and interval and step % interval == 0:
         import gc
+
         gc.collect()
 
 
-def collect_empty_cache(model: 'TrainableModel', interval: Optional[int], step: int) -> None:
+def collect_empty_cache(model: "TrainableModel", interval: Optional[int], step: int) -> None:
     """Release the device caching allocator every ``interval`` optimizer steps (torch_empty_cache_steps).
 
     A remote model call, not a driver-local ``torch.cuda.empty_cache()``: under Ray the loop runs on the
@@ -1405,26 +1690,35 @@ def finish_manual_gc(was_enabled: Optional[bool]) -> None:
     """Restore the interpreter's automatic-GC state after a loop exits."""
     if was_enabled:
         import gc
+
         gc.enable()
 
 
-def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: str,
-                             consumed_train_samples: int = 0, component_states: Optional[Dict[str, dict]] = None,
-                             no_save_optim: bool = False, no_save_rng: bool = False,
-                             safe_serialization: bool = True, max_shard_size: str = '5GB',
-                             save_total_limit: Optional[int] = None,
-                             async_save: bool = False,
-                             requantize_source: Optional[str] = None) -> str:
+def save_training_checkpoint(
+    model: "TrainableModel",
+    name: str,
+    *,
+    output_dir: str,
+    consumed_train_samples: int = 0,
+    component_states: Optional[Dict[str, dict]] = None,
+    no_save_optim: bool = False,
+    no_save_rng: bool = False,
+    safe_serialization: bool = True,
+    max_shard_size: str = "5GB",
+    save_total_limit: Optional[int] = None,
+    async_save: bool = False,
+    requantize_source: Optional[str] = None,
+) -> str:
     """Save one trainable model, then retain only the newest numbered/final checkpoints."""
     kwargs = {
-        'consumed_train_samples': consumed_train_samples,
-        'component_states': component_states or {},
-        'safe_serialization': safe_serialization,
-        'max_shard_size': max_shard_size,
-        'save_total_limit': save_total_limit,
+        "consumed_train_samples": consumed_train_samples,
+        "component_states": component_states or {},
+        "safe_serialization": safe_serialization,
+        "max_shard_size": max_shard_size,
+        "save_total_limit": save_total_limit,
         # TransformersModel accepts extra save kwargs; MegatronModel consumes this one.
-        'no_save_rng': no_save_rng,
-        'async_save': async_save,
+        "no_save_rng": no_save_rng,
+        "async_save": async_save,
     }
     model.save(name, output_dir=output_dir, save_optimizer=not no_save_optim, **kwargs)
     ckpt_dir = os.path.join(output_dir, name)
@@ -1433,14 +1727,15 @@ def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: 
         # rollout engine (DeepSeek-V4's FlashMLA o_proj reads FP8 weight_scale_inv).
         # Restore the source's packed format in place, using the trained weights.
         from swift.dev.weight_sync.requantize import requantize_checkpoint
+
         requantize_checkpoint(ckpt_dir, requantize_source)
     return ckpt_dir
 
 
-_SUPPORTED_REPORTERS = frozenset({'tensorboard', 'wandb', 'swanlab'})
+_SUPPORTED_REPORTERS = frozenset({"tensorboard", "wandb", "swanlab"})
 
 
-_SECRET_FIELDS = {'swanlab_token', 'swanlab_secret', 'swanlab_webhook_url'}
+_SECRET_FIELDS = {"swanlab_token", "swanlab_secret", "swanlab_webhook_url"}
 
 
 def _coerce_scalar(value: Any) -> Optional[float]:
@@ -1453,9 +1748,10 @@ def _coerce_scalar(value: Any) -> Optional[float]:
     and strips a trailing ``%`` so DPOMetric's ``rewards/accuracies`` (``'85.0%'``) logs as ``85.0``.
     """
     from twinkle.metric.reporting import _finite_number
+
     if isinstance(value, str):
         text = value.strip()
-        if text.endswith('%'):
+        if text.endswith("%"):
             text = text[:-1]
         return _finite_number(text)
     return _finite_number(value)
@@ -1479,7 +1775,7 @@ def coerce_metric_scalars(metrics: Dict[str, Any]) -> Dict[str, float]:
 class RunTracker:
     """Own tracker setup, metric writes, and teardown for one training loop."""
 
-    def __init__(self, config: Optional['LoggingConfig'], output_dir: str):
+    def __init__(self, config: Optional["LoggingConfig"], output_dir: str):
         self.config = config
         self.output_dir = output_dir
         self._writers: Dict[str, Any] = {}
@@ -1489,21 +1785,24 @@ class RunTracker:
         if config is None or not _is_main_process():
             return
         reporters = {name.lower() for name in config.report_to}
-        reporters.discard('none')
+        reporters.discard("none")
         unknown = reporters - _SUPPORTED_REPORTERS
         if unknown:
-            raise ValueError(f'Unsupported report_to values: {sorted(unknown)}. Supported: '
-                             f'{sorted(_SUPPORTED_REPORTERS)} or "none".')
+            raise ValueError(
+                f'Unsupported report_to values: {sorted(unknown)}. Supported: {sorted(_SUPPORTED_REPORTERS)} or "none".'
+            )
         for reporter in sorted(reporters):
-            getattr(self, f'_setup_{reporter}')()
+            getattr(self, f"_setup_{reporter}")()
 
     def should_log(self, step: int, *, epoch_end: bool = False) -> bool:
-        if self.config is None or self.config.logging_strategy == 'no':
+        if self.config is None or self.config.logging_strategy == "no":
             return False
-        if self.config.logging_strategy == 'epoch':
+        if self.config.logging_strategy == "epoch":
             return epoch_end
-        return bool((self.config.logging_first_step and step == 1)
-                    or (self.config.logging_steps and step % self.config.logging_steps == 0))
+        return bool(
+            (self.config.logging_first_step and step == 1)
+            or (self.config.logging_steps and step % self.config.logging_steps == 0)
+        )
 
     def log(self, metrics: Dict[str, Any], step: int, *, epoch_end: bool = False) -> Dict[str, Any]:
         """Filter and write one metric record; returns the record actually emitted."""
@@ -1512,19 +1811,19 @@ class RunTracker:
             return filtered
         scalars = {}
         for key, value in filtered.items():
-            if key == 'step':
+            if key == "step":
                 continue
             number = _coerce_scalar(value)
             if number is not None:
                 scalars[key] = number
-        writer = self._writers.get('tensorboard')
+        writer = self._writers.get("tensorboard")
         if writer is not None:
             for key, value in scalars.items():
                 writer.add_scalar(key, value, step)
-        writer = self._writers.get('wandb')
+        writer = self._writers.get("wandb")
         if writer is not None:
             writer.log(scalars, step=step)
-        writer = self._writers.get('swanlab')
+        writer = self._writers.get("swanlab")
         if writer is not None:
             writer.log(scalars, step=step)
         return filtered
@@ -1533,7 +1832,7 @@ class RunTracker:
         """Log each distinct prompt/completion pair once when W&B prompt logging is enabled."""
         if not self.config or not self.config.wandb_log_unique_prompts:
             return
-        writer = self._writers.get('wandb')
+        writer = self._writers.get("wandb")
         if writer is None:
             return
         prompts = list(prompts)
@@ -1546,49 +1845,49 @@ class RunTracker:
             if prompt_key in self._logged_prompts:
                 continue
             self._logged_prompts.add(prompt_key)
-            rows.append([prompt_key, getattr(sample, 'decoded', str(sample))])
+            rows.append([prompt_key, getattr(sample, "decoded", str(sample))])
         if rows:
-            writer.log({'completions': writer.Table(columns=['prompt', 'completion'], data=rows)}, step=step)
+            writer.log({"completions": writer.Table(columns=["prompt", "completion"], data=rows)}, step=step)
 
     def close(self) -> None:
-        writer = self._writers.get('tensorboard')
+        writer = self._writers.get("tensorboard")
         if writer is not None:
             writer.close()
-        writer = self._writers.get('wandb')
+        writer = self._writers.get("wandb")
         if writer is not None:
             writer.finish()
-        writer = self._writers.get('swanlab')
+        writer = self._writers.get("swanlab")
         if writer is not None:
-            finish = getattr(writer, 'finish', None)
+            finish = getattr(writer, "finish", None)
             if finish is not None:
                 finish()
         self._writers.clear()
 
     def _filter_metrics(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
         result = dict(metrics)
-        loss = result.get('loss')
+        loss = result.get("loss")
         if isinstance(loss, (int, float)):
             if math.isfinite(loss):
                 self._loss_total += float(loss)
                 self._loss_count += 1
             elif self.config is not None and self.config.logging_nan_inf_filter and self._loss_count:
-                result['loss'] = self._loss_total / self._loss_count
+                result["loss"] = self._loss_total / self._loss_count
         return result
 
     def _setup_tensorboard(self) -> None:
         try:
             from torch.utils.tensorboard import SummaryWriter
         except ImportError as exc:
-            raise ImportError('report_to includes tensorboard; install tensorboard to enable it.') from exc
+            raise ImportError("report_to includes tensorboard; install tensorboard to enable it.") from exc
         config = self.config
-        log_dir = config.tensorboard_dir or config.logging_dir or os.path.join(self.output_dir, 'runs')
-        self._writers['tensorboard'] = SummaryWriter(log_dir=log_dir, max_queue=config.tensorboard_queue_size)
+        log_dir = config.tensorboard_dir or config.logging_dir or os.path.join(self.output_dir, "runs")
+        self._writers["tensorboard"] = SummaryWriter(log_dir=log_dir, max_queue=config.tensorboard_queue_size)
 
     def _setup_wandb(self) -> None:
         try:
             import wandb
         except ImportError as exc:
-            raise ImportError('report_to includes wandb; install wandb to enable it.') from exc
+            raise ImportError("report_to includes wandb; install wandb to enable it.") from exc
         config = self.config
         wandb.init(
             dir=config.logging_dir or self.output_dir,
@@ -1596,13 +1895,13 @@ class RunTracker:
             project=config.wandb_project,
             config=_public_config(config),
         )
-        self._writers['wandb'] = wandb
+        self._writers["wandb"] = wandb
 
     def _setup_swanlab(self) -> None:
         try:
             import swanlab
         except ImportError as exc:
-            raise ImportError('report_to includes swanlab; install swanlab to enable it.') from exc
+            raise ImportError("report_to includes swanlab; install swanlab to enable it.") from exc
         config = self.config
         if config.swanlab_token:
             swanlab.login(config.swanlab_token)
@@ -1615,18 +1914,18 @@ class RunTracker:
             mode=config.swanlab_mode,
             config=_public_config(config),
         )
-        self._writers['swanlab'] = swanlab
+        self._writers["swanlab"] = swanlab
 
 
 def _is_main_process() -> bool:
-    return int(os.environ.get('RANK', '0')) == 0
+    return int(os.environ.get("RANK", "0")) == 0
 
 
-def _public_config(config: 'LoggingConfig') -> Dict[str, Any]:
+def _public_config(config: "LoggingConfig") -> Dict[str, Any]:
     return {key: value for key, value in asdict(config).items() if key not in _SECRET_FIELDS}
 
 
-def _register_swanlab_notification(swanlab: Any, config: 'LoggingConfig') -> None:
+def _register_swanlab_notification(swanlab: Any, config: "LoggingConfig") -> None:
     method = config.swanlab_notification_method
     if method is None:
         return
@@ -1638,18 +1937,19 @@ def _register_swanlab_notification(swanlab: Any, config: 'LoggingConfig') -> Non
         SlackCallback,
         WXWorkCallback,
     )
+
     callbacks = {
-        'dingtalk': DingTalkCallback,
-        'discord': DiscordCallback,
-        'email': EmailCallback,
-        'lark': LarkCallback,
-        'slack': SlackCallback,
-        'wxwork': WXWorkCallback,
+        "dingtalk": DingTalkCallback,
+        "discord": DiscordCallback,
+        "email": EmailCallback,
+        "lark": LarkCallback,
+        "slack": SlackCallback,
+        "wxwork": WXWorkCallback,
     }
     callback_cls = callbacks.get(method)
     if callback_cls is None:
-        raise ValueError(f'Unsupported swanlab_notification_method: {method!r}. Supported: {sorted(callbacks)}.')
-    if method == 'email':
+        raise ValueError(f"Unsupported swanlab_notification_method: {method!r}. Supported: {sorted(callbacks)}.")
+    if method == "email":
         required: Iterable[Optional[Any]] = (
             config.swanlab_sender_email,
             config.swanlab_receiver_email,
@@ -1657,8 +1957,9 @@ def _register_swanlab_notification(swanlab: Any, config: 'LoggingConfig') -> Non
             config.swanlab_smtp_port,
         )
         if not all(required):
-            raise ValueError('SwanLab email notification requires sender_email, receiver_email, smtp_server, and '
-                             'smtp_port.')
+            raise ValueError(
+                "SwanLab email notification requires sender_email, receiver_email, smtp_server, and smtp_port."
+            )
         callback = callback_cls(
             sender_email=config.swanlab_sender_email,
             receiver_email=config.swanlab_receiver_email,
@@ -1684,16 +1985,18 @@ class ColocateHandover:
     ``manager.sync_weights`` (merged base weights every step, correct for both full and LoRA training).
     """
 
-    def __init__(self,
-                 model: Any,
-                 sampler: Any,
-                 manager: Any,
-                 *,
-                 colocate: bool,
-                 merge_and_sync: bool = True,
-                 sleep_level: int = 0,
-                 offload_model: bool = True,
-                 offload_optimizer: bool = True):
+    def __init__(
+        self,
+        model: Any,
+        sampler: Any,
+        manager: Any,
+        *,
+        colocate: bool,
+        merge_and_sync: bool = True,
+        sleep_level: int = 0,
+        offload_model: bool = True,
+        offload_optimizer: bool = True,
+    ):
         self.model = model
         self.sampler = sampler
         self.manager = manager
@@ -1717,12 +2020,11 @@ class ColocateHandover:
         first round both wakes no-op -- which is why the bug only bites from round two on.)
         """
         if self.colocate:
-            self.sampler.wake_up(tags=['weights'])
+            self.sampler.wake_up(tags=["weights"])
         self.manager.sync_weights(merge_and_sync=self.merge_and_sync)
         if self.colocate:
-            self.model.offload_to_cpu(
-                offload_model=self.offload_model, offload_optimizer=self.offload_optimizer)
-            self.sampler.wake_up(tags=['kv_cache'])  # weights already awake; ready to generate
+            self.model.offload_to_cpu(offload_model=self.offload_model, offload_optimizer=self.offload_optimizer)
+            self.sampler.wake_up(tags=["kv_cache"])  # weights already awake; ready to generate
 
     def exit(self) -> None:
         """Take the device back for the trainer: sleep the sampler, then reload the trainer's weights.
@@ -1732,6 +2034,7 @@ class ColocateHandover:
         """
         if self.colocate:
             from swift.dev.recipe.offload import sleep_for_rollout
+
             sleep_for_rollout(self.sampler, self.sleep_level)
             self.model.reload_to_gpu()
 
@@ -1742,16 +2045,18 @@ class AdaptiveColocateHandover:
     serializes = False
     adaptive_shared = True
 
-    def __init__(self,
-                 model: Any,
-                 sampler: Any,
-                 dedicated_manager: Any,
-                 *,
-                 shared_manager: Any = None,
-                 additional_models: Iterable[Any] = (),
-                 sleep_level: int = 1):
+    def __init__(
+        self,
+        model: Any,
+        sampler: Any,
+        dedicated_manager: Any,
+        *,
+        shared_manager: Any = None,
+        additional_models: Iterable[Any] = (),
+        sleep_level: int = 1,
+    ):
         if sleep_level not in (0, 1):
-            raise ValueError('adaptive shared sampler supports only sleep_level 0 or 1.')
+            raise ValueError("adaptive shared sampler supports only sleep_level 0 or 1.")
         self.model = model
         self.models = (model, *tuple(additional_models))
         self.sampler = sampler
@@ -1790,14 +2095,15 @@ class AdaptiveColocateHandover:
             self.sampler.pause_workers(worker_ids)
             self.sampler.pause_generation(_worker_ids=worker_ids)
             from swift.dev.recipe.offload import sleep_for_rollout
+
             self._wait(sleep_for_rollout(self.sampler, self.sleep_level, _worker_ids=worker_ids))
         except BaseException as exc:
             initialization_error = exc
             try:
                 if worker_ids and not self.sampler.remove_workers(worker_ids):
-                    raise RuntimeError('Shared sampler initialization still has unfinished worker calls.')
+                    raise RuntimeError("Shared sampler initialization still has unfinished worker calls.")
             except Exception:
-                logger.warning('初始化失败后未能完整关闭 shared sampler actors。', exc_info=True)
+                logger.warning("初始化失败后未能完整关闭 shared sampler actors。", exc_info=True)
             can_reload = not set(worker_ids) & set(self.sampler.worker_ids(shared=True))
             raise
         finally:
@@ -1808,7 +2114,7 @@ class AdaptiveColocateHandover:
                 except BaseException:
                     if initialization_error is None:
                         raise
-                    logger.warning('初始化失败后未能完整恢复训练模型。', exc_info=True)
+                    logger.warning("初始化失败后未能完整恢复训练模型。", exc_info=True)
         return worker_ids
 
     def _borrow_shared(self, *, publish: bool):
@@ -1820,14 +2126,14 @@ class AdaptiveColocateHandover:
         # 即使停止 shared 新准入，也必须让已经提交的请求继续生成并正常接收新 policy。
         self.in_generation = True
         try:
-            self._wait(self.sampler.wake_up(tags=['weights'], _worker_ids=shared_ids))
+            self._wait(self.sampler.wake_up(tags=["weights"], _worker_ids=shared_ids))
             if publish:
                 trainer_ranks = [ranks[0] for ranks in self.sampler.worker_ranks(shared_ids)]
                 self.shared_manager.set_receiver_workers(shared_ids, colocate_trainer_ranks=trainer_ranks)
                 self.shared_manager.sync_weights(merge_and_sync=True)
             for model in self.models:
                 self._wait(model.offload_to_cpu())
-            self._wait(self.sampler.wake_up(tags=['kv_cache'], _worker_ids=shared_ids))
+            self._wait(self.sampler.wake_up(tags=["kv_cache"], _worker_ids=shared_ids))
             self.sampler.resume_generation(_worker_ids=shared_ids)
             if self.enabled:
                 self.sampler.activate_workers(shared_ids)
@@ -1835,7 +2141,7 @@ class AdaptiveColocateHandover:
             try:
                 self.reclaim()
             except Exception:
-                logger.warning('shared 借卡失败后未能完整恢复训练模型。', exc_info=True)
+                logger.warning("shared 借卡失败后未能完整恢复训练模型。", exc_info=True)
             raise
         self.borrow_time += time.perf_counter() - started
 
@@ -1847,7 +2153,7 @@ class AdaptiveColocateHandover:
             self.reclaim()
         suspended = self.sampler.worker_ids()
         self.sampler.suspend_admission(suspended)
-        dedicated_ids = self.sampler.worker_ids(shared=False, states=('ACTIVE', 'DRAINING'))
+        dedicated_ids = self.sampler.worker_ids(shared=False, states=("ACTIVE", "DRAINING"))
         try:
             self.sampler.pause_generation(_worker_ids=dedicated_ids)
             if self.controller is not None:
@@ -1864,11 +2170,11 @@ class AdaptiveColocateHandover:
                 if self.controller is not None:
                     self.controller.fail_publish(error)
             except Exception:
-                logger.warning('发布失败后未能完整清理新增 sampler actors。', exc_info=True)
+                logger.warning("发布失败后未能完整清理新增 sampler actors。", exc_info=True)
             try:
                 self.reclaim()
             except Exception:
-                logger.warning('发布失败后未能完整恢复训练模型。', exc_info=True)
+                logger.warning("发布失败后未能完整恢复训练模型。", exc_info=True)
             raise
 
     def _reload_models(self):
@@ -1891,6 +2197,7 @@ class AdaptiveColocateHandover:
             self.sampler.pause_workers(shared_ids)
             self.sampler.pause_generation(_worker_ids=shared_ids)
             from swift.dev.recipe.offload import sleep_for_rollout
+
             self._wait(sleep_for_rollout(self.sampler, self.sleep_level, _worker_ids=shared_ids))
             # pause/sleep 失败时保留交接状态；终止 actors 后再恢复训练显存。
             self._reload_models()
@@ -1915,13 +2222,15 @@ class AdaptiveColocateHandover:
         return True
 
 
-def check_streaming_config(*,
-                           adapter_name: Optional[str],
-                           max_staleness: int,
-                           weight_sync_strategy: WeightSyncStrategyName,
-                           allow_partial_rollout: bool,
-                           parameter_sync_step: int,
-                           serialize_generation: bool) -> None:
+def check_streaming_config(
+    *,
+    adapter_name: Optional[str],
+    max_staleness: int,
+    weight_sync_strategy: WeightSyncStrategyName,
+    allow_partial_rollout: bool,
+    parameter_sync_step: int,
+    serialize_generation: bool,
+) -> None:
     """Reject a streaming configuration that cannot be driven soundly (fail-loudly).
 
     Mirrors ``config.validate`` at construction time (defense in depth: a driver built directly, not
@@ -1949,51 +2258,59 @@ def check_streaming_config(*,
       device to the sampler after the first consume's exit).
     """
     if max_staleness < 0:
-        raise ValueError(f'max_staleness must be >= 0 (0 = the synchronous regime, which this builder '
-                         f'also serves; 1 = one-step overlap; >1 = deep buffer); got {max_staleness}.')
+        raise ValueError(
+            f"max_staleness must be >= 0 (0 = the synchronous regime, which this builder "
+            f"also serves; 1 = one-step overlap; >1 = deep buffer); got {max_staleness}."
+        )
     if serialize_generation and max_staleness != 0:
         raise ValueError(
-            f'serialize_generation (a colocated sampler time-sharing one device with the trainer) needs '
-            f'max_staleness=0: an exclusive device cannot overlap generation with training, so it cannot '
-            f'hold a lookahead window; got max_staleness={max_staleness}. A colocated run is synchronous.')
-    if serialize_generation and weight_sync_strategy != 'in_place':
+            f"serialize_generation (a colocated sampler time-sharing one device with the trainer) needs "
+            f"max_staleness=0: an exclusive device cannot overlap generation with training, so it cannot "
+            f"hold a lookahead window; got max_staleness={max_staleness}. A colocated run is synchronous."
+        )
+    if serialize_generation and weight_sync_strategy != "in_place":
         raise ValueError(
-            f'serialize_generation (a colocated sampler time-sharing one device with the trainer) requires '
+            f"serialize_generation (a colocated sampler time-sharing one device with the trainer) requires "
             f"weight_sync_strategy='in_place': the per-cycle device hand-back (wake+sync the sampler before "
-            f'each generation window) rides in_place\'s publish ``sync_fn``, whereas adapter_snapshot '
-            f'publishes by writing a new adapter path with no weight sync, so after the first consume\'s '
-            f'exit() nothing would hand the device back to the sampler and the next window would submit to a '
-            f'sleeping engine. dev derives in_place for a colocated run; got {weight_sync_strategy!r}.')
+            f"each generation window) rides in_place's publish ``sync_fn``, whereas adapter_snapshot "
+            f"publishes by writing a new adapter path with no weight sync, so after the first consume's "
+            f"exit() nothing would hand the device back to the sampler and the next window would submit to a "
+            f"sleeping engine. dev derives in_place for a colocated run; got {weight_sync_strategy!r}."
+        )
     if parameter_sync_step < 1:
-        raise ValueError(f'parameter_sync_step must be >= 1 (a weight publication every K steps); '
-                         f'got {parameter_sync_step}.')
-    if weight_sync_strategy == 'adapter_snapshot':
+        raise ValueError(
+            f"parameter_sync_step must be >= 1 (a weight publication every K steps); got {parameter_sync_step}."
+        )
+    if weight_sync_strategy == "adapter_snapshot":
         if not adapter_name:
             raise ValueError(
                 "weight_sync_strategy='adapter_snapshot' pins each trained version as a LoRA adapter "
-                'snapshot, so it needs a non-empty adapter_name; a full-parameter policy has no adapter '
-                'to pin. Configure an adapter-based tuner (e.g. LoRA), or use '
-                "weight_sync_strategy='in_place' with --allow_partial_rollout for a full-parameter stream.")
+                "snapshot, so it needs a non-empty adapter_name; a full-parameter policy has no adapter "
+                "to pin. Configure an adapter-based tuner (e.g. LoRA), or use "
+                "weight_sync_strategy='in_place' with --allow_partial_rollout for a full-parameter stream."
+            )
         if allow_partial_rollout:
             raise ValueError(
-                '--allow_partial_rollout is inert under weight_sync_strategy=adapter_snapshot: each version '
-                'is pinned as its own adapter path, so publishing never overwrites a weight copy an '
-                'in-flight generation is decoding and there is nothing to interrupt and resume. Drop it, or '
-                "use weight_sync_strategy='in_place' (which overwrites one live copy and so needs it).")
-    elif weight_sync_strategy == 'in_place':
+                "--allow_partial_rollout is inert under weight_sync_strategy=adapter_snapshot: each version "
+                "is pinned as its own adapter path, so publishing never overwrites a weight copy an "
+                "in-flight generation is decoding and there is nothing to interrupt and resume. Drop it, or "
+                "use weight_sync_strategy='in_place' (which overwrites one live copy and so needs it)."
+            )
+    elif weight_sync_strategy == "in_place":
         if allow_partial_rollout is False and max_staleness >= 1:
             raise ValueError(
                 "weight_sync_strategy='in_place' overwrites the sampler's single live weight copy while the "
-                'stream still has trajectories in flight, so an overlapping regime (max_staleness >= 1) needs '
-                '--allow_partial_rollout: each publish aborts every in-flight generation and resumes it from '
-                'its own tokens on the fresh weights (twinkle PartialRolloutMixin + InPlaceWeightSync '
-                'abort-on-publish). Without it the rest of an in-flight generation would decode under '
-                'half-updated weights whose logprobs match no consistent policy, which importance sampling '
-                'cannot correct. Set --allow_partial_rollout, or use weight_sync_strategy=adapter_snapshot '
-                '(per-version LoRA pinning, no interrupt). The synchronous regime (max_staleness=0) drains '
-                'before it publishes, so it needs no partial rollout.')
+                "stream still has trajectories in flight, so an overlapping regime (max_staleness >= 1) needs "
+                "--allow_partial_rollout: each publish aborts every in-flight generation and resumes it from "
+                "its own tokens on the fresh weights (twinkle PartialRolloutMixin + InPlaceWeightSync "
+                "abort-on-publish). Without it the rest of an in-flight generation would decode under "
+                "half-updated weights whose logprobs match no consistent policy, which importance sampling "
+                "cannot correct. Set --allow_partial_rollout, or use weight_sync_strategy=adapter_snapshot "
+                "(per-version LoRA pinning, no interrupt). The synchronous regime (max_staleness=0) drains "
+                "before it publishes, so it needs no partial rollout."
+            )
     else:
-        raise ValueError(f'unknown weight_sync_strategy: {weight_sync_strategy!r}')
+        raise ValueError(f"unknown weight_sync_strategy: {weight_sync_strategy!r}")
 
 
 def single_teacher_id(teacher_model: Optional[List[str]], *, algo: str) -> Optional[str]:
@@ -2007,7 +2324,9 @@ def single_teacher_id(teacher_model: Optional[List[str]], *, algo: str) -> Optio
     if not teacher_model:
         return None
     if len(teacher_model) != 1:
-        raise ValueError(f'{algo} distils from a single teacher but RLConfig.teacher_model has '
-                         f'{len(teacher_model)} entries ({list(teacher_model)}); pass exactly one, or use '
-                         '--rl_type mopd to distil from multiple teachers.')
+        raise ValueError(
+            f"{algo} distils from a single teacher but RLConfig.teacher_model has "
+            f"{len(teacher_model)} entries ({list(teacher_model)}); pass exactly one, or use "
+            "--rl_type mopd to distil from multiple teachers."
+        )
     return teacher_model[0]

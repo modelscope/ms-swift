@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 import importlib
-import json
 import os
 import platform
 import re
@@ -11,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Type, Union
 
+import json
 import torch
 from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
@@ -263,6 +263,7 @@ def register_model(loader_cls: Type["ModelLoader"] = None, *, exist_ok: bool = F
     def _register(cls: Type["ModelLoader"]) -> Type["ModelLoader"]:
         model_type = cls.model_type
         assert model_type, f"{cls.__name__} must set `model_type`."
+        validate_tags(cls.tags, context=f"model_type `{model_type}`")
         if not exist_ok and model_type in MODEL_MAPPING:
             raise ValueError(
                 f"model_type `{model_type}` is already registered by {MODEL_MAPPING[model_type].__name__}."
@@ -420,7 +421,7 @@ def _default_torch_dtype(checkpoint_dtype: Optional[torch.dtype]) -> torch.dtype
     return torch.float32
 
 
-def resolve_model_info(
+def resolve_model_info(  # noqa: C901
     model_id_or_path: str,
     *,
     revision: Optional[str] = None,
@@ -478,9 +479,7 @@ def resolve_model_info(
             loader_cls = get_model_loader(candidates[0])
 
     quant_info = HfConfigFactory.get_quant_info(config) or {}
-    is_multimodal = bool(HfConfigFactory.is_multimodal(config)) or bool(
-        getattr(loader_cls, "is_multimodal", False)
-    )
+    is_multimodal = bool(HfConfigFactory.is_multimodal(config)) or bool(getattr(loader_cls, "is_multimodal", False))
     if loader_cls is None and is_multimodal:
         # An unregistered multimodal checkpoint has no family to drive its vision encoding; guessing
         # a plain-LLM load would fail far away from the cause.

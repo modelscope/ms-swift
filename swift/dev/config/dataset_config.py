@@ -24,9 +24,9 @@ class DatasetConfig:
     # === Streaming ===
     streaming: bool = False
     interleave_prob: Optional[List[float]] = None
-    stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted'
+    stopping_strategy: Literal["first_exhausted", "all_exhausted"] = "first_exhausted"
     shuffle_buffer_size: int = 1000
-    download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
+    download_mode: Literal["force_redownload", "reuse_dataset_if_exists"] = "reuse_dataset_if_exists"
 
     # === Column Mapping ===
     columns: Optional[Dict[str, str]] = None
@@ -36,6 +36,14 @@ class DatasetConfig:
     model_name: Optional[List[str]] = None
     model_author: Optional[List[str]] = None
     custom_dataset_info: List[str] = field(default_factory=list)
+
+    # === Decision augmentation ===
+    # schema augmentation applied by every ScoringPreprocessor a
+    # loaded dataset carries, between parse_record and _build_row. All-zero/False (the default)
+    decision_drop_instructions: float = 0.0
+    decision_subsample_options: int = 0
+    decision_state_as_text: float = 0.0
+    decision_shuffle_fields: bool = False
 
     # === Hub ===
     use_hf: bool = False
@@ -48,7 +56,7 @@ class DatasetConfig:
     packing: bool = False
     packing_length: Optional[int] = None
     packing_num_proc: int = 1
-    packing_strategy: Literal['binpack', 'sequential'] = 'binpack'
+    packing_strategy: Literal["binpack", "sequential"] = "binpack"
     # None = auto (see default value in dev/builders/dataset _encode_mode).
     lazy_tokenize: Optional[bool] = None
 

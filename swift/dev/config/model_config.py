@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -12,14 +11,16 @@ class ModelConfig:
     model: Optional[str] = None
     model_type: Optional[str] = None
     model_revision: Optional[str] = None
-    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker', None] = None
-    torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
+    # 'decision' reaches run_decision's recipe routing (swift.dev.cli.sft); the typed-decision
+    # families also pin it in the registry, so an explicit flag and a family pin agree here.
+    task_type: Literal["causal_lm", "seq_cls", "embedding", "reranker", "generative_reranker", "decision", None] = None
+    torch_dtype: Literal["bfloat16", "float16", "float32", None] = None
     attn_impl: Optional[str] = None
     experts_impl: Optional[str] = None
     enable_kernel: bool = False
     new_special_tokens: List[str] = field(default_factory=list)
     num_labels: Optional[int] = None
-    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification', None] = None
+    problem_type: Literal["regression", "single_label_classification", "multi_label_classification", None] = None
     rope_scaling: Optional[Union[Dict[str, Any], str]] = None
     max_model_len: Optional[int] = None
     max_memory: Optional[Dict[str, Any]] = None
@@ -38,8 +39,17 @@ class ModelConfig:
     language_model_only: bool = False
     # Tie the MTP heads' weights to the main output embedding instead of their own.
     mtp_shared_weights: bool = False
-    init_strategy: Literal['zero', 'uniform', 'normal', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
-                           'kaiming_normal', 'orthogonal', None] = None
+    init_strategy: Literal[
+        "zero",
+        "uniform",
+        "normal",
+        "xavier_uniform",
+        "xavier_normal",
+        "kaiming_uniform",
+        "kaiming_normal",
+        "orthogonal",
+        None,
+    ] = None
 
     # === Multi-Token Prediction (Megatron only) ===
     # Depths from the checkpoint; unset silently drops the MTP weights on load.
@@ -58,23 +68,23 @@ class ModelConfig:
 
     # === FP4 low-precision training (Megatron only) ===
     # Only 'e2m1'; params quantized too only with fp4_param_gather. Needs Blackwell + TE >= 2.7.
-    fp4_format: Optional[Literal['e2m1']] = None
+    fp4_format: Optional[Literal["e2m1"]] = None
     # Only NVFP4 block scaling is wired, matching legacy.
-    fp4_recipe: Literal['nvfp4'] = 'nvfp4'
+    fp4_recipe: Literal["nvfp4"] = "nvfp4"
     # Keep the *parameters* in FP4 and all-gather them as FP4; requires fp4_format and the
     # distributed optimizer (the only one that re-quantizes master shards back into them).
     fp4_param_gather: bool = False
 
     # === FP8 low-precision training (Megatron only) ===
     # 'e4m3' throughout, or 'hybrid' (e4m3 forward, e5m2 backward); mutually exclusive with FP4.
-    fp8_format: Optional[Literal['e4m3', 'hybrid']] = None
+    fp8_format: Optional[Literal["e4m3", "hybrid"]] = None
     # 'delayed' scales from an amax history; 'blockwise' round-trips DeepSeek FP8 checkpoints;
     # 'tensorwise' per tensor per step; 'mxfp8' is Blackwell-only.
-    fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
+    fp8_recipe: Literal["tensorwise", "delayed", "mxfp8", "blockwise"] = "delayed"
     # Same requirement as its FP4 counterpart (distributed optimizer only).
     fp8_param_gather: bool = False
     # 1024 is legacy Megatron-SWIFT's default, NOT megatron's (1): the two knobs change numerics,
     # so an identical-looking config must train identically on dev and legacy.
     fp8_amax_history_len: int = 1024
     # 'max' is legacy's default; megatron's is 'most_recent' (same rationale as above).
-    fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'
+    fp8_amax_compute_algo: Literal["most_recent", "max"] = "max"
