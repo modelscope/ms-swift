@@ -25,6 +25,8 @@ class GenerationArguments:
         repetition_penalty (Optional[float]): The penalty applied to repeated tokens. A value of 1.0 means no penalty.
             Defaults to None (reads from 'generation_config.json').
         num_beams (Optional[int]): The number of beams to use for beam search. Defaults to 1.
+        detokenize (Optional[bool]): Whether vLLM decodes tokens to text. Defaults to None (backend default).
+            False disables text decoding and automatic string stops; explicit string stops are not supported.
         stream (bool): Whether to enable streaming output. Defaults to None, which is `True` for interactive mode and
             `False` for batch inference. Note: For ms-swift < 3.6, the default is `False`.
         stop_words (List[str]): A list of extra stop words, in addition to the end-of-sequence token. Note: The
@@ -46,6 +48,8 @@ class GenerationArguments:
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
     num_beams: int = 1
+    # vLLM only. None preserves the backend default; requests may override this value.
+    detokenize: Optional[bool] = None
 
     stream: Optional[bool] = None
     stop_words: List[str] = field(default_factory=list)
@@ -68,6 +72,7 @@ class GenerationArguments:
             top_p=self.top_p,
             top_k=self.top_k,
             num_beams=self.num_beams,
+            detokenize=self.detokenize,
             stop=self.stop_words,
             stream=self.stream,
             repetition_penalty=self.repetition_penalty,
