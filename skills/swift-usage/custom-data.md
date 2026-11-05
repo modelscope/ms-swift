@@ -128,3 +128,17 @@ The full preprocessing loop, as the workbench agent should run it:
 
 Contamination rule: the held-out evaluation split is frozen before any augmentation, and
 nothing that generates training rows may read from it.
+
+## Mixing external datasets
+
+Your own data and hub datasets mix freely in one run: `--dataset own.jsonl 'org/id#N' ...`
+(space-separated; `#N` caps the row budget per source — that is how you set the mixture
+ratio). Reach for this when your own data lacks a capability signal that a public dataset
+covers (search high quality candidates with the `list_catalog` tool or the ModelScope hub). Two guardrails:
+
+- **Contamination check before mixing**: public code/QA collections often contain benchmark
+  originals (coding collections regularly include HumanEval problems). Before adding a
+  candidate, check it against your frozen eval set — same-source contamination silently
+  invalidates the eval, which is worse than an eval that simply doesn't improve.
+- **Keep the mixture traceable**: record every source and its `#N` in the experiment log.
+  A mixture is one more variable; untracked ratios make regressions unattributable.

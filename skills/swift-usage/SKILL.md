@@ -35,7 +35,7 @@ twinkle components Model / Sampler / Dataset / Template / Loss / Reward / infra
 | The full component catalog: models, samplers, datasets, losses, rewards, every module's inputs/outputs | [components.md](components.md) |
 | Put the model on a server and drive training or inference from a client | [server-client.md](server-client.md) |
 | Write plugins: reward / tool / callback / dataset / sampler / param_groups / prm_scorer | [plugins.md](plugins.md) |
-| Custom datasets: raw business data -> `--dataset` (local files / dataset_info JSON / loader class) | [custom-data.md](custom-data.md) |
+| Custom datasets: raw business data -> `--dataset` (local files / dataset_info JSON / loader class), mixing hub datasets in | [custom-data.md](custom-data.md) |
 | Ray mode, infra, placement, load balancing and autoscaling | [ray-infra.md](ray-infra.md) |
 
 ## 30-second start
@@ -91,8 +91,9 @@ encoded = template.encode(row)
 
 | Scenario | Composition |
 | --- | --- |
-| Train -> evaluate loop | `swift sft` (produces a checkpoint) -> `swift eval --eval_dataset gsm8k` (see cli-reference.md) |
+| Train -> evaluate loop | any trainer produces a checkpoint -> `swift eval --eval_dataset gsm8k`; post-training offline eval works the same after `swift sft` or after `swift rl` — online RL needs its own in-loop reward (`--orm`), but that is separate from your research metric and never replaces the offline eval |
 | Train -> batch inference -> score programmatically | `swift sft` -> `swift infer --dataset ... --result_path out.jsonl` |
+| Offline preference training | derive chosen/rejected pairs from trajectories or same-task multi-attempts -> `swift rl --rlhf_type dpo --dataset <pairs>` (no in-loop reward) -> eval the checkpoint as usual |
 | Iterate experiments without process churn | server-client mode: twinkle-server keeps the model resident; the client loops attach-adapter -> train-a-few-steps -> sample (server-client.md) |
 | RL with verifiable rewards | `swift rl --rlhf_type grpo --orm accuracy ...` (cli-reference.md); multi-turn tool use: `examples/rl/agentic/` |
 | Research assistant running experiments itself | twinkle ships an agentic stack: `twinkle_agentic` (agents / harness / envs / tools / verifier / evaluator) plus `twinkle_client.skills` (bundled `autoresearch.md` and `twinkle-training.md`; SkillManager can add ModelScope/local providers) |
