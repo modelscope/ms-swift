@@ -725,6 +725,12 @@ Decision models carry a **pluggable scoring head** (`ScoringHead`) that is train
 - **Save**: `ScoringTrainer._save` first saves the adapter (or full model) via the standard path, then writes the head artifacts beside it. For adapter (LoRA) training, it writes both `scoring_head.safetensors` (head parameters) and `scoring_head.json` (head type + calibration metadata). For full-finetune training, it writes only `scoring_head.json` — the head parameters are already inside the model's safetensors shards (ignored by `from_pretrained` because `scoring_head` was not yet attached).
 - **Load**: `maybe_load_trained_scoring_head(model, adapter_dir)` is called automatically after `Swift.from_pretrained` on all three loading paths (`--adapters` continue-training, `--resume_from_checkpoint`, and inference). It handles two scenarios: when `scoring_head.safetensors` exists (adapter checkpoint), it loads weights from it; when only `scoring_head.json` exists (full-finetune checkpoint), it extracts head weights from the model's safetensors shards. It is a **guarded no-op** for non-decision models.
 
+For full-finetuned JEV and StartLux checkpoints, pass the checkpoint directory as `--model` with
+`--model_type jev` or `--model_type startlux`. When the factory head artifact is absent, the loader
+rebuilds the verbalizer head from `scoring_head.json` before restoring its trained weights and
+calibration. The loader checks factory artifacts and environment-variable overrides before using
+the saved head metadata.
+
 This means a trained decision checkpoint can be deployed immediately — `swift infer` or `--adapters <checkpoint>` will automatically reload the trained head.
 
 ## OmniJev: `MSO_BRANCH_CKPT` and Gradient Checkpointing

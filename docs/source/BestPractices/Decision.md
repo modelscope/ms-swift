@@ -753,6 +753,10 @@ Decision 模型携带**可插拔打分头**，与 backbone（或 LoRA adapter）
 - **存盘**：`ScoringTrainer._save` 先通过标准路径存 adapter（或全量模型），然后在旁边写入头制品。对于 adapter（LoRA）训练，写入 `scoring_head.safetensors`（头参数）和 `scoring_head.json`（头类型 + 标定元数据）。对于全量微调训练，只写入 `scoring_head.json`——头参数已在模型的 safetensors 分片中（`from_pretrained` 因 `scoring_head` 尚未挂载而忽略了它们）。
 - **读回**：`maybe_load_trained_scoring_head(model, adapter_dir)` 在 `Swift.from_pretrained` 之后自动调用，覆盖续训、断点恢复、推理三条路径。处理两种场景：当 `scoring_head.safetensors` 存在时（adapter checkpoint），从中加载权重；当仅 `scoring_head.json` 存在时（全量微调 checkpoint），从模型的 safetensors 分片中提取头权重。对非 decision 模型是**受守卫的空操作**。
 
+加载 JEV 和 StartLux 的全量微调 checkpoint 时，将 checkpoint 目录传给 `--model`，并指定
+`--model_type jev` 或 `--model_type startlux`。当目录中缺少原始头制品时，loader 先从
+`scoring_head.json` 重建 verbalizer head，再恢复训练后的权重与校准状态。loader 优先检查原始头制品和环境变量覆盖路径，然后使用保存的头元数据。
+
 训完的 checkpoint 可直接部署——`swift infer` 或 `--adapters <checkpoint>` 会自动读回训好的头。
 
 ## OmniJev：`MSO_BRANCH_CKPT` 与 `gradient_checkpointing` 互斥说明

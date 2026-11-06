@@ -454,9 +454,26 @@ class JevVerbalizerHead(ScoringHead):
                     self.temperatures[k] = float(temps[name])
 
     @classmethod
+    def _from_saved_meta(cls, model_dir: str) -> Optional['JevVerbalizerHead']:
+        meta_file = os.path.join(model_dir, cls.HEAD_META_NAME)
+        if not os.path.isfile(meta_file):
+            return None
+        with open(meta_file, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+        return cls(
+            bias=meta['bias'],
+            verbalizer_ids=meta['verbalizer_ids'],
+            ranges=meta['ranges'],
+            temperatures=meta['temperatures'],
+            head_temperature=meta.get('head_temperature', 1.0))
+
+    @classmethod
     def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'JevVerbalizerHead':
         head_file = cls._locate(model_dir, 'decision_head.json', 'JEV_DECISION_HEAD', subdir='adapter_vllm')
         if head_file is None:
+            head = cls._from_saved_meta(model_dir)
+            if head is not None:
+                return head
             raise FileNotFoundError(
                 f'JEV decision_head.json not found under {model_dir!r} (or {model_dir}/adapter_vllm). '
                 'Set JEV_DECISION_HEAD to its path.')
@@ -537,14 +554,19 @@ class StartLuxLetterHead(JevVerbalizerHead):
         """model/config are accepted for signature parity with the other heads' loaders; `tokenizer`
         is used only to resolve `letter_token_ids` when decision_config.json omits them."""
         head_file = cls._locate(model_dir, 'decision_config.json', 'STARTLUX_DECISION_CONFIG')
+        saved_head = None
         if head_file is None:
-            raise FileNotFoundError(
-                f'StartLux decision_config.json not found under {model_dir!r}. The letter token ids and the '
-                'per-kind read-out temperatures ship in the model folder beside the weights; point --model at a '
-                'StartLuxAI/StartLux-Decision-v1.1-*-AutoThink checkpoint (or set STARTLUX_DECISION_CONFIG).')
-        with open(head_file, 'r') as f:
-            head = json.load(f)
-        config_file = os.path.join(os.path.dirname(head_file), 'config.json')
+            saved_head = cls._from_saved_meta(model_dir)
+            if saved_head is None:
+                raise FileNotFoundError(
+                    f'StartLux decision_config.json not found under {model_dir!r}. The letter token ids and the '
+                    'per-kind read-out temperatures ship in the model folder beside the weights; point --model at a '
+                    'StartLuxAI/StartLux-Decision-v1.1-*-AutoThink checkpoint (or set STARTLUX_DECISION_CONFIG).')
+            head = {}
+        else:
+            with open(head_file, 'r') as f:
+                head = json.load(f)
+        config_file = os.path.join(os.path.dirname(head_file) if head_file else model_dir, 'config.json')
         prompt_attention = head.get('prompt_attention')
         if prompt_attention is None and os.path.isfile(config_file):
             with open(config_file, 'r') as f:
@@ -554,6 +576,8 @@ class StartLuxLetterHead(JevVerbalizerHead):
                              'prompt is read with bidirectional attention in the full-attention layers, which this '
                              'loader does not implement. Use an AutoThink checkpoint (causal) or the official '
                              'startlux-decide package for Instant models.')
+        if saved_head is not None:
+            return saved_head
         temperatures = head.get('temperature_by_type') or {}
         if any(k not in KIND_NAMES or not isinstance(v, (int, float)) or v <= 0 for k, v in temperatures.items()):
             raise ValueError(f'{head_file}: temperature_by_type must map noul/choice/score to positive numbers.')
