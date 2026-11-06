@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 import importlib
+import json
 import os
 import platform
 import re
@@ -10,7 +11,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Type, Union
 
-import json
 import torch
 from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
@@ -421,7 +421,7 @@ def _default_torch_dtype(checkpoint_dtype: Optional[torch.dtype]) -> torch.dtype
     return torch.float32
 
 
-def resolve_model_info(  # noqa: C901
+def resolve_model_info(
     model_id_or_path: str,
     *,
     revision: Optional[str] = None,
@@ -479,7 +479,9 @@ def resolve_model_info(  # noqa: C901
             loader_cls = get_model_loader(candidates[0])
 
     quant_info = HfConfigFactory.get_quant_info(config) or {}
-    is_multimodal = bool(HfConfigFactory.is_multimodal(config)) or bool(getattr(loader_cls, "is_multimodal", False))
+    is_multimodal = bool(HfConfigFactory.is_multimodal(config)) or bool(
+        getattr(loader_cls, "is_multimodal", False)
+    )
     if loader_cls is None and is_multimodal:
         # An unregistered multimodal checkpoint has no family to drive its vision encoding; guessing
         # a plain-LLM load would fail far away from the cause.

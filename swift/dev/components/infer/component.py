@@ -3,17 +3,17 @@
 from __future__ import annotations
 import copy
 import hashlib
+import json
 import math
 import os
 import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
-import json
 import numpy as np
 
-from swift.dev.components.base import RecipeComponent
 from swift.dev.utils.logger import get_logger
+from swift.dev.components.base import RecipeComponent
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 #: The DeviceGroup name the sampling engine occupies under ray (matches the training assembly).
-SAMPLER_GROUP = "sampler"
+SAMPLER_GROUP = 'sampler'
 
 #: How many top logprobs to request when scoring a generative reranker off generation. The positive
 #: and negative tokens must both land in this window or the score cannot be read; 20 is within the
@@ -86,9 +86,7 @@ class InferComponent(RecipeComponent):
         self.output_path = output_path
         self.shutdown = shutdown
 
-    def __call__(self) -> List[Dict[str, Any]]:  # noqa: C901
-        from twinkle.patch import apply_patch
-
+    def __call__(self) -> List[Dict[str, Any]]:
         from swift.dev.builders import (
             apply_generation_baseline,
             build_parallel_mesh,
@@ -105,6 +103,7 @@ class InferComponent(RecipeComponent):
         # through ModelScope (USE_HF=1 keeps the original HF source). Same wiring as legacy's
         # TransformersEngine.__init__.
         from swift.dev.patch.transformers_hub_kernels import TransformersHubKernelPatch
+        from twinkle.patch import apply_patch
 
         apply_patch(None, TransformersHubKernelPatch())
 
@@ -113,11 +112,10 @@ class InferComponent(RecipeComponent):
         reward_config = self.reward_config
         distributed_config = self.distributed_config
 
-        # A pooling task, a generative_reranker or a decision (System-1 scoring) model never samples:
-        # one plain forward pass, one value per row (see _forward_pass). Split before the
-        # sampling-side validation below, which reads knobs (num_return_sequences, output_format)
-        # a forward pass never uses.
-        task_type = model_config.task_type or "causal_lm"
+        # A pooling task or a generative_reranker never samples: one plain forward pass, one value
+        # per row (see _forward_pass). Split before the sampling-side validation below, which reads
+        # knobs (num_return_sequences, output_format) a forward pass never uses.
+        task_type = model_config.task_type or 'causal_lm'
         if is_pooling_task(task_type) or task_type in ("generative_reranker", "decision"):
             return self._forward_pass(task_type)
 
@@ -125,12 +123,11 @@ class InferComponent(RecipeComponent):
         output_format = infer_config.output_format
         multi_turn_enabled = bool(self.rollout_config and self.rollout_config.max_turns is not None)
         self._validate_sampling(num_return, output_format, multi_turn_enabled)
-        if self.backend == "twinkle" and (distributed_config is None or distributed_config.mode != "remote"):
+        if self.backend == 'twinkle' and (distributed_config is None or distributed_config.mode != 'remote'):
             raise ValueError(
                 'sampler="twinkle" (the client-side sampler over a twinkle-server) requires '
                 "--mode remote and --server_base_url: without it there is no transport to the "
-                "served sampler. The local backends are vllm/sglang/transformers."
-            )
+                'served sampler. The local backends are vllm/sglang/transformers.')
         # The model's own generation_config.json is the sampling baseline: fill knobs the caller
         # left unset from it, so a model's declared temperature/top_k survives (legacy parity).
         apply_generation_baseline(self.generation_config, model_config.model)
@@ -138,74 +135,64 @@ class InferComponent(RecipeComponent):
         # Resolve the reward channels BEFORE twinkle init and the sampler build: a channel's model
         # spec decides whether an RM needs its own GPU DeviceGroup (declared at init) and whether a
         # generative judge reusing the sampler needs its reward LoRA in the engine's adapter list.
-        orm_plan = _resolve_channel(reward_config, "orm", model_config.model, self.backend)
-        prm_plan = _resolve_channel(reward_config, "prm", model_config.model, self.backend)
-        reuse_adapters = [
-            spec.adapter
-            for plan in (orm_plan, prm_plan)
-            for spec in plan.specs
-            if spec.kind == "generative_reuse" and spec.adapter
-        ]
+        orm_plan = _resolve_channel(reward_config, 'orm', model_config.model, self.backend)
+        prm_plan = _resolve_channel(reward_config, 'prm', model_config.model, self.backend)
+        reuse_adapters = [spec.adapter for plan in (orm_plan, prm_plan) for spec in plan.specs
+                          if spec.kind == 'generative_reuse' and spec.adapter]
         reward_groups = _reward_device_groups(orm_plan, prm_plan, distributed_config)
-        if reward_groups and (distributed_config is None or distributed_config.mode != "ray"):
+        if reward_groups and (distributed_config is None or distributed_config.mode != 'ray'):
             raise ValueError(
-                f"reward channel(s) {[name for name, _, _ in reward_groups]} keep their own model "
+                f'reward channel(s) {[name for name, _, _ in reward_groups]} keep their own model '
                 "resident on GPU and need a dedicated DeviceGroup, which only "
                 "DistributedConfig.mode='ray' can place. Run with mode='ray' (and nproc_per_node), "
-                "or use a sampler-reusing generative judge / an http(s) endpoint, which need no "
-                "extra device."
-            )
+                'or use a sampler-reusing generative judge / an http(s) endpoint, which need no '
+                'extra device.')
         _initialize_for_sampling(distributed_config, reward_groups)
 
         rows = load_prompt_only_rows(self.dataset_config, self.max_rows, self.split_dataset_ratio)
         if not rows:
-            raise ValueError("run_infer got an empty dataset. Set DatasetConfig.dataset or .val_dataset.")
-        logger.info(
-            f"run_infer: {len(rows)} prompts, backend={self.backend}, "
-            f"num_return_sequences={num_return}, output_format={output_format}"
-        )
+            raise ValueError('run_infer got an empty dataset. Set DatasetConfig.dataset or .val_dataset.')
+        logger.info(f'run_infer: {len(rows)} prompts, backend={self.backend}, '
+                    f'num_return_sequences={num_return}, output_format={output_format}')
 
         # The storage layer owns the writer policy: a 'dpo' or resumed run gets the checkpointed
         # writer when the format honours it, a plain 'all' run the incremental writer (which also
         # gathers across DP ranks), a non-incremental format one write at the end.
         writer_kind = store_writer_kind(
-            self.output_path, infer_config.store_format, checkpoint=(output_format == "dpo" or infer_config.resume)
-        )
-        if writer_kind == "batch" and output_format == "dpo":
-            logger.warning(
-                f"output_format='dpo' with store_format={infer_config.store_format!r} writes one "
-                "store at the end, so it cannot checkpoint/resume a long best-of-n run; use "
-                "--store_format jsonl for that."
-            )
-        if writer_kind == "checkpoint":
+            self.output_path, infer_config.store_format,
+            checkpoint=(output_format == 'dpo' or infer_config.resume))
+        if writer_kind == 'batch' and output_format == 'dpo':
+            logger.warning(f"output_format='dpo' with store_format={infer_config.store_format!r} writes one "
+                           'store at the end, so it cannot checkpoint/resume a long best-of-n run; use '
+                           '--store_format jsonl for that.')
+        if writer_kind == 'checkpoint':
             from twinkle.utils import Platform
 
             local_world = max(1, int(Platform.get_world_size()))
-            if local_world > 1 and (distributed_config is None or distributed_config.mode != "ray"):
+            if local_world > 1 and (distributed_config is None or distributed_config.mode != 'ray'):
                 # The checkpoint writer owns one tmp file and one state file and gathers nothing:
                 # under a multi-rank torchrun launch every rank would open the same tmp at its own
                 # offset and corrupt it, so reject the multi-rank local launch up front.
                 raise ValueError(
-                    f"a checkpointed run (output_format={output_format!r}, resume={infer_config.resume}) "
-                    f"needs a single driving process, but this launch has {local_world} local ranks, each "
+                    f'a checkpointed run (output_format={output_format!r}, resume={infer_config.resume}) '
+                    f'needs a single driving process, but this launch has {local_world} local ranks, each '
                     "of which would write the same checkpoint files. Run it under DistributedConfig.mode="
-                    "'ray', or with a single rank."
-                )
+                    "'ray', or with a single rank.")
             if store_output_complete(self.output_path) and not infer_config.override_exist_file:
-                logger.info(f"run_infer: {self.output_path} exists and override_exist_file is False; nothing to do.")
+                logger.info(f'run_infer: {self.output_path} exists and override_exist_file is False; '
+                            'nothing to do.')
                 return []
 
         cache = _CandidateCache(infer_config.cache_files)
-        quant_method = getattr(self.quantize_config, "quant_method", None)
-        if self.backend == "no" and quant_method is not None:
+        quant_method = getattr(self.quantize_config, 'quant_method', None)
+        if self.backend == 'no' and quant_method is not None:
             raise ValueError(
-                f"quant_method={quant_method!r} cannot affect sampler={self.backend!r}, which loads no "
-                "local model. Configure quantization on the remote server or omit --quant_method."
-            )
+                f'quant_method={quant_method!r} cannot affect sampler={self.backend!r}, which loads no '
+                'local model. Configure quantization on the remote server or omit --quant_method.')
 
         template = None
         adapter_path = self.adapters[0] if self.adapters else None
-        if self.backend == "no":
+        if self.backend == 'no':
             sampler = None
         else:
             _, processor = load_model_processor(model_config)
@@ -218,96 +205,70 @@ class InferComponent(RecipeComponent):
                 if reward_adapter not in sampler_adapters:
                     sampler_adapters.append(reward_adapter)
             sampler = build_sampler(
-                model_config,
-                backend=self.backend,
-                engine_args=self.engine_args,
+                model_config, backend=self.backend, engine_args=self.engine_args,
                 device_mesh=build_parallel_mesh(distributed_config, none_if_single_rank=True),
-                template=template,
-                adapters=sampler_adapters or None,
-                remote_group=(
-                    SAMPLER_GROUP if distributed_config is not None and distributed_config.mode == "ray" else None
-                ),
-                quantize_config=self.quantize_config,
-            )
+                template=template, adapters=sampler_adapters or None,
+                remote_group=(SAMPLER_GROUP if distributed_config is not None
+                              and distributed_config.mode == 'ray' else None),
+                quantize_config=self.quantize_config)
 
         orm_funcs, prm_funcs = _build_scorers(
-            infer_config,
-            reward_config,
-            orm_plan,
-            prm_plan,
-            sampler=sampler,
-            model_config=model_config,
-            template_config=self.template_config,
-            backend=self.backend,
-            engine_args=self.engine_args,
-            distributed_config=distributed_config,
-            quantize_config=self.quantize_config,
-        )
+            infer_config, reward_config, orm_plan, prm_plan, sampler=sampler, model_config=model_config,
+            template_config=self.template_config, backend=self.backend, engine_args=self.engine_args,
+            distributed_config=distributed_config, quantize_config=self.quantize_config)
         # The worker yields the ONE matrix both channels land in; the channel arithmetic stays on
         # the caller's side -- the same split run_grpo uses, where the worker yields the matrix and
         # the recipe combines it.
-        from twinkle_agentic.async_rl.score_worker import ScoreWorker
-
         from swift.dev.rewards.advantage import build_reward_weights
+        from twinkle_agentic.async_rl.score_worker import ScoreWorker
 
         scorers = [*orm_funcs, *prm_funcs]
         self._scorer = ScoreWorker(orm_scorers=scorers) if scorers else None
         self._orm_count = len(orm_funcs)
-        self._orm_weights = build_reward_weights(getattr(reward_config, "orm_weights", None), len(orm_funcs)).tolist()
-        self._prm_weights = build_reward_weights(getattr(reward_config, "prm_weights", None), len(prm_funcs)).tolist()
+        self._orm_weights = build_reward_weights(
+            getattr(reward_config, 'orm_weights', None), len(orm_funcs)).tolist()
+        self._prm_weights = build_reward_weights(
+            getattr(reward_config, 'prm_weights', None), len(prm_funcs)).tolist()
 
         # One engine for every generation entry: single-turn is the one-turn degenerate. Tools are
         # opt-in through RolloutConfig.tools (the engine builds its own sandbox env pool in-process
         # wherever it runs); infer drives the engine locally, so no remote group is declared.
         rollout = None
         if sampler is not None:
-            from twinkle_agentic.rollout import MultiTurnRollout
-
             from swift.dev.builders.sandbox import tools_factory
 
+            from twinkle_agentic.rollout import MultiTurnRollout
+
             rollout = MultiTurnRollout(
-                sampler,
-                template,
-                sampling_params=to_sampling_params(self.generation_config),
+                sampler, template, sampling_params=to_sampling_params(self.generation_config),
                 max_turns=((self.rollout_config.max_turns or 1) if self.rollout_config else 1),
-                max_trajectory_tokens=(
-                    getattr(self.rollout_config, "max_trajectory_tokens", None) if self.rollout_config else None
-                ),
-                tools_factory=tools_factory,
-                tools_config=self.rollout_config,
-            )
+                max_trajectory_tokens=(getattr(self.rollout_config, 'max_trajectory_tokens', None)
+                                       if self.rollout_config else None),
+                tools_factory=tools_factory, tools_config=self.rollout_config)
 
         batches = _plan_batches(len(rows), infer_config.batch_size, infer_config.max_batches)
         params = to_sampling_params(self.generation_config, num_samples=num_return)
         from swift.dev.dataset.storage import open_store_writer
 
         writer = open_store_writer(
-            self.output_path,
-            infer_config.store_format,
-            store_fields=infer_config.store_fields,
-            checkpoint=(output_format == "dpo" or infer_config.resume),
-            resume=infer_config.resume,
-        )
+            self.output_path, infer_config.store_format, store_fields=infer_config.store_fields,
+            checkpoint=(output_format == 'dpo' or infer_config.resume), resume=infer_config.resume)
         # Rollout-token sidecar: only built when save_rollout_tokens is on. The NPZ dir sits beside
         # the jsonl and each row embeds a path relative to output_dir, so the pair stays portable.
         recorder = None
         if infer_config.save_rollout_tokens:
             if not self.output_path:
-                raise ValueError("save_rollout_tokens needs an output_path to place the NPZ sidecar beside.")
+                raise ValueError('save_rollout_tokens needs an output_path to place the NPZ sidecar beside.')
             recorder = _RolloutRecorder(
-                self.output_path + ".rollout_tokens",
-                base_dir=os.path.dirname(self.output_path) or "output",
-                enabled=True,
-            )
+                self.output_path + '.rollout_tokens', base_dir=os.path.dirname(self.output_path) or 'output',
+                enabled=True)
 
-        if output_format == "grpo" and self._scorer is None:
+        if output_format == 'grpo' and self._scorer is None:
             # No reward channel is a valid GRPO dump -- the group's trajectories, masks and
             # old_logps are the corpus, and training scores/advantages them later.
-            logger.info(
-                "output_format='grpo' with no reward channel (--orm / --prm) stores each prompt's "
-                "group trajectories + rollout logps with null scores; reward is left to the "
-                "training step."
-            )
+            logger.info("output_format='grpo' with no reward channel (--orm / --prm) stores each prompt's "
+                        'group trajectories + rollout logps with null scores; reward is left to the '
+                        'training step.')
 
         results: List[Dict[str, Any]] = []
         # Throughput/token summary, the dev counterpart of legacy's InferStats: prompts and
@@ -315,30 +276,22 @@ class InferComponent(RecipeComponent):
         num_prompts = 0
         num_generated_tokens = 0
         start_time = time.perf_counter()
-        emit = {"dpo": _emit_dpo, "grpo": _emit_grpo}.get(output_format, _emit_all)
+        emit = {'dpo': _emit_dpo, 'grpo': _emit_grpo}.get(output_format, _emit_all)
         # Two dataset routes, chosen by SAMPLER CAPABILITY (not backend name): vLLM/SGLang run a
         # background engine loop (PartialRolloutMixin, marked by pause_generation) and ride the SAME
         # per-sample StreamingDriver online RL uses (null ledger); transformers or the cache-only 'no'
         # backend keeps the batch loop.
-        async_route = sampler is not None and callable(getattr(sampler, "pause_generation", None))
+        async_route = sampler is not None and callable(getattr(sampler, 'pause_generation', None))
         try:
             if async_route:
                 # A deterministic seed makes the dataloader's shuffle replayable, which is what
                 # resume relies on to skip the already-emitted prefix in the same draw order.
-                seed = getattr(self.dataset_config, "data_seed", 0) or 0
+                seed = getattr(self.dataset_config, 'data_seed', 0) or 0
                 async_results, async_prompts, async_tokens = self._drive_per_sample(
-                    rows=rows,
-                    rollout=rollout,
-                    cache=cache,
-                    writer=writer,
-                    recorder=recorder,
-                    emit=emit,
-                    num_return=num_return,
-                    multi_turn_enabled=multi_turn_enabled,
-                    adapter_path=adapter_path,
-                    sampling_params=asdict(to_sampling_params(self.generation_config)),
-                    seed=seed,
-                )
+                    rows=rows, rollout=rollout, cache=cache, writer=writer,
+                    recorder=recorder, emit=emit, num_return=num_return,
+                    multi_turn_enabled=multi_turn_enabled, adapter_path=adapter_path,
+                    sampling_params=asdict(to_sampling_params(self.generation_config)), seed=seed)
                 results.extend(async_results)
                 num_prompts += async_prompts
                 num_generated_tokens += async_tokens
@@ -347,45 +300,28 @@ class InferComponent(RecipeComponent):
                     if writer.skip(index):
                         continue
                     batch = rows[start:end]
-                    logger.info(f"run_infer: batch {index + 1}/{len(batches)} ({len(batch)} prompts)")
+                    logger.info(f'run_infer: batch {index + 1}/{len(batches)} ({len(batch)} prompts)')
                     trajectories, ground_truths, groups = _sample_candidates(
-                        sampler,
-                        rollout,
-                        batch,
-                        params,
-                        self.template_config,
-                        infer_config,
-                        cache,
-                        adapter_path,
-                        multi_turn_enabled,
-                    )
+                        sampler, rollout, batch, params, self.template_config, infer_config, cache,
+                        adapter_path, multi_turn_enabled)
                     batch_rows: List[Dict[str, Any]] = []
-                    for row, trajectory, ground_truth, group in zip(batch, trajectories, ground_truths, groups):
+                    for row, trajectory, ground_truth, group in zip(batch, trajectories, ground_truths,
+                                                                    groups):
                         group = [candidate for candidate in group if candidate.decoded]
                         if not group:
                             continue
                         num_prompts += 1
                         num_generated_tokens += sum(len(candidate.response_token_ids) for candidate in group)
                         scores = self._score_group(group, row, trajectory, ground_truth)
-                        batch_rows.extend(
-                            emit(
-                                row,
-                                trajectory,
-                                ground_truth,
-                                group,
-                                scores,
-                                infer_config,
-                                recorder,
-                                multi_turn=multi_turn_enabled,
-                            )
-                        )
+                        batch_rows.extend(emit(row, trajectory, ground_truth, group, scores, infer_config,
+                                               recorder, multi_turn=multi_turn_enabled))
                     results.extend(batch_rows)
                     writer.write(batch_rows)
                     writer.checkpoint(index)
         finally:
             if self._scorer is not None:
                 for func in self._scorer.orm_scorers:
-                    shutdown = getattr(func, "shutdown", None)
+                    shutdown = getattr(func, 'shutdown', None)
                     if shutdown is not None:
                         shutdown()
             if rollout is not None:
@@ -396,86 +332,62 @@ class InferComponent(RecipeComponent):
         writer.finish(results)
         runtime = time.perf_counter() - start_time
         stats: Dict[str, Any] = {
-            "num_prompts": num_prompts,
-            "runtime": round(runtime, 3),
-            "prompts/s": round(num_prompts / runtime, 3) if runtime > 0 else 0.0,
+            'num_prompts': num_prompts,
+            'runtime': round(runtime, 3),
+            'prompts/s': round(num_prompts / runtime, 3) if runtime > 0 else 0.0,
         }
         if num_generated_tokens:
-            stats["num_generated_tokens"] = num_generated_tokens
-            stats["tokens/s"] = round(num_generated_tokens / runtime, 1) if runtime > 0 else 0.0
-        logger.info(f"run_infer stats: {stats}")
+            stats['num_generated_tokens'] = num_generated_tokens
+            stats['tokens/s'] = round(num_generated_tokens / runtime, 1) if runtime > 0 else 0.0
+        logger.info(f'run_infer stats: {stats}')
         if infer_config.metric:
-            if output_format != "all":
-                logger.warning(
-                    "metric=%r applies only to output_format='all' rows, which carry one "
-                    "response/labels to score; %r rows store a whole candidate group, so the "
-                    "metric is skipped. Re-run with output_format='all' for a metric.",
-                    infer_config.metric,
-                    output_format,
-                )
+            if output_format != 'all':
+                logger.warning("metric=%r applies only to output_format='all' rows, which carry one "
+                               'response/labels to score; %r rows store a whole candidate group, so the '
+                               "metric is skipped. Re-run with output_format='all' for a metric.",
+                               infer_config.metric, output_format)
             else:
-                logger.info(f"run_infer metric: {compute_metric(results, infer_config.metric)}")
+                logger.info(f'run_infer metric: {compute_metric(results, infer_config.metric)}')
         return results
 
     def _validate_sampling(self, num_return: int, output_format: str, multi_turn_enabled: bool) -> None:
         """The sampling-path knob combinations that cannot be honoured, rejected up front."""
         infer_config = self.infer_config
-        if output_format == "dpo":
+        if output_format == 'dpo':
             if num_return < 2:
-                raise ValueError(
-                    f"output_format='dpo' needs num_return_sequences >= 2 to have both a "
-                    f"chosen and a rejected candidate, got {num_return}."
-                )
+                raise ValueError(f"output_format='dpo' needs num_return_sequences >= 2 to have both a "
+                                 f'chosen and a rejected candidate, got {num_return}.')
             if infer_config.n_best_to_keep >= num_return:
-                raise ValueError(
-                    f"n_best_to_keep={infer_config.n_best_to_keep} must be < "
-                    f"num_return_sequences={num_return}: the lowest-scoring candidate becomes "
-                    "the rejected response, so it cannot also be a positive."
-                )
-        elif output_format == "grpo":
+                raise ValueError(f'n_best_to_keep={infer_config.n_best_to_keep} must be < '
+                                 f'num_return_sequences={num_return}: the lowest-scoring candidate becomes '
+                                 'the rejected response, so it cannot also be a positive.')
+        elif output_format == 'grpo':
             # A GRPO dump is the group itself (trajectories, masks, rollout logps); the advantage
             # is recomputed at train time. save_rollout_tokens forces the logprob computation --
             # without it there are no old_logps to store.
             if num_return < 2:
-                raise ValueError(
-                    f"output_format='grpo' needs num_return_sequences >= 2 to dump a group, got {num_return}."
-                )
+                raise ValueError(f"output_format='grpo' needs num_return_sequences >= 2 to dump a group, "
+                                 f'got {num_return}.')
             if not infer_config.save_rollout_tokens:
-                raise ValueError(
-                    "output_format='grpo' stores each candidate's rollout logprobs "
-                    "(old_logps), which are only produced when save_rollout_tokens forces "
-                    "logprob computation. Re-run with --save_rollout_tokens true."
-                )
+                raise ValueError("output_format='grpo' stores each candidate's rollout logprobs "
+                                 '(old_logps), which are only produced when save_rollout_tokens forces '
+                                 'logprob computation. Re-run with --save_rollout_tokens true.')
         if infer_config.score_ground_truth and multi_turn_enabled:
             raise ValueError(
-                "score_ground_truth cannot combine with a multi-turn rollout: the reference answer has "
+                'score_ground_truth cannot combine with a multi-turn rollout: the reference answer has '
                 "no tool trajectory to score against the candidates'. Turn off score_ground_truth, or "
-                "run single-turn."
-            )
+                'run single-turn.')
         if infer_config.generation_strict is False:
             # The engine's generation path has no template-encode strictness knob to thread, so an
             # explicit opt-out is honoured nowhere; say so instead of failing silently.
-            logger.warning(
-                "generation_strict=False has no effect on this path: the rollout engine "
-                "owns template encoding and has no strictness knob. The flag is accepted "
-                "only for CLI compatibility."
-            )
+            logger.warning('generation_strict=False has no effect on this path: the rollout engine '
+                           'owns template encoding and has no strictness knob. The flag is accepted '
+                           'only for CLI compatibility.')
 
-    def _drive_per_sample(  # noqa: C901
-        self,
-        *,
-        rows: List[Dict[str, Any]],
-        rollout: Any,
-        cache: "_CandidateCache",
-        writer: Any,
-        recorder: Any,
-        emit: Any,
-        num_return: int,
-        multi_turn_enabled: bool,
-        adapter_path: Optional[str],
-        sampling_params: Dict[str, Any],
-        seed: int,
-    ) -> Tuple[List[Dict[str, Any]], int, int]:
+    def _drive_per_sample(self, *, rows: List[Dict[str, Any]], rollout: Any,
+                          cache: '_CandidateCache', writer: Any, recorder: Any, emit: Any,
+                          num_return: int, multi_turn_enabled: bool, adapter_path: Optional[str],
+                          sampling_params: Dict[str, Any], seed: int) -> Tuple[List[Dict[str, Any]], int, int]:
         """The async dataset route: the SAME per-sample StreamingDriver online RL rides, infer regime.
 
         Each prompt's ``num_return`` candidates are admitted independently and emitted the instant
@@ -484,9 +396,8 @@ class InferComponent(RecipeComponent):
         are emitted in DRAW order (see ``_assembly_ready``), so a resume skips exactly the emitted
         prefix; torchrun drives one shard per rank (gather merges), ray one process.
         """
-        from twinkle_agentic.async_rl.streaming_driver import StreamingDriver
-
         from swift.dev.builders import build_prompt_dataloader, split_prompt_and_reference
+        from twinkle_agentic.async_rl.streaming_driver import StreamingDriver
 
         infer_config = self.infer_config
         template_config = self.template_config
@@ -494,8 +405,8 @@ class InferComponent(RecipeComponent):
         # Resume point: the count of prompts a prior run already wrote (its checkpoint), or 0 for a
         # fresh run (no checkpoint writer, or no state file). The emit order below is deterministic,
         # so "the first N prompts" is stable across runs and a resume can skip exactly that prefix.
-        resume_from = max(0, getattr(writer, "_resume_from", -1))
-        state: Dict[str, Any] = {"prompts": 0, "tokens": 0, "processed": 0, "next_ordinal": 0}
+        resume_from = max(0, getattr(writer, '_resume_from', -1))
+        state: Dict[str, Any] = {'prompts': 0, 'tokens': 0, 'processed': 0, 'next_ordinal': 0}
         # Split once: the trajectory is what the sampler generates from, the reference is emit's
         # label anchor.
         trajectories, ground_truths = split_prompt_and_reference(rows, template_config)
@@ -517,18 +428,10 @@ class InferComponent(RecipeComponent):
                 continue  # a prior run emitted it; the restored tmp file already holds its rows
             group = [candidate for candidate in hit if candidate.decoded]
             if group:
-                state["prompts"] += 1
+                state['prompts'] += 1
                 scores = self._score_group(group, rows[index], trajectory, ground_truths[index])
-                out_rows = emit(
-                    rows[index],
-                    trajectory,
-                    ground_truths[index],
-                    group,
-                    scores,
-                    infer_config,
-                    recorder,
-                    multi_turn=multi_turn_enabled,
-                )
+                out_rows = emit(rows[index], trajectory, ground_truths[index], group, scores,
+                                infer_config, recorder, multi_turn=multi_turn_enabled)
                 results.extend(out_rows)
                 writer.write(out_rows)
             writer.checkpoint(processed)
@@ -536,15 +439,13 @@ class InferComponent(RecipeComponent):
         # of the seeded stream, so fast-forward the dataloader there: the driver's ordinal 0 becomes
         # the first draw not yet emitted.
         draw_skip = max(0, resume_from - cached_total)
-        state["processed"] = cached_total + draw_skip
+        state['processed'] = cached_total + draw_skip
         if to_sample and draw_skip < len(to_sample):
             sample_rows = [rows[index] for index in to_sample]
             prompt_dataloader = build_prompt_dataloader(
-                [row["messages"] for row in sample_rows],
-                [{key: value for key, value in row.items() if key != "messages"} for row in sample_rows],
-                seed=seed,
-                batch_size=_prompt_batch_size(infer_config.batch_size),
-            )
+                [row['messages'] for row in sample_rows],
+                [{key: value for key, value in row.items() if key != 'messages'} for row in sample_rows],
+                seed=seed, batch_size=_prompt_batch_size(infer_config.batch_size))
             if draw_skip:
                 prompt_dataloader.skip_consumed_samples(draw_skip)
             # Per-draw metadata the driver's ordinal keys: the row it drew, its split trajectory
@@ -556,24 +457,19 @@ class InferComponent(RecipeComponent):
                 if ordinal not in meta:
                     traj, gt = split_prompt_and_reference([prompt_ref.row], template_config)
                     meta[ordinal] = (prompt_ref.row, traj[0], gt[0])
-                extras = {key: value for key, value in prompt_ref.row.items() if key != "messages"}
+                extras = {key: value for key, value in prompt_ref.row.items() if key != 'messages'}
                 # The row's trailing assistant turn is the reference, stripped above so the engine
                 # sees the prompt alone; ``adapter_path`` selects the LoRA the engine reserved
                 # slots for. A null-ledger policy carries no adapter, so nothing else is threaded.
                 return rollout.admit(
-                    meta[ordinal][1]["messages"],
-                    trajectory_idx,
-                    prompt_idx=ordinal,
-                    sampling_params=sampling_params,
-                    prompt_extras=(extras or None),
-                    adapter_path=adapter_path,
-                    policy_version=0,
-                )
+                    meta[ordinal][1]['messages'], trajectory_idx, prompt_idx=ordinal,
+                    sampling_params=sampling_params, prompt_extras=(extras or None),
+                    adapter_path=adapter_path, policy_version=0)
 
             def _ordinal_of(record: Any) -> int:
                 # group_key is f'{ordinal}#{group_seq}' (StreamingDriver.run); the ordinal is the
                 # draw id.
-                return int(record.group_key.split("#")[0])
+                return int(record.group_key.split('#')[0])
 
             def _assembly_ready(buffer: List[Any]) -> Optional[List[Any]]:
                 # Pull the contiguous run of COMPLETE groups starting at the next ordinal to emit --
@@ -583,7 +479,7 @@ class InferComponent(RecipeComponent):
                 for record in buffer:
                     by_ordinal.setdefault(_ordinal_of(record), []).append(record)
                 pulled: List[Any] = []
-                ordinal = state["next_ordinal"]
+                ordinal = state['next_ordinal']
                 while len(by_ordinal.get(ordinal, ())) >= num_return:
                     pulled.extend(by_ordinal[ordinal])
                     ordinal += 1
@@ -600,19 +496,12 @@ class InferComponent(RecipeComponent):
                     candidates = [candidate for candidate in candidates if candidate.decoded]
                     out_rows: List[Dict[str, Any]] = []
                     if candidates:
-                        state["prompts"] += 1
-                        state["tokens"] += sum(len(candidate.response_token_ids) for candidate in candidates)
+                        state['prompts'] += 1
+                        state['tokens'] += sum(
+                            len(candidate.response_token_ids) for candidate in candidates)
                         scores = self._score_group(candidates, row, trajectory, ground_truth)
-                        out_rows = emit(
-                            row,
-                            trajectory,
-                            ground_truth,
-                            candidates,
-                            scores,
-                            infer_config,
-                            recorder,
-                            multi_turn=multi_turn_enabled,
-                        )
+                        out_rows = emit(row, trajectory, ground_truth, candidates, scores, infer_config,
+                                        recorder, multi_turn=multi_turn_enabled)
                         results.extend(out_rows)
                     # Written even when the group came back empty: under a torchrun gather every
                     # rank must enter the same number of writer calls (one per drawn group), or the
@@ -621,24 +510,18 @@ class InferComponent(RecipeComponent):
                     # Advance past this draw and record the cumulative count: every drawn group
                     # (even one whose candidates all came back empty) is a consumed prompt, so the
                     # checkpoint stays equal to the number of draws a resume must skip.
-                    state["next_ordinal"] = ordinal + 1
-                    state["processed"] += 1
-                    writer.checkpoint(state["processed"])
+                    state['next_ordinal'] = ordinal + 1
+                    state['processed'] += 1
+                    writer.checkpoint(state['processed'])
                 return None
 
             StreamingDriver(
-                prompt_stream=prompt_dataloader,
-                num_train_epochs=1.0,
-                max_staleness=0,
-                num_generations=num_return,
-                groups_per_partition=1,
+                prompt_stream=prompt_dataloader, num_train_epochs=1.0, max_staleness=0,
+                num_generations=num_return, groups_per_partition=1,
                 buffer_depth=max(num_return * 4, 8),
-                rollout=rollout,
-                submit=_submit,
-                assembly_ready=_assembly_ready,
-                consume=_consume,
-            ).run()
-        return results, state["prompts"], state["tokens"]
+                rollout=rollout, submit=_submit, assembly_ready=_assembly_ready,
+                consume=_consume).run()
+        return results, state['prompts'], state['tokens']
 
     def _forward_pass(self, task_type: str) -> List[Dict[str, Any]]:
         """The non-sampling path: one forward pass over the rows, one plain value per row.
@@ -654,7 +537,8 @@ class InferComponent(RecipeComponent):
         """
         from swift.dev.builders import to_trajectory
 
-        rows = _forward_rows(self.dataset_config, self.max_rows, self.split_dataset_ratio, self.distributed_config)
+        rows = _forward_rows(self.dataset_config, self.max_rows, self.split_dataset_ratio,
+                             self.distributed_config)
         reranker_use_activation = self.infer_config.reranker_use_activation
 
         if task_type == "decision":
@@ -677,54 +561,29 @@ class InferComponent(RecipeComponent):
             )
 
         trajectories = [to_trajectory(row, list(row["messages"]), self.template_config) for row in rows]
-        if self.backend in ("vllm", "sglang"):
-            if task_type == "generative_reranker":
+        if self.backend in ('vllm', 'sglang'):
+            if task_type == 'generative_reranker':
                 per_row = _generative_reranker_via_sampler(
-                    self.model_config,
-                    self.template_config,
-                    self.generation_config,
-                    self.distributed_config,
-                    trajectories,
-                    self.adapters,
-                    self.quantize_config,
-                    self.backend,
-                    self.engine_args,
-                    self.shutdown,
-                    reranker_use_activation,
-                )
+                    self.model_config, self.template_config, self.generation_config,
+                    self.distributed_config, trajectories, self.adapters, self.quantize_config,
+                    self.backend, self.engine_args, self.shutdown, reranker_use_activation)
             else:
                 per_row = _pooling_via_sampler(
-                    self.model_config,
-                    self.template_config,
-                    self.distributed_config,
-                    trajectories,
-                    self.adapters,
-                    self.quantize_config,
-                    self.backend,
-                    self.engine_args,
-                    self.shutdown,
-                    reranker_use_activation,
-                )
+                    self.model_config, self.template_config, self.distributed_config, trajectories,
+                    self.adapters, self.quantize_config, self.backend, self.engine_args, self.shutdown,
+                    reranker_use_activation)
         else:
             per_row = _forward_via_transformers(
-                self.model_config,
-                self.template_config,
-                self.distributed_config,
-                rows,
-                trajectories,
-                self.adapters,
-                self.quantize_config,
-                max_batch_size=(self.engine_args or {}).get("max_batch_size"),
-                reranker_use_activation=reranker_use_activation,
-            )
+                self.model_config, self.template_config, self.distributed_config, rows, trajectories,
+                self.adapters, self.quantize_config,
+                max_batch_size=(self.engine_args or {}).get('max_batch_size'),
+                reranker_use_activation=reranker_use_activation)
 
-        return _finalize_forward_results(
-            rows, per_row, task_type, self.backend, self.output_path, self.infer_config.metric
-        )
+        return _finalize_forward_results(rows, per_row, task_type, self.backend, self.output_path,
+                                         self.infer_config.metric)
 
-    def _score_group(
-        self, candidates: List[Any], row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str]
-    ) -> Optional[List[float]]:
+    def _score_group(self, candidates: List[Any], row: Dict[str, Any],
+                     trajectory: Dict[str, Any], ground_truth: Optional[str]) -> Optional[List[float]]:
         """Score one prompt's candidates -> one float each, or None when no channel is configured.
 
         Shared by both dataset routes so scoring happens once per group and is orthogonal to
@@ -734,7 +593,7 @@ class InferComponent(RecipeComponent):
         """
         if self._scorer is None:
             return None
-        columns = {key: value for key, value in row.items() if key != "messages"}
+        columns = {key: value for key, value in row.items() if key != 'messages'}
         scored = []
         for candidate in candidates:
             if not candidate.extra:
@@ -746,14 +605,12 @@ class InferComponent(RecipeComponent):
             # correct single-turn conversation; __call__ rejects this in a multi-turn rollout.
             from twinkle_agentic.rollout import RolloutSample
 
-            scored.append(
-                RolloutSample(
-                    decoded=ground_truth,
-                    messages=copy.deepcopy(trajectory["messages"]) + [{"role": "assistant", "content": ground_truth}],
-                    extra=dict(columns),
-                )
-            )
-        return self._combined(self._scorer.score_group(scored))[: len(candidates)]
+            scored.append(RolloutSample(
+                decoded=ground_truth,
+                messages=copy.deepcopy(trajectory['messages'])
+                + [{'role': 'assistant', 'content': ground_truth}],
+                extra=dict(columns)))
+        return self._combined(self._scorer.score_group(scored))[:len(candidates)]
 
     def _combined(self, matrix: List[List[Optional[float]]]) -> List[float]:
         """The matrix's two channel blocks -> one score per candidate (weight, normalise, sum).
@@ -765,10 +622,8 @@ class InferComponent(RecipeComponent):
         """
         scores = [0.0] * len(matrix)
         total = len(self._scorer.orm_scorers)
-        blocks = (
-            (0, self._orm_count, self._orm_weights, self.infer_config.orm_channel_weight),
-            (self._orm_count, total, self._prm_weights, 1.0),
-        )
+        blocks = ((0, self._orm_count, self._orm_weights, self.infer_config.orm_channel_weight),
+                  (self._orm_count, total, self._prm_weights, 1.0))
         for start, end, weights, scale in blocks:
             if start == end:
                 continue
@@ -776,50 +631,38 @@ class InferComponent(RecipeComponent):
             # nan-aware weighted sum: an unparseable verdict (None) scores 0 for that scorer
             # rather than poisoning the whole candidate.
             weighted = [
-                sum(
-                    (
-                        float(value) * weight
-                        for value, weight in zip(row, weights)
-                        if value is not None and value == value
-                    ),
-                    0.0,
-                )
-                for row in channel
-            ]
+                sum((float(value) * weight for value, weight in zip(row, weights)
+                     if value is not None and value == value), 0.0)
+                for row in channel]
             if self.infer_config.normalize_rewards:
                 weighted = _min_max(weighted)
             scores = [total + scale * value for total, value in zip(scores, weighted)]
         return scores
 
 
-def _resolve_channel(
-    reward_config: Optional["RewardConfig"], channel: str, sampler_model: Optional[str], backend: str
-) -> Any:
+def _resolve_channel(reward_config: Optional['RewardConfig'], channel: str, sampler_model: Optional[str],
+                     backend: str) -> Any:
     """One merged ``--orm`` / ``--prm`` list resolved into an ordered ChannelPlan.
 
     A None RewardConfig means "no reward channel at all": every field reads as its empty default.
     """
-    from swift.dev.rewards.scorer import ChannelCompanions, resolve_channel
+    from swift.dev.rewards.scorer import ChannelCompanions
+    from swift.dev.rewards.scorer import resolve_channel
 
     return resolve_channel(
         list(getattr(reward_config, channel, None) or []),
         ChannelCompanions(
-            adapters=getattr(reward_config, f"{channel}_adapters", None),
-            model_types=getattr(reward_config, f"{channel}_model_type", None),
-            task_types=getattr(reward_config, f"{channel}_task_type", None),
-            model_revisions=getattr(reward_config, f"{channel}_model_revision", None),
-            template_names=getattr(reward_config, f"{channel}_template", None),
-            parallel_spec=getattr(reward_config, f"{channel}_parallel_spec", None),
-        ),
-        channel=channel,
-        sampler_model=sampler_model,
-        backend=backend,
-    )
+            adapters=getattr(reward_config, f'{channel}_adapters', None),
+            model_types=getattr(reward_config, f'{channel}_model_type', None),
+            task_types=getattr(reward_config, f'{channel}_task_type', None),
+            model_revisions=getattr(reward_config, f'{channel}_model_revision', None),
+            template_names=getattr(reward_config, f'{channel}_template', None),
+            parallel_spec=getattr(reward_config, f'{channel}_parallel_spec', None)),
+        channel=channel, sampler_model=sampler_model, backend=backend)
 
 
-def _reward_device_groups(
-    orm_plan: Any, prm_plan: Any, distributed_config: Optional["DistributedConfig"]
-) -> List[Tuple[str, int, int]]:
+def _reward_device_groups(orm_plan: Any, prm_plan: Any,
+                          distributed_config: Optional['DistributedConfig']) -> List[Tuple[str, int, int]]:
     """(name, world_size, gpus_per_worker) for each GPU-resident reward channel, 'orm' then 'prm'.
 
     A channel needs a group only when its reward model keeps weights resident (a scalar RM or an
@@ -830,26 +673,23 @@ def _reward_device_groups(
     from twinkle import DeviceMesh
 
     groups: List[Tuple[str, int, int]] = []
-    for plan, name in zip((orm_plan, prm_plan), ("orm", "prm")):
-        spec = next((spec for spec in plan.specs if spec.kind in ("scalar", "generative_independent")), None)
+    for plan, name in zip((orm_plan, prm_plan), ('orm', 'prm')):
+        spec = next((spec for spec in plan.specs if spec.kind in ('scalar', 'generative_independent')),
+                    None)
         if spec is None:
             continue
         if spec.parallel_spec:
             mesh = DeviceMesh.from_spec(spec.parallel_spec)
             groups.append((name, mesh.world_size, mesh.tp_world_size or 1))
         else:
-            width = (
-                distributed_config.nproc_per_node
-                if distributed_config is not None and distributed_config.nproc_per_node
-                else 1
-            )
+            width = (distributed_config.nproc_per_node
+                     if distributed_config is not None and distributed_config.nproc_per_node else 1)
             groups.append((name, width, 1))
     return groups
 
 
-def _initialize_for_sampling(
-    distributed_config: "DistributedConfig", reward_groups: List[Tuple[str, int, int]]
-) -> None:
+def _initialize_for_sampling(distributed_config: 'DistributedConfig',
+                             reward_groups: List[Tuple[str, int, int]]) -> None:
     """Initialize twinkle, giving the sampler -- and each GPU-resident reward model -- its own group.
 
     A scalar RM and an independent generative judge keep their weights on GPU, so under mode='ray'
@@ -861,58 +701,45 @@ def _initialize_for_sampling(
     import twinkle
     from twinkle import DeviceGroup, Platform
 
-    if distributed_config is not None and distributed_config.mode == "remote":
+    if distributed_config is not None and distributed_config.mode == 'remote':
         # No local twinkle runtime to initialize: this process is a single-process client and the
         # sampler/model live in the twinkle-server. Only the client transport is bound (once; a
         # re-init for a second component in the same process is a no-op on the session layer).
         from twinkle import init_twinkle_client
 
         if not distributed_config.server_base_url:
-            raise ValueError("--mode remote requires --server_base_url (the twinkle-server gateway root).")
+            raise ValueError("--mode remote requires --server_base_url (the twinkle-server gateway "
+                             'root).')
         init_twinkle_client(base_url=distributed_config.server_base_url, api_key=distributed_config.server_api_key)
         return
-    if distributed_config is None or distributed_config.mode != "ray":
+    if distributed_config is None or distributed_config.mode != 'ray':
         # None is the run-wide default (single process, no ray): the sampler builds plainly, and
         # the caller has already refused any GPU-resident reward channel that would need a group.
-        twinkle.initialize(mode="local")
+        twinkle.initialize(mode='local')
         return
     sampler_ranks = distributed_config.nproc_per_node
     if sampler_ranks is None:
-        raise ValueError(
-            "DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the "
-            "sampler's Ray DeviceGroup). Pass it explicitly -- there is no default."
-        )
+        raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the "
+                         "sampler's Ray DeviceGroup). Pass it explicitly -- there is no default.")
     groups: List[Tuple[str, List[int], int]] = [(SAMPLER_GROUP, list(range(sampler_ranks)), 1)]
     start = sampler_ranks
     for name, world_size, gpus_per_worker in reward_groups:
         groups.append((name, list(range(start, start + world_size)), gpus_per_worker))
         start += world_size
     twinkle.initialize(
-        mode="ray",
+        mode='ray',
         nproc_per_node=start,
         groups=[
-            DeviceGroup(
-                name=name, ranks=ranks, device_type=Platform.get_platform().__name__, gpus_per_worker=gpus_per_worker
-            )
-            for name, ranks, gpus_per_worker in groups
-        ],
-    )
+            DeviceGroup(name=name, ranks=ranks,
+                        device_type=Platform.get_platform().__name__, gpus_per_worker=gpus_per_worker)
+            for name, ranks, gpus_per_worker in groups])
 
 
-def _build_scorers(
-    infer_config: "InferConfig",
-    reward_config: Optional["RewardConfig"],
-    orm_plan: Any,
-    prm_plan: Any,
-    *,
-    sampler: Any,
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    backend: str,
-    engine_args: Optional[Dict[str, Any]],
-    distributed_config: Optional["DistributedConfig"],
-    quantize_config: Optional["QuantizeConfig"],
-) -> Tuple[List[Any], List[Any]]:
+def _build_scorers(infer_config: 'InferConfig', reward_config: Optional['RewardConfig'], orm_plan: Any,
+                   prm_plan: Any, *, sampler: Any, model_config: 'ModelConfig',
+                   template_config: 'TemplateConfig', backend: str, engine_args: Optional[Dict[str, Any]],
+                   distributed_config: Optional['DistributedConfig'],
+                   quantize_config: Optional['QuantizeConfig']) -> Tuple[List[Any], List[Any]]:
     """Build both channels' scorers from their resolved plans -> ``(orm_funcs, prm_funcs)``.
 
     Each channel's rules become reward callables and its (at most one) model spec becomes its
@@ -924,41 +751,30 @@ def _build_scorers(
     from swift.dev.config import DistributedConfig, RolloutConfig
     from swift.dev.rewards.reward import get_reward_funcs
 
-    ray = distributed_config is not None and distributed_config.mode == "ray"
-    dist = distributed_config or DistributedConfig(mode="local")
+    ray = distributed_config is not None and distributed_config.mode == 'ray'
+    dist = distributed_config or DistributedConfig(mode='local')
     rollout_config = RolloutConfig()
 
     def _channel_funcs(plan: Any, name: str) -> Tuple[List[Any], List[str]]:
         funcs, names = get_reward_funcs(plan.rules, reward_config)
         for spec in plan.specs:
-            remote_group = name if ray and spec.kind in ("scalar", "generative_independent") else None
-            funcs.append(
-                build_reward_model(
-                    spec,
-                    model_config=model_config,
-                    template_config=template_config,
-                    distributed_config=dist,
-                    rollout_config=rollout_config,
-                    backend=backend,
-                    sampler=sampler,
-                    engine_args=engine_args,
-                    remote_group=remote_group,
-                    judge_template=getattr(reward_config, "judge_template", None),
-                    quantize_config=quantize_config,
-                )
-            )
+            remote_group = name if ray and spec.kind in ('scalar', 'generative_independent') else None
+            funcs.append(build_reward_model(
+                spec, model_config=model_config, template_config=template_config,
+                distributed_config=dist, rollout_config=rollout_config, backend=backend,
+                sampler=sampler, engine_args=engine_args, remote_group=remote_group,
+                judge_template=getattr(reward_config, 'judge_template', None),
+                quantize_config=quantize_config))
             names.append(spec.display_name)
         return list(funcs), names
 
-    orm_funcs, orm_names = _channel_funcs(orm_plan, "orm")
-    prm_funcs, prm_names = _channel_funcs(prm_plan, "prm")
+    orm_funcs, orm_names = _channel_funcs(orm_plan, 'orm')
+    prm_funcs, prm_names = _channel_funcs(prm_plan, 'prm')
     if not orm_funcs and not prm_funcs:
-        logger.info("run_infer: no reward funcs -- every candidate is emitted as a positive.")
+        logger.info('run_infer: no reward funcs -- every candidate is emitted as a positive.')
     else:
-        logger.info(
-            f"run_infer: orm={orm_names} (x{infer_config.orm_channel_weight}) prm={prm_names}, "
-            f"normalize={infer_config.normalize_rewards}"
-        )
+        logger.info(f'run_infer: orm={orm_names} (x{infer_config.orm_channel_weight}) prm={prm_names}, '
+                    f'normalize={infer_config.normalize_rewards}')
     return orm_funcs, prm_funcs
 
 
@@ -981,17 +797,11 @@ def _min_max(scores: List[float]) -> List[float]:
     return [value if value != value else (value - low) / (high - low + 1e-5) for value in scores]
 
 
-def _sample_candidates(
-    sampler: Any,
-    rollout: Any,
-    batch: List[Dict[str, Any]],
-    params: Any,
-    template_config: "TemplateConfig",
-    infer_config: "InferConfig",
-    cache: "_CandidateCache",
-    adapter_path: Optional[str],
-    multi_turn_enabled: bool,
-) -> Tuple[List[Dict[str, Any]], List[Optional[str]], List[List[Any]]]:
+def _sample_candidates(sampler: Any, rollout: Any, batch: List[Dict[str, Any]], params: Any,
+                       template_config: 'TemplateConfig', infer_config: 'InferConfig',
+                       cache: '_CandidateCache', adapter_path: Optional[str],
+                       multi_turn_enabled: bool) -> Tuple[List[Dict[str, Any]], List[Optional[str]],
+                                                          List[List[Any]]]:
     """One batch of prompts -> ``(trajectories, ground_truths, candidate groups)``, sampling only.
 
     Scoring and row shaping happen in the caller so both output formats share one sampling call.
@@ -1012,37 +822,38 @@ def _sample_candidates(
         if sampler is None:
             raise ValueError("sampler='no' requires cache_files to cover every input prompt.")
         if rollout is None:
-            raise RuntimeError("sampling was requested but no rollout engine was built.")
+            raise RuntimeError('sampling was requested but no rollout engine was built.')
         selected_trajectories = [trajectories[index] for index in to_sample]
         prompt_extras = []
         # Per-prompt side inputs for the rollout: the dataset row's non-message columns merged with
         # the trajectory's, so a reward func / tool sees the same extras whether or not the prompt
         # was cached.
         for index, trajectory in zip(to_sample, selected_trajectories):
-            extra = {key: copy.deepcopy(value) for key, value in batch[index].items() if key != "messages"}
-            extra.update({key: copy.deepcopy(value) for key, value in trajectory.items() if key != "messages"})
+            extra = {key: copy.deepcopy(value) for key, value in batch[index].items() if key != 'messages'}
+            extra.update({key: copy.deepcopy(value) for key, value in trajectory.items()
+                          if key != 'messages'})
             prompt_extras.append(extra)
         # One generation call for single- and multi-turn alike: the engine dispatches on its own
         # configuration. logprobs are forced only when the recorder keeps tokens; ``adapter_path``
         # selects the LoRA the engine reserved slots for (threaded into every per-turn sample).
         sample_kwargs: Dict[str, Any] = {}
         if adapter_path is not None:
-            sample_kwargs["adapter_path"] = adapter_path
+            sample_kwargs['adapter_path'] = adapter_path
         samples = rollout.generate(
-            [trajectory["messages"] for trajectory in selected_trajectories],
+            [trajectory['messages'] for trajectory in selected_trajectories],
             num_samples=wanted,
             sampling_params=asdict(params),
             prompt_extras=prompt_extras,
             force_logprobs=infer_config.save_rollout_tokens,
-            **sample_kwargs,
-        )
+            **sample_kwargs)
         expected = len(to_sample) * wanted
         if len(samples) != expected:
-            raise RuntimeError(f"rollout returned {len(samples)} samples, expected {expected}.")
+            raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected}.')
         for offset, index in enumerate(to_sample):
-            candidates[index] = samples[offset * wanted : (offset + 1) * wanted]
+            candidates[index] = samples[offset * wanted:(offset + 1) * wanted]
     if len(to_sample) < len(batch):
-        logger.info(f"run_infer: reused cached candidates for {len(batch) - len(to_sample)}/{len(batch)} prompts")
+        logger.info(f'run_infer: reused cached candidates for {len(batch) - len(to_sample)}/{len(batch)} '
+                    'prompts')
     return trajectories, ground_truths, candidates
 
 
@@ -1051,61 +862,45 @@ def _candidate_messages(candidate: Any) -> List[Dict[str, Any]]:
     return copy.deepcopy(candidate.messages)
 
 
-def _emit_all(
-    row: Dict[str, Any],
-    trajectory: Dict[str, Any],
-    ground_truth: Optional[str],
-    candidates: List[Any],
-    scores: Optional[List[float]],
-    infer_config: "InferConfig",
-    recorder: Any = None,
-    *,
-    multi_turn: bool = False,
-) -> List[Dict[str, Any]]:
+def _emit_all(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str],
+              candidates: List[Any], scores: Optional[List[float]], infer_config: 'InferConfig',
+              recorder: Any = None, *, multi_turn: bool = False) -> List[Dict[str, Any]]:
     """'all' format: one row per prompt carrying every candidate (the plain-inference / eval shape).
 
     ``response`` is the first candidate and ``responses`` all of them, the shape the acc/rouge metric
     and downstream eval read. When a reward func scored the group, ``scores`` rides along per
     candidate; with save_rollout_tokens, ``rollout_tokens`` is the per-candidate NPZ path list.
     """
-    prompt_id = _prompt_key(trajectory["messages"])
-    out: Dict[str, Any] = {key: value for key, value in row.items() if key != "messages"}
-    out["response"] = candidates[0].decoded
-    out["responses"] = [candidate.decoded for candidate in candidates]
-    out["messages"] = _candidate_messages(candidates[0])
+    prompt_id = _prompt_key(trajectory['messages'])
+    out: Dict[str, Any] = {key: value for key, value in row.items() if key != 'messages'}
+    out['response'] = candidates[0].decoded
+    out['responses'] = [candidate.decoded for candidate in candidates]
+    out['messages'] = _candidate_messages(candidates[0])
     if multi_turn:
         # Each multi-turn candidate is a distinct trajectory (its own tool calls); ``messages`` keeps
         # only the first, so store every candidate's full trajectory rather than losing all but one.
-        out["all_messages"] = [_candidate_messages(candidate) for candidate in candidates]
+        out['all_messages'] = [_candidate_messages(candidate) for candidate in candidates]
     if candidates[0].rollout_logprobs:
         # Populated only when logprobs were requested (generation_config.logprobs /
         # save_rollout_tokens); mirrors legacy's per-row ``logprobs`` for the response this row
         # keeps.
-        out["logprobs"] = list(candidates[0].rollout_logprobs)
+        out['logprobs'] = list(candidates[0].rollout_logprobs)
     if ground_truth is not None:
-        out["labels"] = ground_truth
+        out['labels'] = ground_truth
     if scores is not None:
         # A judge that returned nothing numeric scores nan; null it so the row stays
         # json-serialisable.
-        out["scores"] = [None if score != score else score for score in scores]
+        out['scores'] = [None if score != score else score for score in scores]
     if recorder is not None:
-        out["rollout_tokens"] = [
+        out['rollout_tokens'] = [
             recorder.record(prompt_id, index, candidate) for index, candidate in enumerate(candidates)
         ]
     return [out]
 
 
-def _emit_dpo(
-    row: Dict[str, Any],
-    trajectory: Dict[str, Any],
-    ground_truth: Optional[str],
-    candidates: List[Any],
-    scores: Optional[List[float]],
-    infer_config: "InferConfig",
-    recorder: Any = None,
-    *,
-    multi_turn: bool = False,
-) -> List[Dict[str, Any]]:
+def _emit_dpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str],
+              candidates: List[Any], scores: Optional[List[float]], infer_config: 'InferConfig',
+              recorder: Any = None, *, multi_turn: bool = False) -> List[Dict[str, Any]]:
     """'dpo' format: best-of-n chosen/rejected pairs for DPO training.
 
     Without any reward func (``scores is None``) every candidate is emitted as a positive with no
@@ -1114,18 +909,15 @@ def _emit_dpo(
     ``easy_query_threshold``) is skipped whole, then the top ``n_best_to_keep`` become positives
     paired against the lowest scorer.
     """
-    prompt_id = _prompt_key(trajectory["messages"])
+    prompt_id = _prompt_key(trajectory['messages'])
     keep_tokens = recorder is not None
     record = recorder.record if keep_tokens else None
     if scores is None:
         rows = []
         for index, positive in enumerate(candidates):
             token_path = record(prompt_id, index, positive) if keep_tokens else None
-            rows.append(
-                _dpo_row(
-                    row, trajectory, positive, None, ground_truth, rollout_tokens=token_path, multi_turn=multi_turn
-                )
-            )
+            rows.append(_dpo_row(row, trajectory, positive, None, ground_truth, rollout_tokens=token_path,
+                                 multi_turn=multi_turn))
         return rows
 
     threshold = infer_config.reward_threshold
@@ -1142,11 +934,12 @@ def _emit_dpo(
         return []
     ranked = sorted(scorable, key=lambda i: scores[i], reverse=True)
     negative_index = ranked[-1]
-    positives = [i for i in ranked[: infer_config.n_best_to_keep] if i in keep and i != negative_index]
+    positives = [i for i in ranked[:infer_config.n_best_to_keep] if i in keep and i != negative_index]
     if not positives:
         return []
     negative = candidates[negative_index]
-    logger.debug(f"scores={[round(s, 4) for s in scores]} positives={positives} negative={negative_index}")
+    logger.debug(f'scores={[round(s, 4) for s in scores]} positives={positives} '
+                 f'negative={negative_index}')
     rejected_tokens = record(prompt_id, negative_index, negative) if keep_tokens else None
     rows = []
     for i in positives:
@@ -1161,25 +954,16 @@ def _emit_dpo(
                 reward_score=scores[i] if keep_tokens else None,
                 rejected_rollout_tokens=rejected_tokens,
                 rejected_reward_score=scores[negative_index] if keep_tokens else None,
-                multi_turn=multi_turn,
-            )
-        )
+                multi_turn=multi_turn))
     return rows
 
 
-def _dpo_row(  # noqa: C901
-    row: Dict[str, Any],
-    trajectory: Dict[str, Any],
-    positive: Any,
-    negative: Optional[Any],
-    ground_truth: Optional[str],
-    *,
-    rollout_tokens: Optional[str] = None,
-    reward_score: Optional[float] = None,
-    rejected_rollout_tokens: Optional[str] = None,
-    rejected_reward_score: Optional[float] = None,
-    multi_turn: bool = False,
-) -> Dict[str, Any]:
+def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: Any,
+             negative: Optional[Any], ground_truth: Optional[str], *,
+             rollout_tokens: Optional[str] = None, reward_score: Optional[float] = None,
+             rejected_rollout_tokens: Optional[str] = None,
+             rejected_reward_score: Optional[float] = None,
+             multi_turn: bool = False) -> Dict[str, Any]:
     """Build one DPO output row while preserving complete multi-turn chosen/rejected trajectories.
 
     The token/score fields are the save_rollout_tokens schema additions: each is written only when
@@ -1187,59 +971,44 @@ def _dpo_row(  # noqa: C901
     unchanged.
     """
     generated_keys = {
-        "messages",
-        "rejected_messages",
-        "rejected_response",
-        "multi_turn",
-        "truncated",
-        "rollout_infos",
-        "rejected_truncated",
-        "rejected_rollout_infos",
-        "id",
+        'messages', 'rejected_messages', 'rejected_response', 'multi_turn', 'truncated', 'rollout_infos',
+        'rejected_truncated', 'rejected_rollout_infos', 'id'
     }
     out: Dict[str, Any] = {key: value for key, value in row.items() if key not in generated_keys}
-    out["messages"] = _candidate_messages(positive)
+    out['messages'] = _candidate_messages(positive)
     if negative is not None:
         if multi_turn:
-            out["rejected_messages"] = _candidate_messages(negative)
+            out['rejected_messages'] = _candidate_messages(negative)
         else:
-            out["rejected_response"] = negative.decoded
+            out['rejected_response'] = negative.decoded
     if multi_turn:
-        out["multi_turn"] = True
-        out["truncated"] = positive.truncated
+        out['multi_turn'] = True
+        out['truncated'] = positive.truncated
         if positive.rollout_infos:
-            out["rollout_infos"] = positive.rollout_infos
+            out['rollout_infos'] = positive.rollout_infos
         if negative is not None:
-            out["rejected_truncated"] = negative.truncated
+            out['rejected_truncated'] = negative.truncated
             if negative.rollout_infos:
-                out["rejected_rollout_infos"] = negative.rollout_infos
+                out['rejected_rollout_infos'] = negative.rollout_infos
     if ground_truth is not None:
-        out["ground_truth"] = ground_truth
+        out['ground_truth'] = ground_truth
     # Group id: every row from one prompt shares it, so positives can be traced back to their group.
-    prompt_repr = json.dumps(trajectory["messages"], sort_keys=True, ensure_ascii=False, default=str)
-    out["id"] = hashlib.md5(prompt_repr.encode("utf-8")).hexdigest()
+    prompt_repr = json.dumps(trajectory['messages'], sort_keys=True, ensure_ascii=False, default=str)
+    out['id'] = hashlib.md5(prompt_repr.encode('utf-8')).hexdigest()
     if rollout_tokens is not None:
-        out["rollout_tokens"] = rollout_tokens
+        out['rollout_tokens'] = rollout_tokens
     if reward_score is not None:
-        out["reward_score"] = reward_score
+        out['reward_score'] = reward_score
     if rejected_rollout_tokens is not None:
-        out["rejected_rollout_tokens"] = rejected_rollout_tokens
+        out['rejected_rollout_tokens'] = rejected_rollout_tokens
     if rejected_reward_score is not None:
-        out["rejected_reward_score"] = rejected_reward_score
+        out['rejected_reward_score'] = rejected_reward_score
     return out
 
 
-def _emit_grpo(
-    row: Dict[str, Any],
-    trajectory: Dict[str, Any],
-    ground_truth: Optional[str],
-    candidates: List[Any],
-    scores: Optional[List[float]],
-    infer_config: "InferConfig",
-    recorder: Any = None,
-    *,
-    multi_turn: bool = False,
-) -> List[Dict[str, Any]]:
+def _emit_grpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str],
+               candidates: List[Any], scores: Optional[List[float]], infer_config: 'InferConfig',
+               recorder: Any = None, *, multi_turn: bool = False) -> List[Dict[str, Any]]:
     """'grpo' format: one row per prompt holding the whole sampled group as an offline GRPO corpus.
 
     Each candidate keeps its full ``all_messages`` trajectory (multi-turn candidates diverge at
@@ -1247,25 +1016,25 @@ def _emit_grpo(
     plus a stable group ``id`` and ``num_generations``. The group-relative advantage is NOT
     computed here: the training step recomputes it from the stored rewards and logps.
     """
-    prompt_id = _prompt_key(trajectory["messages"])
-    out: Dict[str, Any] = {key: value for key, value in row.items() if key != "messages"}
-    out["id"] = prompt_id
-    out["messages"] = copy.deepcopy(trajectory["messages"])
-    out["completions"] = [candidate.decoded for candidate in candidates]
-    out["all_messages"] = [_candidate_messages(candidate) for candidate in candidates]
-    out["num_generations"] = len(candidates)
+    prompt_id = _prompt_key(trajectory['messages'])
+    out: Dict[str, Any] = {key: value for key, value in row.items() if key != 'messages'}
+    out['id'] = prompt_id
+    out['messages'] = copy.deepcopy(trajectory['messages'])
+    out['completions'] = [candidate.decoded for candidate in candidates]
+    out['all_messages'] = [_candidate_messages(candidate) for candidate in candidates]
+    out['num_generations'] = len(candidates)
     if ground_truth is not None:
-        out["labels"] = ground_truth
+        out['labels'] = ground_truth
     if recorder is not None:
-        out["rollout_tokens"] = [
+        out['rollout_tokens'] = [
             recorder.record(prompt_id, index, candidate) for index, candidate in enumerate(candidates)
         ]
     if scores is not None:
         # A judge that returned nothing numeric scores nan; null it so the row stays
         # json-serialisable.
-        out["scores"] = [None if score != score else score for score in scores]
+        out['scores'] = [None if score != score else score for score in scores]
     else:
-        out["scores"] = None
+        out['scores'] = None
     return [out]
 
 
@@ -1287,7 +1056,7 @@ def _prompt_batch_size(batch_size: Optional[int]) -> int:
     return size
 
 
-def compute_metric(results: List[Dict[str, Any]], metric: Literal["acc", "rouge"]) -> Dict[str, float]:
+def compute_metric(results: List[Dict[str, Any]], metric: Literal['acc', 'rouge']) -> Dict[str, float]:
     """Score the first completion of each row against its reference answer.
 
     ``acc`` is exact string equality, what legacy's ``--metric acc`` measured -- NOT the token-level
@@ -1297,12 +1066,12 @@ def compute_metric(results: List[Dict[str, Any]], metric: Literal["acc", "rouge"
     """
     from twinkle.metric import ExactMatch, RougeBleu
 
-    pairs = [(r["response"], r["labels"]) for r in results if r.get("labels") is not None and r.get("response")]
+    pairs = [(r['response'], r['labels']) for r in results if r.get('labels') is not None and r.get('response')]
     if not pairs:
-        logger.warning("metric requested but no row has both a response and a reference answer.")
+        logger.warning('metric requested but no row has both a response and a reference answer.')
         return {}
     predictions, references = zip(*pairs)
-    scorer = ExactMatch() if metric == "acc" else RougeBleu()
+    scorer = ExactMatch() if metric == 'acc' else RougeBleu()
     scorer.accumulate(predictions=list(predictions), references=list(references))
     return scorer.calculate()
 
@@ -1317,7 +1086,7 @@ class _RolloutRecorder:
     files instead of appending duplicates.
     """
 
-    def __init__(self, token_dir: str, base_dir: str = "", enabled: bool = False):
+    def __init__(self, token_dir: str, base_dir: str = '', enabled: bool = False):
         self.token_dir = token_dir
         self.base_dir = base_dir
         self.enabled = enabled
@@ -1335,22 +1104,25 @@ class _RolloutRecorder:
         """
         if not self.enabled:
             return None
-        encoded = getattr(candidate, "encoded", None) or {}
-        input_ids = encoded.get("input_ids")
-        labels = encoded.get("labels")
+        encoded = getattr(candidate, 'encoded', None) or {}
+        input_ids = encoded.get('input_ids')
+        labels = encoded.get('labels')
         if not input_ids or not labels:
             return None
         arrays = {
-            "input_ids": np.asarray(input_ids, dtype=np.int64),
-            "labels": np.asarray(labels, dtype=np.int64),
-            "response_token_ids": np.asarray(getattr(candidate, "response_token_ids", None) or [], dtype=np.int64),
-            "rollout_logprobs": np.asarray(getattr(candidate, "rollout_logprobs", None) or [], dtype=np.float32),
-            "response_loss_mask": np.asarray(getattr(candidate, "response_loss_mask", None) or [], dtype=np.int8),
+            'input_ids': np.asarray(input_ids, dtype=np.int64),
+            'labels': np.asarray(labels, dtype=np.int64),
+            'response_token_ids': np.asarray(getattr(candidate, 'response_token_ids', None) or [],
+                                             dtype=np.int64),
+            'rollout_logprobs': np.asarray(getattr(candidate, 'rollout_logprobs', None) or [],
+                                           dtype=np.float32),
+            'response_loss_mask': np.asarray(getattr(candidate, 'response_loss_mask', None) or [],
+                                             dtype=np.int8),
         }
-        completion_mask = encoded.get("completion_mask")
+        completion_mask = encoded.get('completion_mask')
         if completion_mask is not None:
-            arrays["completion_mask"] = np.asarray(completion_mask, dtype=np.int8)
-        name = f"{prompt_id}_c{candidate_index}.npz"
+            arrays['completion_mask'] = np.asarray(completion_mask, dtype=np.int8)
+        name = f'{prompt_id}_c{candidate_index}.npz'
         abs_path = os.path.join(self.token_dir, name)
         np.savez_compressed(abs_path, **arrays)
         return os.path.relpath(abs_path, self.base_dir) if self.base_dir else name
@@ -1371,11 +1143,12 @@ class _CandidateCache:
         self.by_prompt: Dict[str, List[Tuple[Any, bool]]] = {}
         for path in cache_files or []:
             if not os.path.exists(path):
-                logger.warning(f"cache_files entry {path} does not exist; ignoring it.")
+                logger.warning(f'cache_files entry {path} does not exist; ignoring it.')
                 continue
             self._load(path)
         if self.by_prompt:
-            logger.info(f"run_infer: cache covers {len(self.by_prompt)} prompts from {len(cache_files)} file(s)")
+            logger.info(f'run_infer: cache covers {len(self.by_prompt)} prompts from '
+                        f'{len(cache_files)} file(s)')
 
     def _load(self, path: str) -> None:
         # Any run output is a store the storage layer reads back -- a jsonl dump (row-wise
@@ -1385,11 +1158,9 @@ class _CandidateCache:
 
         storage_format = detect_storage_format(path)
         if storage_format is None:
-            logger.warning(
-                f"cache_files entry {path} is not a store the storage layer reads (no known "
-                "format detected; name the output .jsonl/.json or point at a store "
-                "directory); ignoring it."
-            )
+            logger.warning(f'cache_files entry {path} is not a store the storage layer reads (no known '
+                           'format detected; name the output .jsonl/.json or point at a store '
+                           'directory); ignoring it.')
             return
         try:
             rows = STORAGE_MAPPING[storage_format]().iter_rows(path)
@@ -1397,37 +1168,35 @@ class _CandidateCache:
             # A cache is an optimisation, not a dependency: an unreadable entry (a foreign or
             # broken file) is skipped with the reason stated, like a missing one -- the run just
             # pays for the generation itself.
-            logger.warning(f"cache_files entry {path} could not be read as {storage_format!r} ({e}); ignoring it.")
+            logger.warning(f'cache_files entry {path} could not be read as {storage_format!r} ({e}); '
+                           'ignoring it.')
             return
         from twinkle_agentic.rollout import RolloutSample
 
         for entry in rows:
-            messages = entry.get("messages")
-            if not messages or messages[-1].get("role") != "assistant":
+            messages = entry.get('messages')
+            if not messages or messages[-1].get('role') != 'assistant':
                 continue
-            multi_turn = bool(entry.get("multi_turn"))
+            multi_turn = bool(entry.get('multi_turn'))
             if multi_turn:
-                key = entry.get("id")
+                key = entry.get('id')
                 if not key:
                     continue
             else:
                 key = _prompt_key(messages[:-1])
-            self.by_prompt.setdefault(key, []).append(
-                (
-                    RolloutSample(
-                        decoded=messages[-1].get("content") or "",
-                        messages=copy.deepcopy(messages),
-                        rollout_infos=copy.deepcopy(entry.get("rollout_infos")) or {},
-                        truncated=bool(entry.get("truncated")),
-                    ),
-                    multi_turn,
-                )
-            )
+            self.by_prompt.setdefault(key, []).append((
+                RolloutSample(
+                    decoded=messages[-1].get('content') or '',
+                    messages=copy.deepcopy(messages),
+                    rollout_infos=copy.deepcopy(entry.get('rollout_infos')) or {},
+                    truncated=bool(entry.get('truncated'))),
+                multi_turn))
 
-    def lookup(self, trajectory: Dict[str, Any], wanted: int, *, multi_turn: bool = False) -> Optional[List[Any]]:
+    def lookup(self, trajectory: Dict[str, Any], wanted: int,
+               *, multi_turn: bool = False) -> Optional[List[Any]]:
         if not self.by_prompt:
             return None
-        cached = self.by_prompt.get(_prompt_key(trajectory["messages"]))
+        cached = self.by_prompt.get(_prompt_key(trajectory['messages']))
         if cached is None:
             return None
         if not multi_turn:
@@ -1436,14 +1205,11 @@ class _CandidateCache:
             # stored tool-call trajectory.
             from twinkle_agentic.rollout import RolloutSample
 
-            prompt_messages = copy.deepcopy(trajectory["messages"])
-            cached = [
-                RolloutSample(
-                    decoded=sample.decoded,
-                    messages=prompt_messages + [{"role": "assistant", "content": sample.decoded}],
-                )
-                for sample, _flag in cached
-            ]
+            prompt_messages = copy.deepcopy(trajectory['messages'])
+            cached = [RolloutSample(
+                decoded=sample.decoded,
+                messages=prompt_messages + [{'role': 'assistant', 'content': sample.decoded}])
+                      for sample, _flag in cached]
         else:
             cached = [sample for sample, flag in cached if flag and sample.messages is not None]
         return cached[:wanted] if len(cached) >= wanted else None
@@ -1451,8 +1217,7 @@ class _CandidateCache:
 
 def _prompt_key(messages: List[Dict[str, Any]]) -> str:
     return hashlib.md5(
-        json.dumps(messages, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
-    ).hexdigest()
+        json.dumps(messages, sort_keys=True, ensure_ascii=False, default=str).encode('utf-8')).hexdigest()
 
 
 def _is_too_easy(n_passing: int, n_candidates: int, easy_query_threshold: Optional[float]) -> bool:
@@ -1470,12 +1235,12 @@ def _plan_batches(n_rows: int, batch_size: int, max_batches: Optional[int]) -> L
     """Fixed ``(start, end)`` slices, computed up front so the resume index means the same thing
     across runs. A trailing partial batch is kept, unlike legacy's ``n // batch_size`` truncation."""
     if batch_size < 1:
-        raise ValueError(f"InferConfig.batch_size must be >= 1, got {batch_size}.")
+        raise ValueError(f'InferConfig.batch_size must be >= 1, got {batch_size}.')
     batches = [(start, min(start + batch_size, n_rows)) for start in range(0, n_rows, batch_size)]
     return batches[:max_batches] if max_batches else batches
 
 
-def _initialize_for_forward(distributed_config: "DistributedConfig") -> None:
+def _initialize_for_forward(distributed_config: 'DistributedConfig') -> None:
     """Initialize twinkle for a forward-pass run: the 'model' DeviceGroup under ray, local otherwise.
 
     Both forward paths reach the model through twinkle -- ``build_sampler`` for the vLLM/SGLang
@@ -1486,35 +1251,25 @@ def _initialize_for_forward(distributed_config: "DistributedConfig") -> None:
     import twinkle
     from twinkle import DeviceGroup, Platform
 
-    extra_torch_kwargs = {"seed": 42, "full_determinism": False, "tf32": None}
-    if distributed_config.mode != "ray":
-        twinkle.initialize(mode="local", extra_torch_kwargs=extra_torch_kwargs)
+    extra_torch_kwargs = {'seed': 42, 'full_determinism': False, 'tf32': None}
+    if distributed_config.mode != 'ray':
+        twinkle.initialize(mode='local', extra_torch_kwargs=extra_torch_kwargs)
         return
     nproc = distributed_config.nproc_per_node
     if nproc is None:
-        raise ValueError(
-            "DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
-            "'model' DeviceGroup). Pass it explicitly -- there is no default."
-        )
+        raise ValueError("DistributedConfig.nproc_per_node is required in mode='ray' (it sizes the Ray "
+                         "'model' DeviceGroup). Pass it explicitly -- there is no default.")
     twinkle.initialize(
-        mode="ray",
+        mode='ray',
         nproc_per_node=nproc,
         extra_torch_kwargs=extra_torch_kwargs,
         name=distributed_config.ray_exp_name,
-        groups=[
-            DeviceGroup(
-                name="model", ranks=list(range(nproc)), device_type=Platform.get_platform().__name__, gpus_per_worker=1
-            )
-        ],
-    )
+        groups=[DeviceGroup(name='model', ranks=list(range(nproc)),
+                            device_type=Platform.get_platform().__name__, gpus_per_worker=1)])
 
 
-def _forward_rows(
-    dataset_config: "DatasetConfig",
-    max_rows: Optional[int],
-    split_dataset_ratio: float,
-    distributed_config: "DistributedConfig",
-) -> List[Dict[str, Any]]:
+def _forward_rows(dataset_config: 'DatasetConfig', max_rows: Optional[int], split_dataset_ratio: float,
+                  distributed_config: 'DistributedConfig') -> List[Dict[str, Any]]:
     """Initialize twinkle for a forward pass, then load the prompt rows it runs over.
 
     Shared by the pooling and generative-reranker forwards: they differ in the forward they run,
@@ -1526,7 +1281,7 @@ def _forward_rows(
     _initialize_for_forward(distributed_config)
     rows = load_prompt_only_rows(dataset_config, max_rows, split_dataset_ratio)
     if not rows:
-        raise ValueError("run_infer got an empty dataset. Set DatasetConfig.dataset or .val_dataset.")
+        raise ValueError('run_infer got an empty dataset. Set DatasetConfig.dataset or .val_dataset.')
     return rows
 
 
@@ -1548,24 +1303,22 @@ def _finalize_forward_results(
     """
     from swift.dev.dataset.storage import STORAGE_MAPPING
 
-    logger.info(f"run_infer: {len(rows)} rows, task_type={task_type}, backend={backend}")
+    logger.info(f'run_infer: {len(rows)} rows, task_type={task_type}, backend={backend}')
     results = []
     for row, output in zip(rows, per_row):
-        passthrough = {key: value for key, value in row.items() if key != "messages"}
-        results.append(
-            {
-                "response": output,
-                "responses": [output],
-                "labels": row.get("label"),
-                "messages": list(row["messages"]),
-                **passthrough,
-            }
-        )
+        passthrough = {key: value for key, value in row.items() if key != 'messages'}
+        results.append({
+            'response': output,
+            'responses': [output],
+            'labels': row.get('label'),
+            'messages': list(row['messages']),
+            **passthrough
+        })
     if output_path:
-        STORAGE_MAPPING["jsonl"]().write(results, output_path)
-        logger.info(f"run_infer: wrote {len(results)} rows to {output_path}")
+        STORAGE_MAPPING['jsonl']().write(results, output_path)
+        logger.info(f'run_infer: wrote {len(results)} rows to {output_path}')
     if metric:
-        logger.info(f"run_infer metric: {compute_metric(results, metric)}")
+        logger.info(f'run_infer metric: {compute_metric(results, metric)}')
     return results
 
 
@@ -1578,11 +1331,11 @@ def _sigmoid(score: float) -> float:
 
 
 def _forward_sampler(
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    distributed_config: Optional["DistributedConfig"],
+    model_config: 'ModelConfig',
+    template_config: 'TemplateConfig',
+    distributed_config: Optional['DistributedConfig'],
     adapters: Optional[List[str]],
-    quantize_config: Optional["QuantizeConfig"],
+    quantize_config: Optional['QuantizeConfig'],
     backend: str,
     engine_args: Optional[Dict[str, Any]],
     shutdown: bool,
@@ -1604,8 +1357,7 @@ def _forward_sampler(
         device_mesh=build_parallel_mesh(distributed_config, none_if_single_rank=True),
         template=template,
         adapters=adapters,
-        quantize_config=quantize_config,
-    )
+        quantize_config=quantize_config)
     try:
         yield sampler, processor, (adapters[0] if adapters else None)
     finally:
@@ -1614,12 +1366,12 @@ def _forward_sampler(
 
 
 def _pooling_via_sampler(
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    distributed_config: Optional["DistributedConfig"],
+    model_config: 'ModelConfig',
+    template_config: 'TemplateConfig',
+    distributed_config: Optional['DistributedConfig'],
     trajectories: List[Dict[str, Any]],
     adapters: Optional[List[str]],
-    quantize_config: Optional["QuantizeConfig"],
+    quantize_config: Optional['QuantizeConfig'],
     backend: str,
     engine_args: Optional[Dict[str, Any]],
     shutdown: bool,
@@ -1628,28 +1380,27 @@ def _pooling_via_sampler(
     """Run the pooling forward on a vLLM/SGLang sampler's ``encode``, one plain value per row."""
     from swift.dev.builders import pooled_data, to_pooling_params
 
-    with _forward_sampler(
-        model_config, template_config, distributed_config, adapters, quantize_config, backend, engine_args, shutdown
-    ) as (sampler, _processor, adapter_path):
+    with _forward_sampler(model_config, template_config, distributed_config, adapters, quantize_config,
+                          backend, engine_args, shutdown) as (sampler, _processor, adapter_path):
         # A cross-encoder reranker's raw score is a logit; ``use_activation`` has twinkle sigmoid
         # it into [0, 1] relevance (legacy reranker_use_activation), riding in as a PoolingParams
         # override -- the channel to_pooling_params documents for such post-processing knobs.
-        overrides = {"use_activation": reranker_use_activation} if model_config.task_type == "reranker" else {}
+        overrides = {'use_activation': reranker_use_activation} if model_config.task_type == 'reranker' else {}
         pooling_params = to_pooling_params(model_config.task_type, **overrides)
         kwargs: Dict[str, Any] = {}
         if adapter_path is not None:
-            kwargs["adapter_path"] = adapter_path
+            kwargs['adapter_path'] = adapter_path
         return pooled_data(sampler.encode(trajectories, pooling_params, **kwargs))
 
 
 def _forward_via_transformers(
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    distributed_config: Optional["DistributedConfig"],
+    model_config: 'ModelConfig',
+    template_config: 'TemplateConfig',
+    distributed_config: Optional['DistributedConfig'],
     rows: List[Dict[str, Any]],
     trajectories: List[Dict[str, Any]],
     adapters: Optional[List[str]],
-    quantize_config: Optional["QuantizeConfig"],
+    quantize_config: Optional['QuantizeConfig'],
     max_batch_size: Optional[int] = None,
     reranker_use_activation: bool = True,
 ) -> List[Any]:
@@ -1669,13 +1420,14 @@ def _forward_via_transformers(
     # build_template leaves 'train' mode (its default caller is the dataset path), whose pair
     # encoders read contrastive-only ``positive_messages`` / ``negative_messages`` columns; the
     # inference mode below takes the anchor-only branch a forward pass wants.
-    template.set_mode("transformers")
-    model = build_model(model_config, distributed_config or DistributedConfig(), quantize_config=quantize_config)
+    template.set_mode('transformers')
+    model = build_model(
+        model_config, distributed_config or DistributedConfig(), quantize_config=quantize_config)
     if adapters:
         # add_adapter_to_model takes a checkpoint directory as well as a PeftConfig, so a trained
         # adapter is loaded here rather than built -- apply_tuner would create a fresh, untrained one.
         for index, adapter in enumerate(adapters):
-            model.add_adapter_to_model(f"adapter_{index}" if index else "default", adapter)
+            model.add_adapter_to_model(f'adapter_{index}' if index else 'default', adapter)
 
     # forward_only resolves a generative_reranker's yes/no token ids off the model's template, so
     # it must be attached even with inputs pre-encoded -- else the transformers reranker path trips
@@ -1685,16 +1437,17 @@ def _forward_via_transformers(
     batch_size = max_batch_size or len(rows) or 1
     per_row: List[Any] = []
     for start in range(0, len(rows), batch_size):
-        chunk = trajectories[start : start + batch_size]
+        chunk = trajectories[start:start + batch_size]
         encoded = [template.encode(trajectory) for trajectory in chunk]
         outputs = model.forward_only(inputs=encoded, task=task_type, return_logits=True)
         per_row.extend(_per_row_outputs(outputs, len(chunk)))
-    if reranker_use_activation and task_type in ("reranker", "generative_reranker"):
+    if reranker_use_activation and task_type in ('reranker', 'generative_reranker'):
         # forward_only returns the raw relevance logit (a cross-encoder score, or a generative
         # reranker's yes/no logit difference); sigmoid maps it to [0, 1], matching legacy's
         # activation and the vLLM/SGLang paths. seq_cls / embedding are left untouched.
         per_row = [
-            [_sigmoid(value) for value in row] if isinstance(row, (list, tuple)) else _sigmoid(row) for row in per_row
+            [_sigmoid(value) for value in row] if isinstance(row, (list, tuple)) else _sigmoid(row)
+            for row in per_row
         ]
     return per_row
 
@@ -1765,18 +1518,18 @@ def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
     A lazy remote return is collected here, so the local-mode dict and the ray handle feed the
     same unpacking.
     """
-    if callable(outputs) and getattr(outputs, "_is_lazy_collect", False):
+    if callable(outputs) and getattr(outputs, '_is_lazy_collect', False):
         outputs = outputs()
     tensor = outputs
     if isinstance(outputs, dict):
         # forward_only(task='embedding') returns the pooled vectors under 'embeddings' (plural),
         # the other heads under 'logits' / 'embedding' / 'last_hidden_state'; missing the plural
         # key would leave the raw tensor dict as the row value.
-        for key in ("logits", "embeddings", "embedding", "last_hidden_state"):
+        for key in ('logits', 'embeddings', 'embedding', 'last_hidden_state'):
             if key in outputs:
                 tensor = outputs[key]
                 break
-    if hasattr(tensor, "tolist"):
+    if hasattr(tensor, 'tolist'):
         listed = tensor.tolist()
         if isinstance(listed, list) and len(listed) == num_rows:
             return listed
@@ -1785,13 +1538,13 @@ def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
 
 
 def _generative_reranker_via_sampler(
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    generation_config: Optional["GenerationConfig"],
-    distributed_config: Optional["DistributedConfig"],
+    model_config: 'ModelConfig',
+    template_config: 'TemplateConfig',
+    generation_config: Optional['GenerationConfig'],
+    distributed_config: Optional['DistributedConfig'],
     trajectories: List[Dict[str, Any]],
     adapters: Optional[List[str]],
-    quantize_config: Optional["QuantizeConfig"],
+    quantize_config: Optional['QuantizeConfig'],
     backend: str,
     engine_args: Optional[Dict[str, Any]],
     shutdown: bool,
@@ -1803,27 +1556,27 @@ def _generative_reranker_via_sampler(
     # Built as a generation engine, not a pooling runner: build_sampler treats
     # ``generative_reranker`` as a generative task_type, so no ``runner='pooling'``/``is_embedding``
     # is injected.
-    with _forward_sampler(
-        model_config, template_config, distributed_config, adapters, quantize_config, backend, engine_args, shutdown
-    ) as (sampler, processor, adapter_path):
+    with _forward_sampler(model_config, template_config, distributed_config, adapters, quantize_config,
+                          backend, engine_args, shutdown) as (sampler, processor, adapter_path):
         tokenizer = _tokenizer_of(processor)
         positive_id, negative_id = _generative_reranker_token_ids(tokenizer)
         # temperature is forced to 1.0 so logprob(yes) - logprob(no) equals the raw logit
         # difference the HF path returns; max_tokens=1 (not 0) because twinkle's logprobs-only
         # max_tokens==0 path drops the logprobs we need.
         params = to_sampling_params(
-            generation_config, max_tokens=1, temperature=1.0, logprobs=_GENERATIVE_RERANKER_TOP_LOGPROBS
-        )
+            generation_config, max_tokens=1, temperature=1.0, logprobs=_GENERATIVE_RERANKER_TOP_LOGPROBS)
         kwargs: Dict[str, Any] = {}
         if adapter_path is not None:
-            kwargs["adapter_path"] = adapter_path
+            kwargs['adapter_path'] = adapter_path
         responses = sampler.sample(trajectories, params, **kwargs)
         return [
-            _score_from_logprobs(response, positive_id, negative_id, reranker_use_activation) for response in responses
+            _score_from_logprobs(response, positive_id, negative_id, reranker_use_activation)
+            for response in responses
         ]
 
 
-def _score_from_logprobs(response: Any, positive_id: int, negative_id: int, use_activation: bool = True) -> float:
+def _score_from_logprobs(response: Any, positive_id: int, negative_id: int,
+                         use_activation: bool = True) -> float:
     """``logprob(yes) - logprob(no)`` at the first generated position of one SampleResponse.
 
     With ``use_activation`` the log-ratio is squashed by a sigmoid into ``P(yes) / (P(yes) +
@@ -1832,30 +1585,27 @@ def _score_from_logprobs(response: Any, positive_id: int, negative_id: int, use_
     """
     sequence = response.sequences[0]
     if not sequence.logprobs:
-        raise RuntimeError(
-            "generative reranker scoring requested logprobs but the sampler returned none; "
-            "the backend may not honour logprobs on this path."
-        )
+        raise RuntimeError('generative reranker scoring requested logprobs but the sampler returned none; '
+                           'the backend may not honour logprobs on this path.')
     topk = dict(sequence.logprobs[0])
     if positive_id not in topk or negative_id not in topk:
         raise RuntimeError(
-            f"generative reranker: the positive/negative tokens ({positive_id}/{negative_id}) are not both "
-            f"in the top-{len(topk)} logprobs of the first generated token. Raise "
-            "_GENERATIVE_RERANKER_TOP_LOGPROBS (or check GENERATIVE_RERANKER_POSITIVE_TOKEN/"
-            "GENERATIVE_RERANKER_NEGATIVE_TOKEN) so both are returned."
-        )
+            f'generative reranker: the positive/negative tokens ({positive_id}/{negative_id}) are not both '
+            f'in the top-{len(topk)} logprobs of the first generated token. Raise '
+            '_GENERATIVE_RERANKER_TOP_LOGPROBS (or check GENERATIVE_RERANKER_POSITIVE_TOKEN/'
+            'GENERATIVE_RERANKER_NEGATIVE_TOKEN) so both are returned.')
     score = topk[positive_id] - topk[negative_id]
     return _sigmoid(score) if use_activation else score
 
 
 def _generative_reranker_token_ids(tokenizer: Any) -> Tuple[int, int]:
     """The (positive, negative) token ids, from the same env vars the HF scoring path reads."""
-    positive_token = os.environ.get("GENERATIVE_RERANKER_POSITIVE_TOKEN", "yes")
-    negative_token = os.environ.get("GENERATIVE_RERANKER_NEGATIVE_TOKEN", "no")
+    positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+    negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
     return tokenizer.convert_tokens_to_ids(positive_token), tokenizer.convert_tokens_to_ids(negative_token)
 
 
 def _tokenizer_of(processor: Any) -> Any:
     """A tokenizer from whatever ``load_model_processor`` returned (a tokenizer, or a processor
     wrapping one)."""
-    return getattr(processor, "tokenizer", processor)
+    return getattr(processor, 'tokenizer', processor)

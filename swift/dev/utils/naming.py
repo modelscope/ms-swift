@@ -31,11 +31,12 @@ Design (per-category target differs on purpose — do NOT pretend they were all 
 """
 
 from __future__ import annotations
+
 from typing import Any, Callable, Dict, Mapping, Optional, Type
 
-_FLASH_PIN_FLAGS = {2: "is_installed", 3: "v3_is_installed", 4: "v4_is_installed"}
+_FLASH_PIN_FLAGS = {2: 'is_installed', 3: 'v3_is_installed', 4: 'v4_is_installed'}
 FLASH_PIN_SUPPORTED_VERSIONS = frozenset(_FLASH_PIN_FLAGS)
-_FLASH_PIN_PREFIXES = ("flash_attention_", "flash_")
+_FLASH_PIN_PREFIXES = ('flash_attention_', 'flash_')
 
 
 def flash_version_pin(attn_impl: Optional[str]) -> Optional[int]:
@@ -48,26 +49,25 @@ def flash_version_pin(attn_impl: Optional[str]) -> Optional[int]:
         return None
     key = str(attn_impl).lower()
     for prefix in _FLASH_PIN_PREFIXES:
-        if key.startswith(prefix) and key[len(prefix) :].isdigit():
-            return int(key[len(prefix) :])
+        if key.startswith(prefix) and key[len(prefix):].isdigit():
+            return int(key[len(prefix):])
     return None
-
 
 # --- optimizer: swift optim name -> torch.optim class name (twinkle-resolvable) ---
 # Value is either a name string resolved against torch.optim, or a (type, extra_kwargs) pair when
 # the swift/HF name does NOT map to a plain torch.optim class with default kwargs.
 _OPTIM_NAME_MAP = {
-    "adamw_torch": "AdamW",
-    "adamw_torch_fused": "AdamW",
-    "adamw": "AdamW",
-    "adam": "Adam",
-    "sgd": "SGD",
-    "adafactor": "Adafactor",
+    'adamw_torch': 'AdamW',
+    'adamw_torch_fused': 'AdamW',
+    'adamw': 'AdamW',
+    'adam': 'Adam',
+    'sgd': 'SGD',
+    'adafactor': 'Adafactor',
     # Muon on the transformers backend. twinkle's MuonClip is the HF-path counterpart of Megatron's
     # `optimizer='muon'`; it is selected with `optim='muon'` (validate._check_muon rejects the Megatron
     # `optimizer` knob here and points at `optim`). MuonClip needs a `muon_config` to be more than
     # momentum SGD -- configure_optimizer builds it and passes it to set_optimizer.
-    "muon": "MuonClip",
+    'muon': 'MuonClip',
 }
 
 # --- galore: base optimizer -> its GaLore variant in twinkle.module.optimizer.galore.
@@ -78,8 +78,8 @@ _OPTIM_NAME_MAP = {
 #     resolve_galore_target refuses it instead of silently training without the projection. The
 #     quantized variant (QGaLore) is AdamW-only and handled in resolve_galore_target, not in this map.
 _GALORE_VARIANT = {
-    "AdamW": "GaLoreAdamW",
-    "Adafactor": "GaLoreAdafactor",
+    'AdamW': 'GaLoreAdamW',
+    'Adafactor': 'GaLoreAdafactor',
 }
 
 # Optim names needing extra constructor kwargs to match transformers' Trainer exactly.
@@ -87,12 +87,17 @@ _GALORE_VARIANT = {
 # (trainer_optimizer.py _get_adamw_torch), so without this the two names are indistinguishable
 # and the fused CUDA kernel is silently never used despite being the dev default.
 _OPTIM_EXTRA_KWARGS = {
-    "adamw_torch_fused": {"fused": True},
+    'adamw_torch_fused': {
+        'fused': True
+    },
     # HF does NOT use torch.optim.Adafactor: it uses its own transformers.optimization.Adafactor
     # and forces these two off (trainer_optimizer.py _get_adafactor). torch's Adafactor defaults
     # differ, so resolving 'adafactor' to torch.optim would train DIFFERENTLY from legacy swift
     # without any error -- the one silent training-effect divergence in this map.
-    "adafactor": {"scale_parameter": False, "relative_step": False},
+    'adafactor': {
+        'scale_parameter': False,
+        'relative_step': False
+    },
 }
 
 # --- scheduler: swift lr_scheduler -> what to hand twinkle's set_lr_scheduler.
@@ -103,14 +108,14 @@ _OPTIM_EXTRA_KWARGS = {
 #     Still narrower than HF's SchedulerType: reduce_lr_on_plateau needs a metric rather than a step
 #     count, and warmup_stable_decay needs stable/decay step counts dev has no field for. ---
 _SCHED_NAME_MAP = {
-    "cosine": "CosineWarmupScheduler",
-    "linear": "LinearWarmupScheduler",
-    "constant": None,
-    "cosine_with_min_lr": "CosineWithMinLRScheduler",
-    "constant_with_warmup": "ConstantWithWarmupScheduler",
-    "cosine_with_restarts": "CosineWithRestartsScheduler",
-    "polynomial": "PolynomialDecayScheduler",
-    "inverse_sqrt": "InverseSqrtScheduler",
+    'cosine': 'CosineWarmupScheduler',
+    'linear': 'LinearWarmupScheduler',
+    'constant': None,
+    'cosine_with_min_lr': 'CosineWithMinLRScheduler',
+    'constant_with_warmup': 'ConstantWithWarmupScheduler',
+    'cosine_with_restarts': 'CosineWithRestartsScheduler',
+    'polynomial': 'PolynomialDecayScheduler',
+    'inverse_sqrt': 'InverseSqrtScheduler',
 }
 
 # --- megatron scheduler: swift lr_scheduler -> Megatron OptimizerParamScheduler
@@ -132,15 +137,15 @@ _SCHED_NAME_MAP = {
 #     knobs for it (lr_wsd_decay_iters / lr_wsd_decay_style) that dev has no field for. Adding the
 #     key without them would only move the failure into the scheduler constructor. ---
 _MEGATRON_DECAY_STYLE_MAP = {
-    "cosine": "cosine",
-    "linear": "linear",
-    "constant": "constant",
-    "constant_with_warmup": "constant",
-    "inverse_sqrt": "inverse-square-root",
+    'cosine': 'cosine',
+    'linear': 'linear',
+    'constant': 'constant',
+    'constant_with_warmup': 'constant',
+    'inverse_sqrt': 'inverse-square-root',
     # Megatron's scheduler decays toward min_lr natively, so the "with min lr" variant is the plain
     # cosine style plus TrainConfig.min_lr -- no extra schedule. validate_configs requires min_lr to
     # be set for this name, since the name promises a floor and 0.0 would silently be plain cosine.
-    "cosine_with_min_lr": "cosine",
+    'cosine_with_min_lr': 'cosine',
 }
 
 # --- attention kernel: ModelConfig.attn_impl -> Megatron AttnBackend ---
@@ -148,7 +153,7 @@ _MEGATRON_DECAY_STYLE_MAP = {
 #     attention_backend), so the Megatron side reuses the field rather than adding one.
 #     Megatron's own five values are below; transformers-style names are TRANSLATED (not rejected) by
 #     the resolver, since each has a real Megatron counterpart.
-MEGATRON_ATTN_BACKEND_NAMES = ("flash", "fused", "unfused", "local", "auto")
+MEGATRON_ATTN_BACKEND_NAMES = ('flash', 'fused', 'unfused', 'local', 'auto')
 
 # transformers-style attn_impl -> the Megatron kernel that means the same thing. attn_impl is ONE
 # shared field, so a config written for the transformers backend can reach the Megatron surface
@@ -169,22 +174,22 @@ MEGATRON_ATTN_BACKEND_NAMES = ("flash", "fused", "unfused", "local", "auto")
 # flex_attention is deliberately absent: neither TE nor mcore implements it (no hit for 'flex' in
 # either enums.py or TE's dot_product_attention), so there is nothing to map it to.
 _HF_TO_MEGATRON_ATTN = {
-    "flash_attn": "flash",
-    "sdpa": "unfused",
-    "eager": "local",
+    'flash_attn': 'flash',
+    'sdpa': 'unfused',
+    'eager': 'local',
 }
 
 # transformers-only kernels with no Megatron counterpart -> rejected rather than silently downgraded.
-_HF_ONLY_ATTN_NAMES = ("flex_attention",)
+_HF_ONLY_ATTN_NAMES = ('flex_attention', )
 
 
 # --- strategy: swift/dev strategy name -> twinkle strategy string ---
 _STRATEGY_NAME_MAP = {
-    "accelerate": "accelerate",
-    "ddp": "accelerate",
-    "fsdp": "native_fsdp",
-    "native_fsdp": "native_fsdp",
-    "deepspeed": "deepspeed",
+    'accelerate': 'accelerate',
+    'ddp': 'accelerate',
+    'fsdp': 'native_fsdp',
+    'native_fsdp': 'native_fsdp',
+    'deepspeed': 'deepspeed',
 }
 
 
@@ -230,7 +235,7 @@ def resolve_optim(swift_name: str) -> str:
     key = swift_name.lower()
     name = _OPTIM_NAME_MAP.get(key)
     if name is None:
-        raise NotImplementedError(f"Unknown optimizer {swift_name!r}. Known: {sorted(_OPTIM_NAME_MAP)}")
+        raise NotImplementedError(f'Unknown optimizer {swift_name!r}. Known: {sorted(_OPTIM_NAME_MAP)}')
     return name
 
 
@@ -245,12 +250,11 @@ def resolve_optim_target(swift_name: str) -> tuple:
     key = swift_name.lower()
     name = _OPTIM_NAME_MAP.get(key)
     if name is None:
-        raise NotImplementedError(f"Unknown optimizer {swift_name!r}. Known: {sorted(_OPTIM_NAME_MAP)}")
+        raise NotImplementedError(f'Unknown optimizer {swift_name!r}. Known: {sorted(_OPTIM_NAME_MAP)}')
     extra = dict(_OPTIM_EXTRA_KWARGS.get(key, {}))
-    if key == "adafactor":
+    if key == 'adafactor':
         # Import the HF implementation, not torch.optim.Adafactor (see _OPTIM_EXTRA_KWARGS).
         from transformers.optimization import Adafactor
-
         return Adafactor, extra
     return name, extra
 
@@ -270,22 +274,20 @@ def resolve_galore_target(optim_target, *, quantize: bool = False) -> str:
     and fails loudly at construction if it is missing). Adafactor has no quantized counterpart, so
     ``quantize`` + Adafactor is refused here rather than silently dropping the quantization.
     """
-    key = optim_target if isinstance(optim_target, str) else getattr(optim_target, "__name__", None)
+    key = optim_target if isinstance(optim_target, str) else getattr(optim_target, '__name__', None)
     if quantize:
-        if key != "AdamW":
+        if key != 'AdamW':
             raise NotImplementedError(
-                f"use_galore with galore_quantization has no QGaLore variant for optimizer {key!r}. "
-                "QGaLore (quantized low-rank projection) is implemented for the AdamW base only -- set "
-                "optim to an adamw variant (e.g. adamw_torch), or drop galore_quantization."
-            )
-        return "QGaLoreAdamW8bit"
+                f'use_galore with galore_quantization has no QGaLore variant for optimizer {key!r}. '
+                'QGaLore (quantized low-rank projection) is implemented for the AdamW base only -- set '
+                'optim to an adamw variant (e.g. adamw_torch), or drop galore_quantization.')
+        return 'QGaLoreAdamW8bit'
     variant = _GALORE_VARIANT.get(key)
     if variant is None:
         raise NotImplementedError(
-            f"use_galore has no GaLore variant for optimizer {key!r}. GaLore is implemented for the "
-            f"AdamW and Adafactor bases only -- set optim to one of those (e.g. adamw_torch), or drop "
-            f"use_galore."
-        )
+            f'use_galore has no GaLore variant for optimizer {key!r}. GaLore is implemented for the '
+            f'AdamW and Adafactor bases only -- set optim to one of those (e.g. adamw_torch), or drop '
+            f'use_galore.')
     return variant
 
 
@@ -298,19 +300,19 @@ def parse_optim_args(optim_args: Optional[str]) -> dict:
     if not optim_args:
         return {}
     parsed: dict = {}
-    for mapping in optim_args.replace(" ", "").split(","):
-        if "=" not in mapping:
+    for mapping in optim_args.replace(' ', '').split(','):
+        if '=' not in mapping:
             raise ValueError(f'Invalid optim_args entry {mapping!r}: expected "key=value" pairs separated by ",".')
-        key, value = mapping.split("=", 1)
+        key, value = mapping.split('=', 1)
         parsed[key] = _coerce(value)
     return parsed
 
 
 def _coerce(value: str):
     lowered = value.lower()
-    if lowered in ("true", "false"):
-        return lowered == "true"
-    if lowered in ("none", "null"):
+    if lowered in ('true', 'false'):
+        return lowered == 'true'
+    if lowered in ('none', 'null'):
         return None
     for cast in (int, float):
         try:
@@ -320,23 +322,18 @@ def _coerce(value: str):
     return value
 
 
-def _unsupported_scheduler(
-    swift_name: str, *, backend: str, supported: dict, other_backend: str, other_supported: dict
-) -> NotImplementedError:
+def _unsupported_scheduler(swift_name: str, *, backend: str, supported: dict, other_backend: str,
+                           other_supported: dict) -> NotImplementedError:
     """Build the rejection for an lr_scheduler the given backend cannot run.
 
     Names the backend that refused, because the two backends support different sets on purpose --
     otherwise "not supported" reads like a dev-wide limitation when the other backend would run it.
     """
-    msg = (
-        f"lr_scheduler {swift_name!r} is not supported on the {backend} backend. "
-        f"Supported there: {sorted(k for k in supported)}."
-    )
+    msg = (f'lr_scheduler {swift_name!r} is not supported on the {backend} backend. '
+           f'Supported there: {sorted(k for k in supported)}.')
     if swift_name.lower() in other_supported:
-        msg += (
-            f" ({swift_name!r} IS supported on the {other_backend} backend -- the two run "
-            f"different schedulers, so their sets differ by design.)"
-        )
+        msg += (f' ({swift_name!r} IS supported on the {other_backend} backend -- the two run '
+                f'different schedulers, so their sets differ by design.)')
     return NotImplementedError(msg)
 
 
@@ -351,17 +348,15 @@ def resolve_scheduler(swift_name: str):
     if key not in _SCHED_NAME_MAP:
         raise _unsupported_scheduler(
             swift_name,
-            backend="Transformers",
+            backend='Transformers',
             supported=_SCHED_NAME_MAP,
-            other_backend="Megatron",
-            other_supported=_MEGATRON_DECAY_STYLE_MAP,
-        )
+            other_backend='Megatron',
+            other_supported=_MEGATRON_DECAY_STYLE_MAP)
     name = _SCHED_NAME_MAP[key]
     if name is None:
         return None
     # Imported lazily so this module stays cheap for callers that only need name lookups.
     from swift.dev.builders import scheduler
-
     return getattr(scheduler, name, name)
 
 
@@ -379,8 +374,7 @@ def mcore_version_at_least(min_version: str) -> bool:
     """
     import megatron.core
     from packaging import version
-
-    floor = min_version if "rc" in min_version else f"{min_version}.0rc0"
+    floor = min_version if 'rc' in min_version else f'{min_version}.0rc0'
     return version.parse(megatron.core.__version__) >= version.parse(floor)
 
 
@@ -395,11 +389,10 @@ def resolve_megatron_decay_style(swift_name: str) -> str:
     if key not in _MEGATRON_DECAY_STYLE_MAP:
         raise _unsupported_scheduler(
             swift_name,
-            backend="Megatron",
+            backend='Megatron',
             supported=_MEGATRON_DECAY_STYLE_MAP,
-            other_backend="Transformers",
-            other_supported=_SCHED_NAME_MAP,
-        )
+            other_backend='Transformers',
+            other_supported=_SCHED_NAME_MAP)
     return _MEGATRON_DECAY_STYLE_MAP[key]
 
 
@@ -441,25 +434,23 @@ def resolve_megatron_attn_backend(attn_impl: Optional[str], mixed_precision: Opt
         # 'No dot product attention backend is available' crash at the first forward. An UNREQUESTED
         # default must never crash the run: fall back to auto (TE picks the native unfused kernel under
         # fp32). An EXPLICIT --attn_impl flash keeps its fail-fast semantics.
-        if mixed_precision == "no":
+        if mixed_precision == 'no':
             import logging
 
             logging.getLogger(__name__).warning(
-                "attn_impl unset with fp32 weights: the legacy-parity default (flash) is killed by "
+                'attn_impl unset with fp32 weights: the legacy-parity default (flash) is killed by '
                 "transformer_engine's fp32 dtype filter, and mcore's flash branch disables the fused and "
-                "unfused backends too -- falling back to attention_backend=auto (TE picks the native "
-                "unfused kernel). Set --attn_impl explicitly to pin a backend."
-            )
+                'unfused backends too -- falling back to attention_backend=auto (TE picks the native '
+                'unfused kernel). Set --attn_impl explicitly to pin a backend.')
             return AttnBackend.auto
         return AttnBackend.flash
     key = str(attn_impl).lower()
     if key in _HF_ONLY_ATTN_NAMES:
         raise NotImplementedError(
-            f"attn_impl={attn_impl!r} has no Megatron equivalent: neither transformer_engine nor "
-            f"megatron-core implements it. Megatron kernels are "
-            f"{list(MEGATRON_ATTN_BACKEND_NAMES)}; the transformers-style names that DO translate are "
-            f"{sorted(_HF_TO_MEGATRON_ATTN)}."
-        )
+            f'attn_impl={attn_impl!r} has no Megatron equivalent: neither transformer_engine nor '
+            f'megatron-core implements it. Megatron kernels are '
+            f'{list(MEGATRON_ATTN_BACKEND_NAMES)}; the transformers-style names that DO translate are '
+            f'{sorted(_HF_TO_MEGATRON_ATTN)}.')
     if flash_version_pin(key) is not None:
         # A version pin selects the flash KERNEL; the version itself is enforced separately by
         # twinkle's MegatronStrategy (it flips the TE module globals), exactly as legacy collapses
@@ -467,19 +458,16 @@ def resolve_megatron_attn_backend(attn_impl: Optional[str], mixed_precision: Opt
         # spellings land here so the same intent behaves identically.
         if flash_version_pin(key) not in FLASH_PIN_SUPPORTED_VERSIONS:
             raise NotImplementedError(
-                f"attn_impl={attn_impl!r} pins a FlashAttention version transformer_engine has no "
-                f"availability flag for. Supported pins: "
-                f"{sorted('flash_%d' % v for v in FLASH_PIN_SUPPORTED_VERSIONS)} (or the "
-                f"transformers spelling flash_attention_N)."
-            )
+                f'attn_impl={attn_impl!r} pins a FlashAttention version transformer_engine has no '
+                f'availability flag for. Supported pins: '
+                f'{sorted("flash_%d" % v for v in FLASH_PIN_SUPPORTED_VERSIONS)} (or the '
+                f'transformers spelling flash_attention_N).')
         return AttnBackend.flash
     key = _HF_TO_MEGATRON_ATTN.get(key, key)
     if key not in MEGATRON_ATTN_BACKEND_NAMES:
-        raise NotImplementedError(
-            f"Unknown attn_impl={attn_impl!r} for the Megatron backend. "
-            f"Supported: {list(MEGATRON_ATTN_BACKEND_NAMES)} "
-            f"(transformers-style names also accepted: {sorted(_HF_TO_MEGATRON_ATTN)})."
-        )
+        raise NotImplementedError(f'Unknown attn_impl={attn_impl!r} for the Megatron backend. '
+                                  f'Supported: {list(MEGATRON_ATTN_BACKEND_NAMES)} '
+                                  f'(transformers-style names also accepted: {sorted(_HF_TO_MEGATRON_ATTN)}).')
     return AttnBackend[key]
 
 
@@ -488,16 +476,16 @@ def resolve_strategy(swift_name: str) -> str:
     key = swift_name.lower()
     name = _STRATEGY_NAME_MAP.get(key)
     if name is None:
-        raise NotImplementedError(f"Unknown strategy {swift_name!r}. Known: {sorted(_STRATEGY_NAME_MAP)}")
+        raise NotImplementedError(f'Unknown strategy {swift_name!r}. Known: {sorted(_STRATEGY_NAME_MAP)}')
     return name
 
 
 _RESOLVERS = {
-    "loss": resolve_loss,
-    "optim": resolve_optim,
-    "scheduler": resolve_scheduler,
-    "megatron_decay_style": resolve_megatron_decay_style,
-    "strategy": resolve_strategy,
+    'loss': resolve_loss,
+    'optim': resolve_optim,
+    'scheduler': resolve_scheduler,
+    'megatron_decay_style': resolve_megatron_decay_style,
+    'strategy': resolve_strategy,
 }
 
 
@@ -509,18 +497,16 @@ def resolve(category: str, swift_name: str) -> Any:
     """
     fn = _RESOLVERS.get(category)
     if fn is None:
-        raise ValueError(f"Unknown resolve category {category!r}. Known: {sorted(_RESOLVERS)}")
+        raise ValueError(f'Unknown resolve category {category!r}. Known: {sorted(_RESOLVERS)}')
     return fn(swift_name)
 
 
-def resolve_plugin_class(
-    spec: Any,
-    base: Type,
-    registry: Optional[Mapping[str, Type]] = None,
-    *,
-    kind: str = "plugin",
-    resolve_id: Optional[Callable[[str], Optional[Type]]] = None,
-) -> Type:
+def resolve_plugin_class(spec: Any,
+                         base: Type,
+                         registry: Optional[Mapping[str, Type]] = None,
+                         *,
+                         kind: str = 'plugin',
+                         resolve_id: Optional[Callable[[str], Optional[Type]]] = None) -> Type:
     """Resolve one plugin spec to the implementation CLASS that backs it.
 
     Every swift extension point selects an implementation the same way, so the resolution lives here
@@ -543,10 +529,10 @@ def resolve_plugin_class(
     """
     if isinstance(spec, type):
         if not issubclass(spec, base):
-            raise TypeError(f"{spec.__name__} must subclass {base.__name__} to be used as a {kind}.")
+            raise TypeError(f'{spec.__name__} must subclass {base.__name__} to be used as a {kind}.')
         return spec
     if not isinstance(spec, str):
-        raise ValueError(f"{kind} {spec!r} must be a registered name, a class, or an external source.")
+        raise ValueError(f'{kind} {spec!r} must be a registered name, a class, or an external source.')
     if registry is not None and spec in registry:
         return registry[spec]
     if resolve_id is not None:
@@ -554,5 +540,4 @@ def resolve_plugin_class(
         if resolved is not None:
             return resolved
     from twinkle.utils import Plugin
-
     return Plugin.load_plugin(spec, base)
