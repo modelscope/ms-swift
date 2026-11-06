@@ -116,6 +116,9 @@ class RolloutConfig:
     resource_overrides: Optional[Dict[str, Any]] = None
 
     # === Batch Control ===
+    # Prompts per rollout round. None derives from the training batch so each batch fills whole
+    # optimizer updates (recipe/utils.resolve_generation_batch_size) -- never the whole dataset:
+    # that fallback made the first batch generate for hours before the first training log line.
     generation_batch_size: Optional[int] = None
 
     # === Tools & sandbox (multi-turn rollout) ===

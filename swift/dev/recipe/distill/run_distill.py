@@ -7,6 +7,7 @@ import random
 from itertools import islice
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
+from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
 from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.distill.assembly import (
@@ -15,7 +16,8 @@ from swift.dev.recipe.distill.assembly import (
 from swift.dev.recipe.distill.worker import DistillRow
 from swift.dev.recipe.utils import (
     StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_final_checkpoint, save_training_step,
+    resolve_generation_batch_size, resolve_rollout_max_steps, resume_training, rollout_step_budget,
+    save_final_checkpoint, save_training_step,
     snapshot_initial_adapter)
 
 if TYPE_CHECKING:
@@ -59,11 +61,16 @@ def _train_rows(cluster: Cluster, state: StepState, rows: List[DistillRow],
         state.micro_step += (hi - lo) // train_batch_size
         # The worker builds the kwargs where the teacher forward runs -- the driver never sees the
         # full-vocab logits or the logps, only the light kwargs carrying them as refs.
+        plan = (plan_rollout_batch(
+            state, [row.feature for row in update_rows], micro_batch_kwargs={'micro_batch_size': micro_batch_size})
+                if use_student and getattr(state, 'balance_batch', False) else None)
+        if plan is not None:
+            update_rows = plan.apply(update_rows)
         kwargs = dict(cluster.worker.forward_kwargs(update_rows, use_student))
         kwargs.update(gradient_accumulation_steps=1, micro_batch_size=micro_batch_size)
         cluster.model.forward_backward(**kwargs)
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        state.record()
+        record_rollout_step(state, plan)
         optimizer_steps += 1
         state.step_tail(save=save)
     return optimizer_steps
@@ -251,7 +258,14 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
-    generation_batch_size = rollout_config.generation_batch_size
+    # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
+    # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
+    # Distillation replays each batch once (no num_iterations analogue).
+    generation_batch_size = resolve_generation_batch_size(
+        rollout_config.generation_batch_size, num_prompts=len(prompts),
+        num_generations=rl_config.num_generations, num_iterations=1,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     # Updates span prompt-loader batches. The round loop drops each epoch's tail; the streaming
     # driver instead combines all passes before dropping its delivery tail.
     budget = rollout_step_budget(
@@ -259,6 +273,7 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         num_train_epochs=math.ceil(train_config.num_train_epochs),
+        generation_batch_size=generation_batch_size,
         streaming=rollout_config.sampler_mode != "colocate" and rl_config.lmbda == 1,
     )
     max_steps = resolve_rollout_max_steps(train_config.max_steps, budget, recipe='run_distill')
@@ -281,11 +296,13 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         shuffle=dataset_config.train_dataloader_shuffle,
-        batch_size=(generation_batch_size or len(prompts)),
+        batch_size=generation_batch_size,
     )
 
     state = StepState(
         cluster.model, train_config,
+        padding_free=template_config.padding_free,
+        balance_batch=rl_config.balance_batch,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

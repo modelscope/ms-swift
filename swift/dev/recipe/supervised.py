@@ -37,6 +37,14 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+def _is_vpp_megatron(distributed_config: "DistributedConfig") -> bool:
+    """Whether the active backend is megatron with virtual pipeline stages enabled."""
+    from swift.dev.builders import is_megatron_backend
+
+    return (is_megatron_backend(distributed_config)
+            and (distributed_config.virtual_pipeline_model_parallel_size or 1) > 1)
+
+
 class _Evaluation:
     def __init__(
         self,
@@ -50,6 +58,7 @@ class _Evaluation:
         manual_gc,
         manual_gc_eval,
         greater_is_better,
+        eval_group_size: int = 1,
     ):
         self.cluster, self.state, self.model = cluster, state, cluster.model
         self.generative, self.micro_step_fn = generative, micro_step_fn
@@ -60,6 +69,7 @@ class _Evaluation:
         self.metric_for_best_model = train_config.metric_for_best_model
         self.greater_is_better = greater_is_better
         self.micro_batch_size = train_config.per_device_eval_batch_size
+        self.eval_group_size = eval_group_size
         self.history = []
         self.best_step, self.best_ckpt, self.warned_eval_dp = 0, None, False
 
@@ -100,6 +110,7 @@ class _Evaluation:
                 micro_step_kwargs=self.micro_step_fn,
                 global_step=self.state.global_step,
                 micro_batch_size=self.micro_batch_size,
+                eval_group_size=self.eval_group_size,
             )
         if result is None:
             return None
@@ -220,6 +231,8 @@ def run_supervised(
         manual_gc=manual_gc,
         manual_gc_eval=manual_gc_eval,
         greater_is_better=greater_is_better,
+        eval_group_size=(max(1, train_config.gradient_accumulation_steps)
+                         if _is_vpp_megatron(distributed_config) else 1),
     )
     evaluate = evaluation.evaluate
 
