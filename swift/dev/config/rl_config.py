@@ -50,6 +50,11 @@ class RLConfig:
     gamma: float = 1.0
     lam: float = 0.95
 
+    # === Online rollout training ===
+    # Post-rollout DP balancing for online RL / distillation / RFT (Ray dispatch).
+    # Dataset-completion branches and auxiliary SFT retain their existing order.
+    balance_batch: bool = False
+
     # === GRPO ===
     num_generations: int = 8
     log_completions: bool = False

@@ -482,13 +482,16 @@ class StepState:
                  eval_delay: int = 0, manual_gc: bool = False, manual_gc_steps: int = 0,
                  empty_cache_steps: Optional[int] = None,
                  extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-                 log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None):
+                 log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None,
+                 padding_free: bool = False, balance_batch: bool = False):
         # The tracker initializes its reporters as a construction side effect (validation ran above).
 
         from swift.dev.callbacks import build_callbacks
         from swift.dev.callbacks.handler import CallbackHandler
 
         self.model = model
+        self.balance_batch = balance_batch
+        self.padding_free = padding_free
         self.ga = gradient_accumulation_steps
         self.max_steps = max_steps
         self.max_grad_norm = max_grad_norm
@@ -531,7 +534,7 @@ class StepState:
         if metrics is not None:
             state.metrics = metrics
 
-    def record(self) -> dict:
+    def record(self, *, extra_metrics: Optional[Dict[str, Any]] = None) -> dict:
         """Count one optimizer step: metrics, tracker write, console line, the on_log fan-out.
 
         Reads the NORMALIZED per-token loss (+ every algorithm metric) via the driver-callable
@@ -562,6 +565,8 @@ class StepState:
         record.update(_mtp_metrics(self.model))
         if self._extra_metrics_fn is not None:
             record.update(self._extra_metrics_fn())
+        if extra_metrics is not None:
+            record.update(extra_metrics)
         if should_log:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
