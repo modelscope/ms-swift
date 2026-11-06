@@ -245,6 +245,7 @@ ENV:
 - 🔥per_device_eval_batch_size: 默认值1。
 - 🔥gradient_accumulation_steps: 梯度累加。**默认为None，即设置gradient_accumulation_steps使得total_batch_size>=16**。total_batch_size等于`per_device_train_batch_size * gradient_accumulation_steps * world_size`。在GRPO训练中，默认为1。
   - 在CPT/SFT训练中，梯度累加的训练效果等价使用更大的batch_size，但在RLHF训练中，训练效果并不等价。
+  - 分类、重排和决策任务的评估损失不按训练累积窗口缩放。模型和验证批次划分固定时，修改 `gradient_accumulation_steps`，或在不足完整累积窗口的训练步骤之后评估，都不会缩放 `eval_loss`。
 - weight_decay: weight衰减系数，默认值0.1。
 - adam_beta1: Adam系列优化器中一阶矩估计（动量）的指数衰减率。默认为0.9。
 - adam_beta2: Adam系列优化器中二阶矩估计（方差）的指数衰减率。默认为0.95。

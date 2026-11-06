@@ -53,9 +53,10 @@ class ScoringTrainer(Trainer):
             else:
                 loss = outputs.loss
 
-            accumulation_steps = getattr(self, 'current_gradient_accumulation_steps',
-                                         self.args.gradient_accumulation_steps)
-            loss = loss / accumulation_steps
+            if model.training:
+                accumulation_steps = getattr(self, 'current_gradient_accumulation_steps',
+                                             self.args.gradient_accumulation_steps)
+                loss = loss / accumulation_steps
 
             if labels is not None:
                 self._compute_acc(outputs, labels)
