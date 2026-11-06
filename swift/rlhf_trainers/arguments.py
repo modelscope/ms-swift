@@ -80,6 +80,9 @@ class PPOConfig(TrainArgumentsMixin, HfPPOConfig):
 
 @dataclass
 class GKDConfig(RolloutTrainerArgumentsMixin, TrainArgumentsMixin, HfGKDConfig):
+    loss_type: str = 'jsd'
+    abkd_alpha: float = 0.2
+    abkd_beta: float = 0.7
     sft_alpha: float = 0
 
     offload_teacher_model: bool = False
@@ -90,6 +93,9 @@ class GKDConfig(RolloutTrainerArgumentsMixin, TrainArgumentsMixin, HfGKDConfig):
         RolloutTrainerArgumentsMixin.__post_init__(self)
         TrainArgumentsMixin.__post_init__(self)
         HfGKDConfig.__post_init__(self)
+        if self.loss_type == 'abkd' and self.use_liger_kernel:
+            # ABKD needs student logits; keep Liger's other model kernels enabled.
+            self.liger_kernel_config = {**(self.liger_kernel_config or {}), 'fused_linear_cross_entropy': False}
         self._init_generation_batch_params()
 
 

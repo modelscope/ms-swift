@@ -4,6 +4,8 @@
 
 GKD（Generalized Knowledge Distillation，广义知识蒸馏）是一种将教师模型的知识迁移到学生模型的训练方法，通过计算两个模型输出分布之间的 Jensen-Shannon 散度（JSD）损失来实现知识蒸馏。
 
+使用 `--loss_type abkd --abkd_alpha 0.2 --abkd_beta 0.7` 可切换到 alpha-beta 散度。详见[在 GKD 中使用 ABKD](../Instruction/Distillation.md#31-gkd散度作为直接损失)。
+
 ## 功能支持
 
 Megatron GKD 当前已支持以下功能：
@@ -24,6 +26,9 @@ Megatron GKD 当前已支持以下功能：
 | `--teacher_model_server` | str | None | 教师 API 地址；支持单 URL 或多 teacher JSON，详见[蒸馏文档](../Instruction/Distillation.md#multi-teacher多教师路由) |
 | `--teacher_tag_key` | str | `"dataset"` | 多 teacher 路由时样本匹配 teacher `tags` 的字段名 |
 | `--gkd_logits_topk` | int | None | Top-K logits 数量，使用外部教师 API 时必须设置 |
+| `--loss_type` | str | jsd | GKD 损失：`jsd` 或 `abkd` |
+| `--abkd_alpha` | float | 0.2 | ABKD 的 alpha 参数 |
+| `--abkd_beta` | float | 0.7 | ABKD 的 beta 参数，与 JSD 的 `beta` 独立 |
 | `--beta` | float | 0.5 | JSD 散度插值系数：<br>• 0.0: Forward KL<br>• 0.5: 对称 JSD<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | On-Policy 学习触发概率：<br>• 0.0: 纯 Off-Policy<br>• 1.0: 纯 On-Policy |
 | `--temperature` | float | 0.9 | 温度参数，用于采样和损失计算 |

@@ -24,7 +24,7 @@ from .gkd_utils import cp_slice_teacher_output, tp_gather_topk, vocab_parallel_t
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather_object
-from .vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
+from .vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax, vocab_parallel_sum
 
 logger = get_logger()
 
@@ -350,7 +350,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                   labels: torch.Tensor,
                   teacher_output: TeacherOutput,
                   data_source: DataSource = DataSource.DATASET):
-        """Compute GKD loss (JSD + optional SFT loss)."""
+        """Compute the selected distillation loss and optional SFT loss."""
         student_logits = output_tensor
 
         jsd_total, jsd_num_valid = gkd_loss(
@@ -361,7 +361,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             self.temperature,
             gather_fn=tp_gather_topk,
             log_softmax_fn=vocab_parallel_log_softmax,
-            kl_div_fn=vocab_parallel_kl_div)
+            kl_div_fn=vocab_parallel_kl_div,
+            loss_type=self.args.loss_type,
+            abkd_alpha=self.args.abkd_alpha,
+            abkd_beta=self.args.abkd_beta,
+            sum_fn=vocab_parallel_sum)
 
         loss = jsd_total
 
@@ -387,7 +391,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # across micro-batches by _aggregated_metrics; the logger reports sum/count (mean).
         metric = {'loss': torch.stack([loss.detach().float(), num_tokens.float()])}
         if sft_loss_sum is not None:
-            metric['jsd_loss'] = torch.stack([jsd_total.detach().float(), num_tokens.float()])
+            loss_name = 'abkd_loss' if self.args.loss_type == 'abkd' else 'jsd_loss'
+            metric[loss_name] = torch.stack([jsd_total.detach().float(), num_tokens.float()])
             metric['sft_loss'] = torch.stack([sft_loss_sum.detach().float(), num_tokens.float()])
         metric = self._all_reduce_metric(
             metric, torch.distributed.ReduceOp.SUM, group=mpu.get_data_parallel_group(with_context_parallel=True))
