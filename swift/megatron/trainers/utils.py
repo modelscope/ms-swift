@@ -334,7 +334,7 @@ class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
         return mpu.get_data_parallel_group()
 
 
-def build_streaming_dataloader(args, dataset, collate_fn):
+def build_streaming_dataloader(args, dataset, collate_fn, skip_batches: int = 0):
     dataloader_kwargs = {}
     mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
     if mp_context is not None and args.dataloader_num_workers > 0:
@@ -349,7 +349,7 @@ def build_streaming_dataloader(args, dataset, collate_fn):
         persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
         **dataloader_kwargs,
     )
-    return MegatronDataLoaderDispatcher(base_dataloader)
+    return MegatronDataLoaderDispatcher(base_dataloader, skip_batches=skip_batches)
 
 
 _NPU_ATTENTION_MASK_2D_MODEL_TYPES = {'qwen3_5', 'qwen3_5_moe'}
