@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 
+from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
 from swift.dev.recipe.grpo.assembly import (
     greedy_params,
     group_variance,
@@ -32,6 +33,7 @@ from swift.dev.recipe.utils import (
     optimizer_batch_slices,
     prompt_rows_from_dataset,
     record_batch_training,
+    resolve_generation_batch_size,
     resolve_rollout_max_steps,
     resume_training,
     rollout_step_budget,
@@ -317,6 +319,11 @@ def _train_mini_batches(
             return optimizer_steps
         # Repeat the traversal, including across update boundaries, without copying all replays.
         indices = [index % len(samples) for index in range(lo, hi)]
+        plan = plan_rollout_batch(
+            state, [samples[index].encoded for index in indices],
+            micro_batch_kwargs={'micro_batch_size': train_batch_size // dp_size, **(batching_kwargs or {})})
+        if plan is not None:
+            indices = plan.apply(indices)
         batch = ([column[index] for index in indices] if column is not None else None for column in columns)
         kwargs = _forward_kwargs(rl_config, *batch, temperature, micro_batch_size=train_batch_size // dp_size)
         kwargs.update(batching_kwargs or {})
@@ -332,7 +339,7 @@ def _train_mini_batches(
                 # This side effect has no downstream tensor consumer to propagate worker errors.
                 collect(model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1))
             state.micro_step += micro_batches
-            state.record()
+            record_rollout_step(state, plan)
             record_batch_training(state, indices)
             batch_memory(state)
         optimizer_steps += 1
@@ -766,7 +773,13 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
-    generation_batch_size = rollout_config.generation_batch_size
+    # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
+    # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
+    generation_batch_size = resolve_generation_batch_size(
+        rollout_config.generation_batch_size, num_prompts=len(prompts),
+        num_generations=rl_config.num_generations, num_iterations=rl_config.num_iterations,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     streaming = rollout_config.sampler_mode != "colocate"
     budget = rollout_step_budget(
         num_prompts=len(prompts), num_generations=rl_config.num_generations,
@@ -795,7 +808,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         shuffle=dataset_config.train_dataloader_shuffle,
-        batch_size=(generation_batch_size or len(prompts)),
+        batch_size=generation_batch_size,
     )
     # Late-bound cells: StepState builds before the disaggregated loop creates the driver, so
     # _extra_metrics reads the driver handle and the batch's version spans through these cells.
@@ -834,6 +847,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     state = StepState(
         cluster.model, train_config,
+        padding_free=template_config.padding_free,
+        balance_batch=rl_config.balance_batch,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

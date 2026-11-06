@@ -111,10 +111,14 @@ The full preprocessing loop, as the workbench agent should run it:
 
 1. **Ask the user** for the data format and the path. Paths outside the workspace are readable
    only after the user registers them (Settings -> 外部数据目录, read-only) — probe with
-   `read_file` / `list_dir` with `root="external"`; for large files use shell `head` / `wc` / `jq`.
+   `read_file` / `list_dir` with `root="external"`. Profile large files with the `dataset_profile`
+   tool (streaming rows/columns/value-distribution/sample counts; no size limit, no shell needed);
+   fall back to shell `head` / `wc` / `jq` only for details `dataset_profile` cannot answer.
 2. **Write the preprocessing script** into the workspace (`write_file`), run it as a background
-   task (`run_script`; shell has a 30s timeout), poll `read_script_log` until it reports
-   completion. Edit scripts with `edit_file`, never `sed`.
+   task (`run_script`; shell has a 30s timeout). Completion wakes the conversation automatically —
+   let the turn end after launching and wait for the wake-up; do NOT poll `read_script_log` for
+   progress. Read the log only for mid-run diagnosis (suspected divergence, failure attribution),
+   once, not in a loop. Edit scripts with `edit_file`, never `sed`.
 3. **Aim the output at Channel 1**: a clean messages-format jsonl in the workspace. Pass its
    path in the train form's dataset field — no registration needed.
 4. **Only if the data needs code**: write the plugin as `workspace/plugins/<name>.py`. Files
@@ -124,3 +128,17 @@ The full preprocessing loop, as the workbench agent should run it:
 
 Contamination rule: the held-out evaluation split is frozen before any augmentation, and
 nothing that generates training rows may read from it.
+
+## Mixing external datasets
+
+Your own data and hub datasets mix freely in one run: `--dataset own.jsonl 'org/id#N' ...`
+(space-separated; `#N` caps the row budget per source — that is how you set the mixture
+ratio). Reach for this when your own data lacks a capability signal that a public dataset
+covers (search high quality candidates with the `list_catalog` tool or the ModelScope hub). Two guardrails:
+
+- **Contamination check before mixing**: public code/QA collections often contain benchmark
+  originals (coding collections regularly include HumanEval problems). Before adding a
+  candidate, check it against your frozen eval set — same-source contamination silently
+  invalidates the eval, which is worse than an eval that simply doesn't improve.
+- **Keep the mixture traceable**: record every source and its `#N` in the experiment log.
+  A mixture is one more variable; untracked ratios make regressions unattributable.

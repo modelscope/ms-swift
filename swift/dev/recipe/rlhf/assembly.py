@@ -77,7 +77,7 @@ def _build_reference(
     if rl_config.ref_model is None:
         raise ValueError(
             "dpo/kto full fine-tuning needs a reference model, but RLConfig.ref_model is None. It is "
-            "normally defaulted to the policy model by process.py::_derive_rlhf_ref_model; pass "
+            "normally defaulted to the policy model by process.py::_derive_rl_ref_model; pass "
             "--ref_model explicitly if you bypassed config processing."
         )
     if remote_group is None:

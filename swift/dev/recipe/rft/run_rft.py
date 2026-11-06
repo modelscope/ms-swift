@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from typing import TYPE_CHECKING, Any, List, Optional
 
+from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
 from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.rft.assembly import initialize_rft_cluster, rft_group_requests
 from swift.dev.recipe.utils import (
     StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_final_checkpoint, save_training_step,
+    resolve_generation_batch_size, resolve_rollout_max_steps, resume_training, rollout_step_budget,
+    save_final_checkpoint, save_training_step,
     snapshot_initial_adapter)
 
 if TYPE_CHECKING:
@@ -184,7 +187,8 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
     return rft_state.next_round
 
 
-def _sample_and_select(cluster, rollout_config, reward_config, selector, prompts, prompt_extras, num_samples):
+def _sample_and_select(cluster, rollout_config, reward_config, selector, prompts, prompt_extras,
+                       num_samples, generation_batch_size):
     """Generate and score one round, returning the sampler's borrowed device on every exit."""
     entered = False
     try:
@@ -200,12 +204,25 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, prompts
         offload_for_rollout(cluster.model, rollout_config)
         wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ["kv_cache"])
         entered = True
-        samples = cluster.rollout.generate(
-            prompts,
-            num_samples=num_samples,
-            sampling_params=cluster.sampling_params,
-            prompt_extras=prompt_extras or None,
-        )
+        # The round still generates the WHOLE prompt set before any SFT (the policy is frozen for
+        # the round: weights synced once above, training only after selection), so chunking the
+        # generate call is pure flow control -- it keeps a large prompt set from one giant
+        # in-flight burst and logs per-chunk progress instead of hours of silence.
+        samples = []
+        total_chunks = math.ceil(len(prompts) / generation_batch_size)
+        for chunk_index in range(total_chunks):
+            lo = chunk_index * generation_batch_size
+            hi = min(lo + generation_batch_size, len(prompts))
+            chunk = cluster.rollout.generate(
+                prompts[lo:hi],
+                num_samples=num_samples,
+                sampling_params=cluster.sampling_params,
+                prompt_extras=(prompt_extras[lo:hi] if prompt_extras else None),
+            )
+            samples.extend(chunk)
+            logger.info(
+                f'[rft] round generation: {hi}/{len(prompts)} prompts done '
+                f'(chunk {chunk_index + 1}/{total_chunks}, {len(samples)} samples so far).')
         expected = len(prompts) * num_samples
         if len(samples) != expected:
             raise RuntimeError(
@@ -262,6 +279,11 @@ def _train_selected_samples(cluster, state, selected, train_batch_size, save_ste
         if state.reached_max():
             break
         update_samples = selected[start:end]
+        plan = plan_rollout_batch(
+            state, [sample.encoded for sample in update_samples],
+            micro_batch_kwargs={'micro_batch_size': train_batch_size // cluster.model.device_mesh.data_world_size})
+        if plan is not None:
+            update_samples = plan.apply(update_samples)
         state.micro_step += (end - start) // train_batch_size
         cluster.model.forward_backward(
             inputs=copy_inputs([sample.encoded for sample in update_samples]),
@@ -269,7 +291,7 @@ def _train_selected_samples(cluster, state, selected, train_batch_size, save_ste
             micro_batch_size=train_batch_size // cluster.model.device_mesh.data_world_size,
         )
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        state.record()
+        record_rollout_step(state, plan)
         # The periodic save is DEFERRED to the round boundary (the round component
         # commits with it, keeping every checkpoint round-atomic); snapshot the
         # callback's one-shot request before the tail clears it.
@@ -324,13 +346,26 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
+    # One resolved value feeds BOTH the step budget and the round's generation chunking: the derived
+    # default fills whole optimizer updates on the sampling axis (num_samples per prompt), never the
+    # whole dataset -- see resolve_generation_batch_size.
+    generation_batch_size = resolve_generation_batch_size(
+        rollout_config.generation_batch_size, num_prompts=len(prompts),
+        num_generations=num_samples, num_iterations=1,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+    # The optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer: each of
+    # the rft_iterations rounds generates the whole prompt set and SFTs the kept completions, so the
+    # budget sizes those rounds with the per-prompt kept count as the effective num_generations and
+    # no replay (num_iterations=1); an explicit --max_steps still overrides.
     max_steps = resolve_rollout_max_steps(
         train_config.max_steps,
         rollout_step_budget(
             num_prompts=len(prompts), num_generations=_rft_kept_per_prompt(rl_config, num_samples),
             train_batch_size=train_batch_size,
             gradient_accumulation_steps=train_config.gradient_accumulation_steps,
-            num_train_epochs=rl_config.rft_iterations, num_iterations=1),
+            num_train_epochs=rl_config.rft_iterations, num_iterations=1,
+            generation_batch_size=generation_batch_size),
         recipe='run_rft')
     # segment 3: the cluster -- the policy, the sampler, the orm reward channel, nothing else.
     cluster = initialize_rft_cluster(
@@ -350,6 +385,8 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         reward_scorer_names=cluster.orm_scorer_names, reward_weights=reward_config.orm_weights)
     state = StepState(
         cluster.model, train_config,
+        padding_free=template_config.padding_free,
+        balance_batch=rl_config.balance_batch,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,
@@ -401,7 +438,8 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             if state.reached_max():
                 break
             selected = _sample_and_select(
-                cluster, rollout_config, reward_config, selector, prompts, prompt_extras, num_samples
+                cluster, rollout_config, reward_config, selector, prompts, prompt_extras, num_samples,
+                generation_batch_size
             )
             round_save_due = _train_selected_samples(cluster, state, selected, train_batch_size, save_steps)
             # Commit the round only after its SFT pass has completed (or max_steps deliberately

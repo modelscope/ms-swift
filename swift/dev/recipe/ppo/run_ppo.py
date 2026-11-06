@@ -8,13 +8,15 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 
+from swift.dev.recipe.batching import apply_rollout_plan, plan_rollout_batch, record_rollout_step
 from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.ppo.assembly import (
     Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
 from swift.dev.recipe.utils import (
     StepState, build_save_knobs, collect, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_rollout_max_steps, resume_training, rollout_step_budget, save_training_step,
+    resolve_rollout_max_steps, resume_training, rollout_step_budget, resolve_generation_batch_size,
+    save_training_step,
     snapshot_initial_adapter)
 
 if TYPE_CHECKING:
@@ -111,26 +113,32 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
             break
         indices = [index % len(samples) for index in range(lo, hi)]
         inputs = [samples[index].encoded for index in indices]
+        batching = {'micro_batch_size': micro_batch_size}
+        policy_plan = plan_rollout_batch(state, inputs, micro_batch_kwargs=batching)
+        value_plan = plan_rollout_batch(
+            state, inputs, model=value_model, micro_batch_kwargs=batching, metric_prefix='dp_balance/value')
+        policy_indices = apply_rollout_plan(policy_plan, indices)
+        value_indices = apply_rollout_plan(value_plan, indices)
         state.micro_step += (hi - lo) // train_batch_size
         model.forward_backward(
-            inputs=inputs,
+            inputs=[samples[index].encoded for index in policy_indices],
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             temperature=temperature,
-            advantages=[advantages[index] for index in indices],
-            old_logps=[old_logps[index] for index in indices],
+            advantages=[advantages[index] for index in policy_indices],
+            old_logps=[old_logps[index] for index in policy_indices],
         )
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         value_model.forward_backward(
-            inputs=inputs,
+            inputs=[samples[index].encoded for index in value_indices],
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             task='value',
-            returns=[returns[index] for index in indices],
-            old_values=[values[index] for index in indices],
+            returns=[returns[index] for index in value_indices],
+            old_values=[values[index] for index in value_indices],
         )
         value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        state.record()
+        record_rollout_step(state, policy_plan, value_plan)
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
             ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
@@ -344,7 +352,13 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
-    generation_batch_size = rollout_config.generation_batch_size
+    # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
+    # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
+    generation_batch_size = resolve_generation_batch_size(
+        rollout_config.generation_batch_size, num_prompts=len(prompts),
+        num_generations=rl_config.num_generations, num_iterations=rl_config.num_ppo_epochs,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     budget = rollout_step_budget(
         num_prompts=len(prompts), num_generations=rl_config.num_generations,
         train_batch_size=train_batch_size,
@@ -372,7 +386,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         shuffle=dataset_config.train_dataloader_shuffle,
-        batch_size=(generation_batch_size or len(prompts)),
+        batch_size=generation_batch_size,
     )
     reward_metric = CompletionRewardMetric()
     _versions_cell: List[List[int]] = []
@@ -383,6 +397,8 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     state = StepState(
         cluster.model, train_config,
+        padding_free=template_config.padding_free,
+        balance_batch=rl_config.balance_batch,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

@@ -766,13 +766,16 @@ class StepState:
                  eval_delay: int = 0, manual_gc: bool = False, manual_gc_steps: int = 0,
                  empty_cache_steps: Optional[int] = None,
                  extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-                 log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None):
+                 log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None,
+                 padding_free: bool = False, balance_batch: bool = False):
         # The tracker initializes its reporters as a construction side effect (validation ran above).
 
         from swift.dev.callbacks import build_callbacks
         from swift.dev.callbacks.handler import CallbackHandler
 
         self.model = model
+        self.balance_batch = balance_batch
+        self.padding_free = padding_free
         self.ga = gradient_accumulation_steps
         self.max_steps = max_steps
         self.max_grad_norm = max_grad_norm
@@ -815,7 +818,7 @@ class StepState:
         if metrics is not None:
             state.metrics = metrics
 
-    def record(self) -> dict:
+    def record(self, *, extra_metrics: Optional[Dict[str, Any]] = None) -> dict:
         """Count one optimizer step: metrics, tracker write, console line, the on_log fan-out.
 
         Reads the NORMALIZED per-token loss (+ every algorithm metric) via the driver-callable
@@ -846,6 +849,8 @@ class StepState:
         record.update(_mtp_metrics(self.model))
         if self._extra_metrics_fn is not None:
             record.update(self._extra_metrics_fn())
+        if extra_metrics is not None:
+            record.update(extra_metrics)
         if should_log:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
@@ -912,6 +917,31 @@ class StepState:
         control.should_save = False
         control.should_evaluate = False
         control.should_log = False
+
+
+# Optimizer updates each derived rollout batch covers. Colocate pays a sleep/wake + weight-sync
+# handover per batch, so a batch covering a single update makes that overhead dominate; a horizon
+# in the usual 4-32 range keeps it amortized while the first batch still finishes in minutes.
+_STEPS_PER_ROLLOUT_BATCH = 8
+
+
+def resolve_generation_batch_size(generation_batch_size: Optional[int], *, num_prompts: int,
+                                   num_generations: int, num_iterations: int,
+                                   train_batch_size: int, gradient_accumulation_steps: int) -> int:
+    """Resolve the rollout batch size (in prompts) an online-RL round generates in one go.
+
+    An explicit ``generation_batch_size`` passes through unchanged. The derived default fills
+    whole optimizer updates: ``train_batch_size * gradient_accumulation_steps`` samples = that
+    many completions = ``global_batch / num_generations`` prompts, times ``num_iterations``
+    replays and ``_STEPS_PER_ROLLOUT_BATCH`` updates. The previous fallback -- the whole
+    dataset in the first batch -- turned any sizeable dataset into hours of generation before
+    the first training log line, indistinguishable from a hang.
+    """
+    if generation_batch_size is not None:
+        return generation_batch_size
+    global_batch_size = train_batch_size * max(1, gradient_accumulation_steps)
+    prompts_per_update = math.ceil(global_batch_size / max(1, num_generations))
+    return max(1, prompts_per_update * _STEPS_PER_ROLLOUT_BATCH * max(1, num_iterations))
 
 
 def rollout_step_budget(*, num_prompts: int, num_generations: int, train_batch_size: int,
@@ -1512,27 +1542,53 @@ def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
 def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_gc: bool,
                   manual_gc_eval: bool, micro_step_kwargs: Callable[..., Dict[str, Any]],
                   global_step: int,
-                  micro_batch_size: int = 1) -> Optional[dict]:
+                  micro_batch_size: int = 1,
+                  eval_group_size: int = 1) -> Optional[dict]:
     """Val-loss eval: the normalized per-token loss over eval_dataloader (None if there is none).
 
     Mirrors the train metric path on the eval side: each val batch runs ``forward_only`` (no grad)
     then ``calculate_loss`` (fills this batch's loss); a final ``calculate_metric(False)`` aggregates
     and resets. Megatron already produced the loss inside forward_only -- its ``calculate_loss``
     raises NotImplementedError, treated as already populated.
+
+    ``eval_group_size`` batches N dataloader batches into one forward call (1 = the historic
+    one-batch-per-call). N > 1 serves Megatron's VPP scheduler, which rejects a forward whose
+    micro-batch count is below PP or not a multiple of it (each dataloader batch is one
+    micro-batch here); training groups by GA, so GA is the batch count the schedule already
+    proved schedulable. A trailing partial group cannot satisfy that floor and is dropped:
+    eval is a sampled estimate, and padding would double-count the padded rows in the
+    per-token loss.
     """
     if eval_dataloader is None:
         return None
     if manual_gc and manual_gc_eval:
         import gc
         gc.collect()
-    for index, batch in enumerate(eval_dataloader):
-        if eval_iters > 0 and index >= eval_iters:
-            break
-        model.forward_only(**micro_step_kwargs(batch, micro_batch_size=micro_batch_size))
+
+    def _forward(chunk: list) -> None:
+        model.forward_only(**micro_step_kwargs(chunk, micro_batch_size=micro_batch_size))
         try:
             model.calculate_loss()
         except NotImplementedError:
             pass
+
+    group: list = []
+    consumed = 0
+    for index, batch in enumerate(eval_dataloader):
+        if eval_iters > 0 and index >= eval_iters:
+            break
+        group.extend(batch)
+        consumed += 1
+        if consumed == eval_group_size:
+            _forward(group)
+            group, consumed = [], 0
+    if group:
+        if eval_group_size > 1:
+            logger.warning(f'Dropped {len(group)} trailing eval sample(s): a partial group of '
+                           f'{consumed} batch(es) cannot fill the {eval_group_size}-micro-batch forward '
+                           'that the megatron VPP schedule requires.')
+        else:
+            _forward(group)
     metrics = model.calculate_metric(is_training=False)
     result = {'step': global_step}
     if metrics.get('loss') is not None:

@@ -356,7 +356,7 @@ def test_grpo_reference_kl_in_reward_engages_reference(tiny_qwen2_5, rl_data, tm
     ``'kl_in_reward=True requires an active reference model'`` unless the reference lane produced real
     ``ref_logps`` (``worker.py``: ``ref_logps`` is None iff ``scored['ref']`` is absent, which happens iff
     ``grpo.assembly`` never built the reference). Under LoRA the anchor is the adapter-disabled policy base
-    (``validate._check_rlhf_ref_model`` refuses a separate ``ref_model`` here, and dev does not train
+    (``validate._check_rl_ref_model`` refuses a separate ``ref_model`` here, and dev does not train
     full-parameter). So a GREEN run is POSITIVE PROOF the whole chain is wired: ``beta>0`` +
     ``calculate_KL`` built the frozen reference, the loop forwarded it with ``disable_lora=True``, the worker
     read per-token ``ref_logps``, and ``sequence_kl`` folded ``beta*kl`` into the per-sample reward that drives
@@ -530,7 +530,7 @@ def test_grpo_teacher_disable_adapter_base_resolves_shared(tiny_qwen2_5, rl_data
                                                            assert_rl_trained, capfd):
     """S7-12 form A: teacher_model == the policy checkpoint resolves to the adapter-disabled BASE (shared).
 
-    ``process._derive_rlhf_teacher`` folds ``teacher_model == [policy]`` + LoRA + no teacher_adapters into
+    ``process._derive_rl_teacher`` folds ``teacher_model == [policy]`` + LoRA + no teacher_adapters into
     ``_teacher_use_disable_adapter=True; teacher_model=None``: the teacher IS the policy with its adapter
     off, sharing the trainer actor, so NO teacher DeviceGroup is planned and the teacher lane forwards with
     ``disable_lora=True``. ORACLE (driver-observable, on the RESOLUTION the plan targets -- 'teacher 解析错'):
@@ -538,7 +538,7 @@ def test_grpo_teacher_disable_adapter_base_resolves_shared(tiny_qwen2_5, rl_data
     folded to None and the disable_adapter flag set; (2) no ``('teacher', ...`` DeviceGroup in the initialize
     log -- a resolution that wrongly built a SEPARATE teacher actor would plan one and trip this. Green
     training (lora_B moves off the varied rule) completes the run-level proof. Reverse-verify: neuter the
-    fold in ``process._derive_rlhf_teacher`` -> teacher_model survives as a list and (on one card) the
+    fold in ``process._derive_rl_teacher`` -> teacher_model survives as a list and (on one card) the
     separate-teacher placement blows up or the derived-config assert fires -> red; restore -> green.
     """
     configs = rl_configs(

@@ -36,11 +36,11 @@ from swift.dev.config.process import (
     _derive_lr_decay_style,
     _derive_packing,
     _derive_per_token_loss,
-    _derive_rlhf_beta,
-    _derive_rlhf_loss_scale,
-    _derive_rlhf_ref_model,
-    _derive_rlhf_task_type,
-    _derive_rlhf_teacher,
+    _derive_rl_beta,
+    _derive_rl_loss_scale,
+    _derive_rl_ref_model,
+    _derive_rl_task_type,
+    _derive_rl_teacher,
     _derive_split_dataset_ratio,
     _derive_streaming_dataloader_workers,
     _derive_virtual_pipeline,
@@ -355,15 +355,15 @@ def test_rm_task_type_derivation():
     """S2-12: rl_type=rm trains a seq_cls head with num_labels=1; other rl_types and explicit
     task_types are untouched."""
     model = ModelConfig(model='m')
-    _derive_rlhf_task_type(model, RLConfig(rl_type='rm'))
+    _derive_rl_task_type(model, RLConfig(rl_type='rm'))
     assert model.task_type == 'seq_cls' and model.num_labels == 1
 
     model = ModelConfig(model='m', task_type='causal_lm', num_labels=3)
-    _derive_rlhf_task_type(model, RLConfig(rl_type='rm'))
+    _derive_rl_task_type(model, RLConfig(rl_type='rm'))
     assert model.task_type == 'causal_lm' and model.num_labels == 3  # only fills defaults
 
     model = ModelConfig(model='m')
-    _derive_rlhf_task_type(model, RLConfig(rl_type='dpo'))
+    _derive_rl_task_type(model, RLConfig(rl_type='dpo'))
     assert model.task_type is None
 
 
@@ -375,10 +375,10 @@ def test_rlhf_beta_defaults(rl_type, expected):
     """S2-13: each algorithm's default beta (the collected legacy table); explicit wins, and
     --beta 0 is preserved rather than overwritten."""
     rl = RLConfig(rl_type=rl_type)
-    _derive_rlhf_beta(rl)
+    _derive_rl_beta(rl)
     assert rl.beta == expected
     rl = RLConfig(rl_type=rl_type, beta=0.0)
-    _derive_rlhf_beta(rl)
+    _derive_rl_beta(rl)
     assert rl.beta == 0.0
 
 
@@ -386,23 +386,23 @@ def test_rlhf_loss_scale_derivation():
     """S2-14: every rl_type defaults loss_scale to last_round except grpo-with-max_turns (default);
     an explicit loss_scale survives."""
     template = TemplateConfig()
-    _derive_rlhf_loss_scale(template, RLConfig(rl_type='dpo'))
+    _derive_rl_loss_scale(template, RLConfig(rl_type='dpo'))
     assert template.loss_scale == 'last_round'
 
     template = TemplateConfig()
-    _derive_rlhf_loss_scale(template, RLConfig(rl_type='rm'))
+    _derive_rl_loss_scale(template, RLConfig(rl_type='rm'))
     assert template.loss_scale == 'last_round'
 
     template = TemplateConfig()
-    _derive_rlhf_loss_scale(template, RLConfig(rl_type='grpo'), RolloutConfig(max_turns=4))
+    _derive_rl_loss_scale(template, RLConfig(rl_type='grpo'), RolloutConfig(max_turns=4))
     assert template.loss_scale == 'default'
 
     template = TemplateConfig()
-    _derive_rlhf_loss_scale(template, RLConfig(rl_type='grpo'))  # single-turn grpo stays last_round
+    _derive_rl_loss_scale(template, RLConfig(rl_type='grpo'))  # single-turn grpo stays last_round
     assert template.loss_scale == 'last_round'
 
     template = _explicit(TemplateConfig(loss_scale='all'), 'loss_scale')
-    _derive_rlhf_loss_scale(template, RLConfig(rl_type='dpo'))
+    _derive_rl_loss_scale(template, RLConfig(rl_type='dpo'))
     assert template.loss_scale == 'all'
 
 
@@ -412,19 +412,19 @@ def test_rlhf_ref_model_derivation():
     is listified."""
     model = ModelConfig(model='m', model_type='qwen2')
     rl = RLConfig(rl_type='dpo')
-    _derive_rlhf_ref_model(model, None, rl)
+    _derive_rl_ref_model(model, None, rl)
     assert rl.ref_model == 'm' and rl.ref_model_type == 'qwen2'
 
     rl = RLConfig(rl_type='grpo', beta=0.0, ref_model='someone')
-    _derive_rlhf_ref_model(model, None, rl)
+    _derive_rl_ref_model(model, None, rl)
     assert rl.ref_model is None  # reference-free grpo needs none
 
     rl = RLConfig(rl_type='dpo')  # lora student: no silent adapter-based ref
-    _derive_rlhf_ref_model(model, TunerConfig(tuner='lora'), rl)
+    _derive_rl_ref_model(model, TunerConfig(tuner='lora'), rl)
     assert rl.ref_model is None
 
     rl = RLConfig(rl_type='dpo', ref_adapters='a')
-    _derive_rlhf_ref_model(model, TunerConfig(tuner='lora'), rl)
+    _derive_rl_ref_model(model, TunerConfig(tuner='lora'), rl)
     assert rl.ref_adapters == ['a'] and rl.ref_model == 'm'
 
 
@@ -620,13 +620,13 @@ def test_rlhf_teacher_self_distillation_detection():
     is listified; a distinct teacher keeps the list."""
     model = ModelConfig(model='m')
     rl = RLConfig(rl_type='opsd', teacher_model='m')
-    _derive_rlhf_teacher(model, TunerConfig(tuner='lora'), rl)
+    _derive_rl_teacher(model, TunerConfig(tuner='lora'), rl)
     assert rl._teacher_use_disable_adapter is True and rl.teacher_model is None
 
     rl = RLConfig(rl_type='opsd', teacher_model='other')
-    _derive_rlhf_teacher(model, None, rl)
+    _derive_rl_teacher(model, None, rl)
     assert rl.teacher_model == ['other'] and not getattr(rl, '_teacher_use_disable_adapter', False)
 
     rl = RLConfig(rl_type='opsd', teacher_model='m', teacher_adapters='t')
-    _derive_rlhf_teacher(model, None, rl)
+    _derive_rl_teacher(model, None, rl)
     assert rl.teacher_model == ['m'] and rl.teacher_adapters == ['t']  # adapters: not self-distill

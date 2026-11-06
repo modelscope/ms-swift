@@ -52,10 +52,10 @@ from swift.dev.config.validate import (
     _check_prm,
     _check_quantization,
     _check_reference_sync,
-    _check_rlhf_advanced,
-    _check_rlhf_padding_free,
-    _check_rlhf_padding_side,
-    _check_rlhf_ref_model,
+    _check_rl_advanced,
+    _check_rl_padding_free,
+    _check_rl_padding_side,
+    _check_rl_ref_model,
     _check_router_replay,
     _check_sampling_replay,
     _check_save_total_limit,
@@ -84,18 +84,18 @@ def test_rlhf_advanced_grpo_only_gates():
     """S2-27: chord/advantage_reweight/sdar/dynamic_sample are GRPO-only; sync_ref_model needs
     grpo or ppo (the only reference-bearing algorithms)."""
     with pytest.raises(ValueError, match='GRPO-only'):
-        _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='dpo', chord_sft_dataset='d'))
+        _check_rl_advanced(TrainConfig(), RLConfig(rl_type='dpo', chord_sft_dataset='d'))
     with pytest.raises(ValueError, match='GRPO-only'):
-        _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='dpo', advantage_reweight='rlsd'))
+        _check_rl_advanced(TrainConfig(), RLConfig(rl_type='dpo', advantage_reweight='rlsd'))
     with pytest.raises(ValueError, match='GRPO-only'):
-        _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='kto', sdar_loss_coef=0.1))
+        _check_rl_advanced(TrainConfig(), RLConfig(rl_type='kto', sdar_loss_coef=0.1))
     with pytest.raises(ValueError, match='GRPO-only'):
-        _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='dpo', dynamic_sample=True))
+        _check_rl_advanced(TrainConfig(), RLConfig(rl_type='dpo', dynamic_sample=True))
     with pytest.raises(ValueError, match='grpo or ppo'):
-        _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='dpo', sync_ref_model=True))
+        _check_rl_advanced(TrainConfig(), RLConfig(rl_type='dpo', sync_ref_model=True))
     # a GRPO run with none of the knobs passes the gate (the later reward-channel guard needs a
     # channel; the deeper checks run on their own below)
-    _check_rlhf_advanced(TrainConfig(), RLConfig(rl_type='grpo', num_generations=4),
+    _check_rl_advanced(TrainConfig(), RLConfig(rl_type='grpo', num_generations=4),
                          RewardConfig(orm=['accuracy']))
 
 
@@ -685,22 +685,22 @@ def test_rlhf_reference_and_layout_gates():
     without a ref model is refused; padding_free/packing is wired for most RLHF types (ppo/opsd/
     mopd refused with the reason); RL requires right padding (logp extraction)."""
     with pytest.raises(ValueError, match='ref_adapters requires'):
-        _check_rlhf_ref_model(ModelConfig(), None, RLConfig(rl_type='dpo', ref_adapters=['a']))
+        _check_rl_ref_model(ModelConfig(), None, RLConfig(rl_type='dpo', ref_adapters=['a']))
     with pytest.raises(ValueError, match='not used by rl_type'):
-        _check_rlhf_ref_model(ModelConfig(), TunerConfig(tuner='lora'),
+        _check_rl_ref_model(ModelConfig(), TunerConfig(tuner='lora'),
                               RLConfig(rl_type='cpo', ref_model='m'))
-    _check_rlhf_ref_model(ModelConfig(), None, RLConfig(rl_type='dpo', ref_model='m'))
+    _check_rl_ref_model(ModelConfig(), None, RLConfig(rl_type='dpo', ref_model='m'))
 
     for rl_type, message in (('ppo', 'value-head critic'), ('opsd', 'teacher->student'),
                              ('mopd', 'K teacher logps')):
         with pytest.raises(ValueError, match=message):
-            _check_rlhf_padding_free(TemplateConfig(padding_free=True), DatasetConfig(),
+            _check_rl_padding_free(TemplateConfig(padding_free=True), DatasetConfig(),
                                      RLConfig(rl_type=rl_type))
-    _check_rlhf_padding_free(TemplateConfig(padding_free=True), DatasetConfig(), RLConfig(rl_type='grpo'))
+    _check_rl_padding_free(TemplateConfig(padding_free=True), DatasetConfig(), RLConfig(rl_type='grpo'))
 
     with pytest.raises(ValueError, match='padding_side="right"'):
-        _check_rlhf_padding_side(TemplateConfig(padding_side='left'), RLConfig(rl_type='dpo'))
-    _check_rlhf_padding_side(TemplateConfig(padding_side='right'), RLConfig(rl_type='dpo'))
+        _check_rl_padding_side(TemplateConfig(padding_side='left'), RLConfig(rl_type='dpo'))
+    _check_rl_padding_side(TemplateConfig(padding_side='right'), RLConfig(rl_type='dpo'))
 
 
 def test_eval_and_logging_gates(monkeypatch):

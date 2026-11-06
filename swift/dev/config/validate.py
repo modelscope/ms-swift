@@ -58,9 +58,11 @@ def validate_configs(
     _check_streaming(dataset_config)
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_dynamic_batching(train_config, rl_config, is_megatron)
+    if training:
+        _check_batch_balancing(rl_config, distributed_config)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
-    _check_unsloth_strategy(distributed_config, template_config)
+    _check_unsloth_strategy(distributed_config, template_config, tuner_config)
     _check_deepspeed_autotp(distributed_config)
     _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
@@ -70,6 +72,7 @@ def validate_configs(
     _check_megatron_microbatch_schedule(train_config, distributed_config, is_megatron)
     _check_eval_iters(train_config)
     _check_megatron_attn_backend(model_config, template_config, is_megatron)
+    _check_attn_impl_availability(model_config)
     _check_padding_free_attn(model_config, template_config, dataset_config, is_megatron)
     _check_mtp(model_config, is_megatron, tuner_config)
     _check_quantization(model_config, distributed_config, is_megatron)
@@ -91,19 +94,34 @@ def validate_configs(
         training=training)
     _check_save_total_limit(checkpoint_config, is_megatron)
     _check_logging(logging_config)
-    _check_rlhf_ref_model(model_config, tuner_config, rl_config)
-    _check_rlhf_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config)
+    _check_rl_ref_model(model_config, tuner_config, rl_config)
+    _check_rl_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config)
     _check_online_rl_val_dataset(dataset_config, rl_config)
     _check_grpo_truncation_strategy(template_config, rl_config)
     _check_grpo_cached_dataset(dataset_config, rl_config)
-    _check_rlhf_padding_free(template_config, dataset_config, rl_config)
-    _check_rlhf_padding_side(template_config, rl_config)
-    _check_rlhf_sequence_parallel(
+    _check_rl_padding_free(template_config, dataset_config, rl_config)
+    _check_rl_padding_side(template_config, rl_config)
+    _check_rl_sequence_parallel(
         model_config, template_config, dataset_config, distributed_config, rl_config, is_megatron)
     # Packing-derived padding_free has already been resolved by process_configs. RLHF SP is fully governed
-    # by _check_rlhf_sequence_parallel above, so this early-returns for a non-None rl_config.
+    # by _check_rl_sequence_parallel above, so this early-returns for a non-None rl_config.
     _check_hf_sequence_parallel(
         model_config, template_config, dataset_config, distributed_config, is_megatron, rl_config)
+
+
+def _check_batch_balancing(rl_config: Optional['RLConfig'], distributed_config: 'DistributedConfig') -> None:
+    if rl_config is None or not rl_config.balance_batch:
+        return
+    online_types = {'grpo', 'ppo', 'gkd', 'opsd', 'mopd', 'rft'}
+    if rl_config.rl_type not in online_types:
+        raise ValueError('balance_batch is only supported for post-rollout training. Offline preference '
+                         'recipes do not produce rollout batches; disable balance_batch for this recipe.')
+    if rl_config.rl_type in {'gkd', 'opsd', 'mopd'} and rl_config.lmbda == 0:
+        raise ValueError('balance_batch requires rollout-generated samples: dataset-only distillation '
+                         '(lmbda=0) has no rollout batches to balance.')
+    if distributed_config.mode != 'ray':
+        raise ValueError("balance_batch requires mode='ray': balancing needs the complete controller-side "
+                         'batch, not rank-local torchrun shards or a remote server batch.')
 
 
 def _check_dynamic_batching(train_config: "TrainConfig", rl_config: Optional["RLConfig"], is_megatron: bool) -> None:
@@ -223,7 +241,7 @@ def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'],
         raise ValueError('manual_gc_steps must be >= 0.')
 
 
-def _check_rlhf_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfig'],
+def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfig'],
                          reward_config: Optional['RewardConfig'] = None,
                          rollout_config: Optional['RolloutConfig'] = None,
                          distributed_config: Optional['DistributedConfig'] = None) -> None:
@@ -1255,7 +1273,8 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
 
 
 def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
-                            template_config: 'TemplateConfig') -> None:
+                            template_config: 'TemplateConfig',
+                            tuner_config: Optional['TunerConfig'] = None) -> None:
     """Refuse the strategies unsloth (backend='unsloth') cannot co-exist with.
 
     It rebuilds the graph for whole, unsharded weights: ZeRO/FSDP and Ulysses SP are refused.
@@ -1275,6 +1294,20 @@ def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
             f'backend="unsloth" cannot run under sequence_parallel_size='
             f'{template_config.sequence_parallel_size}: unsloth\'s fused kernels assume a whole sequence per '
             'rank. Set sequence_parallel_size=1, or use the default backend.')
+    if tuner_config is not None:
+        from swift.dev.builders.adapter import is_base_modifying_init
+
+        if is_base_modifying_init(tuner_config.init_weights):
+            # A base-modifying LoRA init (pissa/olora/lora-ga/loftq...) needs the initial-adapter snapshot
+            # plus a post-training conversion against it. UnslothModel injects LoRA its own way (not a
+            # peft PeftModel), so TransformersModel.save_initial_adapter's isinstance guard returns False
+            # and the snapshot would be silently MISSING -- the conversion would only explode later, at
+            # merge time, for lack of initial_model. Fail here instead.
+            raise NotImplementedError(
+                f'backend="unsloth" does not support base-modifying LoRA init ({tuner_config.init_weights!r}): '
+                'the initial-adapter snapshot that the post-training conversion folds against is not '
+                'wired for unsloth-injected LoRA (no peft PeftModel to snapshot). Use the default backend '
+                'for this init strategy.')
 
 
 def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:
@@ -1360,6 +1393,14 @@ def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: b
         raise ValueError('DistributedConfig.use_megatron_fsdp is incompatible with context_parallel_size='
                          f'{distributed_config.context_parallel_size}. Megatron-FSDP does not support context '
                          'parallelism; use the default DDP wrapper for a CP run.')
+
+    model_parallel = max(distributed_config.tensor_model_parallel_size,
+                         distributed_config.pipeline_model_parallel_size)
+    if model_parallel > 1:
+        raise ValueError('DistributedConfig.use_megatron_fsdp requires tensor_model_parallel_size=1 and '
+                         'pipeline_model_parallel_size=1: mcore 0.20 FSDP supports neither (its distributed '
+                         'index assumes world = dp*cp*ep*tp with no pipeline axis). Use the default DDP '
+                         'wrapper -- it composes with every parallel dimension and use_distributed_optimizer.')
 
 
 def _check_cp_partition_mode(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
@@ -1558,6 +1599,44 @@ def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: '
 # transformers backend -- under Ulysses SP and (mirroring legacy sft_args) also without it.
 _SP_PADDING_FREE_ATTN_IMPLS = ('flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4')
 
+# attn_impl -> the transformers availability probe (and the pip package that provides it),
+# so the user gets a one-line fix instead of an obscure failure deep inside the first forward.
+_FLASH_ATTN_AVAILABILITY = {
+    'flash_attn': ('flash_attention_2', 'flash-attn'),
+    'flash_attention_2': ('flash_attention_2', 'flash-attn'),
+    'flash_attention_3': ('flash_attention_3', 'flash-attn-3 (the flash_attn_interface package)'),
+    'flash_attention_4': ('flash_attention_4', 'flash-attn-4'),
+}
+
+
+def _check_attn_impl_availability(model_config: 'ModelConfig') -> None:
+    """Fail fast (at validation, before the model loads) when the requested flash attention
+    generation is not installed.
+
+    transformers would also reject it, but only after the config/weights work and with a
+    generic message; this points at the exact pip package instead.
+    """
+    probe_name, package = _FLASH_ATTN_AVAILABILITY.get(model_config.attn_impl or '', (None, None))
+    if probe_name is None:
+        return
+    from transformers.utils import (
+        is_flash_attn_2_available as _fa2,  # noqa: N813
+    )
+    if probe_name == 'flash_attention_2':
+        available = _fa2()
+    elif probe_name == 'flash_attention_3':
+        from transformers.utils import is_flash_attn_3_available as probe
+        available = probe()
+    else:
+        from transformers.utils import is_flash_attn_4_available as probe
+        available = probe()
+    if not available:
+        raise ValueError(
+            f'attn_impl={model_config.attn_impl!r} requires the matching flash attention build, which is '
+            f'not installed in this environment. Install it first: pip install {package!r} '
+            '(on a GPU the package ships prebuilt wheels; fa3/fa4 support Hopper/Blackwell). '
+            'Or switch to an installed implementation, e.g. --attn_impl flash_attention_2.')
+
 
 def _check_padding_free_attn(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                              dataset_config: 'DatasetConfig', is_megatron: bool) -> None:
@@ -1642,7 +1721,8 @@ def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: '
                               is_megatron: bool) -> None:
     """gradient_checkpointing decides nothing on Megatron; recompute_granularity does.
 
-    flag-off-yet-recompute-configured is fatal; flag-on-but-unconfigured is the default (warn only).
+    flag-off-yet-recompute-configured is fatal; gc=True with recompute explicitly off is the
+    user's call (warn only, in case they expected gc to be the driver).
     """
     if not is_megatron:
         return
@@ -1652,9 +1732,13 @@ def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: '
                          'Megatron backend recompute is driven by recompute_granularity alone, so the run WOULD '
                          'recompute. Drop one of the two.')
     if train_config.gradient_checkpointing and not granularity:
-        logger.warning('gradient_checkpointing=True has no effect on the Megatron backend and this run will NOT '
-                       'recompute: set DistributedConfig.recompute_granularity (legacy megatron defaults to '
-                       "'selective') to enable it.")
+        # recompute_granularity defaults to 'selective'; an empty value here means the user turned it
+        # off explicitly (or normalized 'none'), so confirm that is what they wanted rather than
+        # silently running a no-recompute training with a gc flag that does nothing on this backend.
+        logger.warning('gradient_checkpointing=True has no effect on the Megatron backend, and this run will NOT '
+                       'recompute (recompute_granularity is off). If you wanted activation-memory savings, '
+                       "set --recompute_granularity selective (the default); if off is intended, pass "
+                       '--no-gradient_checkpointing too, so the two flags agree.')
 
 
 def _check_eval_iters(train_config: 'TrainConfig') -> None:
@@ -1835,7 +1919,7 @@ _MEGATRON_ONLY = (
     ('distributed_config', 'sequence_parallel', False),
     ('distributed_config', 'use_distributed_optimizer', True),
     ('distributed_config', 'use_megatron_fsdp', False),
-    ('distributed_config', 'recompute_granularity', None),
+    ('distributed_config', 'recompute_granularity', 'selective'),
     ('distributed_config', 'recompute_method', None),
     ('distributed_config', 'recompute_num_layers', None),
     ('distributed_config', 'recompute_modules', ['core_attn']),
@@ -2088,20 +2172,20 @@ def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_
 
 # rl_type -> whether it trains against a separate reference model. CPO/ORPO fold the reference into
 # their own loss and LoRA uses the adapter-disabled base as reference, so neither takes a ref_model.
-_RLHF_USES_REF_MODEL = ('dpo', 'kto', 'ppo', 'grpo')
+_RL_USES_REF_MODEL = ('dpo', 'kto', 'ppo', 'grpo')
 
 
-def _check_rlhf_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
+def _check_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
                           rl_config: Optional['RLConfig']) -> None:
     """Reject a reference model passed to an algorithm that has none.
 
-    The refusal half of process._derive_rlhf_ref_model: --ref_model on CPO/ORPO/LoRA would be ignored.
+    The refusal half of process._derive_rl_ref_model: --ref_model on CPO/ORPO/LoRA would be ignored.
     """
     if rl_config is None:
         return
     rl_type = getattr(rl_config, 'rl_type', None)
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    uses_ref = rl_type in _RLHF_USES_REF_MODEL and (tuner == 'full' or bool(rl_config.ref_adapters))
+    uses_ref = rl_type in _RL_USES_REF_MODEL and (tuner == 'full' or bool(rl_config.ref_adapters))
     if rl_config.ref_model is None:
         if rl_config.ref_adapters:
             raise ValueError('ref_adapters requires a reference model; call process_configs or set ref_model.')
@@ -2133,7 +2217,7 @@ _RL_PADDING_FREE_REFUSED_REASONS = {
 }
 
 
-def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
+def _check_rl_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
                             rl_config: Optional['RLConfig']) -> None:
     """Only some RLHF algorithms have a padding-free/packing training path.
 
@@ -2156,7 +2240,7 @@ def _check_rlhf_padding_free(template_config: 'TemplateConfig', dataset_config: 
                      'produces. Set the corresponding flag to False.')
 
 
-def _check_rlhf_padding_side(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
+def _check_rl_padding_side(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
     """RL logp extraction indexes each row's response positions and assumes right padding.
 
     Left padding silently mis-aligns every logp; dev refuses up front instead of corrupting the run.
@@ -2211,7 +2295,7 @@ def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'Temp
                              '(packing implies padding_free, so drop packing too).')
 
 
-def _check_rlhf_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                                  dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
                                  rl_config: Optional['RLConfig'], is_megatron: bool) -> None:
     """Ulysses SP (TemplateConfig.sequence_parallel_size) for the online-RL recipes under ray.

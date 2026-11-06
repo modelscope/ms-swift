@@ -109,6 +109,35 @@ def test_shared_batch_lifecycle_accepts_another_sample_format(tmp_path):
     state.tracker.close()
 
 
+def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
+    from swift.dev.tests.component.recipe.test_grpo_micro_batch import make_state, train
+
+    lengths = [2000, 1900, 1800, 1700, 300, 250, 200, 150]
+    now = [0.0]
+    state = make_state(ga=2)
+    state.balance_batch = True
+    state.model.memory_stats = lambda **kwargs: []
+    state.tracker = RunTracker(None, str(tmp_path))
+    batch_metrics.init_batch_metrics(state, [('model', [0, 1])], num_generations=8)
+    batch_metrics.begin_batch(state, clock_ns=lambda: int(now[0] * 1e9))
+    samples = [NS(encoded={'input_ids': [i] * n, 'labels': [i] * n}) for i, n in enumerate(lengths)]
+    batch_metrics.observe_batch(state, samples)
+    try:
+        now[0] = 1
+        assert train(state, 8, lengths=lengths) == 1
+        now[0] = 2
+        batch_metrics.finish_batch(state)
+        row = iteration_rows(tmp_path, state)[0]
+        assert state.global_step == state.model.steps == 1
+        balance = state.balance_metrics[0]
+        assert balance['dp_balance/workload_imbalance_after'] < balance['dp_balance/workload_imbalance_before']
+        assert row['data']['training/optimizer_steps_this_iteration'] == 1
+        assert row['data']['training/sample_visits'] == row['data']['training/unique_samples_trained'] == 8
+        assert row['data']['perf/total_num_tokens'] == sum(lengths)
+    finally:
+        state.tracker.close()
+
+
 def test_batch_completion_can_run_on_a_different_thread(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
 
