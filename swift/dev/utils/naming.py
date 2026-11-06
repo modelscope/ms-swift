@@ -193,21 +193,10 @@ _STRATEGY_NAME_MAP = {
 }
 
 
-# --- dev-side losses: task families whose Loss classes live in swift.dev, not twinkle ---
-# Populated by ``@register_loss`` at task-module import time (importing ``swift.dev.loss`` runs the
-# registrations); resolution consults twinkle's mapping FIRST so a dev name can never silently
-# shadow a twinkle loss. The registry inverts the old dependency -- configure_* importing the task
-# module -- into task -> registry, the same direction every other name mapping here already has.
 _DEV_LOSS_MAPPING: Dict[str, Type] = {}
 
 
 def register_loss(*names: str) -> Callable[[Type], Type]:
-    """Class decorator: register a dev-side Loss *type* under ``names`` for :func:`resolve_loss`.
-
-    For classes that must live in swift.dev because they consume a dev-specific forward layout
-    (e.g. decision's option-masked batch); the names join the same resolution space as twinkle's
-    ``torch_loss_mapping`` roster.
-    """
 
     def decorator(cls: Type) -> Type:
         for name in names:

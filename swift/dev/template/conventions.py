@@ -19,8 +19,7 @@ IGNORE_INDEX = -100
 
 # Task types whose ``labels`` are per-sequence (scores / group markers), not token targets.
 # embedding marks its group anchors with 1.0 and InfonceLoss finds them via nonzero -- a shift
-# would split groups. decision scores each question over its options (``target_probs`` flattened
-# into ``labels`` at collate time); its token rows carry no supervised targets at all.
+# would split groups.
 NO_SHIFT_TASK_TYPES = frozenset({"embedding", "reranker", "generative_reranker", "seq_cls", "decision"})
 
 # Legacy length columns (``length`` per encode, ``lengths`` for packing); dataset-side only.
