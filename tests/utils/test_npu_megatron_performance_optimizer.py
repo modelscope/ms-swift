@@ -16,6 +16,45 @@ DEVICES = [
 
 
 @pytest.mark.parametrize('device', DEVICES)
+@pytest.mark.parametrize('layout', ['adjacent', 'gap', 'overlap', 'separate', 'empty'])
+def test_coalesced_regions(device, layout):
+    from swift.model.npu_patch.megatron_optimizer import _coalesce_grads
+
+    x = torch.arange(32, dtype=torch.float32, device=device)
+    other = x.clone()
+    grads = {
+        'adjacent': [x[16:], x[:16]],
+        'gap': [x[:8], x[16:]],
+        'overlap': [x[:20], x[10:]],
+        'separate': [x[:16], other[16:]],
+        'empty': [x[:0], x[:16], x[16:]],
+    }[layout]
+    regions = _coalesce_grads(grads)
+    original = torch.cat([g.reshape(-1) for g in grads])
+    merged = torch.cat(regions)
+    torch.testing.assert_close(original.sort().values, merged.sort().values, rtol=0, atol=0)
+    assert {g.untyped_storage()._cdata for g in regions} <= {g.untyped_storage()._cdata for g in grads}
+    if layout == 'adjacent':
+        assert len(regions) == 1
+
+
+@pytest.mark.parametrize('device', DEVICES)
+def test_coalesced_scaling_excludes_padding(device):
+    from swift.model.npu_patch.megatron_optimizer import multi_tensor_scale
+
+    x = torch.arange(32, dtype=torch.float32, device=device)
+    x[8:16] = float('nan')
+    grads = [x[:8], x[16:24], x[24:]]
+    flag = torch.zeros(1, dtype=torch.int32, device=device)
+    expected = x.clone()
+    expected[:8] *= 0.25
+    expected[16:] *= 0.25
+    multi_tensor_scale(65536, flag, [grads, grads], 0.25)
+    torch.testing.assert_close(x, expected, rtol=0, atol=0, equal_nan=True)
+    assert flag.item() == 0
+
+
+@pytest.mark.parametrize('device', DEVICES)
 @pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16, torch.float32])
 @pytest.mark.parametrize('unscale_factor', [0.25, 1e-20, float('inf'), float('nan')])
 @pytest.mark.parametrize('values', [[1.0, -2.0, 3.0], [float('nan')], [float('inf')], [], [1e30, 1e30]])

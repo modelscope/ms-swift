@@ -13,6 +13,7 @@ def test_installation_and_idempotence():
     from megatron.core.optimizer import clip_grads
     from megatron.core.transformer.moe import experts, moe_utils, token_dispatcher
     from transformer_engine.pytorch import optimizers
+    from transformer_engine.pytorch.module.rmsnorm import RMSNorm
 
     original_swiglu_functions = (
         fused_bias_swiglu.weighted_bias_swiglu_impl,
@@ -21,6 +22,7 @@ def test_installation_and_idempotence():
 
     import swift.megatron  # noqa: F401
     from swift.model.npu_patch import megatron_moe as moe
+    from swift.model.npu_patch import megatron_norm as norm
     from swift.model.npu_patch import megatron_optimizer as optimizer
 
     optimizer.patch_megatron_optimizer()
@@ -40,3 +42,9 @@ def test_installation_and_idempotence():
     assert clip_grads.l2_norm_impl is optimizer.multi_tensor_l2norm
     assert clip_grads.multi_tensor_scale_impl is optimizer.multi_tensor_scale
     assert clip_grads.multi_tensor_scale_tensor_impl is optimizer.multi_tensor_scale_tensor
+    from megatron.core.optimizer import optimizer as core_optimizer
+    assert clip_grads.get_grad_norm_fp32 is core_optimizer.get_grad_norm_fp32 is optimizer.get_grad_norm_fp32
+    original_rmsnorm = norm._ORIGINAL_FORWARD
+    norm.patch_megatron_norm()
+    assert norm._ORIGINAL_FORWARD is original_rmsnorm
+    assert RMSNorm.forward is norm.rmsnorm_forward
