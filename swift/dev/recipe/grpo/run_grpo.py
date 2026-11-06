@@ -4,15 +4,10 @@ from __future__ import annotations
 import math
 import os
 import sys
-from contextlib import nullcontext
 from copy import deepcopy
-from dataclasses import dataclass, field
-from time import perf_counter_ns
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import torch
-from twinkle.metric import MetricRecord, ThroughputMetric, memory_metrics
-from twinkle.perf import TimeRecorder
 
 from swift.dev.recipe.grpo.assembly import (
     greedy_params,
@@ -24,22 +19,27 @@ from swift.dev.recipe.grpo.assembly import (
 from swift.dev.recipe.utils import (
     StepState,
     _log_line,
+    batch_memory,
+    batch_stage,
+    begin_batch,
     build_save_knobs,
     collect,
+    finish_batch,
+    finish_batch_metrics,
+    init_batch_metrics,
     initialize_rl_devices,
+    observe_batch,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
+    record_batch_training,
     resolve_rollout_max_steps,
     resume_training,
-    rollout_metrics,
-    rollout_phase_times,
     rollout_step_budget,
     save_final_checkpoint,
     save_training_step,
     snapshot_initial_adapter,
 )
 from swift.dev.utils.logger import get_logger
-from swift.dev.utils.scoring import sample_token_lengths
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -61,192 +61,6 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger()
-
-
-@dataclass
-class _Iteration:
-    """One consumed batch's raw observations; no reporter or timing implementation."""
-
-    recorder: TimeRecorder
-    started_ns: int
-    optimizer_start: int
-    clock_ns: Callable[[], int]
-    lengths: List[Tuple[int, int]] = field(default_factory=list)
-    truncated: List[bool] = field(default_factory=list)
-    turns: List[Any] = field(default_factory=list)
-    received_ns: Optional[int] = None
-    trained_indices: set = field(default_factory=set)
-    sample_visits: int = 0
-    memory_rows: Optional[List[dict]] = None
-
-
-def _init_metrics(state, device_groups, *, mode="colocate", parameter_sync_step=1, num_generations=1):
-    state._metric_context = {
-        "device_groups": device_groups,
-        "mode": mode,
-        "parameter_sync_step": parameter_sync_step,
-        "num_generations": num_generations,
-    }
-    state._run_metric = ThroughputMetric()
-    state._completed_iterations, state._iteration_wall_ns = 0, 0
-    state._rollout_groups = state._trained_samples = 0
-    state._stream_previous = {}
-    state._iteration = None
-    state._iteration_recorder = None
-
-
-def _begin_iteration(state, *, clock_ns=perf_counter_ns):
-    if not hasattr(state, "_run_metric"):
-        return
-    recorder = TimeRecorder(clock_ns=clock_ns)
-    state._iteration = _Iteration(recorder, clock_ns(), state.global_step, clock_ns)
-    state._iteration_recorder = recorder
-
-
-def _stage(state, name):
-    recorder = getattr(state, "_iteration_recorder", None)
-    return recorder.span(name) if recorder is not None else nullcontext()
-
-
-def _receive_iteration(state, samples):
-    batch = getattr(state, "_iteration", None)
-    if batch is None:
-        return
-    batch.lengths = [sample_token_lengths(sample) for sample in samples]
-    batch.truncated = [bool(getattr(sample, "truncated", False)) for sample in samples]
-    batch.turns = [getattr(sample, "rollout_infos", {}).get("turns") for sample in samples]
-    batch.received_ns = batch.clock_ns()
-
-
-def _iteration_memory(state):
-    batch = getattr(state, "_iteration", None)
-    if batch is None:
-        return {}
-    if batch.memory_rows is None:
-        with _stage(state, "memory_observation"):
-            rows = state.model.memory_stats(synchronize=True)
-            batch.memory_rows = [dict(rows)] if isinstance(rows, dict) else [dict(row) for row in rows]
-    return memory_metrics(batch.memory_rows)
-
-
-def _finish_iteration(state, *, stream_stats=None, resource_metrics=None, memory=None, terminal=False, publications=0):
-    batch = getattr(state, "_iteration", None)
-    if batch is None or not batch.lengths:
-        return
-    memory = _iteration_memory(state) if memory is None else memory
-    ended_ns = batch.clock_ns()
-    events = batch.recorder.trace_events()
-    timings = rollout_phase_times(events, started_ns=batch.started_ns,
-                                  ended_ns=ended_ns, received_ns=batch.received_ns)
-    stats = stream_stats or {}
-    for name in ("publish_time", "publishes"):
-        if name in stats:
-            delta = stats[name] - state._stream_previous.get(name, 0)
-            if name == "publish_time":
-                timings["update_weights"] = delta
-            else:
-                publications = delta
-            state._stream_previous[name] = stats[name]
-    groups = state._metric_context["device_groups"]
-    inputs = {
-        "prompt_lengths": [p for p, _ in batch.lengths],
-        "response_lengths": [r for _, r in batch.lengths],
-        "timings": timings,
-        "num_devices": len({rank for _, ranks in groups for rank in ranks}),
-    }
-    wall_seconds = (ended_ns - batch.started_ns) / 1e9
-    values = rollout_metrics(
-        **inputs, wall_seconds=wall_seconds, truncated=batch.truncated, turns=batch.turns,
-        extra_values={
-            **memory,
-            **{f"actor/{key}": value for key, value in memory.items()},
-            **(resource_metrics or {}),
-            **{
-                f"stream/{key}": value
-                for key, value in stats.items()
-                if isinstance(value, (int, float)) and key not in ("total_time", "final_version", "dropped_incomplete")
-            },
-        },
-    )
-    state._run_metric.accumulate(**inputs)
-    values.update(
-        {
-            "training/optimizer_step_start": batch.optimizer_start,
-            "training/optimizer_step": state.global_step,
-            "training/optimizer_steps_this_iteration": state.global_step - batch.optimizer_start,
-            "training/weight_publications_this_iteration": publications,
-            "training/sample_visits": batch.sample_visits,
-            "training/unique_samples_trained": len(batch.trained_indices),
-            "training/samples_not_trained": len(batch.lengths) - len(batch.trained_indices),
-        }
-    )
-    state._completed_iterations += 1
-    state._rollout_groups += len(batch.lengths) // state._metric_context["num_generations"]
-    state._trained_samples += batch.sample_visits
-    state._iteration_wall_ns += ended_ns - batch.started_ns
-    state.tracker.record(
-        MetricRecord(
-            stage="rollout",
-            optimizer_step=state.global_step,
-            values=values,
-            attributes={
-                "scope": "iteration",
-                "step_unit": "rl_iteration",
-                "iteration": state._completed_iterations,
-                "iteration_scope": "one_consumed_rollout_batch",
-                **state._metric_context,
-                "parameter_sync_step_unit": "optimizer_update",
-                "terminal": terminal,
-                "timing_clock": "driver_monotonic_nanoseconds",
-                "timing_spans": events,
-                "iteration_started_ns": batch.started_ns,
-                "iteration_ended_ns": ended_ns,
-                "batch_received_ns": batch.received_ns,
-                "prompt_lengths": inputs["prompt_lengths"],
-                "response_lengths": inputs["response_lengths"],
-                "memory_by_rank": batch.memory_rows,
-                "memory_scope": "allocator_lifetime_peaks_and_host_used_ram_in_bytes",
-                "adv_pipeline_scope": "auxiliary_forwards_and_advantage_resolution",
-                "unavailable_metrics": ["perf/mfu/actor"],
-            },
-        )
-    )
-    logger.info(
-        "[perf] iteration=%s step=%s seconds=%.3f tokens=%s tok/s/GPU=%.3f",
-        state._completed_iterations,
-        state.global_step,
-        timings["step"],
-        values["perf/total_num_tokens"],
-        values["perf/throughput"],
-    )
-    state._iteration = state._iteration_recorder = None
-
-
-def _record_run_metrics(state, *, stream_stats=None, status="completed"):
-    metrics = state._run_metric.calculate()
-    values = {
-        "completed_iterations": state._completed_iterations,
-        "optimizer_step": state.global_step,
-        "rollout_groups": state._rollout_groups,
-        "rollout_samples": metrics.get("perf/num_samples", 0),
-        "trained_samples": state._trained_samples,
-        "wall_time_s": state._iteration_wall_ns / 1e9,
-        "total_num_tokens": metrics.get("perf/total_num_tokens", 0),
-        "sum_iteration_seconds": metrics.get("perf/time_per_step", 0),
-        "throughput": metrics.get("perf/throughput"),
-    }
-    values.update(
-        {f"stream/{key}": value for key, value in (stream_stats or {}).items() if isinstance(value, (int, float))}
-    )
-    state.tracker.record(
-        MetricRecord(
-            stage="run",
-            optimizer_step=state.global_step,
-            values=values,
-            status="failed" if status == "failed" else "completed",
-            attributes={"step_unit": "run_summary", "loop_status": status},
-        )
-    )
 
 
 def _score_group(cluster: Any, samples: List[Any], with_prm: bool = False) -> List[List[Any]]:
@@ -507,25 +321,20 @@ def _train_mini_batches(
         kwargs = _forward_kwargs(rl_config, *batch, temperature, micro_batch_size=train_batch_size // dp_size)
         kwargs.update(batching_kwargs or {})
         micro_batches = (hi - lo) // train_batch_size  # Nominal count; DBS schedules physical batches internally.
-        batch_observations = getattr(state, '_iteration', None)
-        if batch_observations is not None:
-            batch_observations.memory_rows = None
-        with _stage(state, "update_actor"):
+        with batch_stage(state, "update_actor"):
             if chord_fn is not None:
                 _chord_forward_backward(
                     model, rl_config, kwargs, chord_fn, step=state.global_step, num_micro_batches=micro_batches
                 )
             else:
                 model.forward_backward(**kwargs)
-            with _stage(state, "optimizer"):
+            with batch_stage(state, "optimizer"):
                 # This side effect has no downstream tensor consumer to propagate worker errors.
                 collect(model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1))
             state.micro_step += micro_batches
             state.record()
-            if batch_observations is not None:
-                _iteration_memory(state)
-                batch_observations.sample_visits += len(indices)
-                batch_observations.trained_indices.update(indices)
+            record_batch_training(state, indices)
+            batch_memory(state)
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
             ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
@@ -661,21 +470,21 @@ def _colocate_loop(
         for batch_rows in dataloader:
             if state.reached_max() or state.should_stop():
                 break
-            _begin_iteration(state)
+            begin_batch(state)
             # Weights were published at initialization or the preceding iteration end.
             from swift.dev.recipe.offload import offload_for_rollout
-            with _stage(state, 'trainer_offload'):
+            with batch_stage(state, 'trainer_offload'):
                 offload_for_rollout(cluster.model, rollout_config)
-            with _stage(state, 'sampler_wake_kv'):
+            with batch_stage(state, 'sampler_wake_kv'):
                 collect(wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['kv_cache']))
             entered = True
             prompts = [row['messages'] for row in batch_rows]
             extras = [{key: value for key, value in row.items() if key != 'messages'} for row in batch_rows]
-            with _stage(state, 'gen'):
+            with batch_stage(state, 'gen'):
                 samples = cluster.rollout.generate(
                     prompts, num_samples=num_generations, sampling_params=cluster.sampling_params,
                     prompt_extras=extras or None)
-                with _stage(state, 'reward'):
+                with batch_stage(state, 'reward'):
                     rewards = _score_group(cluster, samples, with_prm=True)
                 for sample, reward in zip(samples, rewards):
                     sample.orm_reward = reward
@@ -690,7 +499,7 @@ def _colocate_loop(
                 if rl_config.advantage_estimator == 'remax':
                     _set_remax_baselines(cluster, samples, prompts, extras, num_generations, weights)
                 if rl_config.log_completions:
-                    with _stage(state, '_logging'):
+                    with batch_stage(state, '_logging'):
                         cluster.worker.log_completions(
                             samples, [sample.orm_reward for sample in samples], state.global_step + 1,
                             os.path.join(output_dir, 'completions.jsonl'))
@@ -702,16 +511,16 @@ def _colocate_loop(
                 from swift.dev.recipe.offload import sleep_for_rollout
                 sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                 sampler_awake = False
-            with _stage(state, 'trainer_reload'):
+            with batch_stage(state, 'trainer_reload'):
                 cluster.model.reload_to_gpu()
             entered = False
-            _receive_iteration(state, samples)
-            with _stage(state, 'adv_pipeline'):
+            observe_batch(state, samples)
+            with batch_stage(state, 'adv_pipeline'):
                 advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
                     cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
                     correction_out=correction_out, batching_kwargs=batching_kwargs,
                 )
-            with _stage(state, "routing_replay"):
+            with batch_stage(state, "routing_replay"):
                 _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size, batching_kwargs)
             _train_mini_batches(
                 state,
@@ -728,13 +537,14 @@ def _colocate_loop(
                 ema_manager=ema_manager,
                 save=save,
             )
-            memory = _iteration_memory(state)
-            with _stage(state, "update_weights"):
+            memory = batch_memory(state)
+            with batch_stage(state, "update_weights"):
                 wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ["weights"])
                 sampler_awake = True
                 collect(cluster.engine.sync_weights(merge_and_sync=True))
-            _finish_iteration(state, memory=memory, publications=1,
-                              terminal=state.reached_max() or state.should_stop())
+            finish_batch(
+                state, memory=memory, publications=1,
+                terminal=state.reached_max() or state.should_stop())
             if state.reached_max() or state.should_stop():
                 break
     finally:
@@ -795,14 +605,14 @@ def _disaggregated_loop(
         metrics_cells[0].append(driver)
     memory = None
     if hasattr(state, '_run_metric'):
-        driver.on_iteration_start = lambda: _begin_iteration(state)
-        driver.on_iteration_end = lambda terminal: _finish_iteration(
+        driver.on_iteration_start = lambda: begin_batch(state)
+        driver.on_iteration_end = lambda terminal: finish_batch(
             state, **driver.performance_snapshot(), memory=memory, terminal=terminal)
     strategy = rollout_config.weight_sync_strategy
     steps_since_publish = 0
     try:
         for samples in driver:
-            _receive_iteration(state, samples)
+            observe_batch(state, samples)
             # The driver's built-in group-barrier scoring has already written orm_reward onto every
             # sample (the same contract the colocate loop's _score_group yields), so the reward
             # aggregate can be recorded from the pull itself -- same metric, same reset-per-batch
@@ -810,7 +620,7 @@ def _disaggregated_loop(
             _record_reward_metric(
                 samples, orm_scorers=cluster.orm_scorers, orm_weights=reward_config.orm_weights,
                 reward_metric=reward_metric)
-            with _stage(state, '_logging'):
+            with batch_stage(state, '_logging'):
                 _log_completions(cluster, rl_config, samples, state, output_dir)
                 state.tracker.log_prompts([sample.prompt for sample in samples], samples,
                                           state.global_step + 1, 1)
@@ -821,12 +631,12 @@ def _disaggregated_loop(
                 # version, which climbs every publish and would report a synchronous run as off-policy.
                 versions = [sample.version_span for sample in samples]
                 metrics_cells[1][:1] = [versions]
-            with _stage(state, 'adv_pipeline'):
+            with batch_stage(state, 'adv_pipeline'):
                 advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
                     cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
                     correction_out=correction_out, batching_kwargs=batching_kwargs,
                 )
-            with _stage(state, "routing_replay"):
+            with batch_stage(state, "routing_replay"):
                 _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size, batching_kwargs)
             optimizer_steps = _train_mini_batches(
                 state,
@@ -861,7 +671,7 @@ def _disaggregated_loop(
                     # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
                     driver.request_publish()
                 steps_since_publish = 0
-            memory = _iteration_memory(state)
+            memory = batch_memory(state)
             driver.commit(optimizer_steps)
             if state.reached_max() or state.should_stop():
                 break
@@ -1034,10 +844,15 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         extra_metrics_fn=_extra_metrics,
         log_formatter=_grpo_log_line)
 
-    _init_metrics(state, template.performance_device_groups,
-                  mode='colocate' if cluster.colocate else rollout_config.resource_mode,
-                  parameter_sync_step=1 if cluster.colocate else rollout_config.parameter_sync_step,
-                  num_generations=rl_config.num_generations)
+    init_batch_metrics(
+        state, template.performance_device_groups,
+        mode='colocate' if cluster.colocate else rollout_config.resource_mode,
+        parameter_sync_step=1 if cluster.colocate else rollout_config.parameter_sync_step,
+        num_generations=rl_config.num_generations,
+        attributes={
+            'adv_pipeline_scope': 'auxiliary_forwards_and_advantage_resolution',
+            'unavailable_metrics': ['perf/mfu/actor'],
+        })
 
     save_knobs = build_save_knobs(
         checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir)
@@ -1138,7 +953,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     finally:
         try:
             snapshot = _driver_cell[0].performance_snapshot() if _driver_cell else {}
-            _record_run_metrics(
+            finish_batch_metrics(
                 state, stream_stats=snapshot.get('stream_stats'),
                 status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         finally:

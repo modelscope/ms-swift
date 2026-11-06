@@ -4,7 +4,8 @@ from __future__ import annotations
 import math
 import os
 import time
-from dataclasses import asdict, replace
+from contextlib import nullcontext
+from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
 import json
@@ -12,6 +13,8 @@ import json
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from twinkle.perf import TimeRecorder
+
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,
@@ -115,6 +118,227 @@ def rollout_metrics(*, prompt_lengths, response_lengths, timings, num_devices,
             'rollout/assistant_turns/max': max(turns),
         })
     return values
+
+
+@dataclass
+class BatchObservation:
+    """One consumed batch's raw observations; no reporter or timing implementation."""
+
+    recorder: TimeRecorder
+    started_ns: int
+    optimizer_start: int
+    clock_ns: Callable[[], int]
+    lengths: List[Tuple[int, int]] = field(default_factory=list)
+    truncated: List[bool] = field(default_factory=list)
+    turns: List[Any] = field(default_factory=list)
+    received_ns: Optional[int] = None
+    trained_indices: set = field(default_factory=set)
+    sample_visits: int = 0
+    memory_rows: Optional[List[dict]] = None
+
+
+def init_batch_metrics(state, device_groups, *, mode="colocate", parameter_sync_step=1,
+                       num_generations=1, attributes=None):
+    """Enable batch accounting for an online recipe; the caller owns all boundaries."""
+    from twinkle.metric import ThroughputMetric
+
+    state._metric_context = {
+        "device_groups": device_groups,
+        "mode": mode,
+        "parameter_sync_step": parameter_sync_step,
+        "num_generations": num_generations,
+        **(attributes or {}),
+    }
+    state._run_metric = ThroughputMetric()
+    state._completed_batches, state._batch_wall_ns = 0, 0
+    state._rollout_groups = state._trained_samples = 0
+    state._stream_previous = {}
+    state._batch_observation = None
+
+
+def begin_batch(state, *, clock_ns=time.perf_counter_ns):
+    """Start an independent window, including time before samples arrive."""
+    from twinkle.perf import TimeRecorder
+
+    if not hasattr(state, "_run_metric"):
+        return
+    recorder = TimeRecorder(clock_ns=clock_ns)
+    state._batch_observation = BatchObservation(recorder, clock_ns(), state.global_step, clock_ns)
+
+
+def batch_stage(state, name):
+    """Time an active batch phase; uninstrumented recipes take a no-op path."""
+    batch = getattr(state, "_batch_observation", None)
+    return batch.recorder.span(name) if batch is not None else nullcontext()
+
+
+def observe_batch(state, samples, *, length_fn=None):
+    """Attach sample facts once; recipes can supply their own length extractor."""
+    batch = getattr(state, "_batch_observation", None)
+    if batch is None:
+        return
+    if length_fn is None:
+        from swift.dev.utils.scoring import sample_token_lengths
+
+        length_fn = sample_token_lengths
+    samples = list(samples)
+    batch.lengths = [length_fn(sample) for sample in samples]
+    batch.truncated = [bool(getattr(sample, "truncated", False)) for sample in samples]
+    batch.turns = [getattr(sample, "rollout_infos", {}).get("turns") for sample in samples]
+    batch.received_ns = batch.clock_ns()
+
+
+def record_batch_training(state, indices):
+    """Count successful sample visits without duplicating generated tokens on replay."""
+    batch = getattr(state, "_batch_observation", None)
+    if batch is not None:
+        batch.sample_visits += len(indices)
+        batch.trained_indices.update(indices)
+        batch.memory_rows = None
+
+
+def batch_memory(state):
+    """Observe worker memory once after each update, before checkpointing."""
+    from twinkle.metric import memory_metrics
+
+    batch = getattr(state, "_batch_observation", None)
+    if batch is None:
+        return {}
+    if batch.memory_rows is None:
+        with batch_stage(state, "memory_observation"):
+            rows = state.model.memory_stats(synchronize=True)
+            batch.memory_rows = [dict(rows)] if isinstance(rows, dict) else [dict(row) for row in rows]
+    return memory_metrics(batch.memory_rows)
+
+
+def finish_batch(state, *, stream_stats=None, resource_metrics=None, memory=None, terminal=False, publications=0):
+    """Record a consumed batch after actual training and publication complete.
+
+    A streaming completion hook may call this from another thread. No active
+    span context crosses that boundary, and this helper does not schedule work.
+    """
+    from twinkle.metric import MetricRecord
+
+    batch = getattr(state, "_batch_observation", None)
+    if batch is None or not batch.lengths:
+        return
+    memory = batch_memory(state) if memory is None else memory
+    ended_ns = batch.clock_ns()
+    events = batch.recorder.trace_events()
+    timings = rollout_phase_times(events, started_ns=batch.started_ns,
+                                  ended_ns=ended_ns, received_ns=batch.received_ns)
+    stats = stream_stats or {}
+    for name in ("publish_time", "publishes"):
+        if name in stats:
+            delta = stats[name] - state._stream_previous.get(name, 0)
+            if name == "publish_time":
+                timings["update_weights"] = delta
+            else:
+                publications = delta
+            state._stream_previous[name] = stats[name]
+    groups = state._metric_context["device_groups"]
+    inputs = {
+        "prompt_lengths": [p for p, _ in batch.lengths],
+        "response_lengths": [r for _, r in batch.lengths],
+        "timings": timings,
+        "num_devices": len({rank for _, ranks in groups for rank in ranks}),
+    }
+    wall_seconds = (ended_ns - batch.started_ns) / 1e9
+    values = rollout_metrics(
+        **inputs, wall_seconds=wall_seconds, truncated=batch.truncated, turns=batch.turns,
+        extra_values={
+            **memory,
+            **{f"actor/{key}": value for key, value in memory.items()},
+            **(resource_metrics or {}),
+            **{
+                f"stream/{key}": value
+                for key, value in stats.items()
+                if isinstance(value, (int, float)) and key not in ("total_time", "final_version", "dropped_incomplete")
+            },
+        },
+    )
+    state._run_metric.accumulate(**inputs)
+    values.update(
+        {
+            "training/optimizer_step_start": batch.optimizer_start,
+            "training/optimizer_step": state.global_step,
+            "training/optimizer_steps_this_iteration": state.global_step - batch.optimizer_start,
+            "training/weight_publications_this_iteration": publications,
+            "training/sample_visits": batch.sample_visits,
+            "training/unique_samples_trained": len(batch.trained_indices),
+            "training/samples_not_trained": len(batch.lengths) - len(batch.trained_indices),
+        }
+    )
+    state._completed_batches += 1
+    state._rollout_groups += len(batch.lengths) // state._metric_context["num_generations"]
+    state._trained_samples += batch.sample_visits
+    state._batch_wall_ns += ended_ns - batch.started_ns
+    state.tracker.record(
+        MetricRecord(
+            stage="rollout",
+            optimizer_step=state.global_step,
+            values=values,
+            attributes={
+                "scope": "iteration",
+                "step_unit": "rl_iteration",
+                "iteration": state._completed_batches,
+                "iteration_scope": "one_consumed_rollout_batch",
+                **state._metric_context,
+                "parameter_sync_step_unit": "optimizer_update",
+                "terminal": terminal,
+                "timing_clock": "driver_monotonic_nanoseconds",
+                "timing_spans": events,
+                "iteration_started_ns": batch.started_ns,
+                "iteration_ended_ns": ended_ns,
+                "batch_received_ns": batch.received_ns,
+                "prompt_lengths": inputs["prompt_lengths"],
+                "response_lengths": inputs["response_lengths"],
+                "memory_by_rank": batch.memory_rows,
+                "memory_scope": "allocator_lifetime_peaks_and_host_used_ram_in_bytes",
+            },
+        )
+    )
+    logger.info(
+        "[perf] iteration=%s step=%s seconds=%.3f tokens=%s tok/s/GPU=%.3f",
+        state._completed_batches,
+        state.global_step,
+        timings["step"],
+        values["perf/total_num_tokens"],
+        values["perf/throughput"],
+    )
+    state._batch_observation = None
+
+
+def finish_batch_metrics(state, *, stream_stats=None, status="completed"):
+    """Write terminal totals through the existing metric reporter."""
+    from twinkle.metric import MetricRecord
+
+    if not hasattr(state, '_run_metric'):
+        return
+    metrics = state._run_metric.calculate()
+    values = {
+        "completed_iterations": state._completed_batches,
+        "optimizer_step": state.global_step,
+        "rollout_groups": state._rollout_groups,
+        "rollout_samples": metrics.get("perf/num_samples", 0),
+        "trained_samples": state._trained_samples,
+        "wall_time_s": state._batch_wall_ns / 1e9,
+        "total_num_tokens": metrics.get("perf/total_num_tokens", 0),
+        "sum_iteration_seconds": metrics.get("perf/time_per_step", 0),
+        "throughput": metrics.get("perf/throughput"),
+    }
+    values.update(
+        {f"stream/{key}": value for key, value in (stream_stats or {}).items() if isinstance(value, (int, float))}
+    )
+    state.tracker.record(
+        MetricRecord(
+            stage="run",
+            optimizer_step=state.global_step,
+            values=values,
+            status="failed" if status == "failed" else "completed",
+            attributes={"step_unit": "run_summary", "loop_status": status},
+        )
+    )
 
 
 class SaveKnobs(NamedTuple):
@@ -626,9 +850,7 @@ class StepState:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
             record.update(Perf.collect_step_summary())
-        from contextlib import nullcontext
-        recorder = getattr(self, '_iteration_recorder', None)
-        with recorder.span('_logging') if recorder is not None else nullcontext():
+        with batch_stage(self, '_logging'):
             record = self.tracker.log(record, self.global_step)
             self.history.append(record)
             self.publish_state(loss=loss, metrics=record)

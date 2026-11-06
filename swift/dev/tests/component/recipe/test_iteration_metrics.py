@@ -1,15 +1,13 @@
 """Recipe boundaries feed the existing metric/reporting components."""
 
-from importlib import import_module
 from types import SimpleNamespace as NS
 
 import json
 import pytest
 
+from swift.dev.recipe import utils as batch_metrics
 from swift.dev.recipe.utils import RunTracker, rollout_metrics
 from swift.dev.utils.scoring import sample_token_lengths
-
-grpo = import_module("swift.dev.recipe.grpo.run_grpo")
 
 
 def sample(prompt=3, response=2, *, tool=0):
@@ -20,8 +18,8 @@ def sample(prompt=3, response=2, *, tool=0):
 
 def observed_state(path, now, groups=None):
     state = NS(global_step=0, model=NS(memory_stats=lambda **kw: []), tracker=RunTracker(None, str(path)))
-    grpo._init_metrics(state, groups or [("model", [0])])
-    grpo._begin_iteration(state, clock_ns=lambda: int(now[0] * 1e9))
+    batch_metrics.init_batch_metrics(state, groups or [("model", [0])])
+    batch_metrics.begin_batch(state, clock_ns=lambda: int(now[0] * 1e9))
     return state
 
 
@@ -74,12 +72,12 @@ def test_unavailable_turn_counts_are_omitted(turns):
 def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp_path):
     now = [0.0]
     state = observed_state(tmp_path, now, [("model", [0, 1]), ("shared", [0])])
-    grpo._receive_iteration(state, [sample(), sample(prompt=4, response=3)])
-    state._iteration.sample_visits = 8
-    state._iteration.trained_indices = {0, 1}
+    batch_metrics.observe_batch(state, [sample(), sample(prompt=4, response=3)])
+    for _ in range(4):
+        batch_metrics.record_batch_training(state, [0, 1])
     state.global_step = 4
     now[0] = 2
-    grpo._finish_iteration(state, publications=1)
+    batch_metrics.finish_batch(state, publications=1)
     row = iteration_rows(tmp_path, state)[0]
     assert row["data"]["perf/total_num_tokens"] == 12
     assert row["data"]["perf/throughput"] == 3
@@ -91,19 +89,69 @@ def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp
     state.tracker.close()
 
 
+def test_shared_batch_lifecycle_accepts_another_sample_format(tmp_path):
+    now = [0.0]
+    state = observed_state(tmp_path, now)
+    rows = [NS(lengths=(3, 2), truncated=False), NS(lengths=(4, 3), truncated=True)]
+    now[0] = 1
+    batch_metrics.observe_batch(state, iter(rows), length_fn=lambda row: row.lengths)
+    now[0] = 2
+    state.global_step = 1
+    batch_metrics.record_batch_training(state, [0])
+    batch_metrics.finish_batch(state, publications=1)
+    row = iteration_rows(tmp_path, state)[0]
+    assert row['data']['perf/total_num_tokens'] == 12
+    assert row['data']['response/truncated_ratio'] == 0.5
+    assert row['data']['training/sample_visits'] == 1
+    assert row['data']['training/samples_not_trained'] == 1
+    assert row['prompt_lengths'] == [3, 4]
+    assert 'adv_pipeline_scope' not in row
+    state.tracker.close()
+
+
+def test_batch_completion_can_run_on_a_different_thread(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    now = [0.0]
+    state = observed_state(tmp_path, now)
+    batch_metrics.observe_batch(state, [sample()])
+    with batch_metrics.batch_stage(state, 'update_actor'):
+        now[0] = 2
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(batch_metrics.finish_batch, state, memory={}).result()
+    batch_metrics.finish_batch(state)  # repeated completion must not duplicate a record
+    rows = iteration_rows(tmp_path, state)
+    assert len(rows) == 1
+    assert rows[0]['data']['timing_s/update_actor'] == 2
+    assert state._batch_observation is None
+    state.tracker.close()
+
+
+def test_batch_helpers_are_noops_without_initialization():
+    state = NS(global_step=0)
+    batch_metrics.begin_batch(state)
+    with batch_metrics.batch_stage(state, 'gen'):
+        batch_metrics.observe_batch(state, [NS()])
+    batch_metrics.record_batch_training(state, [0])
+    assert batch_metrics.batch_memory(state) == {}
+    batch_metrics.finish_batch(state)
+    batch_metrics.finish_batch_metrics(state)
+    assert not hasattr(state, '_batch_observation')
+
+
 def test_nested_logging_excludes_overlap_once_and_keeps_raw_intervals(tmp_path):
     now = [0.0]
     state = observed_state(tmp_path, now)
-    grpo._receive_iteration(state, [sample()])
-    with grpo._stage(state, "update_actor"):
+    batch_metrics.observe_batch(state, [sample()])
+    with batch_metrics.batch_stage(state, "update_actor"):
         now[0] = 1
-        with grpo._stage(state, "_logging"):
+        with batch_metrics.batch_stage(state, "_logging"):
             now[0] = 2
-            with grpo._stage(state, "_logging"):
+            with batch_metrics.batch_stage(state, "_logging"):
                 now[0] = 3
             now[0] = 4
         now[0] = 6
-    grpo._finish_iteration(state)
+    batch_metrics.finish_batch(state)
     row = iteration_rows(tmp_path, state)[0]
     assert row["data"]["timing_s/update_actor"] == row["data"]["timing_s/step"] == 3
     assert row["data"]["observability/iteration_wall_seconds"] == 6
@@ -118,17 +166,17 @@ def test_publication_counter_deltas_and_terminal_summary_use_existing_tracker(tm
     state = observed_state(tmp_path, now)
     for step, publish_time, publications in [(1, 0.5, 1), (2, 0.5, 1)]:
         if step > 1:
-            grpo._begin_iteration(state, clock_ns=lambda: int(now[0] * 1e9))
+            batch_metrics.begin_batch(state, clock_ns=lambda: int(now[0] * 1e9))
         now[0] += 1
-        grpo._receive_iteration(state, [sample()])
+        batch_metrics.observe_batch(state, [sample()])
         now[0] += 1
         state.global_step = step
-        grpo._finish_iteration(state, stream_stats={"publish_time": publish_time, "publishes": publications})
+        batch_metrics.finish_batch(state, stream_stats={"publish_time": publish_time, "publishes": publications})
     rows = iteration_rows(tmp_path, state)
     assert [row["data"]["training/weight_publications_this_iteration"] for row in rows] == [1, 0]
     assert [row["data"]["timing_s/update_weights"] for row in rows] == [0.5, 0]
     assert all(row["data"]["timing_s/gen"] == 1 for row in rows)
-    grpo._record_run_metrics(state, stream_stats={"dropped_incomplete": 3, "final_version": 2})
+    batch_metrics.finish_batch_metrics(state, stream_stats={"dropped_incomplete": 3, "final_version": 2})
     state.tracker.close()
     summary = json.loads((tmp_path / "summary.json").read_text())
     assert summary["result"]["completed_iterations"] == 2
@@ -142,8 +190,8 @@ def test_default_worker_recorder_reset_does_not_erase_iteration_observations(tmp
 
     now = [0.0]
     state = observed_state(tmp_path, now)
-    grpo._receive_iteration(state, [sample()])
-    with grpo._stage(state, "gen"):
+    batch_metrics.observe_batch(state, [sample()])
+    with batch_metrics.batch_stage(state, "gen"):
         now[0] = 2
     enabled = default_recorder.enabled
     try:
@@ -151,7 +199,7 @@ def test_default_worker_recorder_reset_does_not_erase_iteration_observations(tmp
         with default_recorder.span("worker"):
             pass
         Perf.dump_process()
-        grpo._finish_iteration(state)
+        batch_metrics.finish_batch(state)
     finally:
         if not enabled:
             default_recorder.disable()

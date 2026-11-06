@@ -6,6 +6,7 @@ from types import SimpleNamespace as NS
 import json
 import pytest
 
+from swift.dev.recipe import utils as batch_metrics
 from swift.dev.recipe.utils import RunTracker
 from swift.dev.tests.component.recipe.test_iteration_metrics import iteration_rows
 
@@ -92,7 +93,7 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch):
     )
     state = NS(model=model, global_step=0, reached_max=lambda: state.global_step >= 2, should_stop=lambda: False)
     state.tracker = RunTracker(None, str(tmp_path))
-    mod._init_metrics(state, [("trainer", [0])])
+    batch_metrics.init_batch_metrics(state, [("trainer", [0])])
     monkeypatch.setattr(mod, "_advantage_pipeline", lambda *a, **kw: (None,) * 4)
     monkeypatch.setattr(mod, "_prepare_routing_replay", lambda *a: None)
 
@@ -163,9 +164,9 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
     state.record = record
     state.step_tail = tail
     state.tracker = RunTracker(None, str(tmp_path))
-    mod._init_metrics(state, [("trainer", [0])])
-    mod._begin_iteration(state)
-    mod._receive_iteration(state, [sample()])
+    batch_metrics.init_batch_metrics(state, [("trainer", [0])])
+    batch_metrics.begin_batch(state)
+    batch_metrics.observe_batch(state, [sample()])
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -178,7 +179,7 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
         teacher_logps=None,
         temperature=1,
     )
-    result = mod._iteration_memory(state)
+    result = batch_metrics.batch_memory(state)
     assert result["perf/max_memory_allocated_gb"] == 2
     assert events == ["memory", "checkpoint"]  # no post-checkpoint resampling
     state.tracker.close()
@@ -220,9 +221,9 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
 
     state.record = record
     state.tracker = RunTracker(None, str(tmp_path))
-    mod._init_metrics(state, [("trainer", [0])])
-    mod._begin_iteration(state)
-    mod._receive_iteration(state, [sample()] * 3)
+    batch_metrics.init_batch_metrics(state, [("trainer", [0])])
+    batch_metrics.begin_batch(state)
+    batch_metrics.observe_batch(state, [sample()] * 3)
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -235,10 +236,10 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
         teacher_logps=None,
         temperature=1,
     )
-    assert mod._iteration_memory(state)["perf/max_memory_allocated_gb"] == 1
+    assert batch_metrics.batch_memory(state)["perf/max_memory_allocated_gb"] == 1
     assert snapshots == [1]
-    assert state._iteration.sample_visits == 2
-    assert state._iteration.trained_indices == {0, 1}
+    assert state._batch_observation.sample_visits == 2
+    assert state._batch_observation.trained_indices == {0, 1}
     state.tracker.close()
 
 
