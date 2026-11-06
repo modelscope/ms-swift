@@ -131,17 +131,17 @@ Begin!
 北京和上海今天的天气情况<|im_end|>
 <|im_start|>assistant
 Action: realtime_aqi
-Action Input: {'city': '北京'}
+Action Input: {"city": "北京"}
 Action: realtime_aqi
-Action Input: {'city': '上海'}
+Action Input: {"city": "上海"}
 Observation:{"city": "北京", "aqi": "10", "unit": "celsius"}
 Observation:{"city": "上海", "aqi": "72", "unit": "fahrenheit"}
 根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。<|im_end|>
 
 [LABELS] [-100 * 233]Action: realtime_aqi
-Action Input: {'city': '北京'}
+Action Input: {"city": "北京"}
 Action: realtime_aqi
-Action Input: {'city': '上海'}
+Action Input: {"city": "上海"}
 Observation:[-100 * 45]根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。<|im_end|>
 ```
 

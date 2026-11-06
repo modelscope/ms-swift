@@ -72,7 +72,8 @@ class ChatGLM4AgentTemplate(BaseAgentTemplate):
         tool_calls = []
         for message in tool_call_messages:
             tool_call = self._parse_tool_call(message['content'])
-            tool_calls.append(f'{tool_call["name"]}\n{tool_call["arguments"]}')
+            arguments = json.dumps(tool_call['arguments'], ensure_ascii=False)
+            tool_calls.append(f'{tool_call["name"]}\n{arguments}')
         return '<|assistant|>'.join(tool_calls) + '<|observation|>'
 
 
