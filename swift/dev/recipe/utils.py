@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import os
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
 import json
@@ -218,7 +218,10 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
     os.makedirs(ckpt_dir, exist_ok=True)
 
     from swift.dev.config.checkpoint_config import (
-        CHECKPOINT_DATA_FIELDS, CHECKPOINT_FORCE_LOAD_FIELDS, CHECKPOINT_LOAD_FIELDS)
+        CHECKPOINT_DATA_FIELDS,
+        CHECKPOINT_FORCE_LOAD_FIELDS,
+        CHECKPOINT_LOAD_FIELDS,
+    )
     from swift.dev.utils.version import __version__ as swift_version
     model_meta = getattr(processor, 'model_meta', None)
     configs = {
@@ -567,8 +570,8 @@ class StepState:
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
             record.update(Perf.collect_step_summary())
         from contextlib import nullcontext
-        performance = getattr(self, "performance", None)
-        with performance.exclude_logging() if performance is not None else nullcontext():
+        recorder = getattr(self, '_iteration_recorder', None)
+        with recorder.span('_logging') if recorder is not None else nullcontext():
             record = self.tracker.log(record, self.global_step)
             self.history.append(record)
             self.publish_state(loss=loss, metrics=record)
@@ -1472,9 +1475,15 @@ class RunTracker:
         self._loss_total = 0.0
         self._loss_count = 0
         self._logged_prompts = set()
-        from twinkle.perf.rl_metrics import JsonlMetricWriter
-        self._jsonl = (JsonlMetricWriter(os.path.join(output_dir, 'optimizer_metrics.jsonl'))
-                       if _is_main_process() else None)
+        import uuid
+
+        from twinkle.metric import create_metrics_reporter
+        self.run_id = uuid.uuid4().hex
+        self._metric_reporter = (create_metrics_reporter({"jsonl": {
+            "path": os.path.join(output_dir, "metrics_raw.jsonl"),
+            "summary_path": os.path.join(output_dir, "summary.json"),
+            "append": True, "batch_size": 1,
+        }}, run_id=self.run_id) if _is_main_process() else None)
         if config is None or not _is_main_process():
             return
         reporters = {name.lower() for name in config.report_to}
@@ -1494,15 +1503,24 @@ class RunTracker:
         return bool((self.config.logging_first_step and step == 1)
                     or (self.config.logging_steps and step % self.config.logging_steps == 0))
 
+    def record(self, record) -> None:
+        """Send a typed observation through the existing metric output pipeline."""
+        if self._metric_reporter is not None:
+            if record.context_key is None:
+                record = replace(record, context_key=self.run_id)
+            self._metric_reporter.record(record)
+
     def log(self, metrics: Dict[str, Any], step: int, *, epoch_end: bool = False) -> Dict[str, Any]:
         """Filter and write one metric record; returns the record actually emitted."""
         filtered = self._filter_metrics(metrics)
-        if self._jsonl is not None:
+        if self._metric_reporter is not None:
+            from twinkle.metric import MetricRecord
             raw = coerce_metric_scalars(metrics)
             # Keep nonfinite numeric observations as JSON null, before display
             # loss filtering replaces them with a running average.
             raw.update({key: value for key, value in metrics.items() if isinstance(value, (int, float))})
-            self._jsonl.write(step, raw, step_unit='optimizer_update')
+            self.record(MetricRecord(
+                stage='train', optimizer_step=step, values=raw, attributes={'step_unit': 'optimizer_update'}))
         if not self.should_log(step, epoch_end=epoch_end):
             return filtered
         scalars = {}
@@ -1546,8 +1564,8 @@ class RunTracker:
             writer.log({'completions': writer.Table(columns=['prompt', 'completion'], data=rows)}, step=step)
 
     def close(self) -> None:
-        if self._jsonl is not None:
-            self._jsonl.close()
+        if self._metric_reporter is not None:
+            self._metric_reporter.close()
         writer = self._writers.get('tensorboard')
         if writer is not None:
             writer.close()

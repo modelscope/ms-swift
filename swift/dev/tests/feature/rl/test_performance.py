@@ -6,8 +6,8 @@ from types import SimpleNamespace as NS
 import json
 import pytest
 
-from twinkle.perf import RLPerformanceRecorder, reduce_memory, sample_lengths
 from swift.dev.recipe.utils import RunTracker
+from swift.dev.tests.component.recipe.test_iteration_metrics import iteration_rows
 
 
 def sample(prompt=3, response=2, *, tool=0):
@@ -20,12 +20,12 @@ def test_raw_training_metrics_survive_without_reporters_and_resume(tmp_path):
     for _ in range(2):
         tracker = RunTracker(None, str(tmp_path))
         tracker.log({"loss": float("nan"), "train/reward": 2.0}, 1)
-        assert (tmp_path / "optimizer_metrics.jsonl").exists()
+        assert (tmp_path / "metrics_raw.jsonl").exists()
         tracker.close()
-    rows = [json.loads(line) for line in (tmp_path / "optimizer_metrics.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in (tmp_path / "metrics_raw.jsonl").read_text().splitlines()]
     assert len(rows) == 2 and rows[0]["run_id"] != rows[1]["run_id"]
-    assert rows[0]["data"]["loss"] is None
-    assert rows[0]["data"]["train/reward"] == 2.0
+    assert rows[0]["attributes"]["non_numeric_values"]["loss"] is None
+    assert rows[0]["values"]["train/reward"] == 2.0
 
 
 def test_raw_optimizer_stream_does_not_replace_webui_records(tmp_path, monkeypatch):
@@ -39,7 +39,7 @@ def test_raw_optimizer_stream_does_not_replace_webui_records(tmp_path, monkeypat
     finally:
         tracker.close()
     assert json.loads((tmp_path / "metrics.jsonl").read_text()) == {"step": 1, "loss": 0.5}
-    assert json.loads((tmp_path / "optimizer_metrics.jsonl").read_text())["data"] == {"loss": 0.5}
+    assert json.loads((tmp_path / "metrics_raw.jsonl").read_text())["values"] == {"loss": 0.5}
 
 
 def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch):
@@ -64,7 +64,7 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch):
     model = NS(
         offload_to_cpu=lambda **kw: None,
         reload_to_gpu=lambda: None,
-        performance_memory=lambda: [{"perf/max_memory_allocated_gb": 2}],
+        memory_stats=lambda **kwargs: [{"max_memory_allocated_bytes": 2 * 1024**3}],
     )
     cluster = NS(
         model=model,
@@ -76,7 +76,8 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch):
         rollout=NS(generate=lambda *a, **kw: [sample()]),
     )
     state = NS(model=model, global_step=0, reached_max=lambda: state.global_step >= 2, should_stop=lambda: False)
-    state.performance = RLPerformanceRecorder(tmp_path, [("trainer", [0])], mode="colocate")
+    state.tracker = RunTracker(None, str(tmp_path))
+    mod._init_metrics(state, [("trainer", [0])])
     monkeypatch.setattr(mod, "_advantage_pipeline", lambda *a, **kw: (None,) * 4)
     monkeypatch.setattr(mod, "_prepare_routing_replay", lambda *a: None)
 
@@ -104,10 +105,10 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch):
         ("sync", 2),
     ]
     assert not awake
-    rows = [json.loads(line) for line in (tmp_path / "performance.jsonl").read_text().splitlines()]
+    rows = iteration_rows(tmp_path, state)
     assert len(rows) == 2
     assert all("timing_s/update_weights" in row["data"] for row in rows)
-    state.performance.close()
+    state.tracker.close()
 
 
 def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch):
@@ -115,14 +116,15 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
     events = []
     peak = [2]
 
-    def memory():
+    def memory(**kwargs):
+        assert kwargs == {"synchronize": True}
         events.append("memory")
-        return [{"perf/max_memory_allocated_gb": peak[0]}]
+        return [{"max_memory_allocated_bytes": peak[0] * 1024**3}]
 
     model = NS(
         forward_backward=lambda **kw: None,
         clip_grad_and_step=lambda **kw: None,
-        performance_memory=memory,
+        memory_stats=memory,
         device_mesh=NS(data_world_size=1),
     )
     state = NS(
@@ -145,9 +147,10 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
 
     state.record = record
     state.step_tail = tail
-    state.performance = RLPerformanceRecorder(tmp_path, [("trainer", [0])], mode="colocate")
-    state.performance.begin(0)
-    state.performance.received_lengths([3], [2])
+    state.tracker = RunTracker(None, str(tmp_path))
+    mod._init_metrics(state, [("trainer", [0])])
+    mod._begin_iteration(state)
+    mod._receive_iteration(state, [sample()])
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -163,7 +166,7 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
     result = mod._iteration_memory(state)
     assert result["perf/max_memory_allocated_gb"] == 2
     assert events == ["memory", "checkpoint"]  # no post-checkpoint resampling
-    state.performance.close()
+    state.tracker.close()
 
 
 def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch):
@@ -174,14 +177,15 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
     def forward(**kw):
         peak[0] += 1
 
-    def memory():
+    def memory(**kwargs):
+        assert kwargs == {"synchronize": True}
         snapshots.append(peak[0])
-        return [{"perf/max_memory_allocated_gb": peak[0]}]
+        return [{"max_memory_allocated_bytes": peak[0] * 1024**3}]
 
     model = NS(
         forward_backward=forward,
         clip_grad_and_step=lambda **kw: None,
-        performance_memory=memory,
+        memory_stats=memory,
         device_mesh=NS(data_world_size=1),
     )
     state = NS(
@@ -200,9 +204,10 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
         state.global_step += 1
 
     state.record = record
-    state.performance = RLPerformanceRecorder(tmp_path, [("trainer", [0])], mode="colocate")
-    state.performance.begin(0)
-    state.performance.received_lengths([3] * 3, [2] * 3)
+    state.tracker = RunTracker(None, str(tmp_path))
+    mod._init_metrics(state, [("trainer", [0])])
+    mod._begin_iteration(state)
+    mod._receive_iteration(state, [sample()] * 3)
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -217,9 +222,9 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
     )
     assert mod._iteration_memory(state)["perf/max_memory_allocated_gb"] == 1
     assert snapshots == [1]
-    assert state.performance.sample_visits == 2
-    assert state.performance.trained_indices == {0, 1}
-    state.performance.close()
+    assert state._iteration.sample_visits == 2
+    assert state._iteration.trained_indices == {0, 1}
+    state.tracker.close()
 
 
 def test_fresh_grpo_horizon_counts_first_complete_accumulation_window():
@@ -236,3 +241,76 @@ def test_fresh_grpo_horizon_counts_first_complete_accumulation_window():
         )
         == 5
     )
+
+
+def test_failed_optimizer_never_records_a_successful_update(tmp_path, monkeypatch):
+    mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
+
+    class FailedUpdate:
+        _is_lazy_collect = True
+
+        def __call__(self):
+            raise RuntimeError("optimizer failed")
+
+    model = NS(
+        device_mesh=NS(data_world_size=1),
+        forward_backward=lambda **kwargs: None,
+        clip_grad_and_step=lambda **kwargs: FailedUpdate(),
+    )
+    state = NS(
+        model=model,
+        ga=1,
+        global_step=0,
+        micro_step=0,
+        max_grad_norm=1,
+        reached_max=lambda: False,
+        should_stop=lambda: False,
+        record=lambda: pytest.fail("failed optimizer must not advance the step"),
+    )
+    monkeypatch.setattr(mod, "_forward_kwargs", lambda *args, **kwargs: {})
+    with pytest.raises(RuntimeError, match="optimizer failed"):
+        mod._train_mini_batches(
+            state,
+            NS(num_iterations=1),
+            [sample()],
+            train_batch_size=1,
+            advantages=[0],
+            old_logps=[0],
+            ref_logps=None,
+            teacher_logps=None,
+            temperature=1,
+        )
+    assert state.global_step == state.micro_step == 0
+
+
+def test_auxiliary_forwards_are_submitted_before_consuming_signals():
+    mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
+    launches = []
+
+    class Pending:
+        _is_lazy_collect = True
+
+        def __call__(self):
+            pytest.fail("large forward payloads must stay off the controller")
+
+    def lane(name):
+        def forward(**kwargs):
+            launches.append(name)
+            return Pending()
+
+        return forward
+
+    def advantages(samples, scored, *args):
+        assert launches == ["ref", "teacher", "old"]
+        assert all(isinstance(value, Pending) for value in scored.values())
+        return (1, 2, 3, 4)
+
+    cluster = NS(
+        model=NS(device_mesh=NS(data_world_size=1), forward_only=lane("old")),
+        reference=NS(forward_only=lane("ref")),
+        teacher=NS(forward_only=lane("teacher")),
+        worker=NS(privileged_features=lambda rows: [], grpo_advantages=advantages),
+        sampling_params={},
+    )
+    config = NS(rollout_importance_sampling_mode="token_truncate", log_rollout_offpolicy_metrics=False)
+    assert mod._advantage_pipeline(cluster, config, NS(), [sample()], 1, 0) == (1, 2, 3, 4)
