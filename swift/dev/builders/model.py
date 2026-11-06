@@ -1005,13 +1005,14 @@ def _build_transformers_model(
     if enable_router_replay:
         kwargs["enable_router_replay"] = True
 
-    # NEFTune + acc_strategy are transformers-family ctor kwargs consumed by the twinkle base
-    # constructor (megatron rejects both in _HF_ONLY). Plain-HF and unsloth both reach that
+    # NEFTune + acc_strategy + dp_balance are transformers-family ctor kwargs consumed by the twinkle base
+    # constructor (megatron rejects the first two in _HF_ONLY). Plain-HF and unsloth both reach that
     # constructor; the ST branch threads acc_strategy itself and rejects neftune in its guard.
     if train_config is not None:
         if train_config.neftune_noise_alpha:
             kwargs["neftune_noise_alpha"] = train_config.neftune_noise_alpha
         kwargs["acc_strategy"] = train_config.acc_strategy
+        kwargs["dp_balance"] = train_config.dp_balance
 
     # Three exclusive paths: sentence_transformers (its own pipeline) / unsloth (owns construction
     # + LoRA install) / plain TransformersModel with the family loader handed over.
