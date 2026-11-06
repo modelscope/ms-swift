@@ -10,7 +10,7 @@ import ast
 import json
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.infer_engine import Function
 from swift.template import Prompt, split_str_parts_by
@@ -217,6 +217,83 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
             if isinstance(parameters, dict):
                 tool_schemas[self._get_tool_name(function)] = parameters
         return tool_schemas
+
+    @staticmethod
+    def _is_json_value(obj: Any) -> bool:
+        """True when ``obj`` is a JSON data model at every nesting level.
+
+        ``Function`` serialises ``arguments`` with ``json.dumps``, so a nested ``set``/``bytes``/
+        non-string dict key raises there and the caller (``InferEngine._get_toolcall``) swallows
+        the exception, silently dropping the tool call. A top-level isinstance check is not
+        enough: ``{'a': {1, 2}}`` and ``[{1, 2}]`` are both ``dict``/``list`` at the surface.
+        """
+        if obj is None or isinstance(obj, (str, bool, int, float)):
+            return True
+        if isinstance(obj, list):
+            return all(BaseAgentTemplate._is_json_value(v) for v in obj)
+        if isinstance(obj, dict):
+            return all(isinstance(k, str) and BaseAgentTemplate._is_json_value(v) for k, v in obj.items())
+        return False
+
+    @staticmethod
+    def _schema_types(param_schema: Any) -> set:
+        """Flatten ``type`` / ``anyOf`` / ``oneOf`` into a set of JSON-Schema type names."""
+        if not isinstance(param_schema, dict):
+            return set()
+        types = set()
+        param_type = param_schema.get('type')
+        if isinstance(param_type, list):
+            types.update(t for t in param_type if isinstance(t, str))
+        elif isinstance(param_type, str):
+            types.add(param_type)
+        for key in ('anyOf', 'oneOf'):
+            for option in param_schema.get(key) or ():
+                types |= BaseAgentTemplate._schema_types(option)
+        return types
+
+    @staticmethod
+    def _is_string_param(param_schema: Any, value: str) -> bool:
+        """True when the schema declares this argument as a string (possibly nullable)."""
+        types = BaseAgentTemplate._schema_types(param_schema)
+        if 'string' not in types:
+            return False
+        # A bare `null` on a nullable string stays ambiguous; decode it as JSON null.
+        return not ('null' in types and value.strip() == 'null')
+
+    @staticmethod
+    def _decode_schema_args(pairs,
+                            tool_schemas: Optional[Dict[str, dict]],
+                            func_name: str,
+                            decode: Optional[Callable[[str], Any]] = None) -> Dict[str, Any]:
+        """Decode unquoted wire-format ``(key, text)`` pairs using the function's tool schema.
+
+        Single place where "text -> typed argument" happens, so a new model family cannot
+        introduce another decoding rule. String arguments keep the raw text (the wire format
+        drops quotes, so only the schema can tell ``"12345"`` from ``12345``). Non-JSON results
+        from the AST fallback are rejected and the raw text is kept instead, because
+        ``Function`` would fail to ``json.dumps`` them.
+        """
+        tool_schemas = tool_schemas or {}
+        properties = (tool_schemas.get(func_name) or {}).get('properties')
+        properties = properties if isinstance(properties, dict) else {}
+        decode = decode or BaseAgentTemplate._parse_json
+        args = {}
+        for key, value in pairs:
+            key = key.strip()
+            if BaseAgentTemplate._is_string_param(properties.get(key), value):
+                args[key] = value
+                continue
+            raw = value.strip()
+            parsed = decode(raw)
+            if parsed is None:
+                # `null` is a valid JSON value; anything else is a parse failure.
+                args[key] = None if raw == 'null' else value
+            elif BaseAgentTemplate._is_json_value(parsed):
+                args[key] = parsed
+            else:
+                # `ast.literal_eval` can yield set/bytes/complex/tuple, possibly nested.
+                args[key] = value
+        return args
 
     @staticmethod
     def _parse_tool(tool, lang: Literal['zh', 'en']) -> ToolDesc:
