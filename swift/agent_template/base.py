@@ -171,6 +171,50 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
     - `get_toolcall`: Extract tool calls from agent responses
     """
 
+    #: Whether the merged turn must write the ReAct observation marker itself.
+    uses_react_tool_responses = False
+
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
+        """Replace the native renderer's trailing assistant transition with the user turns.
+
+        Returns None when the tail does not match this template's user prompt.
+        """
+        prompt = ''.join(self.template_meta.prompt)
+        if '{{QUERY}}' not in prompt:
+            return None
+        prefix, suffix = prompt.split('{{QUERY}}', 1)
+        try:
+            _, tool_content = self._format_tool_responses('', tool_messages)
+        except NotImplementedError:
+            return None
+        tool_content = list(tool_content)
+        if not tool_content or not suffix:
+            return None
+        last = tool_content[-1]
+        if not isinstance(last, str) or not last.endswith(suffix):
+            return None
+        trimmed = last[:-len(suffix)]
+        if trimmed:
+            tool_content[-1] = trimmed
+        else:
+            tool_content.pop()
+        return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
+
+    def _format_react_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
+        """Render ReAct observations followed by user turns, keeping the observation marker."""
+        try:
+            res = self._format_react_standalone_tool_responses(tool_messages)
+        except NotImplementedError:
+            return None
+        for message in user_messages:
+            for context in self.template_meta.prompt:
+                if isinstance(context, str) and '{{QUERY}}' in context:
+                    prefix, suffix = context.split('{{QUERY}}', 1)
+                    res.extend([prefix, message['content'], suffix])
+                else:
+                    res.append(context)
+        return res
+
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
         """Hook to prepend a separator before tool_call content based on the preceding message.
 
