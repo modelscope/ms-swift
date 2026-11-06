@@ -20,6 +20,11 @@ def _labeled_rows(target: torch.Tensor) -> torch.Tensor:
     return target.sum(dim=-1) > 0
 
 
+def _labeled_mean(per_row: torch.Tensor, labeled: torch.Tensor) -> torch.Tensor:
+    total = int(labeled.sum())
+    return per_row.sum() / total if total else per_row.sum()
+
+
 def _rps_score_term(
     outputs: ModelOutput, target: torch.Tensor, option_mask: torch.Tensor, *, normalized: bool
 ) -> Optional[torch.Tensor]:
@@ -39,9 +44,7 @@ def _rps_score_term(
         per_row = gap2.sum(dim=-1)
     # Exclude unlabeled questions (all-zero target rows) from both the numerator and denominator.
     labeled = _labeled_rows(target)
-    rps = per_row[score_mask & labeled]
-    total_labeled = int(labeled.sum())
-    return rps.sum() / total_labeled if total_labeled else rps.sum()
+    return _labeled_mean(per_row[score_mask & labeled], labeled)
 
 
 @register_loss("scoring")
@@ -71,7 +74,7 @@ class ScoringLoss(Loss):
         labeled = _labeled_rows(target)
         if bool(labeled.any()):
             per_question = self._masked_soft_ce(logits, option_mask, target)[labeled]  # [n_labeled]
-            loss = self._reduce(per_question)
+            loss = _labeled_mean(per_question, labeled)
         else:  # a fully unlabeled batch contributes zero loss
             loss = logits.sum() * 0.0
         extra = self._extra_loss(outputs, target, option_mask)
@@ -105,14 +108,6 @@ class ScoringLoss(Loss):
         log_probs = log_probs.masked_fill(~option_mask, 0.0)
         return -(target * log_probs).sum(dim=-1)
 
-    @staticmethod
-    def _reduce(per_question: torch.Tensor) -> torch.Tensor:
-        """Mean over this batch's questions."""
-        denom = per_question.shape[0]
-        if denom == 0:
-            return per_question.sum()
-        return per_question.sum() / denom
-
     def _extra_loss(
         self, outputs: ModelOutput, target: torch.Tensor, option_mask: torch.Tensor, **kwargs
     ) -> Optional[torch.Tensor]:
@@ -120,11 +115,11 @@ class ScoringLoss(Loss):
         return None
 
 
-@register_loss("distill_rps")
-class DistillRPSLoss(ScoringLoss):
-    """Soft-target distillation CE + RPS on `score` questions"""
+class _RPSCompositeLoss(ScoringLoss):
+    """CE plus an additive RPS term on `score` questions; subclasses pick the RPS flavor."""
 
     RPS_WEIGHT = 0.5
+    rps_normalized: bool  # subclass contract: normalized (per-level) vs raw cumulative RPS
 
     def __init__(self, rps_weight: Optional[float] = None, **kwargs):
         super().__init__(**kwargs)
@@ -133,8 +128,15 @@ class DistillRPSLoss(ScoringLoss):
     def _extra_loss(self, outputs, target, option_mask, **kwargs):
         if self.rps_weight == 0:
             return None
-        term = _rps_score_term(outputs, target, option_mask, normalized=True)
+        term = _rps_score_term(outputs, target, option_mask, normalized=self.rps_normalized)
         return None if term is None else self.rps_weight * term
+
+
+@register_loss("distill_rps")
+class DistillRPSLoss(_RPSCompositeLoss):
+    """Soft-target distillation CE + normalized RPS on `score` questions"""
+
+    rps_normalized = True
 
 
 @register_loss("smooth_brier")
@@ -164,23 +166,11 @@ class SmoothBrierLoss(ScoringLoss):
         n_real = option_mask.sum(dim=-1).clamp(min=1).to(diff2.dtype)
         per_question_brier = diff2.sum(dim=-1) / n_real
         labeled = _labeled_rows(target)
-        total_labeled = int(labeled.sum())
-        term = per_question_brier[labeled].sum() / total_labeled if total_labeled else per_question_brier[labeled].sum()
-        return self.brier_weight * term
+        return self.brier_weight * _labeled_mean(per_question_brier[labeled], labeled)
 
 
 @register_loss("ce_rps")
-class CERPSLoss(ScoringLoss):
-    """Plain CE (no label smoothing) + RPS on `score` questions only"""
+class CERPSLoss(_RPSCompositeLoss):
+    """Plain CE (no label smoothing) + unnormalized RPS on `score` questions only"""
 
-    RPS_WEIGHT = 0.5
-
-    def __init__(self, rps_weight: Optional[float] = None, **kwargs):
-        super().__init__(**kwargs)
-        self.rps_weight = self.RPS_WEIGHT if rps_weight is None else float(rps_weight)
-
-    def _extra_loss(self, outputs, target, option_mask, **kwargs):
-        if self.rps_weight == 0:
-            return None
-        term = _rps_score_term(outputs, target, option_mask, normalized=False)
-        return None if term is None else self.rps_weight * term
+    rps_normalized = False

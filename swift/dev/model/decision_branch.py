@@ -30,7 +30,6 @@ def expand_cache(cache, K):
             setattr(l2, k, _rep(v, K))
         layers.append(l2)
     new.layers = layers
-    new.update_recurrent_state = lambda *a, **k: None
     return new
 
 
