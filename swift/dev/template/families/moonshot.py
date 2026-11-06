@@ -21,9 +21,10 @@ class MoonlightTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
     prompt: Prompt = field(
         default_factory=lambda: [
-            "<|im_user|>user<|im_middle|>{{QUERY}}<|im_end|><|im_assistant|>assistant<|im_middle|>"
+            "<|im_user|>user<|im_middle|>{{QUERY}}<|im_end|>"
         ]
     )
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|im_assistant|>assistant<|im_middle|>"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|im_end|>"])
     suffix: Prompt = field(default_factory=lambda: ["<|im_end|>"])
     system_prefix: Optional[Prompt] = field(
@@ -36,7 +37,7 @@ register_template(MoonlightTemplateMeta(LLMTemplateType.moonlight))
 
 register_template(
     MoonlightTemplateMeta(
-        LLMTemplateType.kimi_k2, default_system="You are Kimi, an AI assistant created by Moonshot AI."
+        LLMTemplateType.kimi_k2, default_system="You are a helpful assistant"
     )
 )
 

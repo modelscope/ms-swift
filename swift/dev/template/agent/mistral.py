@@ -39,9 +39,10 @@ class MistralAgentTemplate(BaseAgentTemplate):
         if not hasattr(self, "template_meta"):
             raise ValueError("MistralAgentTemplate requires template_meta to be registered")
         prompt = self.template_meta.prompt
-        chat_sep = self.template_meta.chat_sep
 
-        res = chat_sep.copy()
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
         res_tool = []
         for tool_message in tool_messages:
             tool_content = tool_message["content"]

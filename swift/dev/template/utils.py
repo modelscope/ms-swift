@@ -179,6 +179,49 @@ def get_last_user_round(messages, *, include_tool: bool = True):
     return -1
 
 
+def split_rounds(messages: "Messages") -> List[Tuple["Messages", Optional[Message]]]:
+    """Split messages into rounds: a maximal run of user/tool messages followed by one assistant.
+
+    The OpenAI format lets a run hold several messages -- consecutive users, or a tool response
+    followed by a user message -- and the official chat templates render each of them as its own
+    turn, so a "round" is this run plus its response, not a fixed pair of two messages. This is
+    the single definition of that shape: the encode loop, the history view and the loss-scale
+    pairing all call it, so they cannot disagree about where rounds start.
+
+    A trailing run without an assistant message is inference's generation prompt (the response
+    is ``None``).
+    """
+    rounds = []
+    i = 0
+    while i < len(messages):
+        segment_start = i
+        while i < len(messages) and messages[i]["role"] in {"user", "tool"}:
+            i += 1
+        segment = messages[segment_start:i]
+        assert segment, f"two responses in a row: {messages[segment_start - 1 : segment_start + 1]}"
+        response_message = messages[i] if i < len(messages) else None
+        if response_message is not None:
+            assert response_message["role"] == "assistant", (
+                f'role: "{response_message["role"]}" (a system message is only valid as the first message)'
+            )
+            i += 1
+        rounds.append((segment, response_message))
+    return rounds
+
+
+def merge_query_messages(query_messages: "Messages") -> Message:
+    """The one query message that stands for a round's whole query run.
+
+    A single message passes through unchanged (tool runs keep their pre-rendered list content);
+    a run of several messages joins their string contents -- the concatenation consecutive user
+    messages used to get when they were merged outright.
+    """
+    if len(query_messages) == 1:
+        return query_messages[0]
+    content = "".join(m["content"] for m in query_messages if isinstance(m["content"], str))
+    return {"role": "user", "content": content}
+
+
 def history_to_messages(
     history: History, system: Optional[str] = None, roles: Optional[List[List[str]]] = None
 ) -> "Messages":
@@ -206,18 +249,15 @@ def history_to_messages(
 def messages_to_history(messages: "Messages") -> Dict[str, Any]:
     system = None
     messages = messages.copy()
-    if messages[0]["role"] == "system":
+    if messages and messages[0]["role"] == "system":
         system = messages[0]["content"]
         messages = messages[1::]
-    if len(messages) % 2 == 1:
-        messages.append({"role": "assistant", "content": None})
     history = []
     history_roles = []
-    for user_message, assistant_message in zip(messages[::2], messages[1::2]):
-        assert user_message["role"] in {"tool", "user"}, f"user_message {user_message}"
-        assert assistant_message["role"] == "assistant", f"assistant_message: {assistant_message}"
-        history.append([user_message["content"], assistant_message["content"]])
-        history_roles.append([user_message["role"], assistant_message["role"]])
+    for query_messages, response_message in split_rounds(messages):
+        query_message = merge_query_messages(query_messages)
+        history.append([query_message["content"], None if response_message is None else response_message["content"]])
+        history_roles.append([query_message["role"], "assistant"])
     query, response = history.pop() if history else (None, None)
     query_role = history_roles.pop()[0] if history_roles else None
     return {

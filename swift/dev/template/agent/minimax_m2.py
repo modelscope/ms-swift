@@ -75,16 +75,16 @@ class MinimaxM2AgentTemplate(BaseAgentTemplate):
         # Use template meta if available
         if hasattr(self, "template_meta"):
             prompt = self.template_meta.prompt.copy()
-            chat_sep = self.template_meta.chat_sep
             for i in range(len(prompt)):
                 if isinstance(prompt[i], str):
                     prompt[i] = prompt[i].replace("user", "tool")
         else:
             # Default format based on the Jinja2 template
             prompt = ["]~b]tool\n{{QUERY}}[e~[\n"]
-            chat_sep = ["[e~[\n"]
 
-        res = chat_sep.copy()
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
 
         # Format tool responses
         tool_responses = []

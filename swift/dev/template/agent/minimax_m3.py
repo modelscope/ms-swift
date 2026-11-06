@@ -163,15 +163,15 @@ class MinimaxM3AgentTemplate(BaseAgentTemplate):
 
         if hasattr(self, "template_meta"):
             prompt = self.template_meta.prompt.copy()
-            chat_sep = self.template_meta.chat_sep
             for i in range(len(prompt)):
                 if isinstance(prompt[i], str):
                     prompt[i] = prompt[i].replace("user", "tool")
         else:
             prompt = ["]~b]tool\n{{QUERY}}[e~[\n]~b]ai\n"]
-            chat_sep = ["[e~[\n"]
 
-        res = chat_sep.copy() if chat_sep else []
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
         tool_responses = []
         for tool_message in tool_messages:
             tool_content = tool_message["content"]

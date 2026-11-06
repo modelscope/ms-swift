@@ -81,21 +81,25 @@ register_template(
     TemplateMeta(
         LLMTemplateType.baichuan_m1,
         prefix=[],
-        prompt=["<C_Q>{{QUERY}}<C_A>"],
+        prompt=["<C_Q>{{QUERY}}"],
+        response_opener=["<C_A>"],
         chat_sep=[],
-        suffix=["<C_A>"],
+        suffix=[],
         system_prefix=["<B_SYS>{{SYSTEM}}"],
-        default_system=DEFAULT_SYSTEM,
     )
 )
 
+# The official jinja renders a system message as an empty string (the format has no
+# system slot) and emits no bos/eos.
 register_template(
     TemplateMeta(
         LLMTemplateType.numina,
-        prefix=[["bos_token_id"]],
-        prompt=["### Problem: {{QUERY}}\n### Solution: "],
+        prefix=[],
+        prompt=["### Problem: {{QUERY}}\n"],
+        response_opener=["### Solution: "],
         chat_sep=["\n"],
-        system_prefix=[["bos_token_id"], "{{SYSTEM}}"],
+        suffix=[],
+        system_prefix=[],
     )
 )
 
@@ -118,7 +122,29 @@ register_template(
     )
 )
 
-register_template(TemplateMeta(LLMTemplateType.yuan, prefix=[], prompt=["{{QUERY}}<sep>"], chat_sep=None))
+class YuanTemplate(Template):
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        if not self.is_training:
+            # The official jinja ends the conversation's last message with <sep> instead of
+            # <n>; during inference that last message is the final query block.
+            last = res_context_list[-1] if res_context_list else None
+            if isinstance(last, str) and last.endswith("<n>"):
+                res_context_list[-1] = last[: -len("<n>")] + "<sep>"
+        return res_context_list, loss_scale_list, answer_len
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.yuan,
+        prefix=[],
+        prompt=["{{QUERY}}<n>"],
+        chat_sep=["<n>"],
+        suffix=["<sep>"],
+        system_prefix=["{{SYSTEM}}\n"],
+        template_cls=YuanTemplate,
+    )
+)
 register_template(
     TemplateMeta(
         LLMTemplateType.ziya,
@@ -255,22 +281,15 @@ register_template(
     )
 )
 
-C4AI_SYSTEM = (
-    "You are Command-R, a brilliant, sophisticated, AI-assistant trained to assist human users by "
-    "providing thorough responses.You are trained by Cohere."
-)
 register_template(
     TemplateMeta(
         LLMTemplateType.c4ai,
         prefix=["<BOS_TOKEN>"],
-        prompt=[
-            "<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|>"
-            "<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>"
-        ],
+        prompt=["<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|>"],
+        response_opener=["<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>"],
         chat_sep=["<|END_OF_TURN_TOKEN|>"],
         suffix=["<|END_OF_TURN_TOKEN|>"],
-        default_system=C4AI_SYSTEM,
-        system_prefix=["<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|"],
+        system_prefix=["<BOS_TOKEN><|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|>"],
     )
 )
 
@@ -309,23 +328,15 @@ register_template(
     )
 )
 
-AYA_SYSTEM = (
-    "You are Aya, a brilliant, sophisticated, multilingual AI-assistant trained to assist human users by "
-    "providing thorough responses. You are able to interact and respond to questions in 23 languages and "
-    "you are powered by a multilingual model built by Cohere For AI."
-)
 register_template(
     TemplateMeta(
         LLMTemplateType.aya,
         prefix=["<BOS_TOKEN>"],
-        prompt=[
-            "<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|>"
-            "<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>"
-        ],
+        prompt=["<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|>"],
+        response_opener=["<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>"],
         chat_sep=["<|END_OF_TURN_TOKEN|>"],
         suffix=["<|END_OF_TURN_TOKEN|>"],
-        default_system=AYA_SYSTEM,
-        system_prefix=["<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|"],
+        system_prefix=["<BOS_TOKEN><|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|>"],
     )
 )
 
@@ -350,11 +361,14 @@ register_template(
 register_template(
     TemplateMeta(
         LLMTemplateType.dots1,
-        prefix=["<|system|>{{SYSTEM}}<|endofsystem|>"],
-        prompt=["<|userprompt|>{{QUERY}}<|endofuserprompt|><|response|>"],
+        prefix=["<|system|><|endofsystem|>"],
+        # the official template always renders the system block; with no system message
+        # it is empty, so prefix carries the bare block and system_prefix fills it
+        system_prefix=["<|system|>{{SYSTEM}}<|endofsystem|>"],
+        prompt=["<|userprompt|>{{QUERY}}<|endofuserprompt|>"],
+        response_opener=["<|response|>"],
         chat_sep=["<|endofresponse|>"],
         suffix=["<|endofresponse|>"],
-        default_system="You are a helpful assistant.",
     )
 )
 
@@ -514,9 +528,9 @@ register_template(
     TemplateMeta(
         LLMTemplateType.longchat,
         prefix=[],
-        system_prefix=["SYSTEM:{{SYSTEM}}"],
-        prompt=[" [Round {{ROUND0}}] USER:{{QUERY}} ASSISTANT:"],
-        chat_sep=["</longcat_s>"],
+        system_prefix=["SYSTEM:{{SYSTEM}} "],
+        prompt=["[Round {{ROUND0}}] USER:{{QUERY}} ASSISTANT:"],
+        chat_sep=["</longcat_s> "],
         suffix=["</longcat_s>"],
     )
 )

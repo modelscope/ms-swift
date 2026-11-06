@@ -70,11 +70,11 @@ class MiniCPM5AgentTemplate(BaseAgentTemplate):
             return super()._format_tool_responses(assistant_content, tool_messages)
         if hasattr(self, "template_meta"):
             prompt = self.template_meta.prompt
-            chat_sep = self.template_meta.chat_sep
         else:
-            prompt = ["<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n"]
-            chat_sep = ["<|im_end|>\n"]
-        res = chat_sep.copy()
+            prompt = ["<|im_start|>user\n{{QUERY}}<|im_end|>\n"]
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
         total_tool = self._get_tool_responses(tool_messages)
         for context in prompt:
             if isinstance(context, str):

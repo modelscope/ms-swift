@@ -35,7 +35,14 @@ register_template(
     )
 )
 
-register_template(ChatmlTemplateMeta(LLMTemplateType.internlm2, default_system=INTERNLM_SYSTEM))
+# the official internlm2 template renders no default system
+register_template(
+    ChatmlTemplateMeta(
+        LLMTemplateType.internlm2,
+        prefix=["<s>"],
+        system_prefix=["<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n"],
+    )
+)
 
 register_template(ChatmlTemplateMeta(RMTemplateType.internlm2_reward, suffix=["<|im_end|>\n<|reward|>"]))
 

@@ -58,7 +58,17 @@ from .media import _check_path, load_audio, load_batch, load_image, rescale_imag
 from .output import AgentToolParser, OutputCodec
 from .processor import Processor, ProcessorMixin
 from .runtime import get_env_args, get_logger, retry_decorator, to_device
-from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
+from .utils import (
+    Context,
+    ContextType,
+    StopWordsCriteria,
+    fetch_one,
+    findall,
+    get_last_user_round,
+    merge_query_messages,
+    split_rounds,
+    split_str_parts_by,
+)
 
 logger = get_logger()
 if TYPE_CHECKING:
@@ -122,11 +132,6 @@ class Template(ProcessorMixin):
     requires_mm_token_type_ids = False
     multimodal_graph_adapter = None
     jinja_enable_thinking_key = "enable_thinking"
-    # If True, only inject non_thinking_prefix when the previous turn is a 'user' turn.
-    # Set this in subclasses where thinking / tool_call / tool_response / follow-up
-    # assistant text live in the same logical turn (e.g. Gemma4, DeepSeekV3.1), so
-    # the assistant turn after a tool_response should NOT open a new thinking block.
-    non_thinking_prefix_only_after_user: bool = False
     model_accepts_loss_kwargs: Optional[bool] = None
 
     is_encoder_decoder = False
@@ -190,7 +195,11 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
+        self._explicit_enable_thinking = enable_thinking is not None
         if enable_thinking is None:
+            # The computed default only drives decode-side heuristics; the rendering markers
+            # below require an explicit opt-in to match the official jinjas, which insert a
+            # think-block marker only when thinking is explicitly disabled.
             enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
         self.response_prefix = response_prefix
         self.template_meta: "TemplateMeta" = template_meta
@@ -246,7 +255,7 @@ class Template(ProcessorMixin):
             )
 
     def _validate_message_capabilities(self, messages: List[Dict[str, Any]]) -> None:
-        if len(messages) // 2 > 1 and not self.template_meta.support_multi_round:
+        if len(split_rounds(messages)) > 1 and not self.template_meta.support_multi_round:
             raise NotImplementedError(
                 f"{self.template_meta.template_type} does not support multi-round chat; refusing to drop history."
             )
@@ -256,6 +265,13 @@ class Template(ProcessorMixin):
         if enable_thinking is None:
             enable_thinking = self.enable_thinking
         return enable_thinking
+
+    def _explicit_non_thinking(self, inputs=None) -> bool:
+        """Whether thinking was explicitly disabled, the only case the official jinjas mark."""
+        enable_thinking = None if inputs is None else inputs.chat_template_kwargs.get("enable_thinking")
+        if enable_thinking is None:
+            return self._explicit_enable_thinking and self.enable_thinking is False
+        return enable_thinking is False
 
     def _get_preserve_thinking(self, inputs=None):
         preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get("preserve_thinking")
@@ -280,11 +296,14 @@ class Template(ProcessorMixin):
             return response_prefix
         elif not self.use_chat_template:
             return ""
-        enable_thinking = self._get_enable_thinking(inputs)
-        if enable_thinking:
-            return self.template_meta.thinking_prefix
-        else:
-            return self.template_meta.non_thinking_prefix
+        if self.template_meta.non_thinking_prefix:
+            # mixed-thinking family: the official jinja marks the generation prompt only when
+            # thinking is explicitly disabled; the default render carries no marker.
+            if self._explicit_non_thinking(inputs):
+                return self.template_meta.non_thinking_prefix
+            return None
+        # thinking-only family: the official jinja prefills the think opener at the generation prompt.
+        return self.template_meta.thinking_prefix or None
 
     @property
     def loss_scale(self):
@@ -1668,8 +1687,9 @@ class Template(ProcessorMixin):
     def _get_std_messages(messages):
         if messages and messages[0]["role"] == "assistant":
             messages.insert(0, {"role": "user", "content": ""})  # pretrain
-        if len(messages) % 2 == 1:
-            messages.append({"role": "assistant", "content": None})  # inference
+        # no even-length padding: `_swift_encode` renders a trailing query segment as the
+        # inference generation prompt, the shape the official jinja renders with
+        # add_generation_prompt=True
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
         messages = inputs.messages.copy()
@@ -1684,9 +1704,11 @@ class Template(ProcessorMixin):
         kwargs = {}
         if inputs.tools:
             kwargs["tools"] = inputs.tools
-        enable_thinking = self._get_enable_thinking(inputs)
+        enable_thinking = None if inputs is None else inputs.chat_template_kwargs.get("enable_thinking")
+        explicit_thinking = enable_thinking is not None or self._explicit_enable_thinking
+        if explicit_thinking:
+            kwargs[self.jinja_enable_thinking_key] = self._get_enable_thinking(inputs)
         if self.template_meta.is_thinking or enable_thinking:
-            kwargs[self.jinja_enable_thinking_key] = enable_thinking
             kwargs["preserve_thinking"] = self._get_preserve_thinking(inputs)
         kwargs.update(self.chat_template_kwargs)
         kwargs.update(inputs.chat_template_kwargs)
@@ -1708,43 +1730,24 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
-    def _is_add_non_thinking_round(self, messages, i: int, start_idx: int):
-        message = messages[i]
-        if not (i >= start_idx and message["role"] == "assistant"):
-            return False
-        if self.non_thinking_prefix_only_after_user and not (
-            i > 0 and (messages[i - 1]["role"] == "user" or messages[i - 1].get("_tool_user_followup"))
-        ):
-            return False
-        return True
-
     def _add_non_thinking_prefix(self, inputs, thinking_prefix="<think>") -> None:
         messages = inputs.messages
-        non_thinking_prefix = self.template_meta.non_thinking_prefix
-        if non_thinking_prefix:
-            # Determine the starting index for processing messages
-            # During inference or when using 'last_round' strategy, only process the last round
-            # Otherwise, process all messages (start_idx = -1 means start from the beginning)
-            if not self.is_training or self.loss_scale.base_strategy == "last_round":
-                start_idx = get_last_user_round(messages)
-            else:
-                start_idx = -1
-            for i, message in enumerate(messages):
-                if not self._is_add_non_thinking_round(messages, i, start_idx):
-                    continue
-                content = message["content"]
-                # After merge, content may be a list; only process the first element.
-                if isinstance(content, list):
-                    _add_prefix = (
-                        content
-                        and isinstance(content[0], str)
-                        and not content[0].startswith((thinking_prefix, non_thinking_prefix))
-                    )
-                    if _add_prefix:
-                        content[0] = non_thinking_prefix + content[0]
-                elif isinstance(content, str):
-                    if not content.startswith((thinking_prefix, non_thinking_prefix)):
-                        message["content"] = non_thinking_prefix + content
+        non_thinking_prefix = self.template_meta.train_final_think_block
+        if not non_thinking_prefix or not messages or messages[-1]["role"] != "assistant":
+            return
+        # The official jinjas render the empty think block on the final response only: history
+        # turns render with their thinking already stripped, tool-call turns render bare.
+        message = messages[-1]
+        content = message["content"]
+        # After merge, content may be a list; only process the first element.
+        if isinstance(content, list):
+            if content and isinstance(content[0], str) and not content[0].startswith(
+                (thinking_prefix, non_thinking_prefix)
+            ):
+                content[0] = non_thinking_prefix + content[0]
+        elif isinstance(content, str):
+            if not content.startswith((thinking_prefix, non_thinking_prefix)):
+                message["content"] = non_thinking_prefix + content
 
     def _remove_thinking_content(self, content: str, thinking_suffix="</think>") -> str:
         content = content.split(thinking_suffix)[-1].strip()
@@ -1831,7 +1834,9 @@ class Template(ProcessorMixin):
         according to their roles.
 
         Specifically, this method:
-            - Merges consecutive messages from the same role ('assistant' or 'user') to prevent downstream errors.
+            - Merges consecutive assistant messages (kept: a round is one response; consecutive user
+              messages are NOT merged -- the official jinja renders each as its own turn, and the
+              round loop in `_swift_encode` renders them the same way).
             - Detects consecutive tool-related messages following an assistant message, then formats and
             combines them using `agent_template._format_tool_responses` for structured output.
             - Updates the messages list in-place for further processing.
@@ -1891,8 +1896,8 @@ class Template(ProcessorMixin):
                     "encoder keeps only the last round and would silently drop the tool context. "
                     "Enable use_chat_template or use a single-round sample."
                 )
-            elif pre_role == "assistant" and role == "assistant" or pre_role == "user" and role == "user":
-                # Consecutive messages from the assistant/user role need to be merged to prevent errors.
+            elif pre_role == "assistant" and role == "assistant":
+                # Consecutive assistant messages belong to one response; merge them into one turn.
                 if self.template_backend == "swift" and pre_role == "assistant":
                     for key in ["content", "loss", "loss_scale"]:
                         pre_val = pre_message.get(key)
@@ -1909,7 +1914,7 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         if self.use_chat_template:
-            if self.add_non_thinking_prefix:
+            if self.add_non_thinking_prefix and self.template_meta.train_final_think_block is not None:
                 self._add_non_thinking_prefix(inputs)
             preserve_thinking = self._get_preserve_thinking(inputs)
             if not preserve_thinking:
@@ -1941,34 +1946,56 @@ class Template(ProcessorMixin):
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
         assert len(inputs.messages) > 0, f"inputs.messages: {inputs.messages}"
-        n_round = len(inputs.messages) // 2
-        for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
-            query_role, query = query_message["role"], query_message["content"]
-            response_role, response = response_message["role"], response_message["content"]
-            # TODO: Optimize the Template mechanism.
-            assert query_role in {"user", "tool"}, f'query_role: "{query_role}"'
-            assert response_role in {"assistant"}, f'response_role: "{response_role}"'
-            if query_role == "tool":
-                prompt = query
-                query = ""
-            elif template_meta.is_post_system and i == n_round - 1:
-                prompt = template_meta.system_prompt
-            else:
-                prompt = template_meta.prompt
+        # A round is a maximal run of user/tool messages (the round's queries) followed by one
+        # assistant message (the round's response) -- the shape the official jinja renders: every
+        # query message its own turn block, the opener once, right before the response. A
+        # trailing run of queries with no response is the inference generation prompt.
+        rounds = split_rounds(inputs.messages)
 
-            context_list = prompt.copy()
+        response_prefix = self._get_response_prefix(inputs)
+        for round_idx, (query_messages, response_message) in enumerate(rounds):
+            last_round = round_idx == len(rounds) - 1
+            # Each query message renders its own block, in message order. The opener is not part
+            # of a query block: it is emitted once per round, right before the response, so a
+            # round may hold several query messages (consecutive users, or a tool response
+            # followed by a user message) the way the official jinja renders them.
+            for query_message in query_messages:
+                query_role, query = query_message["role"], query_message["content"]
+                if query_role == "tool":
+                    # the agent template pre-rendered this block (separator and query text in place)
+                    context_list = query.copy() if isinstance(query, list) else [query]
+                    query = ""
+                elif template_meta.is_post_system and last_round and system is not None:
+                    context_list = template_meta.system_prompt.copy()
+                else:
+                    context_list = template_meta.prompt.copy()
+                self._concat_context_list(
+                    context_list,
+                    res_context_list,
+                    res_context_types,
+                    query=query,
+                    system=system,
+                    round0=round_idx,
+                )
+            # An assistant turn continuing after tool outputs opens with the tool block's own
+            # closing markers in some families (DeepSeek V3.1): no turn opener there.
+            opener_suppressed = template_meta.suppress_opener_after_tool and query_messages and all(
+                query_message["role"] == "tool" for query_message in query_messages
+            )
+            if template_meta.response_opener and not opener_suppressed:
+                self._concat_context_list(template_meta.response_opener.copy(), res_context_list, res_context_types)
+            response = None if response_message is None else response_message["content"]
+            context_list = []
             extra_context_list = []
             extra_context_type = None
-            response_prefix = self._get_response_prefix(inputs)
-            if i < n_round - 1:
-                # Not the last round.
-                context_list.append("{{RESPONSE}}")
-                if inputs.messages[2 * (i + 1)]["role"] != "tool":
-                    extra_context_list = template_meta.chat_sep
-                    extra_context_type = ContextType.OTHER
+            if response is not None and not last_round:
+                # Not the last round: separate this response from the next turn.
+                context_list = ["{{RESPONSE}}"]
+                extra_context_list = template_meta.chat_sep
+                extra_context_type = ContextType.OTHER
             elif response is not None:
                 # It is the final round, and the response exists (during training).
-                context_list.append("{{RESPONSE}}")
+                context_list = ["{{RESPONSE}}"]
                 # The GLM-4.5 assistant part (tool call) may end with <|observation|>,
                 # and here we avoid adding <|user|>.
                 response_content = response
@@ -2003,29 +2030,33 @@ class Template(ProcessorMixin):
                     extra_context_type = ContextType.SUFFIX
             elif response_prefix:
                 # final round and during inference.
-                context_list.append(response_prefix)
+                context_list = [response_prefix]
 
-            if query_message.get("_tool_user_followup"):
-                # Already-rendered prompt: do not expand literal {{QUERY}} / {{RESPONSE}} again.
-                res_context_list.extend(prompt)
-                res_context_types.extend([ContextType.OTHER] * len(prompt))
-                context_list = context_list[len(prompt) :]
-            self._concat_context_list(
-                context_list,
-                res_context_list,
-                res_context_types,
-                query=query,
-                response=response,
-                system=system,
-                round0=i,
-            )
+            if context_list:
+                self._concat_context_list(
+                    context_list,
+                    res_context_list,
+                    res_context_types,
+                    response=response,
+                    system=system,
+                    round0=round_idx,
+                )
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
         if template_meta.auto_add_bos and sep_token:
             res_context_list.append(sep_token)
             res_context_types.append(ContextType.SUFFIX)
+        # Loss-scale strategies index messages as strict query/response pairs; rebuild that
+        # pairing from the rounds so a round holding several query messages still maps to one
+        # response, with the round's whole query run as its query.
+        paired_messages = []
+        for query_messages, response_message in rounds:
+            paired_messages.append(merge_query_messages(query_messages))
+            paired_messages.append(
+                response_message if response_message is not None else {"role": "assistant", "content": None}
+            )
         res_context_list, loss_scale_list = self.loss_scale(
-            res_context_list, res_context_types, inputs.messages, **inputs.extra_kwargs
+            res_context_list, res_context_types, paired_messages, **inputs.extra_kwargs
         )
         if self.is_training:
             answer_len = len(extra_context_list) + bool(response is not None)

@@ -70,12 +70,6 @@ class StdTemplateInputs:
         chat_template_kwargs = inputs.get("chat_template_kwargs") or {}
         mm_processor_kwargs = inputs.get("mm_processor_kwargs") or {}
 
-        if messages and messages[0]["role"] == "system":
-            message = messages.pop(0)
-            system = message["content"]
-        else:
-            system = inputs.get("system")
-
         messages = normalize_messages(messages)
 
         for message in messages:
@@ -85,6 +79,13 @@ class StdTemplateInputs:
                 message["content"] = json.dumps(message["content"], ensure_ascii=False)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
+        # the system message rides the same parts folding as every other message (a parts-form
+        # system would otherwise reach the renderer as a list), then lifts out as `system`.
+        if messages and messages[0]["role"] == "system":
+            message = messages.pop(0)
+            system = message["content"]
+        else:
+            system = inputs.get("system")
         # media arrives either inside the messages or as row columns, never both
         for k in list(media_kwargs.keys()):
             mm_data = media_kwargs[k]

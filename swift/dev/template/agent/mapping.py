@@ -10,7 +10,7 @@ from .glm4 import (
     GLM4AgentTemplate,
     GLM5_1AgentTemplate,
 )
-from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
+from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate, Qwen3AgentTemplate
 from .hy_v3 import HyV3AgentTemplate, HyV3PreviewAgentTemplate
 from .kimi_k3 import KimiK3AgentTemplate
 from .kimi_k25 import KimiK25AgentTemplate
@@ -37,6 +37,7 @@ agent_template_map = {
     "qwen_zh_parallel": QwenZhParallelAgentTemplate,
     "qwen3_coder": Qwen3CoderAgentTemplate,
     "qwen3_5": Qwen3_5AgentTemplate,
+    "qwen3": Qwen3AgentTemplate,
     "hermes": HermesAgentTemplate,
     "hunyuan_hermes": HunyuanHermesAgentTemplate,
     "hy_v3_preview": HyV3PreviewAgentTemplate,

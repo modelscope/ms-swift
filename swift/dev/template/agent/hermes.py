@@ -44,11 +44,11 @@ class HermesAgentTemplate(BaseAgentTemplate):
             return super()._format_tool_responses(assistant_content, tool_messages)
         if hasattr(self, "template_meta"):
             prompt = self.template_meta.prompt
-            chat_sep = self.template_meta.chat_sep or []
         else:
-            prompt = ["<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n"]
-            chat_sep = ["<|im_end|>\n"]
-        res = chat_sep.copy()
+            prompt = ["<|im_start|>user\n{{QUERY}}<|im_end|>\n"]
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
         total_tool = self._get_tool_responses(tool_messages)
         for context in prompt:
             if isinstance(context, str):
@@ -104,6 +104,26 @@ For each function call, return a json object with function name and arguments wi
             # argument forms: a spec-form str renders as an escaped JSON string, a dict inline.
             tool_call = self._raw_tool_call(message["content"])
             tool_calls.append(f"<tool_call>\n{json.dumps(tool_call, ensure_ascii=False)}\n</tool_call>")
+        return self._get_tool_calls(tool_calls)
+
+
+class Qwen3AgentTemplate(HermesAgentTemplate):
+    """Qwen3 hermes variant: string arguments render verbatim.
+
+    The Qwen2.5 jinjas pass ``arguments | tojson`` (a spec-form string renders escaped); the
+    Qwen3 jinjas branch on the type and print a string as-is. A dict is inline in both.
+    """
+
+    def _format_tool_calls(self, tool_call_messages):
+        tool_calls = []
+        for message in tool_call_messages:
+            payload = self._raw_tool_call(message["content"])
+            arguments = payload["arguments"]
+            if isinstance(arguments, str):
+                rendered = '{"name": ' + json.dumps(payload["name"], ensure_ascii=False) + ', "arguments": ' + arguments + '}'
+            else:
+                rendered = json.dumps(payload, ensure_ascii=False)
+            tool_calls.append(f"<tool_call>\n{rendered}\n</tool_call>")
         return self._get_tool_calls(tool_calls)
 
 

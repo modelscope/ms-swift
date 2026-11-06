@@ -22,10 +22,11 @@ logger = get_logger()
 class GemmaTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["<bos>"])
     prompt: Prompt = field(
-        default_factory=lambda: ["<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n"]
+        default_factory=lambda: ["<start_of_turn>user\n{{QUERY}}<end_of_turn>\n"]
     )
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<start_of_turn>model\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<end_of_turn>\n"])
-    suffix: Prompt = field(default_factory=lambda: ["<end_of_turn>"])
+    suffix: Prompt = field(default_factory=lambda: ["<end_of_turn>\n"])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ["<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n"]
     )
@@ -80,10 +81,11 @@ register_template(
 class Gemma3TextTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["<bos>"])
     prompt: Prompt = field(
-        default_factory=lambda: ["<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n"]
+        default_factory=lambda: ["<start_of_turn>user\n{{QUERY}}<end_of_turn>\n"]
     )
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<start_of_turn>model\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<end_of_turn>\n"])
-    suffix: Prompt = field(default_factory=lambda: ["<end_of_turn>"])
+    suffix: Prompt = field(default_factory=lambda: ["<end_of_turn>\n"])
 
 
 class Gemma3Template(Template):
@@ -260,7 +262,6 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 
 class Gemma4Template(Template):
     placeholder_tokens = ["<|image|>", "<|audio|>", "<|video|>"]
-    non_thinking_prefix_only_after_user = True
 
     def replace_tag(
         self, media_type: Literal["image", "video", "audio"], index: int, inputs: StdTemplateInputs
