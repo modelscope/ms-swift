@@ -422,7 +422,7 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
 
         def baseline_fn(group_key: str, samples: List[Any]) -> float:
             """The greedy completion's weighted reward, generated on the PUBLISHED weights (remax)."""
-            greedy = rollout.generate(
+            greedy, greedy_encodings = rollout.generate(
                 [list(samples[0].prompt or [])],
                 num_samples=1,
                 sampling_params=greedy_params(cluster.sampling_params),
@@ -431,6 +431,7 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
             if len(greedy) != 1:
                 raise RuntimeError(f"remax greedy baseline returned {len(greedy)} samples, expected 1.")
             greedy[0].prompt = list(samples[0].prompt or [])
+            greedy[0].encoded = greedy_encodings[0]
             values = worker.score_group([greedy[0]])[0] if cluster.orm_scorers else []
             return weighted_reward(values, orm_weights)
 

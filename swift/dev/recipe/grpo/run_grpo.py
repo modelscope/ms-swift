@@ -147,17 +147,20 @@ def _advantage_pipeline(cluster: Any, rl_config: 'RLConfig', reward_config: 'Rew
 
 def _prepare_routing_replay(
     model: Any,
+    worker: Any,
     rl_config: 'RLConfig',
     samples: List[Any],
     train_batch_size: int,
     batching_kwargs: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Establish each sample's MoE expert routing BEFORE the training forward replays it, in place.
+    """Establish each sample's MoE expert routing BEFORE the training forward replays it.
 
     ``R3`` requires the sampler-exported routing (fail loudly when the engine exported none);
     ``R2`` RECORDS the training model's own routing under the just-synced weights -- ONE whole-batch
     ``forward_only`` (the dispatch splits it per rank, ``micro_batch_size`` keeps each rank's forward
-    at one per-device block), collected here because the recorded rows write back onto the samples.
+    at one per-device block). The recorded rows are stitched into new per-sample features on the
+    reward worker (where the forward handle and each sample's feature resolve) and re-attached
+    here, so the heavy columns never pass through the driver.
     """
     from swift.dev.utils.scoring import copy_inputs
 
@@ -165,7 +168,7 @@ def _prepare_routing_replay(
     if mode == 'disabled':
         return
     if mode == 'R3':
-        missing = sum(1 for sample in samples if sample.encoded.get('routed_experts') is None)
+        missing = sum(1 for sample in samples if not sample.routing_exported)
         if missing:
             raise RuntimeError(
                 f'router_replay_mode="R3" replays the sampler-reported MoE routing, but {missing} of '
@@ -181,24 +184,10 @@ def _prepare_routing_replay(
         inputs=copy_inputs(features), router_replay_mode='R2',
         **{"micro_batch_size": micro_batch_size, **(batching_kwargs or {})},
     )
-    recorded = out.get('routed_experts')
-    if recorded is None:
-        raise RuntimeError(
-            'router_replay_mode="R2" asked the training model to RECORD its MoE routing, but the '
-            'forward returned none. The policy must be an MoE model built with routing replay '
-            'enabled; a dense policy has no expert routing to record (use "disabled").')
-    tensors = recorded if isinstance(recorded, (list, tuple)) else [recorded]
-    rows = [tensor[index] for tensor in tensors for index in range(tensor.shape[0])]
-    if len(rows) != len(samples):
-        raise RuntimeError(f'R2 routing RECORD returned {len(rows)} rows for {len(samples)} samples; '
-                           'per-row routing alignment is impossible.')
-    for sample, routed in zip(samples, rows):
-        length = len(sample.encoded['input_ids'])
-        if routed.shape[0] < length:
-            raise RuntimeError(f'R2 recorded routing covers {routed.shape[0]} tokens for a {length}-token '
-                               'sequence; the RECORD forward must route the whole sequence.')
-        sample.encoded['routed_experts'] = routed[:length]
-        sample.encoded['replay_mask'] = sample.encoded['completion_mask']
+    # the reward worker resolves the forward handle, rebuilds each feature with its recorded
+    # routing, and hands the rebuilt features back (references remotely, dicts locally)
+    for sample, encoded in zip(samples, collect(worker.routing_replay(samples, out))[0]):
+        sample.encoded = encoded
 
 
 def _forward_kwargs(
@@ -401,12 +390,14 @@ def _resample_zero_variance_groups(
         extra = extras[start // num_generations] or None
         group = samples[start : start + num_generations]
         while attempts < rl_config.max_resample_times and group_variance([s.orm_reward for s in group], weights) <= 0.0:
-            regen = cluster.rollout.generate(
+            regen, regen_encodings = cluster.rollout.generate(
                 [prompts[start // num_generations]],
                 num_samples=num_generations,
                 sampling_params=cluster.sampling_params,
                 prompt_extras=[extra] if extra else None,
             )
+            for sample, encoded in zip(regen, regen_encodings):
+                sample.encoded = encoded
             samples[start : start + num_generations] = regen
             group = regen
             for sample, reward in zip(group, _score_group(cluster, regen, with_prm=True)):
@@ -421,12 +412,14 @@ def _set_remax_baselines(cluster, samples, prompts, extras, num_generations, wei
     for start in range(0, len(samples), num_generations):
         prompt = samples[start].prompt or prompts[start // num_generations]
         extra = samples[start].extra or None
-        greedy = cluster.rollout.generate(
+        greedy, greedy_encodings = cluster.rollout.generate(
             [prompt],
             num_samples=1,
             sampling_params=greedy_params(cluster.sampling_params),
             prompt_extras=[extra] if extra else None,
         )
+        for sample, encoded in zip(greedy, greedy_encodings):
+            sample.encoded = encoded
         if len(greedy) != 1:
             raise RuntimeError(f"remax greedy baseline returned {len(greedy)} samples, expected 1.")
         greedy[0].prompt = list(prompt)
@@ -490,9 +483,11 @@ def _colocate_loop(
             # The canonical phase names stay recipe-owned (the metric contract); the remote calls
             # inside also carry their own auto-spans, nested under these.
             with perf_span('gen'):
-                samples = cluster.rollout.generate(
+                samples, encodings = cluster.rollout.generate(
                     prompts, num_samples=num_generations, sampling_params=cluster.sampling_params,
                     prompt_extras=extras or None)
+                for sample, encoded in zip(samples, encodings):
+                    sample.encoded = encoded
                 rewards = _score_group(cluster, samples, with_prm=True)
                 for sample, reward in zip(samples, rewards):
                     sample.orm_reward = reward
@@ -527,7 +522,8 @@ def _colocate_loop(
                 cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
                 correction_out=correction_out, batching_kwargs=batching_kwargs,
             )
-            _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size, batching_kwargs)
+            _prepare_routing_replay(cluster.model, cluster.worker, rl_config, samples, train_batch_size,
+                                     batching_kwargs)
             _train_mini_batches(
                 state,
                 rl_config,
@@ -640,7 +636,8 @@ def _disaggregated_loop(
                 cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
                 correction_out=correction_out, batching_kwargs=batching_kwargs,
             )
-            _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size, batching_kwargs)
+            _prepare_routing_replay(cluster.model, cluster.worker, rl_config, samples, train_batch_size,
+                                     batching_kwargs)
             optimizer_steps = _train_mini_batches(
                 state,
                 rl_config,

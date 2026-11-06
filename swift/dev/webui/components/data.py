@@ -317,11 +317,13 @@ class GenerateStage(StageComponent):
         from .resources import _configs, _fill
         gen_kv = dict(self.params.get('generation_config') or {})
         gen_config = _fill(_configs().GenerationConfig, gen_kv, self.node_id) if gen_kv else None
-        samples = self._rollout_for(engine).generate(
+        samples, encodings = self._rollout_for(engine).generate(
             prompts,
             num_samples=int(self.params.get('num_generations', '8') or 8),
             sampling_params=to_sampling_params(gen_config) if gen_config is not None else None,
             prompt_extras=extras or None)
+        for sample, encoded in zip(samples, encodings):
+            sample.encoded = encoded
         return {'samples': samples}
 
     def _rollout_for(self, engine: Any) -> Any:

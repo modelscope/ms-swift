@@ -320,6 +320,41 @@ class RewardWorker(ScoreWorker):
         metrics['chi2_seq'] = float(rho_geo.square().mean() - 1.0)
         return metrics
 
+    @remote_function(dispatch='all', collect='first', lazy_collect=True, stash=(0,))
+    def routing_replay(self, samples: List[Any], recorded: Any) -> Tuple[List[Any]]:
+        """Stitch the R2-recorded MoE routing into new per-sample encoded references.
+
+        ``recorded`` is the router-replay forward's whole-batch output, resolved HERE (never in the
+        driver); each sample's ``encoded`` -- likewise resolved worker-side -- is rebuilt with
+        ``routed_experts`` sliced to its own input length and ``replay_mask`` mirroring
+        ``completion_mask``. The rebuilt features ride the single ``stash`` channel as per-sample
+        references; the caller re-attaches them positionally (``sample.encoded = ref``), so the
+        heavy columns never pass through the driver.
+        """
+        frame = _resolve(recorded)
+        routed_rows = frame.get('routed_experts') if isinstance(frame, dict) else None
+        if routed_rows is None:
+            raise RuntimeError(
+                'router_replay_mode="R2" asked the training model to RECORD its MoE routing, but the '
+                'forward returned none. The policy must be an MoE model built with routing replay '
+                'enabled; a dense policy has no expert routing to record (use "disabled").')
+        tensors = routed_rows if isinstance(routed_rows, (list, tuple)) else [routed_rows]
+        rows = [tensor[index] for tensor in tensors for index in range(tensor.shape[0])]
+        if len(rows) != len(samples):
+            raise RuntimeError(f'R2 routing RECORD returned {len(rows)} rows for {len(samples)} samples; '
+                               'per-row routing alignment is impossible.')
+        payloads = []
+        for sample, routed in zip(samples, rows):
+            encoded = dict(_resolve(sample).encoded)
+            length = len(encoded['input_ids'])
+            if routed.shape[0] < length:
+                raise RuntimeError(f'R2 recorded routing covers {routed.shape[0]} tokens for a {length}-token '
+                                   'sequence; the RECORD forward must route the whole sequence.')
+            encoded['routed_experts'] = routed[:length]
+            encoded['replay_mask'] = encoded['completion_mask']
+            payloads.append(encoded)
+        return (payloads,)
+
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
     def fuse_prm(self, orm_advantages: List[float], prm_process: Any, mix: float) -> List[List[float]]:
         """Convex-blend the per-token process reward with the scalar ORM advantage (per token).

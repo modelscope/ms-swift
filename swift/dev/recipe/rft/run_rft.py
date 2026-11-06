@@ -213,12 +213,14 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, prompts
         for chunk_index in range(total_chunks):
             lo = chunk_index * generation_batch_size
             hi = min(lo + generation_batch_size, len(prompts))
-            chunk = cluster.rollout.generate(
+            chunk, chunk_encodings = cluster.rollout.generate(
                 prompts[lo:hi],
                 num_samples=num_samples,
                 sampling_params=cluster.sampling_params,
                 prompt_extras=(prompt_extras[lo:hi] if prompt_extras else None),
             )
+            for sample, encoded in zip(chunk, chunk_encodings):
+                sample.encoded = encoded
             samples.extend(chunk)
             logger.info(
                 f'[rft] round generation: {hi}/{len(prompts)} prompts done '

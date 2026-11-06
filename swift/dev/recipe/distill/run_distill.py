@@ -127,12 +127,14 @@ def _distill_round_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_config:
                         entered = True
                     else:
                         cluster.engine.sync_weights()
-                    samples = cluster.rollout.generate(
+                    samples, encodings = cluster.rollout.generate(
                         [row['messages'] for row in batch],
                         num_samples=1,
                         sampling_params=cluster.sampling_params,
                         prompt_extras=[{k: v for k, v in row.items() if k != 'messages'} for row in batch] or None,
                     )
+                    for sample, encoded in zip(samples, encodings):
+                        sample.encoded = encoded
                     if colocate:
                         # return the device: sleep the sampler, then reload the trainer's weights.
                         from swift.dev.recipe.offload import sleep_for_rollout
