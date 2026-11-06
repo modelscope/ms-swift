@@ -498,6 +498,15 @@ register_template(
 
 class Ling3Template(Template):
 
+    def _data_collator(self, batch, **kwargs):
+        """Expose Swift reset-position boundaries to the remote attention layers."""
+        from swift.utils import get_packed_seq_params
+
+        res = super()._data_collator(batch, **kwargs)
+        if self.padding_free:
+            res.update(get_packed_seq_params(res['position_ids']))
+        return res
+
     def init_env_args(self):
         super().init_env_args()
         self.enable_thinking = get_env_args('enable_thinking', bool, True)
