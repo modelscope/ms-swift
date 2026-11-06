@@ -177,6 +177,10 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
 class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
 
+    def _supports_tool_user_followup_media(self, inputs, template_meta) -> bool:
+        # Images and videos are placed by the template; there is no placement for audio.
+        return not inputs.audios
+
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
         """Qwen3.5/3.6 jinja inserts \n\n between assistant content and <tool_call>
         only when effective content (after think removal) is non-empty."""

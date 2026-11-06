@@ -1393,10 +1393,8 @@ class Template(ProcessorMixin):
                     user_end += 1
                 # Reuse the pairwise encoder by keeping tool results and user follow-ups
                 # in one query. Each agent retains its own native turn boundaries.
-                media_inputs_supported = not inputs.objects and (
-                    (self._agent_template == 'qwen3_5' and not inputs.audios) or
-                    (self.template_meta.template_type == 'qwen2_5_omni' and self._agent_template == 'hermes'
-                     and not inputs.images and not inputs.videos))
+                media_inputs_supported = not inputs.objects and agent._supports_tool_user_followup_media(
+                    inputs, self.template_meta)
                 is_react = agent.keyword.action in pre_content and agent.keyword.action_input in pre_content
                 if (user_end > i + 1 and self.use_chat_template and not is_react
                         and (not inputs.is_multimodal or media_inputs_supported)):

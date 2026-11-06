@@ -54,6 +54,10 @@ class HermesAgentTemplate(BaseAgentTemplate):
             res.append(context)
         return assistant_content, res
 
+    def _supports_tool_user_followup_media(self, inputs, template_meta) -> bool:
+        # Only the omni template can merge tool results and a user turn, and only without media.
+        return (template_meta.template_type == 'qwen2_5_omni' and not inputs.images and not inputs.videos)
+
     def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
         prompt = self.template_meta.prompt
         chat_sep = self.template_meta.chat_sep or []

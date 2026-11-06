@@ -178,6 +178,14 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         """
         return None
 
+    def _supports_tool_user_followup_media(self, inputs, template_meta) -> bool:
+        """Whether tool results and a following user turn may be merged for this input.
+
+        Text-only inputs are handled generically; families that need media tokens placed inside
+        the merged turn opt in by overriding this hook.
+        """
+        return False
+
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
         """Hook to prepend a separator before tool_call content based on the preceding message.
 
