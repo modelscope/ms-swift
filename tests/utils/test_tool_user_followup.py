@@ -643,8 +643,7 @@ class TestToolResultsWithoutChatTemplate(unittest.TestCase):
 
 
 class TestReactToolUserFollowup(unittest.TestCase):
-    """A ReAct assistant turn has no structured tool call, so the merged turn must keep
-    ``Observation:`` and the following user turn must still get its own boundary."""
+    """A merged ReAct turn must keep the observation marker and the following user turn."""
 
     def setUp(self):
         self.tokenizer = _make_tokenizer()
@@ -656,8 +655,7 @@ class TestReactToolUserFollowup(unittest.TestCase):
 
     @staticmethod
     def make_data(agent='react_en'):
-        # Build the ReAct action with the agent's own keywords, so Qwen's
-        # `✿FUNCTION✿:/✿ARGS✿:` variant is covered too.
+        # Use the agent's own keywords (Qwen uses ✿FUNCTION✿/✿ARGS✿).
         keyword = agent_template_map[agent].keyword
         action = f'{keyword.action} lookup\n{keyword.action_input} {{"q": "x"}}'
         return {
@@ -686,10 +684,8 @@ class TestReactToolUserFollowup(unittest.TestCase):
         }
 
     def test_react_followup_keeps_observation_and_user_turn(self):
-        # Qwen's ReAct variant (`✿FUNCTION✿`/`✿RESULT✿`) is intentionally not covered here: its
-        # assistant turn already ends with the observation marker and its tool result currently has
-        # no turn separator, so reusing the generic ReAct formatter would duplicate the marker.
-        # That path needs a separate fix to the tool-result rendering.
+        # Qwen's ReAct variant is not covered: its tool result has no turn separator, so the
+        # generic formatter would duplicate the ✿RESULT✿ marker. Needs a separate rendering fix.
         for agent in ('react_en', 'react_zh'):
             for mode in ('train', 'transformers'):
                 with self.subTest(agent=agent, mode=mode):
@@ -756,8 +752,7 @@ def test_non_chat_user_followup_requires_chat_template():
 
 
 class TestNativeToolUserFollowup(unittest.TestCase):
-    """Families that render tool results through their native template must also accept a user
-    turn after the tool result, without duplicating the tool-response wrapper."""
+    """Native-template families must accept a user turn after a tool result."""
 
     FAMILIES = (('xing4_0', 'xing4_0'), ('minicpm5', 'minicpm5'), ('minimax_m2', 'minimax_m2'),
                 ('minimax_m3', 'minimax'), ('ling3', 'ling3'), ('spark2_5', 'spark2_5'), ('seed_oss', 'seed_oss'))

@@ -171,16 +171,13 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
     - `get_toolcall`: Extract tool calls from agent responses
     """
 
-    #: Whether this template's assistant turn ends without a native tool-response wrapper, so the
-    #: merged tool/user turn must write the ReAct ``Observation:`` marker itself.
+    #: Whether the merged turn must write the ReAct observation marker itself.
     uses_react_tool_responses = False
 
     def _format_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
-        """Render tool results followed by user turns, reusing the native turn boundaries.
+        """Replace the native renderer's trailing assistant transition with the user turns.
 
-        The native renderer already emits the trailing assistant transition, so it is replaced by
-        the user turns and then restored. Returns None when the template's user prompt cannot be
-        split or the renderer's tail does not match it (the caller then leaves the turn unmerged).
+        Returns None when the tail does not match this template's user prompt.
         """
         prompt = ''.join(self.template_meta.prompt)
         if '{{QUERY}}' not in prompt:
@@ -204,11 +201,7 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
 
     def _format_react_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
-        """Render ReAct observations followed by user turns.
-
-        Keeps the ``Observation:`` prefix instead of the template's native tool-response wrapper,
-        because a ReAct assistant turn never carried a structured tool call.
-        """
+        """Render ReAct observations followed by user turns, keeping the observation marker."""
         try:
             res = self._format_react_standalone_tool_responses(tool_messages)
         except NotImplementedError:
@@ -223,11 +216,7 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         return res
 
     def _supports_tool_user_followup_media(self, inputs, template_meta) -> bool:
-        """Whether tool results and a following user turn may be merged for this input.
-
-        Text-only inputs are handled generically; families that need media tokens placed inside
-        the merged turn opt in by overriding this hook.
-        """
+        """Whether multimodal inputs may merge a tool result with a following user turn."""
         return False
 
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:

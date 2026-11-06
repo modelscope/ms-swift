@@ -1391,8 +1391,8 @@ class Template(ProcessorMixin):
                 while (user_end < len(messages) and messages[user_end]['role'] == 'user'
                        and isinstance(messages[user_end]['content'], str)):
                     user_end += 1
-                # Reuse the pairwise encoder by keeping tool results and user follow-ups
-                # in one query. Each agent retains its own native turn boundaries.
+                # Keep tool results and follow-ups in one query so the pairwise encoder still sees
+                # (query, assistant).
                 media_inputs_supported = not inputs.objects and agent._supports_tool_user_followup_media(
                     inputs, self.template_meta)
                 is_react = agent.keyword.action in pre_content and agent.keyword.action_input in pre_content
@@ -1526,8 +1526,7 @@ class Template(ProcessorMixin):
                 context_list.append(response_prefix)
 
             if query_message.get('_tool_user_followup'):
-                # This prompt already contains user data. Do not interpret literal
-                # {{QUERY}} / {{RESPONSE}} strings in it as template placeholders.
+                # Already-rendered prompt: do not expand literal {{QUERY}} / {{RESPONSE}} again.
                 res_context_list.extend(prompt)
                 res_context_types.extend([ContextType.OTHER] * len(prompt))
                 context_list = context_list[len(prompt):]
