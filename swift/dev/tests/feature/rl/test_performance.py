@@ -82,6 +82,11 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch, perf
         reload_to_gpu=lambda: None,
         memory_stats=lambda **kwargs: [{"max_memory_allocated_bytes": 2 * 1024**3}],
     )
+    def _generate(*a, **kw):
+        # generate's contract is (samples, encodings); the colocate loop re-attaches them.
+        one = sample()
+        return [one], [one.encoded]
+
     cluster = NS(
         model=model,
         sampler=NS(wake_up=wake, sleep=sleep),
@@ -89,7 +94,8 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch, perf
         sampling_params={},
         orm_scorers=[],
         prm_scorer=None,
-        rollout=NS(generate=lambda *a, **kw: [sample()]),
+        rollout=NS(generate=_generate),
+        worker=NS(),  # _prepare_routing_replay takes it (router_replay disabled here)
     )
     state = NS(model=model, global_step=0, reached_max=lambda: state.global_step >= 2, should_stop=lambda: False)
     state.tracker = RunTracker(None, str(tmp_path))

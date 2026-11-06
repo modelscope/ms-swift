@@ -237,7 +237,18 @@ def observe_rollout_samples(state, samples, *, length_fn=None):
 
         length_fn = sample_token_lengths
     samples = list(samples)
-    batch['lengths'] = [length_fn(sample) for sample in samples]
+    # Prefer the lengths counted at feature-build time: under ray mode the stashed ``encoded``
+    # reaches the driver only as an ObjectRef, so length_fn (which reads encoded) would either
+    # crash on the ref or, worse, force-materialise the heavy feature. Only synthesised
+    # samples (no token_lengths) fall back to reading the local feature.
+    lengths = [tuple(sample.token_lengths) if getattr(sample, 'token_lengths', None) is not None
+               else None for sample in samples]
+    fallback = [index for index, value in enumerate(lengths) if value is None]
+    if fallback:
+        computed = [length_fn(samples[index]) for index in fallback]
+        for index, value in zip(fallback, computed):
+            lengths[index] = tuple(value)
+    batch['lengths'] = lengths
     batch['truncated'] = [bool(getattr(sample, 'truncated', False)) for sample in samples]
     batch['turns'] = [getattr(sample, 'rollout_infos', {}).get('turns') for sample in samples]
     # When the samples arrived -- the 'gen' fallback window end when no gen span exists.
