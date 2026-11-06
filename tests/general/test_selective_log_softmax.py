@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 import unittest
+from torch.utils._python_dispatch import TorchDispatchMode
 
 from swift.rlhf_trainers.utils import selective_log_softmax
 
@@ -14,6 +15,19 @@ def naive(logits, index, temperature=1.0):
         index = index.unsqueeze(-1)
     res = torch.gather(logits.log_softmax(-1), dim=-1, index=index)
     return res.squeeze(-1) if squeeze else res
+
+
+class CloneRecorder(TorchDispatchMode):
+
+    def __init__(self):
+        super().__init__()
+        self.sizes = []
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        result = func(*args, **(kwargs or {}))
+        if func == torch.ops.aten.clone.default and args[0].is_floating_point():
+            self.sizes.append(args[0].numel())
+        return result
 
 
 class TestSelectiveLogSoftmax(unittest.TestCase):
@@ -103,6 +117,41 @@ class TestSelectiveLogSoftmax(unittest.TestCase):
         selective_log_softmax(logits, index).sum().backward()
         self.assertIsNotNone(logits.grad)
         self.assertTrue(torch.isfinite(logits.grad).all())
+
+    def test_strided_logits_do_not_copy_all_rows(self):
+        for dtype in (torch.float32, torch.bfloat16):
+            base = torch.randn(2, 17, self.vocab_size, dtype=dtype)
+            # GRPO drops the final token before computing completion log-probabilities.
+            for logits in (base[:, :-1, :], base.transpose(0, 1)):
+                with self.subTest(dtype=dtype, stride=logits.stride()):
+                    index = torch.randint(0, self.vocab_size, logits.shape[:-1])
+                    with CloneRecorder() as recorder:
+                        result = selective_log_softmax(logits, index, chunk_size=3)
+                    self.assertLessEqual(max(recorder.sizes, default=0), 3 * self.vocab_size)
+                    torch.testing.assert_close(result, naive(logits, index), rtol=1e-6, atol=1e-6)
+
+    def test_strided_values_and_gradients_with_topk_and_broadcast_mask(self):
+        for dtype in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
+            for temperature in (1.0, 0.7):
+                for topk in (False, True):
+                    with self.subTest(dtype=dtype, temperature=temperature, topk=topk):
+                        base = torch.randn(2, 3, 5, 31, dtype=dtype, requires_grad=True)
+                        reference = base.detach().clone().requires_grad_()
+                        logits = base.transpose(0, 1)[:, :, :-1, :]
+                        ref_logits = reference.transpose(0, 1)[:, :, :-1, :]
+                        shape = (*logits.shape[:-1], 4) if topk else logits.shape[:-1]
+                        index = torch.randint(0, logits.shape[-1], shape)
+                        row_mask = torch.tensor([1, 0, 1, 1])
+                        if topk:
+                            row_mask = row_mask.unsqueeze(-1)
+                        result = selective_log_softmax(
+                            logits, index, temperature=temperature, row_mask=row_mask, chunk_size=3)
+                        expected = naive(ref_logits, index, temperature).masked_fill(row_mask == 0, 0.)
+                        torch.testing.assert_close(result, expected, rtol=1e-6, atol=1e-6)
+                        weights = torch.randn_like(result)
+                        result.backward(weights)
+                        expected.backward(weights)
+                        torch.testing.assert_close(base.grad, reference.grad, rtol=1e-5, atol=1e-6)
 
 
 if __name__ == '__main__':
