@@ -20,8 +20,9 @@ import swift.agent_template
 from swift.agent_template import agent_template_map
 from swift.infer_engine.infer_engine import InferEngine
 
-# 自动纳入**已声明** supports_tool_schema 的家族；数量下限防止现有接线回退。
-# 无法发现“新家族漏设 flag”——那需要 registry 显式分类，不能从 flag 自身推导。
+# Auto-discovered: only families that already declare `supports_tool_schema`. The count floor
+# catches a removed flag; it cannot catch a new family that never set one (that needs an explicit
+# registry classification, not a flag-derived rule).
 SCHEMA_TEMPLATES = sorted(name for name, cls in agent_template_map.items()
                           if getattr(cls, 'supports_tool_schema', False))
 MIN_SCHEMA_TEMPLATES = 13
