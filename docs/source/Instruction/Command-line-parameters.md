@@ -684,6 +684,7 @@ reward模型参数将在PPO、GRPO中使用；teacher模型参数在GKD与GRPO�
   - 注意：`gdpo` 模式不支持 `kl_in_reward=True`，若同时设置会自动将 `kl_in_reward` 设为 `False`。
   - GDPO 适用于多奖励优化场景：当使用多个奖励函数时，GDPO 会对每个奖励函数分别在组内进行标准化（减均值、除标准差），然后使用 `reward_weights` 进行加权求和，最后再进行批次级别的标准化。这种方式可以更好地保留各个奖励的相对差异，避免不同奖励组合坍塌成相同的 advantage 值。
 - teacher_kl_coef: OPD-RL中teacher_kl的系数，即 `adv_t = base_adv + teacher_kl_coef * teacher_kl`。默认为 1.0。
+  - 动态自蒸馏模式下，REAL/FIPO 和 `off_policy_sequence_mask_delta` 的兼容性限制适用于包含 teacher 对数概率的批次。纯奖励训练批次可以使用这些选项。
 - advantage_reweight: 优势重加权算法，默认为None（不启用）。可选项为 `rlsd`（[RLSD, Self-Distilled RLVR](https://arxiv.org/abs/2604.03128)）：利用 teacher 与 student 在相同采样 token 上的对数概率差异，将 GRPO 的序列级优势在 token 维度重新分配，即 `delta_t = logP_T(y_t) - logP_S(y_t)`、`w_t = exp(sign(A) * delta_t)`、`reweight = (1 - λ) + λ * clip(w_t)`、`A_hat_t = A * reweight`；reweight 恒为正，不会翻转环境奖励的符号。启用后需满足：已设置 `reward_funcs`（reweight 方向依赖优势符号 `sign(A)`），且数据集包含 `teacher_prompt` 列（特权 prompt，如 问题 + 参考解答/标准答案）；与 `use_liger_kernel`、`loss_type in [real, fipo]`、`off_policy_sequence_mask_delta`、`teacher_model_server` 不兼容。teacher 模式：不设置 `--teacher_model` 时为动态自蒸馏（teacher = 当前策略在特权 prompt 上打分）；设置 `--teacher_model <ckpt>` 时为冻结本地 teacher（在 no_grad 下打分，训练中不更新）。
 - rlsd_lambda: RLSD 混合权重，`reweight = (1 - λ) + λ * clip(w_t)`。`0` 退化为普通 GRPO，`1` 为完整 RLSD 重加权。取值需在 [0, 1]，默认为 0.5。
 - rlsd_reweight_clip_range: 证据权重裁剪范围 eps_w，将 `w_t = exp(sign(A) * delta_t)` 裁剪到 `[1 - eps_w, 1 + eps_w]`，避免 teacher/student 对数概率差异造成过大的倍率。需 >= 0，默认为 0.2。
