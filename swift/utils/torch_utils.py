@@ -188,6 +188,26 @@ def get_device_count() -> int:
         return 0
 
 
+def limit_worker_num_threads(num_workers: int) -> None:
+    """Cap the torch intra-op threads of a data preprocessing worker process.
+
+    Every process starts with one torch thread per CPU core. When `num_workers` processes
+    encode samples in parallel (e.g. `datasets.map(num_proc=...)`), the CPU ops of the
+    image/video processors oversubscribe the cores and run much slower than in a single
+    process. Split the cores between the workers instead. An explicit `OMP_NUM_THREADS`
+    is respected.
+    """
+    if num_workers <= 1 or 'OMP_NUM_THREADS' in os.environ:
+        return
+    try:
+        cpu_count = len(os.sched_getaffinity(0))
+    except AttributeError:
+        cpu_count = os.cpu_count() or 1
+    num_threads = max(cpu_count // num_workers, 1)
+    if torch.get_num_threads() > num_threads:
+        torch.set_num_threads(num_threads)
+
+
 def is_torch_rocm() -> bool:
     """True on an AMD ROCm/HIP torch build.
 
