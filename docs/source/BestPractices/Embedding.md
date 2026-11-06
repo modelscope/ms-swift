@@ -110,6 +110,8 @@ infonce loss的评测会有下面几个指标：
 - mean_pos 所有positive的平均值
 - margin positive-max_hard_negative的平均值
 
+在 Transformers 4.36 及以上版本且未启用序列并行时，内置 `infonce` 和 `paired` 评估指标会排除分布式采样器为补齐最后一个 batch 而重复的样本。验证集本身包含的重复样本仍会计入指标。旧版 Transformers 和自定义指标预处理保持原有行为。
+
 ## 训练
 
 SWIFT提供的脚手架训练脚本：
