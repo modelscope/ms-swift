@@ -713,7 +713,7 @@ class TestReactToolUserFollowup(unittest.TestCase):
         self.assertNotIn('followup_text', text)
 
 
-def test_non_chat_user_followup_requires_chat_template(self):
+def test_non_chat_user_followup_requires_chat_template():
     tokenizer = _make_tokenizer()
     template = get_template(tokenizer, template_type='qwen3_5', agent_template='qwen3_5', use_chat_template=False)
     template.set_mode('train')
