@@ -703,6 +703,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return rewards_std
 
+    def _train_encode_max_length(self, template) -> Optional[int]:
+        """Max length used when re-encoding rollout samples for the policy-update stage.
+
+        At rollout time, prompts are truncated to ``template.max_length`` tokens and up to
+        ``max_completion_length`` completion tokens are appended. Re-encoding the original
+        messages with ``max_length=None`` (the previous behavior) skipped truncation entirely,
+        so training sequences could exceed ``max_length + max_completion_length`` and OOM no
+        matter how small ``max_length`` was. See https://github.com/modelscope/ms-swift/issues/10504.
+        """
+        if template.max_length is None:
+            return None
+        return template.max_length + self.max_completion_length
+
     @profiling_decorator
     def _prepare_batch_inputs(self, samples: List[GRPOSample]) -> List[Dict[str, Any]]:
         """
@@ -720,7 +733,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         ga_batch_encoded_inputs: List[Dict[str, Any]] = []
         for batch in gas_chunks:
             teacher_model_inputs = teacher_grpo_batch = None
-            with self._template_context(template):
+            # Re-encoding for the policy-update stage must apply the same max_length bound as
+            # rollout (prompt truncated to max_length + up to max_completion_length completion
+            # tokens); passing None would disable truncation entirely and let long prompts OOM
+            # regardless of max_length (see https://github.com/modelscope/ms-swift/issues/10504).
+            with self._template_context(template, max_length=self._train_encode_max_length(template)):
                 for s in batch:
                     encoded_inputs = encode_sample(s, template)
                     encoded_inputs.pop('_extra_kwargs', None)  # pop add_eos
@@ -2082,7 +2099,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             chunk_origin_data = origin_data[start_idx:end_idx]
             template = self.template
             current_length = model_inputs['input_ids'].shape[1]
-            with self._template_context(template):
+            with self._template_context(template, max_length=self._train_encode_max_length(template)):
                 encoded_data = [encode_sample(data, template) for data in chunk_origin_data]
                 for ed in encoded_data:
                     ed.pop('_extra_kwargs', None)
