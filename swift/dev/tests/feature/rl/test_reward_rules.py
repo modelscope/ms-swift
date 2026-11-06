@@ -70,6 +70,19 @@ class TestCosineReward:
         oracle = [1.0 - 0.5 * (1 - math.cos(t * math.pi / 10)) / 2 for t in (1, 10)]
         assert rule(rows) == pytest.approx(oracle)  # [~0.9878, 0.5]
 
+    def test_overlong_uses_configured_endpoint(self):
+        from swift.dev.config import RewardConfig
+        from swift.dev.rewards.orm import CosineReward
+
+        args = RewardConfig(
+            cosine_max_len=10, cosine_max_len_value_wrong=-0.1, cosine_max_len_value_correct=0.2)
+        rule = CosineReward(args)
+        rows = [
+            _row('wrong', response_token_ids=[1] * 15),
+            _row('the answer is \\boxed{4}', solution='4', response_token_ids=[1] * 15),
+        ]
+        assert rule(rows) == pytest.approx([-0.1, 0.2])
+
 
 class TestRepetitionPenalty:
     """S8-49: penalty = (1 - unique/total ngrams) * max_penalty, on lowercased words."""
@@ -94,7 +107,7 @@ class TestRepetitionPenalty:
 
 
 class TestSoftOverlong:
-    """S8-50: -(len - (max - cache)) / cache, floored at 0 -- a soft ramp instead of a hard cut."""
+    """S8-50: -(len - (max - cache)) / cache, clamped to [-1, 0]."""
 
     def test_ground_truth(self):
         from swift.dev.config import RewardConfig
@@ -102,8 +115,8 @@ class TestSoftOverlong:
 
         rule = SoftOverlong(RewardConfig(soft_max_length=20, soft_cache_length=5))
         scores = rule([_row('x', response_token_ids=[1] * t) for t in (30, 25, 15, 5)])
-        # over-budget: -(30-15)/5 = -3, -(25-15)/5 = -2; within budget: 0, 0
-        assert scores == pytest.approx([-3.0, -2.0, 0.0, 0.0])
+        # Raw penalties -3 and -2 both saturate at -1; within budget: 0, 0.
+        assert scores == pytest.approx([-1.0, -1.0, 0.0, 0.0])
 
 
 class TestDirectTwinkleRules:

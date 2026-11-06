@@ -775,17 +775,20 @@ def _build_hf_config(model_config: ModelConfig, model_loader=None):
     rope_scaling mirrors legacy ``_init_rope_scaling``: names map to {'type': name}; a factor-less
     rope derives it from max_model_len / origin, and the budget (origin * factor) is served length.
     """
+    from swift.dev.utils import HfConfigFactory
+
     if model_loader is not None:
         config = model_loader.build_config(model_config.model, revision=model_config.model_revision)
         config = model_loader.process_config(config)
     else:
         from transformers import AutoConfig
 
-        config = AutoConfig.from_pretrained(
-            model_config.model, revision=model_config.model_revision, trust_remote_code=True
-        )
-
-    from swift.dev.utils import HfConfigFactory
+        config = HfConfigFactory.load_hf_config(
+            model_config.model, revision=model_config.model_revision, trust_remote_code=True)
+        if config is None:
+            config = AutoConfig.from_pretrained(
+                model_config.model, revision=model_config.model_revision, trust_remote_code=True
+            )
 
     rope_scaling = model_config.rope_scaling
     if isinstance(rope_scaling, str):

@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # GRPO's algorithm halves (advantage fusion, teacher reweighting) on twinkle's ScoreWorker.
 from __future__ import annotations
-
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 from twinkle import remote_class, remote_function
+from twinkle.perf import timed
 from twinkle_agentic.async_rl.score_worker import ScoreWorker, _resolve
 
 
@@ -32,8 +32,9 @@ def _turn_context(sample: Any):
     messages = getattr(sample, 'messages', None)
     if messages is None:
         return None
-    from .prm import MultiTurnContext
     from twinkle_agentic.rollout import turn_token_spans
+
+    from .prm import MultiTurnContext
 
     turn_spans = turn_token_spans(sample.input_feature)
     assistant_indices = [i for i, m in enumerate(messages) if m.get('role') == 'assistant']
@@ -113,8 +114,9 @@ class RewardWorker(ScoreWorker):
         old logps are read off the samples; a missing reference logp row means "no KL penalty"
         (reuses the old logps so every per-token KL term zeroes).
         """
-        from swift.dev.utils.scoring import response_positions, response_token_scores
         from twinkle.advantage import GAEAdvantage
+
+        from swift.dev.utils.scoring import response_positions, response_token_scores
 
         features = [sample.encoded for sample in samples]
         kept = [i for i, sample in enumerate(samples) if response_positions(sample.encoded)]
@@ -153,8 +155,9 @@ class RewardWorker(ScoreWorker):
         Eager small dict (a companion of ``gae`` over the same inputs): total token reward and
         completion length per sample, folded the way ``CompletionRewardMetric`` consumes them.
         """
-        from swift.dev.utils.scoring import response_positions, response_token_scores
         from twinkle.advantage import GAEAdvantage
+
+        from swift.dev.utils.scoring import response_positions, response_token_scores
 
         features = [sample.encoded for sample in samples]
         kept = [i for i, sample in enumerate(samples) if response_positions(sample.encoded)]
@@ -180,6 +183,7 @@ class RewardWorker(ScoreWorker):
                 'completion_lengths': [len(old) for old in old_logps]}
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
+    @timed
     def grpo_advantages(self, samples: List[Any], scored: Any, rl_config: Any,
                         reward_config: Any, global_step: int) -> Tuple[Any, ...]:
         """GRPO's advantage half from the scoring forwards: group-relative adv + PRM / teacher fusion.

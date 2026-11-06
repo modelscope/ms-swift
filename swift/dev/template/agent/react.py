@@ -5,6 +5,8 @@ from .base import BaseAgentTemplate
 
 
 class ReactEnAgentTemplate(BaseAgentTemplate):
+    uses_react_tool_responses = True
+
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_names = []
         tool_descs = []
@@ -41,6 +43,8 @@ Begin!
 
 
 class ReactZnAgentTemplate(BaseAgentTemplate):
+    uses_react_tool_responses = True
+
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_names = []
         tool_descs = []
