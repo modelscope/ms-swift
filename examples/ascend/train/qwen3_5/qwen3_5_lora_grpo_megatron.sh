@@ -29,6 +29,7 @@ megatron rlhf \
     --max_length 8192 \
     --max_completion_length 8192 \
     --tuner_type lora \
+    --target_modules in_proj_qkv in_proj_z in_proj_a in_proj_b out_proj mlp.experts.linear_fc1 mlp.experts.linear_fc2 \
     --lr 5e-5 \
     --bf16 true \
     --beta 0.00 \

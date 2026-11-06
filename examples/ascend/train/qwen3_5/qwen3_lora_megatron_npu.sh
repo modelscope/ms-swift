@@ -20,7 +20,7 @@ megatron sft \
     --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_modules all-linear \
+    --target_modules in_proj_qkv in_proj_z in_proj_a in_proj_b out_proj mlp.experts.linear_fc1 mlp.experts.linear_fc2 \
     \
     --tensor_model_parallel_size 1 \
     --expert_model_parallel_size 16 \

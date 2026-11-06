@@ -17,7 +17,7 @@ megatron sft \
     --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_modules all-linear \
+    --target_modules self_attention.linear_qkv mlp.experts.linear_fc1 mlp.experts.linear_fc2 \
     --tensor_model_parallel_size 1 \
     --expert_model_parallel_size 8 \
     --moe_permute_fusion true \
