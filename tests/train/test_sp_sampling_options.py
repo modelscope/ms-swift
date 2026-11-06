@@ -22,6 +22,7 @@ def _check_sampling_options(rank, rendezvous):
     dist.init_process_group('gloo', init_method=rendezvous, rank=rank, world_size=4, timeout=timedelta(seconds=120))
     try:
         sequence_parallel.device_mesh = init_device_mesh('cpu', (2, 2), mesh_dim_names=('data', 'sequence'))
+        sequence_parallel.world_size = 2
         trainer = _Trainer.__new__(_Trainer)
         trainer.template = SimpleNamespace(sequence_parallel_size=2)
         trainer.train_dataset = list(range(16))
@@ -72,6 +73,72 @@ def _check_sampling_options(rank, rendezvous):
         # Keep the rendezvous store alive until every rank finishes using the mesh.
         dist.barrier()
     finally:
+        sequence_parallel.world_size = None
+        sequence_parallel.device_mesh = None
+        dist.destroy_process_group()
+
+
+def _check_unaligned_dataset(rank, rendezvous):
+    """A dataset that is not divisible by the world size must shard identically with and without SP."""
+    torch.set_num_threads(1)
+    dist.init_process_group('gloo', init_method=rendezvous, rank=rank, world_size=4, timeout=timedelta(seconds=120))
+    try:
+        sequence_parallel.device_mesh = init_device_mesh('cpu', (2, 2), mesh_dim_names=('data', 'sequence'))
+        sequence_parallel.world_size = 2
+        trainer = _Trainer.__new__(_Trainer)
+        trainer.template = SimpleNamespace(sequence_parallel_size=1)
+        trainer.train_dataset = list(range(18))
+        trainer.eval_dataset = list(range(18))
+        trainer._train_batch_size = 1
+        trainer.data_collator = lambda batch: batch
+        trainer.accelerator = SimpleNamespace(device=None)
+        trainer.args = SimpleNamespace(
+            remove_unused_columns=False,
+            dataloader_num_workers=0,
+            dataloader_pin_memory=False,
+            dataloader_persistent_workers=False,
+            dataloader_prefetch_factor=None,
+            dataloader_drop_last=False,
+            eval_batch_size=1,
+            deepspeed=None,
+            group_by_length=False,
+            train_dataloader_shuffle=False,
+            data_seed=42,
+            process_index=rank)
+
+        def collect(loader):
+            return [item for batch in loader for item in batch]
+
+        def step_sets(batches, accumulation_steps, num_steps):
+            result = []
+            for step in range(num_steps):
+                local = set(batches[step * accumulation_steps:(step + 1) * accumulation_steps])
+                gathered = [None] * dist.get_world_size()
+                dist.all_gather_object(gathered, local)
+                result.append(set().union(*gathered))
+            return result
+
+        for shuffle in (False, True):
+            trainer.args.train_dataloader_shuffle = shuffle
+            trainer.template.sequence_parallel_size = 1
+            dp_batches = collect(trainer.get_train_dataloader())
+            trainer.template.sequence_parallel_size = 2
+            sp_batches = collect(trainer.get_train_dataloader())
+
+            # N=18, world=4 -> both paths keep the first 16 samples and drop the tail.
+            assert len(dp_batches) == 4, (rank, dp_batches)
+            assert len(sp_batches) == 8, (rank, sp_batches)
+            dp_steps = step_sets(dp_batches, 1, 4)
+            sp_steps = step_sets(sp_batches, 2, 4)
+            assert dp_steps == sp_steps, (rank, shuffle, dp_steps, sp_steps)
+            for step in dp_steps:
+                assert len(step) == 4
+                assert 16 not in step and 17 not in step
+        # Keep the rendezvous store alive until every rank finishes using the mesh.
+        dist.barrier()
+    finally:
+        sequence_parallel.world_size = None
+        sequence_parallel.device_mesh = None
         dist.destroy_process_group()
 
 
@@ -81,6 +148,10 @@ class TestSPSamplingOptions(unittest.TestCase):
     def test_training_options_preserve_evaluation(self):
         with tempfile.TemporaryDirectory() as directory:
             mp.spawn(_check_sampling_options, args=(f'file://{directory}/rendezvous', ), nprocs=4, join=True)
+
+    def test_unaligned_dataset_matches_dp_sharding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            mp.spawn(_check_unaligned_dataset, args=(f'file://{directory}/rendezvous', ), nprocs=4, join=True)
 
 
 if __name__ == '__main__':

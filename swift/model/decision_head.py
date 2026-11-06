@@ -1310,13 +1310,44 @@ class KevPointerHead(ScoringHead):
         self.register_buffer('temperature', torch.tensor(1.0), persistent=False)
         self.scale = float(pointer_dim)**-0.5
 
+    def _pointer_logits(self, h_decide: torch.Tensor, h_opts: torch.Tensor) -> torch.Tensor:
+        """The pointer score: q(decide) · k(option) scaled; temperature (eval-time only) applied."""
+        z = (self.k(h_opts) * self.q(h_decide)).sum(-1) * self.scale
+        if not self.training and float(self.temperature) != 1.0:
+            z = z / self.temperature
+        return z
+
+    def _assemble(self, per_question: List[torch.Tensor], kinds: List[int], counts, max_opt: int,
+                  device) -> ScoringOutput:
+        counts_t = torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None
+        logits, option_mask = pad_option_logits(per_question, width=max_opt)
+        return ScoringOutput(
+            logits=logits,
+            option_mask=option_mask,
+            kinds=torch.as_tensor(kinds, dtype=torch.long, device=device),
+            counts=counts_t)
+
+    def forward_pointer(self, features: Sequence[Tuple[torch.Tensor, torch.Tensor]], meta: Dict[str,
+                                                                                                Any]) -> ScoringOutput:
+        n_options = [int(n) for n in meta['n_options']]
+        kinds = [int(k) for k in meta.get('kinds') or []]
+        total_q = len(n_options)
+        max_opt = int(meta.get('max_opt') or (max(n_options) if n_options else 0))
+        if total_q == 0 or len(features) != total_q:
+            raise ValueError(f'Kev branch features ({len(features)}) do not match total_q ({total_q}).')
+        for qi, (h_decide, h_opts) in enumerate(features):
+            if h_opts.shape[0] != n_options[qi]:
+                raise ValueError(f'Kev meta mismatch: question {qi} has {n_options[qi]} options but '
+                                 f'{h_opts.shape[0]} </opt> hidden vectors.')
+        per_question = [self._pointer_logits(h_decide, h_opts) for h_decide, h_opts in features]
+        return self._assemble(per_question, kinds, meta.get('counts'), max_opt, features[0][0].device)
+
     def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
                                                                                                  Any]) -> ScoringOutput:
         n_options = [int(n) for n in meta['n_options']]
         kinds = [int(k) for k in meta.get('kinds') or []]
         counts = meta.get('counts')
         device = hidden_states.device
-        counts_t = torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None
         total_q = len(n_options)
         max_opt = int(meta.get('max_opt') or (max(n_options) if n_options else 0))
         if total_q == 0:
@@ -1325,7 +1356,7 @@ class KevPointerHead(ScoringHead):
                 logits=empty,
                 option_mask=torch.zeros((0, max_opt), dtype=torch.bool, device=device),
                 kinds=torch.zeros((0, ), dtype=torch.long, device=device),
-                counts=counts_t)
+                counts=torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None)
 
         record_index = [int(r) for r in meta['record_index']]
         decide_idx = meta['decide_idx']
@@ -1351,17 +1382,9 @@ class KevPointerHead(ScoringHead):
                                  f'(padded_len={padded_len}, left_padding={left_padding}).')
             h_decide = hidden[rec, offset + int(decide_idx[qi])]  # [d]
             h_opts = hidden[rec, [offset + int(o) for o in opt_idx[qi]]]  # [K, d]
-            z = (self.k(h_opts) * self.q(h_decide)).sum(-1) * self.scale
-            if not self.training and float(self.temperature) != 1.0:
-                z = z / self.temperature
-            per_question.append(z)
+            per_question.append(self._pointer_logits(h_decide, h_opts))
 
-        logits, option_mask = pad_option_logits(per_question, width=max_opt)
-        return ScoringOutput(
-            logits=logits,
-            option_mask=option_mask,
-            kinds=torch.as_tensor(kinds, dtype=torch.long, device=device),
-            counts=counts_t)
+        return self._assemble(per_question, kinds, counts, max_opt, device)
 
     def extra_state_for_save(self) -> Dict[str, Any]:
         return {'temperature': float(self.temperature)}

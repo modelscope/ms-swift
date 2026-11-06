@@ -162,4 +162,9 @@ class InfonceMetrics(EvalMetrics, EmbedddingMetricMixin):
 
         mean_neg = np.mean(neg_scores)
         mean_pos = np.mean(pos_scores)
-        return {'margin': pos_neg_margin, 'mean_neg': mean_neg, 'mean_pos': mean_pos}
+        # The metrics are logged as json; numpy scalars are not json serializable.
+        return {
+            'margin': float(pos_neg_margin),
+            'mean_neg': float(mean_neg),
+            'mean_pos': float(mean_pos),
+        }

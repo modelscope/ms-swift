@@ -210,6 +210,19 @@ class SwiftMixin:
         finally:
             trainer.deepspeed_load_checkpoint = origin_deepspeed_load_checkpoint
 
+    def _track_num_input_tokens(self, inputs):
+        """De-duplicate the SP replicas counted by HF's all-process gather."""
+        if not hasattr(super(), '_track_num_input_tokens'):
+            return  # transformers < 4.46
+        sp_size = self.template.sequence_parallel_size
+        if sp_size <= 1:
+            return super()._track_num_input_tokens(inputs)
+        before = self.state.num_input_tokens_seen
+        super()._track_num_input_tokens(inputs)
+        delta = self.state.num_input_tokens_seen - before
+        if delta:
+            self.state.num_input_tokens_seen = before + delta // sp_size
+
     def get_use_logits_to_keep(self, default_value: bool = True):
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
@@ -1393,7 +1406,7 @@ class DataLoaderMixin:
             return {'multiprocessing_context': mp_context}
         return {}
 
-    def get_sp_dataloader(self, dataset, batch_size, skip_batches=0, *, shuffle=True, seed=42):
+    def get_sp_dataloader(self, dataset, batch_size, skip_batches=0, *, shuffle=True, seed=42, round_up=False):
 
         data_collator = self.data_collator
         if isinstance(dataset, datasets.Dataset):
@@ -1401,7 +1414,7 @@ class DataLoaderMixin:
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
         if hasattr(dataset, '__len__'):
-            sampler = SequenceParallelSampler(sequence_parallel, dataset, shuffle=shuffle, seed=seed)
+            sampler = SequenceParallelSampler(sequence_parallel, dataset, shuffle=shuffle, seed=seed, round_up=round_up)
             dataloader_params = {
                 'batch_size': batch_size,
                 'collate_fn': data_collator,
@@ -1521,7 +1534,8 @@ class DataLoaderMixin:
             if eval_dataset is None and self.eval_dataset is None:
                 raise ValueError('Trainer: evaluation requires an eval_dataset.')
             eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-            dataloader = self.get_sp_dataloader(eval_dataset, self.args.eval_batch_size)
+            # Evaluation must cover every sample, so keep the ceil + round_up behaviour here.
+            dataloader = self.get_sp_dataloader(eval_dataset, self.args.eval_batch_size, round_up=True)
         if dataloader is None:
             with self._disable_group_by_length():
                 return super().get_eval_dataloader(eval_dataset=eval_dataset)

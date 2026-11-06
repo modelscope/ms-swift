@@ -250,6 +250,11 @@ class ModelLoader(BaseModelLoader):
                            'Custom Python code from the model repository will be executed. '
                            'Only use models from sources you trust.')
         auto_config_cls = self.auto_config_cls or AutoConfig
+        if auto_config_cls is AutoConfig:
+            # Another package (e.g. vLLM) may have replaced the class via `AutoConfig.register`.
+            config = HfConfigFactory.load_hf_config(model_dir, trust_remote_code=self.default_trust_remote_code)
+            if config is not None:
+                return config
         return auto_config_cls.from_pretrained(model_dir, trust_remote_code=self.default_trust_remote_code)
 
     def _get_tokenizer(self, processor):

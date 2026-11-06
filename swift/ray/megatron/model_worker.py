@@ -10,7 +10,7 @@ import torch
 from contextlib import contextmanager
 from typing import Any, Dict, Optional, Sequence
 
-from swift.utils import gc_collect, get_current_device, get_logger, to_device
+from swift.utils import HfConfigFactory, gc_collect, get_current_device, get_logger, to_device
 
 logger = get_logger()
 
@@ -37,7 +37,9 @@ class MegatronModelWorker:
 
         from swift.megatron.model import get_mcore_model
 
-        hf_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        hf_config = HfConfigFactory.load_hf_config(model_dir, trust_remote_code=True)
+        if hf_config is None:
+            hf_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         models = get_mcore_model(args, hf_config)
         for m in models:
             if not args.use_cpu_initialization:
