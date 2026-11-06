@@ -408,10 +408,12 @@ def test_distill_prepares_one_global_batch_per_update(use_student, colocate, bat
         generation_sizes.append(len(prompts) * num_samples)
         start = generated[0]
         generated[0] += len(prompts) * num_samples
-        return [
+        samples = [
             SimpleNamespace(encoded={"input_ids": [i]}, messages=[], prompt=[], extra={})
             for i in range(start, generated[0])
         ]
+        # generate's contract is (samples, encodings); loops re-attach them.
+        return samples, [sample.encoded for sample in samples]
 
     monkeypatch.setattr(offload, "offload_for_rollout", borrow)
     monkeypatch.setattr(offload, "sleep_for_rollout", lambda *args: None)
@@ -480,11 +482,13 @@ def test_distill_selects_each_update_and_advances_only_the_off_policy_cursor(mon
 
     def generate(prompts, *, num_samples, **kwargs):
         generated_prompts.append(prompts)
-        return [
+        samples = [
             SimpleNamespace(encoded={"input_ids": [-int(messages[0]["content"]) - 1]}, messages=messages, extra=extra)
             for messages, extra in zip(prompts, kwargs["prompt_extras"])
             for _ in range(num_samples)
         ]
+        # generate's contract is (samples, encodings); loops re-attach them.
+        return samples, [sample.encoded for sample in samples]
 
     def forward_kwargs(rows, use_student):
         sources.append(use_student)
@@ -539,7 +543,9 @@ def test_distill_generates_only_four_rows_for_a_global_batch_of_four():
     def generate(prompts, *, num_samples, **kwargs):
         ids = [int(messages[0]["content"]) for messages in prompts for _ in range(num_samples)]
         generated.append(ids)
-        return [SimpleNamespace(encoded={"input_ids": [i]}, messages=[], extra={}) for i in ids]
+        samples = [SimpleNamespace(encoded={"input_ids": [i]}, messages=[], extra={}) for i in ids]
+        # generate's contract is (samples, encodings); loops re-attach them.
+        return samples, [sample.encoded for sample in samples]
 
     # One input batch has three prompts, but it must result in three separate generation/update calls.
     batch = [{"messages": [{"role": "user", "content": str(i)}]} for i in range(3)]
@@ -624,7 +630,9 @@ def test_ppo_colocate_preserves_a_single_prompt_pass_for_both_models(monkeypatch
     def generate(prompts, *, num_samples, **kwargs):
         start = generated[0]
         generated[0] += len(prompts) * num_samples
-        return [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(start, generated[0])]
+        samples = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(start, generated[0])]
+        # generate's contract is (samples, encodings); loops re-attach them.
+        return samples, [sample.encoded for sample in samples]
 
     def gae(cluster, reward, config, samples, *args):
         signals = [[float(sample.encoded["input_ids"][0])] for sample in samples]

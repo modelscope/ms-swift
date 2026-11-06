@@ -91,223 +91,43 @@ def rollout_metrics(*, prompt_lengths, response_lengths, timings, num_devices,
 
 def rollout_iteration_metrics(state, *, stream_stats=None, resource_metrics=None,
                               terminal=False, publications=0):
-    """Fold one consumed rollout iteration into the shared metric pipeline.
-
-    Razor-thin by design: TIMING lives in twinkle.perf (the dispatch layer auto-spans
-    every remote call on the driver's default recorder; this reads that recorder's
-    window reduction), THROUGHPUT formulas live in twinkle.metric.ThroughputMetric,
-    and only the GRPO-specific facts (sample lengths, turns, visit accounting) are
-    computed here. No per-batch recorder object, no span bookkeeping on ``state``.
-
-    Returns the per-iteration values dict (also recorded through the run tracker).
-    """
-    from twinkle.metric import MetricRecord
-    from twinkle.perf import default_recorder
-
-    started_ns = getattr(state, '_iteration_started_ns', None)
-    batch = getattr(state, '_iteration_facts', None)
-    if started_ns is None or batch is None or not batch['lengths']:
-        return {}
-    # The recorder's OWN clock (not a second perf_counter_ns site): window bounds and
-    # span stamps must come from one clock or the window selects the wrong spans.
-    ended_ns = default_recorder.now_ns()
-
-    # Phase timings from the driver recorder: every remote call in the window was
-    # auto-spanned by name; fold to union-of-intervals and carve out the logging band.
-    # 'step' is the old contract: the window's wall time MINUS that excluded band.
-    raw = default_recorder.phase_totals(exclude=('_logging',), window=(started_ns, ended_ns)) \
-        if default_recorder.enabled else {}
-    timings = {name: seconds for name, seconds in raw.items() if name != 'window'}
-    timings['step'] = raw.get('window', (ended_ns - started_ns) / 1e9)
-
-    stats = stream_stats or {}
-    for name in ('publish_time', 'publishes'):
-        if name in stats:
-            delta = stats[name] - state._stream_previous.get(name, 0)
-            if name == 'publish_time':
-                timings['update_weights'] = delta
-            else:
-                publications = delta
-            state._stream_previous[name] = stats[name]
-
-    # The disaggregated branch has no 'gen' span on the driver (generation happens on the
-    # sampler behind the driver's pull), so fall back to iteration-start -> samples-received,
-    # exactly the old rollout_phase_times contract.
-    received_ns = batch.get('received_ns')
-    if 'gen' not in timings and received_ns is not None:
-        timings['gen'] = max(0.0, (received_ns - started_ns) / 1e9)
-
-    groups = state._metric_context['device_groups']
-    num_devices = len({rank for _, ranks in groups for rank in ranks})
-    prompt_lengths = [p for p, _ in batch['lengths']]
-    response_lengths = [r for _, r in batch['lengths']]
-    inputs = {
-        'prompt_lengths': prompt_lengths,
-        'response_lengths': response_lengths,
-        'timings': timings,
-        'num_devices': num_devices,
-    }
-    state._run_metric.accumulate(**inputs)
-    values = rollout_metrics(
-        **inputs, wall_seconds=(ended_ns - started_ns) / 1e9,
-        truncated=batch['truncated'], turns=batch['turns'])
-    values.update({
-        'training/optimizer_step': state.global_step,
-        'training/weight_publications_this_iteration': publications,
-        'training/sample_visits': batch['sample_visits'],
-        'training/unique_samples_trained': len(batch['trained_indices']),
-        'training/samples_not_trained': len(batch['lengths']) - len(batch['trained_indices']),
-    })
-    memory = rollout_memory_metrics(state)
-    values.update(memory)
-    values.update(resource_metrics or {})
-
-    state._completed_batches += 1
-    state._rollout_groups += len(batch['lengths']) // state._metric_context['num_generations']
-    state._trained_samples += batch['sample_visits']
-    state._batch_wall_ns += ended_ns - started_ns
-    state.tracker.record(
-        MetricRecord(
-            stage='rollout',
-            optimizer_step=state.global_step,
-            values=values,
-            attributes={
-                'scope': 'iteration',
-                'step_unit': 'rl_iteration',
-                'iteration': state._completed_batches,
-                'iteration_scope': 'one_consumed_rollout_batch',
-                **state._metric_context,
-                'parameter_sync_step_unit': 'optimizer_update',
-                'terminal': terminal,
-            },
-        )
-    )
-    logger.info(
-        '[perf] iteration=%s step=%s seconds=%.3f tokens=%s tok/s/GPU=%.3f',
-        state._completed_batches, state.global_step, timings['step'],
-        values.get('perf/total_num_tokens', 0), values.get('perf/throughput', 0.0),
-    )
-    state._iteration_started_ns = None
-    state._iteration_facts = None
-    return values
+    """Back-compat shim: see :meth:`RolloutStepState.fold_iteration_metrics`."""
+    return state.fold_iteration_metrics(
+        stream_stats=stream_stats, resource_metrics=resource_metrics,
+        terminal=terminal, publications=publications)
 
 
 def init_rollout_metrics(state, device_groups, *, mode='colocate', parameter_sync_step=1,
                          num_generations=1, attributes=None):
-    """Enable per-iteration rollout accounting; the shared perf recorder needs no init."""
-    from twinkle.metric import ThroughputMetric
-
-    state._metric_context = {
-        'device_groups': device_groups,
-        'mode': mode,
-        'parameter_sync_step': parameter_sync_step,
-        'num_generations': num_generations,
-        **(attributes or {}),
-    }
-    state._run_metric = ThroughputMetric()
-    state._completed_batches, state._batch_wall_ns = 0, 0
-    state._rollout_groups = state._trained_samples = 0
-    state._stream_previous = {}
-    state._iteration_started_ns = None
-    state._iteration_facts = None
+    """Back-compat shim: see :meth:`RolloutStepState.setup_rollout_metrics`."""
+    state.setup_rollout_metrics(
+        device_groups, mode=mode, parameter_sync_step=parameter_sync_step,
+        num_generations=num_generations, attributes=attributes)
 
 
 def begin_rollout_iteration(state):
-    """Mark the window start; timing itself is the dispatch layer's auto-spans."""
-    from twinkle.perf import default_recorder
-
-    if hasattr(state, '_run_metric'):
-        # The recorder's clock, matching rollout_iteration_metrics' end stamp (one clock
-        # end to end, or the window would select the wrong spans).
-        state._iteration_started_ns = default_recorder.now_ns()
-        state._iteration_facts = {'lengths': [], 'truncated': [], 'turns': [],
-                                  'trained_indices': set(), 'sample_visits': 0}
-        state._memory_rows = None
+    """Back-compat shim: see :meth:`RolloutStepState.begin_rollout_iteration`."""
+    state.begin_rollout_iteration()
 
 
 def observe_rollout_samples(state, samples, *, length_fn=None):
-    """Attach this iteration's GRPO-specific sample facts (lengths / truncation / turns)."""
-    from twinkle.perf import default_recorder
-
-    batch = getattr(state, '_iteration_facts', None)
-    if batch is None:
-        return
-    if length_fn is None:
-        from swift.dev.utils.scoring import sample_token_lengths
-
-        length_fn = sample_token_lengths
-    samples = list(samples)
-    # Prefer the lengths counted at feature-build time: under ray mode the stashed ``encoded``
-    # reaches the driver only as an ObjectRef, so length_fn (which reads encoded) would either
-    # crash on the ref or, worse, force-materialise the heavy feature. Only synthesised
-    # samples (no token_lengths) fall back to reading the local feature.
-    lengths = [tuple(sample.token_lengths) if getattr(sample, 'token_lengths', None) is not None
-               else None for sample in samples]
-    fallback = [index for index, value in enumerate(lengths) if value is None]
-    if fallback:
-        computed = [length_fn(samples[index]) for index in fallback]
-        for index, value in zip(fallback, computed):
-            lengths[index] = tuple(value)
-    batch['lengths'] = lengths
-    batch['truncated'] = [bool(getattr(sample, 'truncated', False)) for sample in samples]
-    batch['turns'] = [getattr(sample, 'rollout_infos', {}).get('turns') for sample in samples]
-    # When the samples arrived -- the 'gen' fallback window end when no gen span exists.
-    batch['received_ns'] = default_recorder.now_ns()
+    """Back-compat shim: see :meth:`RolloutStepState.observe_rollout_samples`."""
+    state.observe_rollout_samples(samples, length_fn=length_fn)
 
 
 def record_rollout_training(state, indices):
-    """Count successful sample visits without duplicating generated tokens on replay."""
-    batch = getattr(state, '_iteration_facts', None)
-    if batch is not None:
-        batch['sample_visits'] += len(indices)
-        batch['trained_indices'].update(indices)
+    """Back-compat shim: see :meth:`RolloutStepState.record_rollout_training`."""
+    state.record_rollout_training(indices)
 
 
 def rollout_memory_metrics(state):
-    """Aggregate worker memory once per iteration; returns {} when uninstrumented."""
-    from twinkle.metric import memory_metrics
-
-    batch = getattr(state, '_iteration_facts', None)
-    if batch is None:
-        return {}
-    rows = getattr(state, '_memory_rows', None)
-    if rows is None:
-        rows = state.model.memory_stats(synchronize=True)
-        rows = [dict(rows)] if isinstance(rows, dict) else [dict(row) for row in rows]
-        state._memory_rows = rows
-    return memory_metrics(rows)
+    """Back-compat shim: see :meth:`RolloutStepState.rollout_memory_metrics`."""
+    return state.rollout_memory_metrics()
 
 
 def finish_rollout_metrics(state, *, stream_stats=None, status='completed'):
-    """Write terminal run totals through the existing metric reporter."""
-    from twinkle.metric import MetricRecord
-
-    if not hasattr(state, '_run_metric'):
-        return
-    metrics = state._run_metric.calculate()
-    values = {
-        'completed_iterations': state._completed_batches,
-        'optimizer_step': state.global_step,
-        'rollout_groups': state._rollout_groups,
-        'rollout_samples': metrics.get('perf/num_samples', 0),
-        'trained_samples': state._trained_samples,
-        'wall_time_s': state._batch_wall_ns / 1e9,
-        'total_num_tokens': metrics.get('perf/total_num_tokens', 0),
-        'sum_iteration_seconds': metrics.get('perf/time_per_step', 0),
-        'throughput': metrics.get('perf/throughput'),
-    }
-    values.update(
-        {f'stream/{key}': value for key, value in (stream_stats or {}).items() if isinstance(value, (int, float))}
-    )
-    state.tracker.record(
-        MetricRecord(
-            stage='run',
-            optimizer_step=state.global_step,
-            values=values,
-            status='failed' if status == 'failed' else 'completed',
-            attributes={'step_unit': 'run_summary', 'loop_status': status},
-        )
-    )
+    """Back-compat shim: see :meth:`RolloutStepState.finish_rollout_metrics`."""
+    state.finish_rollout_metrics(stream_stats=stream_stats, status=status)
 
 
 class SaveKnobs(NamedTuple):
@@ -890,6 +710,245 @@ class StepState:
         control.should_save = False
         control.should_evaluate = False
         control.should_log = False
+
+
+class RolloutStepState(StepState):
+    """A :class:`StepState` for rollout recipes (GRPO now; every online rollout family later).
+
+    Adds the iteration-level statistics layer on top of the step cadence. The split of labour:
+    TIMING lives in twinkle.perf (the dispatch layer auto-spans every remote call on the
+    driver's default recorder; ``fold_iteration_metrics`` reads that recorder's window
+    reduction), THROUGHPUT formulas live in twinkle.metric.ThroughputMetric, and only the
+    recipe-specific facts (sample lengths, turns, visit accounting) live here. The module-level
+    ``rollout_*`` functions are back-compat shims onto these methods.
+
+    The rollout fields are always initialised (even before ``setup_rollout_metrics``), so the
+    observe/record calls in a loop that never set up metrics are harmless no-ops -- the same
+    contract the free functions had via ``getattr(state, ..., None)``.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._metric_context: Dict[str, Any] = {}
+        self._run_metric: Any = None
+        self._completed_batches = 0
+        self._batch_wall_ns = 0
+        self._rollout_groups = 0
+        self._trained_samples = 0
+        self._stream_previous: Dict[str, float] = {}
+        self._iteration_started_ns: Optional[int] = None
+        self._iteration_facts: Optional[Dict[str, Any]] = None
+        self._memory_rows: Optional[List[Dict[str, Any]]] = None
+
+    # ------------------------------------------------------------- lifecycle
+
+    def setup_rollout_metrics(self, device_groups, *, mode='colocate', parameter_sync_step=1,
+                              num_generations=1, attributes=None) -> None:
+        """Enable per-iteration rollout accounting; the shared perf recorder needs no init."""
+        from twinkle.metric import ThroughputMetric
+
+        self._metric_context = {
+            'device_groups': device_groups,
+            'mode': mode,
+            'parameter_sync_step': parameter_sync_step,
+            'num_generations': num_generations,
+            **(attributes or {}),
+        }
+        self._run_metric = ThroughputMetric()
+        self._completed_batches, self._batch_wall_ns = 0, 0
+        self._rollout_groups = self._trained_samples = 0
+        self._stream_previous = {}
+        self._iteration_started_ns = None
+        self._iteration_facts = None
+
+    def begin_rollout_iteration(self) -> None:
+        """Mark the window start; timing itself is the dispatch layer's auto-spans."""
+        from twinkle.perf import default_recorder
+
+        if self._run_metric is not None:
+            # The recorder's clock, matching fold_iteration_metrics' end stamp (one clock
+            # end to end, or the window would select the wrong spans).
+            self._iteration_started_ns = default_recorder.now_ns()
+            self._iteration_facts = {'lengths': [], 'truncated': [], 'turns': [],
+                                     'trained_indices': set(), 'sample_visits': 0}
+            self._memory_rows = None
+
+    def observe_rollout_samples(self, samples, *, length_fn=None) -> None:
+        """Attach this iteration's rollout-specific sample facts (lengths / truncation / turns)."""
+        from twinkle.perf import default_recorder
+
+        batch = self._iteration_facts
+        if batch is None:
+            return
+        if length_fn is None:
+            from swift.dev.utils.scoring import sample_token_lengths
+
+            length_fn = sample_token_lengths
+        samples = list(samples)
+        # Prefer the lengths counted at feature-build time: under ray mode the stashed ``encoded``
+        # reaches the driver only as an ObjectRef, so length_fn (which reads encoded) would either
+        # crash on the ref or, worse, force-materialise the heavy feature. Only synthesised
+        # samples (no token_lengths) fall back to reading the local feature.
+        lengths = [tuple(sample.token_lengths) if getattr(sample, 'token_lengths', None) is not None
+                   else None for sample in samples]
+        fallback = [index for index, value in enumerate(lengths) if value is None]
+        if fallback:
+            computed = [length_fn(samples[index]) for index in fallback]
+            for index, value in zip(fallback, computed):
+                lengths[index] = tuple(value)
+        batch['lengths'] = lengths
+        batch['truncated'] = [bool(getattr(sample, 'truncated', False)) for sample in samples]
+        batch['turns'] = [getattr(sample, 'rollout_infos', {}).get('turns') for sample in samples]
+        # When the samples arrived -- the 'gen' fallback window end when no gen span exists.
+        batch['received_ns'] = default_recorder.now_ns()
+
+    def record_rollout_training(self, indices) -> None:
+        """Count successful sample visits without duplicating generated tokens on replay."""
+        batch = self._iteration_facts
+        if batch is not None:
+            batch['sample_visits'] += len(indices)
+            batch['trained_indices'].update(indices)
+
+    def rollout_memory_metrics(self) -> Dict[str, float]:
+        """Aggregate worker memory once per iteration; returns {} when uninstrumented."""
+        from twinkle.metric import memory_metrics
+
+        if self._iteration_facts is None:
+            return {}
+        rows = self._memory_rows
+        if rows is None:
+            rows = self.model.memory_stats(synchronize=True)
+            rows = [dict(rows)] if isinstance(rows, dict) else [dict(row) for row in rows]
+            self._memory_rows = rows
+        return memory_metrics(rows)
+
+    # ------------------------------------------------------------- accounting
+
+    def fold_iteration_metrics(self, *, stream_stats=None, resource_metrics=None,
+                               terminal=False, publications=0) -> Dict[str, Any]:
+        """Fold one consumed rollout iteration into the shared metric pipeline.
+
+        Returns the per-iteration values dict (also recorded through the run tracker).
+        """
+        from twinkle.metric import MetricRecord
+        from twinkle.perf import default_recorder
+
+        started_ns = self._iteration_started_ns
+        batch = self._iteration_facts
+        if started_ns is None or batch is None or not batch['lengths']:
+            return {}
+        # The recorder's OWN clock (not a second perf_counter_ns site): window bounds and
+        # span stamps must come from one clock or the window would select the wrong spans.
+        ended_ns = default_recorder.now_ns()
+
+        # Phase timings from the driver recorder: every remote call in the window was
+        # auto-spanned by name; fold to union-of-intervals and carve out the logging band.
+        # 'step' is the old contract: the window's wall time MINUS that excluded band.
+        raw = default_recorder.phase_totals(exclude=('_logging',), window=(started_ns, ended_ns)) \
+            if default_recorder.enabled else {}
+        timings = {name: seconds for name, seconds in raw.items() if name != 'window'}
+        timings['step'] = raw.get('window', (ended_ns - started_ns) / 1e9)
+
+        stats = stream_stats or {}
+        for name in ('publish_time', 'publishes'):
+            if name in stats:
+                delta = stats[name] - self._stream_previous.get(name, 0)
+                if name == 'publish_time':
+                    timings['update_weights'] = delta
+                else:
+                    publications = delta
+                self._stream_previous[name] = stats[name]
+
+        # The disaggregated branch has no 'gen' span on the driver (generation happens on the
+        # sampler behind the driver's pull), so fall back to iteration-start -> samples-received,
+        # exactly the old rollout_phase_times contract.
+        received_ns = batch.get('received_ns')
+        if 'gen' not in timings and received_ns is not None:
+            timings['gen'] = max(0.0, (received_ns - started_ns) / 1e9)
+
+        groups = self._metric_context['device_groups']
+        num_devices = len({rank for _, ranks in groups for rank in ranks})
+        prompt_lengths = [p for p, _ in batch['lengths']]
+        response_lengths = [r for _, r in batch['lengths']]
+        inputs = {
+            'prompt_lengths': prompt_lengths,
+            'response_lengths': response_lengths,
+            'timings': timings,
+            'num_devices': num_devices,
+        }
+        self._run_metric.accumulate(**inputs)
+        values = rollout_metrics(
+            **inputs, wall_seconds=(ended_ns - started_ns) / 1e9,
+            truncated=batch['truncated'], turns=batch['turns'])
+        values.update({
+            'training/optimizer_step': self.global_step,
+            'training/weight_publications_this_iteration': publications,
+            'training/sample_visits': batch['sample_visits'],
+            'training/unique_samples_trained': len(batch['trained_indices']),
+            'training/samples_not_trained': len(batch['lengths']) - len(batch['trained_indices']),
+        })
+        values.update(self.rollout_memory_metrics())
+        values.update(resource_metrics or {})
+
+        self._completed_batches += 1
+        self._rollout_groups += len(batch['lengths']) // self._metric_context['num_generations']
+        self._trained_samples += batch['sample_visits']
+        self._batch_wall_ns += ended_ns - started_ns
+        self.tracker.record(
+            MetricRecord(
+                stage='rollout',
+                optimizer_step=self.global_step,
+                values=values,
+                attributes={
+                    'scope': 'iteration',
+                    'step_unit': 'rl_iteration',
+                    'iteration': self._completed_batches,
+                    'iteration_scope': 'one_consumed_rollout_batch',
+                    **self._metric_context,
+                    'parameter_sync_step_unit': 'optimizer_update',
+                    'terminal': terminal,
+                },
+            )
+        )
+        logger.info(
+            '[perf] iteration=%s step=%s seconds=%.3f tokens=%s tok/s/GPU=%.3f',
+            self._completed_batches, self.global_step, timings['step'],
+            values.get('perf/total_num_tokens', 0), values.get('perf/throughput', 0.0),
+        )
+        self._iteration_started_ns = None
+        self._iteration_facts = None
+        return values
+
+    def finish_rollout_metrics(self, *, stream_stats=None, status='completed') -> None:
+        """Write terminal run totals through the existing metric reporter."""
+        from twinkle.metric import MetricRecord
+
+        if self._run_metric is None:
+            return
+        metrics = self._run_metric.calculate()
+        values = {
+            'completed_iterations': self._completed_batches,
+            'optimizer_step': self.global_step,
+            'rollout_groups': self._rollout_groups,
+            'rollout_samples': metrics.get('perf/num_samples', 0),
+            'trained_samples': self._trained_samples,
+            'wall_time_s': self._batch_wall_ns / 1e9,
+            'total_num_tokens': metrics.get('perf/total_num_tokens', 0),
+            'sum_iteration_seconds': metrics.get('perf/time_per_step', 0),
+            'throughput': metrics.get('perf/throughput'),
+        }
+        values.update(
+            {f'stream/{key}': value for key, value in (stream_stats or {}).items() if isinstance(value, (int, float))}
+        )
+        self.tracker.record(
+            MetricRecord(
+                stage='run',
+                optimizer_step=self.global_step,
+                values=values,
+                status='failed' if status == 'failed' else 'completed',
+                attributes={'step_unit': 'run_summary', 'loop_status': status},
+            )
+        )
 
 
 # Optimizer updates each derived rollout batch covers. Colocate pays a sleep/wake + weight-sync

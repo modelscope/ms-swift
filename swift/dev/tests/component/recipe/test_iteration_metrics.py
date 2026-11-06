@@ -51,9 +51,16 @@ def perf_clock(monkeypatch):
 
 
 def observed_state(path, groups=None):
-    state = NS(global_step=0, model=NS(memory_stats=lambda **kw: []), tracker=RunTracker(None, str(path)))
-    batch_metrics.init_rollout_metrics(state, groups or [("model", [0])])
-    batch_metrics.begin_rollout_iteration(state)
+    # A real RolloutStepState skips StepState.__init__ (callbacks/tracker wiring is not
+    # under test); only the statistics fields + the pieces the methods read are mounted.
+    from swift.dev.recipe.utils import RolloutStepState
+
+    state = RolloutStepState.__new__(RolloutStepState)
+    state.global_step = 0
+    state.model = NS(memory_stats=lambda **kw: [])
+    state.tracker = RunTracker(None, str(path))
+    state.setup_rollout_metrics(groups or [("model", [0])])
+    state.begin_rollout_iteration()
     return state
 
 
@@ -107,13 +114,13 @@ def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path, [("model", [0, 1]), ("shared", [0])])
-    batch_metrics.observe_rollout_samples(state, [sample(), sample(prompt=4, response=3)])
+    state.observe_rollout_samples([sample(), sample(prompt=4, response=3)])
     for _ in range(4):
-        batch_metrics.record_rollout_training(state, [0, 1])
+        state.record_rollout_training([0, 1])
     state.global_step = 4
     with default_recorder.span("forward_backward"):
         perf_clock.advance(2)
-    batch_metrics.rollout_iteration_metrics(state, publications=1)
+    state.fold_iteration_metrics(publications=1)
     row = iteration_rows(tmp_path, state)[0]
     assert row["data"]["perf/total_num_tokens"] == 12
     assert row["data"]["perf/throughput"] == 3
@@ -127,10 +134,10 @@ def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp
 def test_shared_batch_lifecycle_accepts_another_sample_format(tmp_path):
     state = observed_state(tmp_path)
     rows = [NS(lengths=(3, 2), truncated=False), NS(lengths=(4, 3), truncated=True)]
-    batch_metrics.observe_rollout_samples(state, iter(rows), length_fn=lambda row: row.lengths)
+    state.observe_rollout_samples(iter(rows), length_fn=lambda row: row.lengths)
     state.global_step = 1
-    batch_metrics.record_rollout_training(state, [0])
-    batch_metrics.rollout_iteration_metrics(state, publications=1)
+    state.record_rollout_training([0])
+    state.fold_iteration_metrics(publications=1)
     row = iteration_rows(tmp_path, state)[0]
     assert row['data']['perf/total_num_tokens'] == 12
     assert row['data']['response/truncated_ratio'] == 0.5
@@ -143,18 +150,34 @@ def test_shared_batch_lifecycle_accepts_another_sample_format(tmp_path):
 def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
     from swift.dev.tests.component.recipe.test_grpo_micro_batch import make_state, train
 
+    from swift.dev.recipe.utils import RolloutStepState
+
     lengths = [2000, 1900, 1800, 1700, 300, 250, 200, 150]
     state = make_state(ga=2)
+    # Adopt the statistics methods without StepState.__init__ (make_state's namespace is
+    # the micro-batch harness under test here): plain unbound-method attachment.
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
+                 'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
+                 'finish_rollout_metrics'):
+        setattr(state, name, getattr(RolloutStepState, name).__get__(state))
+    state._metric_context = {}
+    state._run_metric = None
+    state._completed_batches = state._batch_wall_ns = 0
+    state._rollout_groups = state._trained_samples = 0
+    state._stream_previous = {}
+    state._iteration_started_ns = None
+    state._iteration_facts = None
+    state._memory_rows = None
     state.balance_batch = True
     state.model.memory_stats = lambda **kwargs: []
     state.tracker = RunTracker(None, str(tmp_path))
-    batch_metrics.init_rollout_metrics(state, [('model', [0, 1])], num_generations=8)
-    batch_metrics.begin_rollout_iteration(state)
+    state.setup_rollout_metrics([('model', [0, 1])], num_generations=8)
+    state.begin_rollout_iteration()
     samples = [NS(encoded={'input_ids': [i] * n, 'labels': [i] * n}) for i, n in enumerate(lengths)]
-    batch_metrics.observe_rollout_samples(state, samples)
+    state.observe_rollout_samples(samples)
     try:
         assert train(state, 8, lengths=lengths) == 1
-        batch_metrics.rollout_iteration_metrics(state)
+        state.fold_iteration_metrics()
         row = iteration_rows(tmp_path, state)[0]
         assert state.global_step == state.model.steps == 1
         balance = state.balance_metrics[0]
@@ -171,12 +194,12 @@ def test_batch_completion_can_run_on_a_different_thread(tmp_path, perf_clock):
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path)
-    batch_metrics.observe_rollout_samples(state, [sample()])
+    state.observe_rollout_samples([sample()])
     with default_recorder.span('forward_backward'):
         perf_clock.advance(2)
     with ThreadPoolExecutor(max_workers=1) as pool:
-        pool.submit(batch_metrics.rollout_iteration_metrics, state).result()
-    batch_metrics.rollout_iteration_metrics(state)  # repeated completion must not duplicate a record
+        pool.submit(state.fold_iteration_metrics).result()
+    state.fold_iteration_metrics()  # repeated completion must not duplicate a record
     rows = iteration_rows(tmp_path, state)
     assert len(rows) == 1
     assert rows[0]['data']['timing_s/forward_backward'] == 2
@@ -185,14 +208,25 @@ def test_batch_completion_can_run_on_a_different_thread(tmp_path, perf_clock):
 
 
 def test_batch_helpers_are_noops_without_initialization():
-    state = NS(global_step=0)
-    batch_metrics.begin_rollout_iteration(state)
-    batch_metrics.observe_rollout_samples(state, [NS()])
-    batch_metrics.record_rollout_training(state, [0])
-    assert batch_metrics.rollout_memory_metrics(state) == {}
-    assert batch_metrics.rollout_iteration_metrics(state) == {}
-    batch_metrics.finish_rollout_metrics(state)
-    assert not hasattr(state, '_iteration_facts')
+    from swift.dev.recipe.utils import RolloutStepState
+
+    # Fresh instance WITHOUT setup_rollout_metrics: every helper must be a harmless no-op.
+    state = RolloutStepState.__new__(RolloutStepState)
+    state._metric_context = {}
+    state._run_metric = None
+    state._completed_batches = state._batch_wall_ns = 0
+    state._rollout_groups = state._trained_samples = 0
+    state._stream_previous = {}
+    state._iteration_started_ns = None
+    state._iteration_facts = None
+    state._memory_rows = None
+    state.begin_rollout_iteration()
+    state.observe_rollout_samples([NS()])
+    state.record_rollout_training([0])
+    assert state.rollout_memory_metrics() == {}
+    assert state.fold_iteration_metrics() == {}
+    state.finish_rollout_metrics()
+    assert state._iteration_facts is None  # cleared, not deleted: the field is permanent now
 
 
 def test_nested_logging_excludes_overlap_once(tmp_path, perf_clock):
@@ -201,7 +235,7 @@ def test_nested_logging_excludes_overlap_once(tmp_path, perf_clock):
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path)
-    batch_metrics.observe_rollout_samples(state, [sample()])
+    state.observe_rollout_samples([sample()])
     with default_recorder.span("update_actor"):
         perf_clock.advance(1)
         with default_recorder.span("_logging"):
@@ -210,7 +244,7 @@ def test_nested_logging_excludes_overlap_once(tmp_path, perf_clock):
                 perf_clock.advance(1)
             perf_clock.advance(1)
         perf_clock.advance(2)
-    batch_metrics.rollout_iteration_metrics(state)
+    state.fold_iteration_metrics()
     row = iteration_rows(tmp_path, state)[0]
     assert row["data"]["timing_s/update_actor"] == row["data"]["timing_s/step"] == 3
     assert row["data"]["observability/iteration_wall_seconds"] == 6
@@ -221,19 +255,19 @@ def test_publication_counter_deltas_and_terminal_summary_use_existing_tracker(tm
     state = observed_state(tmp_path)
     for step, publish_time, publications in [(1, 0.5, 1), (2, 0.5, 1)]:
         if step > 1:
-            batch_metrics.begin_rollout_iteration(state)
+            state.begin_rollout_iteration()
         # one second until the pulled samples arrive: the 'gen' fallback window end
         perf_clock.advance(1)
-        batch_metrics.observe_rollout_samples(state, [sample()])
+        state.observe_rollout_samples([sample()])
         perf_clock.advance(1)
         state.global_step = step
-        batch_metrics.rollout_iteration_metrics(
-            state, stream_stats={"publish_time": publish_time, "publishes": publications})
+        state.fold_iteration_metrics(
+            stream_stats={"publish_time": publish_time, "publishes": publications})
     rows = iteration_rows(tmp_path, state)
     assert [row["data"]["training/weight_publications_this_iteration"] for row in rows] == [1, 0]
     assert [row["data"]["timing_s/update_weights"] for row in rows] == [0.5, 0]
     assert all(row["data"]["timing_s/gen"] == 1 for row in rows)
-    batch_metrics.finish_rollout_metrics(state, stream_stats={"dropped_incomplete": 3, "final_version": 2})
+    state.finish_rollout_metrics(stream_stats={"dropped_incomplete": 3, "final_version": 2})
     state.tracker.close()
     summary = json.loads((tmp_path / "summary.json").read_text())
     assert summary["result"]["completed_iterations"] == 2
@@ -246,12 +280,12 @@ def test_default_worker_recorder_reset_does_not_erase_iteration_observations(tmp
     from twinkle.perf import Perf, default_recorder
 
     state = observed_state(tmp_path)
-    batch_metrics.observe_rollout_samples(state, [sample()])
+    state.observe_rollout_samples([sample()])
     with default_recorder.span("gen"):
         perf_clock.advance(2)
     # The logging-cadence dump resets the window aggregates but must not erase the
     # event stream the iteration's phase reduction still reads.
     Perf.dump_process()
-    batch_metrics.rollout_iteration_metrics(state)
+    state.fold_iteration_metrics()
     assert iteration_rows(tmp_path, state)[0]["data"]["timing_s/gen"] == 2
     state.tracker.close()
