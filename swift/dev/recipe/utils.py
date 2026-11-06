@@ -1261,7 +1261,7 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
     Mirrors the train metric path on the eval side: each val batch runs ``forward_only`` (no grad)
     then ``calculate_loss`` (fills this batch's loss); a final ``calculate_metric(False)`` aggregates
     and resets. Megatron already produced the loss inside forward_only -- its ``calculate_loss``
-    raises NotImplementedError, treated as already populated.
+    is a no-op returning inf; the metric state is already populated.
 
     ``eval_group_size`` batches N dataloader batches into one forward call (1 = the historic
     one-batch-per-call). N > 1 serves Megatron's VPP scheduler, which rejects a forward whose
@@ -1279,10 +1279,9 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
 
     def _forward(chunk: list) -> None:
         model.forward_only(**micro_step_kwargs(chunk, micro_batch_size=micro_batch_size))
-        try:
-            model.calculate_loss()
-        except NotImplementedError:
-            pass
+        # Megatron's calculate_loss is a no-op returning inf (the loss already came out of
+        # forward_only); transformers' populates the metric state. The return value is unused.
+        model.calculate_loss()
 
     group: list = []
     consumed = 0
