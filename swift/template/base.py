@@ -1398,7 +1398,7 @@ class Template(ProcessorMixin):
                 is_react = agent.keyword.action in pre_content and agent.keyword.action_input in pre_content
                 if (user_end > i + 1 and self.use_chat_template
                         and (not inputs.is_multimodal or media_inputs_supported)):
-                    if is_react:
+                    if is_react and agent.uses_react_tool_responses:
                         merged = agent._format_react_tool_user_followup(messages[i_start:i + 1],
                                                                         messages[i + 1:user_end])
                     else:

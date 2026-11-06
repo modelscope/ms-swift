@@ -171,6 +171,10 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
     - `get_toolcall`: Extract tool calls from agent responses
     """
 
+    #: Whether this template's assistant turn ends without a native tool-response wrapper, so the
+    #: merged tool/user turn must write the ReAct ``Observation:`` marker itself.
+    uses_react_tool_responses = False
+
     def _format_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
         """Render tool results and subsequent user turns, including the assistant prefix.
 
