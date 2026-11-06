@@ -613,8 +613,7 @@ class TemperatureCalibrationCallback(TrainerCallback):
         nlls: List[float] = []
         for it in all_items:
             fold = half[it['record_id']]
-            eval_fold = 1 - fold
-            t = _clamp_temperature(fold_head_t[eval_fold] * fold_relative[eval_fold].get(it['kind'], 1.0))
+            t = _clamp_temperature(fold_head_t[fold] * fold_relative[fold].get(it['kind'], 1.0))
             logit = it['logits']
             target = it['target']
             mask = it['mask']
