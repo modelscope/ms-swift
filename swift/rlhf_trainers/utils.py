@@ -851,14 +851,20 @@ def replace_assistant_response_with_ids(messages: 'Messages',
         completion_ids = list(completion_ids)
         loss_mask = list(loss_mask) if loss_mask is not None else [[1] * len(ids) for ids in completion_ids]
         n_prefix = len(non_thinking_prefix_ids)
-        last_ids = list(completion_ids[-1])
-        # Multi-turn schedulers may already have inserted and masked the prefix.
-        # Matching token values alone cannot distinguish that from a sampled repetition.
-        prefix_is_masked = (
-            last_ids[:n_prefix] == list(non_thinking_prefix_ids) and loss_mask[-1][:n_prefix] == [0] * n_prefix)
-        if not prefix_is_masked:
-            completion_ids[-1] = list(non_thinking_prefix_ids) + last_ids
-            loss_mask[-1] = [0] * n_prefix + list(loss_mask[-1])
+        prefix = list(non_thinking_prefix_ids)
+        prefix_mask = [0] * n_prefix
+        for i, ids in enumerate(completion_ids):
+            ids = list(ids)
+            mask = list(loss_mask[i])
+            # Multi-turn schedulers may already have inserted and masked the
+            # prefix. Matching token values alone cannot distinguish that from
+            # a sampled repetition.
+            prefix_is_masked = ids[:n_prefix] == prefix and mask[:n_prefix] == prefix_mask
+            if not prefix_is_masked:
+                ids = prefix + ids
+                mask = prefix_mask + mask
+            completion_ids[i] = ids
+            loss_mask[i] = mask
 
     if loss_mask:
         assert (
