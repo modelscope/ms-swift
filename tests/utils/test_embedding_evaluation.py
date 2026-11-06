@@ -100,36 +100,40 @@ def _evaluate_worker(rank, directory):
         from swift.pipelines.train.sft import SwiftSft
         from swift.trainers import EmbeddingTrainer
 
+    # CPU ranks do not use the host's accelerator count for model parallelism.
+    os.environ['SWIFT_SINGLE_DEVICE_MODE'] = '1'
     try:
         for kind in ['infonce', 'paired']:
-            args = SftArguments(
-                model=str(directory / 'model'),
-                model_type='qwen3_emb',
-                task_type='embedding',
-                dataset=[str(directory / 'data.jsonl')],
-                loss_type='infonce' if kind == 'infonce' else 'cosine_similarity',
-                output_dir=str(directory / kind),
-                use_cpu=True,
-                enable_npu_model_patch=False,
-                device_map='cpu',
-                torch_dtype='float32',
-                attn_impl='eager',
-                ddp_backend='gloo',
-                tuner_type='full',
-                max_length=64,
-                per_device_eval_batch_size=2,
-                max_steps=1,
-                report_to=[],
-                save_strategy='no',
-                eval_strategy='steps',
-                split_dataset_ratio=0,
-                disable_tqdm=True,
-                dataloader_num_workers=0,
-                gradient_checkpointing=False,
-                padding_free=False,
-                check_model=False,
-                add_version=False,
-                use_hf=True)
+            # SftArguments otherwise selects a physical accelerator by LOCAL_RANK.
+            with patch('swift.arguments.base_args.base_args.set_device'):
+                args = SftArguments(
+                    model=str(directory / 'model'),
+                    model_type='qwen3_emb',
+                    task_type='embedding',
+                    dataset=[str(directory / 'data.jsonl')],
+                    loss_type='infonce' if kind == 'infonce' else 'cosine_similarity',
+                    output_dir=str(directory / kind),
+                    use_cpu=True,
+                    enable_npu_model_patch=False,
+                    device_map='cpu',
+                    torch_dtype='float32',
+                    attn_impl='eager',
+                    ddp_backend='gloo',
+                    tuner_type='full',
+                    max_length=64,
+                    per_device_eval_batch_size=2,
+                    max_steps=1,
+                    report_to=[],
+                    save_strategy='no',
+                    eval_strategy='steps',
+                    split_dataset_ratio=0,
+                    disable_tqdm=True,
+                    dataloader_num_workers=0,
+                    gradient_checkpointing=False,
+                    padding_free=False,
+                    check_model=False,
+                    add_version=False,
+                    use_hf=True)
             pipeline = SwiftSft(args)
             encoded = [pipeline.template.encode(row) for row in _rows(kind)]
             dataset = _EncodedDataset(encoded)
@@ -139,6 +143,8 @@ def _evaluate_worker(rank, directory):
                 template=pipeline.template,
                 train_dataset=dataset,
                 eval_dataset=dataset)
+            assert trainer.accelerator.device.type == 'cpu'
+            assert trainer.accelerator.num_processes == 2
             trainer.callback_handler.on_train_begin(trainer.args, trainer.state, trainer.control)
             trainer.model.eval()
             predictions, labels = [], []
