@@ -215,10 +215,6 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
                     res.append(context)
         return res
 
-    def _supports_tool_user_followup_media(self, inputs, template_meta) -> bool:
-        """Whether multimodal inputs may merge a tool result with a following user turn."""
-        return False
-
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
         """Hook to prepend a separator before tool_call content based on the preceding message.
 
