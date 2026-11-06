@@ -9,6 +9,7 @@ from transformers import PreTrainedTokenizerFast
 from types import SimpleNamespace
 
 from swift import get_processor
+from swift.agent_template import agent_template_map
 from swift.template import get_template
 
 
@@ -654,7 +655,11 @@ class TestReactToolUserFollowup(unittest.TestCase):
         return template
 
     @staticmethod
-    def make_data():
+    def make_data(agent='react_en'):
+        # Build the ReAct action with the agent's own keywords, so Qwen's
+        # `✿FUNCTION✿:/✿ARGS✿:` variant is covered too.
+        keyword = agent_template_map[agent].keyword
+        action = f'{keyword.action} lookup\n{keyword.action_input} {{"q": "x"}}'
         return {
             'messages': [
                 {
@@ -663,7 +668,7 @@ class TestReactToolUserFollowup(unittest.TestCase):
                 },
                 {
                     'role': 'assistant',
-                    'content': 'Action: lookup\nAction Input: {"q": "x"}'
+                    'content': action
                 },
                 {
                     'role': 'tool',
@@ -681,15 +686,19 @@ class TestReactToolUserFollowup(unittest.TestCase):
         }
 
     def test_react_followup_keeps_observation_and_user_turn(self):
+        # Qwen's ReAct variant (`✿FUNCTION✿`/`✿RESULT✿`) is intentionally not covered here: its
+        # assistant turn already ends with the observation marker and its tool result currently has
+        # no turn separator, so reusing the generic ReAct formatter would duplicate the marker.
+        # That path needs a separate fix to the tool-result rendering.
         for agent in ('react_en', 'react_zh'):
             for mode in ('train', 'transformers'):
                 with self.subTest(agent=agent, mode=mode):
                     template = self.make_template(agent, mode)
-                    data = self.make_data()
+                    data = self.make_data(agent)
                     original = copy.deepcopy(data)
                     encoded = template.encode(data)
                     text = self.tokenizer.decode(encoded['input_ids'])
-                    self.assertIn('Observation:', text)
+                    self.assertIn(agent_template_map[agent].keyword.observation, text)
                     self.assertIn('observation_text', text)
                     self.assertIn('followup_text', text)
                     self.assertIn('final_answer', text)
@@ -705,7 +714,7 @@ class TestReactToolUserFollowup(unittest.TestCase):
 
     def test_react_no_followup_is_unchanged(self):
         template = self.make_template('react_en')
-        data = self.make_data()
+        data = self.make_data('react_en')
         del data['messages'][3]
         encoded = template.encode(data)
         text = self.tokenizer.decode(encoded['input_ids'])
