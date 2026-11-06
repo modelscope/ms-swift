@@ -7,7 +7,7 @@ from functools import partial
 from megatron.core import mpu
 from typing import Any, Dict, List, Optional
 
-from swift.megatron.trainers.gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
+from swift.megatron.trainers.gkd_utils import tp_gather_topk, vocab_parallel_topk
 from swift.megatron.trainers.utils import prepare_batch
 from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
 from swift.megatron.utils import forward_step_helper
@@ -86,7 +86,6 @@ class GKDLoss(Loss):
     # ------------------------------------------------------------------
 
     def loss_func(self, output_tensor, *, labels, teacher_output, data_source=None, model=None):
-        args = self.args
         student_logits = output_tensor
 
         jsd_total, jsd_num_valid = gkd_loss(
@@ -98,10 +97,8 @@ class GKDLoss(Loss):
             gather_fn=tp_gather_topk,
             log_softmax_fn=vocab_parallel_log_softmax,
             kl_div_fn=vocab_parallel_kl_div)
-        jsd_loss_val = cp_reduce(jsd_total, jsd_num_valid, cp_size=args.context_parallel_size)
-
-        loss = jsd_loss_val
-        sft_loss = None
+        loss = jsd_total
+        sft_loss_sum = None
         # SFT loss only applies to ground-truth (dataset) responses; skip it on
         # student-generated (on-policy) responses, matching the non-ray GKD trainer.
         if self.sft_alpha > 0 and data_source != DataSource.STUDENT:
@@ -118,24 +115,19 @@ class GKDLoss(Loss):
             per_token_loss = unwrapped.compute_language_model_loss(labels, logits_sbv)
             loss_mask = labels != -100
             sft_loss_sum = (per_token_loss * loss_mask).sum()
-            sft_loss_count = loss_mask.sum().float()
-            if args.context_parallel_size > 1:
-                sft_stats = torch.stack([sft_loss_sum, sft_loss_count])
-                torch.distributed.all_reduce(
-                    sft_stats, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
-                sft_loss_sum, sft_loss_count = sft_stats[0], sft_stats[1]
-            sft_loss = sft_loss_sum / sft_loss_count if sft_loss_count > 0 else sft_loss_sum * 0
-            loss = loss + self.sft_alpha * sft_loss
+            loss = loss + self.sft_alpha * sft_loss_sum
 
-        metric = {'loss': loss.detach().clone()}
-        if sft_loss is not None:
-            metric['jsd_loss'] = jsd_loss_val.detach().clone()
-            metric['sft_loss'] = sft_loss.detach().clone()
+        # Match native Megatron GKD: MCore normalizes gradient sums by the global
+        # token count across DP and CP, so return local loss sums and counts.
+        num_tokens = jsd_num_valid.detach().to(torch.int)
+        metric = {'loss': torch.stack([loss.detach().float(), num_tokens.float()])}
+        if sft_loss_sum is not None:
+            metric['jsd_loss'] = torch.stack([jsd_total.detach().float(), num_tokens.float()])
+            metric['sft_loss'] = torch.stack([sft_loss_sum.detach().float(), num_tokens.float()])
 
-        dp_group = mpu.get_data_parallel_group()
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
         reporting = torch.stack(list(metric.values()), dim=0)
-        torch.distributed.all_reduce(reporting, torch.distributed.ReduceOp.AVG, group=dp_group)
+        torch.distributed.all_reduce(reporting, torch.distributed.ReduceOp.SUM, group=dp_group)
         metric = {k: reporting[i] for i, k in enumerate(metric.keys())}
 
-        loss = loss / mpu.get_context_parallel_world_size()
-        return loss, metric
+        return loss, num_tokens, metric
