@@ -31,26 +31,7 @@ class Xing4_0AgentTemplate(BaseAgentTemplate):
         values = re.findall(r'<param_value>(.*?)</param_value>', single_content, re.DOTALL)
         if len(keys) != len(values):
             return None
-        properties = (tool_schemas or {}).get(func_name, {}).get('properties', {})
-        if not isinstance(properties, dict):
-            properties = {}
-        args = {}
-        for key, value in zip(keys, values):
-            key = key.strip()
-            param_schema = properties.get(key, {})
-            param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
-            # The wire format leaves strings unquoted, including JSON-looking strings and whitespace.
-            type_list = param_type if isinstance(param_type, list) else [param_type]
-            is_string = 'string' in type_list
-            if is_string and 'null' in type_list:
-                # Bare null is ambiguous; keep decoding it as JSON null.
-                is_string = value.strip() != 'null'
-            if not is_string:
-                try:
-                    value = json.loads(value)
-                except (json.JSONDecodeError, ValueError):
-                    pass
-            args[key] = value
+        args = BaseAgentTemplate._decode_schema_args(zip(keys, values), tool_schemas, func_name)
         return Function(name=func_name, arguments=json.dumps(args, ensure_ascii=False))
 
     def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
