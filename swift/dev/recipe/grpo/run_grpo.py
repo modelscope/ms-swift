@@ -17,25 +17,26 @@ from swift.dev.recipe.grpo.assembly import (
     initialize_cluster,
     weighted_reward,
 )
+from twinkle.perf import span as perf_span
+
 from swift.dev.recipe.utils import (
     StepState,
     _log_line,
-    batch_memory,
-    batch_stage,
-    begin_batch,
+    begin_rollout_iteration,
     build_save_knobs,
     collect,
-    finish_batch,
-    finish_batch_metrics,
-    init_batch_metrics,
+    finish_rollout_metrics,
+    init_rollout_metrics,
     initialize_rl_devices,
-    observe_batch,
+    observe_rollout_samples,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
-    record_batch_training,
+    record_rollout_training,
     resolve_generation_batch_size,
     resolve_rollout_max_steps,
     resume_training,
+    rollout_iteration_metrics,
+    rollout_memory_metrics,
     rollout_step_budget,
     save_final_checkpoint,
     save_training_step,
@@ -328,20 +329,20 @@ def _train_mini_batches(
         kwargs = _forward_kwargs(rl_config, *batch, temperature, micro_batch_size=train_batch_size // dp_size)
         kwargs.update(batching_kwargs or {})
         micro_batches = (hi - lo) // train_batch_size  # Nominal count; DBS schedules physical batches internally.
-        with batch_stage(state, "update_actor"):
-            if chord_fn is not None:
-                _chord_forward_backward(
-                    model, rl_config, kwargs, chord_fn, step=state.global_step, num_micro_batches=micro_batches
-                )
-            else:
-                model.forward_backward(**kwargs)
-            with batch_stage(state, "optimizer"):
-                # This side effect has no downstream tensor consumer to propagate worker errors.
-                collect(model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1))
-            state.micro_step += micro_batches
-            record_rollout_step(state, plan)
-            record_batch_training(state, indices)
-            batch_memory(state)
+        if chord_fn is not None:
+            _chord_forward_backward(
+                model, rl_config, kwargs, chord_fn, step=state.global_step, num_micro_batches=micro_batches
+            )
+        else:
+            model.forward_backward(**kwargs)
+        # clip_grad_and_step is declared sync=True on the model: worker exceptions surface here.
+        model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.micro_step += micro_batches
+        record_rollout_step(state, plan)
+        record_rollout_training(state, indices)
+        # Sample worker memory for THIS iteration before step_tail can run a periodic
+        # checkpoint (rows are cached on the state; later reads reuse them).
+        rollout_memory_metrics(state)
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
             ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
@@ -470,29 +471,29 @@ def _colocate_loop(
     # Initial publication stays outside the measured iterations.
     from swift.dev.recipe.offload import wake_for_rollout
     wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ["weights"])
-    collect(cluster.engine.sync_weights(merge_and_sync=True))
+    cluster.engine.sync_weights(merge_and_sync=True)
     entered = False
     sampler_awake = True
     try:
         for batch_rows in dataloader:
             if state.reached_max() or state.should_stop():
                 break
-            begin_batch(state)
+            begin_rollout_iteration(state)
             # Weights were published at initialization or the preceding iteration end.
+            # Phase timing is the dispatch layer's driver-side auto-spans (twinkle.perf).
             from swift.dev.recipe.offload import offload_for_rollout
-            with batch_stage(state, 'trainer_offload'):
-                offload_for_rollout(cluster.model, rollout_config)
-            with batch_stage(state, 'sampler_wake_kv'):
-                collect(wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['kv_cache']))
+            offload_for_rollout(cluster.model, rollout_config)
+            wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['kv_cache'])
             entered = True
             prompts = [row['messages'] for row in batch_rows]
             extras = [{key: value for key, value in row.items() if key != 'messages'} for row in batch_rows]
-            with batch_stage(state, 'gen'):
+            # The canonical phase names stay recipe-owned (the metric contract); the remote calls
+            # inside also carry their own auto-spans, nested under these.
+            with perf_span('gen'):
                 samples = cluster.rollout.generate(
                     prompts, num_samples=num_generations, sampling_params=cluster.sampling_params,
                     prompt_extras=extras or None)
-                with batch_stage(state, 'reward'):
-                    rewards = _score_group(cluster, samples, with_prm=True)
+                rewards = _score_group(cluster, samples, with_prm=True)
                 for sample, reward in zip(samples, rewards):
                     sample.orm_reward = reward
                 _record_reward_metric(
@@ -506,7 +507,8 @@ def _colocate_loop(
                 if rl_config.advantage_estimator == 'remax':
                     _set_remax_baselines(cluster, samples, prompts, extras, num_generations, weights)
                 if rl_config.log_completions:
-                    with batch_stage(state, '_logging'):
+                    # '_logging' is the excluded band in rollout_iteration_metrics' phase reduction.
+                    with perf_span('_logging'):
                         cluster.worker.log_completions(
                             samples, [sample.orm_reward for sample in samples], state.global_step + 1,
                             os.path.join(output_dir, 'completions.jsonl'))
@@ -518,17 +520,14 @@ def _colocate_loop(
                 from swift.dev.recipe.offload import sleep_for_rollout
                 sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                 sampler_awake = False
-            with batch_stage(state, 'trainer_reload'):
-                cluster.model.reload_to_gpu()
+            cluster.model.reload_to_gpu()
             entered = False
-            observe_batch(state, samples)
-            with batch_stage(state, 'adv_pipeline'):
-                advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
-                    cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
-                    correction_out=correction_out, batching_kwargs=batching_kwargs,
-                )
-            with batch_stage(state, "routing_replay"):
-                _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size, batching_kwargs)
+            observe_rollout_samples(state, samples)
+            advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
+                cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
+                correction_out=correction_out, batching_kwargs=batching_kwargs,
+            )
+            _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size, batching_kwargs)
             _train_mini_batches(
                 state,
                 rl_config,
@@ -544,13 +543,12 @@ def _colocate_loop(
                 ema_manager=ema_manager,
                 save=save,
             )
-            memory = batch_memory(state)
-            with batch_stage(state, "update_weights"):
+            with perf_span('update_weights'):
                 wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ["weights"])
                 sampler_awake = True
-                collect(cluster.engine.sync_weights(merge_and_sync=True))
-            finish_batch(
-                state, memory=memory, publications=1,
+                cluster.engine.sync_weights(merge_and_sync=True)
+            rollout_iteration_metrics(
+                state, publications=1,
                 terminal=state.reached_max() or state.should_stop())
             if state.reached_max() or state.should_stop():
                 break
@@ -610,16 +608,15 @@ def _disaggregated_loop(
         num_train_epochs=num_train_epochs, max_steps=state.max_steps, output_dir=output_dir)
     if metrics_cells is not None:
         metrics_cells[0].append(driver)
-    memory = None
     if hasattr(state, '_run_metric'):
-        driver.on_iteration_start = lambda: begin_batch(state)
-        driver.on_iteration_end = lambda terminal: finish_batch(
-            state, **driver.performance_snapshot(), memory=memory, terminal=terminal)
+        driver.on_iteration_start = lambda: begin_rollout_iteration(state)
+        driver.on_iteration_end = lambda terminal: rollout_iteration_metrics(
+            state, **driver.performance_snapshot(), terminal=terminal)
     strategy = rollout_config.weight_sync_strategy
     steps_since_publish = 0
     try:
         for samples in driver:
-            observe_batch(state, samples)
+            observe_rollout_samples(state, samples)
             # The driver's built-in group-barrier scoring has already written orm_reward onto every
             # sample (the same contract the colocate loop's _score_group yields), so the reward
             # aggregate can be recorded from the pull itself -- same metric, same reset-per-batch
@@ -627,7 +624,8 @@ def _disaggregated_loop(
             _record_reward_metric(
                 samples, orm_scorers=cluster.orm_scorers, orm_weights=reward_config.orm_weights,
                 reward_metric=reward_metric)
-            with batch_stage(state, '_logging'):
+            # '_logging' is the excluded band in rollout_iteration_metrics' phase reduction.
+            with perf_span('_logging'):
                 _log_completions(cluster, rl_config, samples, state, output_dir)
                 state.tracker.log_prompts([sample.prompt for sample in samples], samples,
                                           state.global_step + 1, 1)
@@ -638,13 +636,11 @@ def _disaggregated_loop(
                 # version, which climbs every publish and would report a synchronous run as off-policy.
                 versions = [sample.version_span for sample in samples]
                 metrics_cells[1][:1] = [versions]
-            with batch_stage(state, 'adv_pipeline'):
-                advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
-                    cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
-                    correction_out=correction_out, batching_kwargs=batching_kwargs,
-                )
-            with batch_stage(state, "routing_replay"):
-                _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size, batching_kwargs)
+            advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
+                cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
+                correction_out=correction_out, batching_kwargs=batching_kwargs,
+            )
+            _prepare_routing_replay(cluster.model, rl_config, samples, train_batch_size, batching_kwargs)
             optimizer_steps = _train_mini_batches(
                 state,
                 rl_config,
@@ -678,7 +674,6 @@ def _disaggregated_loop(
                     # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
                     driver.request_publish()
                 steps_since_publish = 0
-            memory = batch_memory(state)
             driver.commit(optimizer_steps)
             if state.reached_max() or state.should_stop():
                 break
@@ -859,7 +854,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         extra_metrics_fn=_extra_metrics,
         log_formatter=_grpo_log_line)
 
-    init_batch_metrics(
+    init_rollout_metrics(
         state, template.performance_device_groups,
         mode='colocate' if cluster.colocate else rollout_config.resource_mode,
         parameter_sync_step=1 if cluster.colocate else rollout_config.parameter_sync_step,
@@ -968,7 +963,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     finally:
         try:
             snapshot = _driver_cell[0].performance_snapshot() if _driver_cell else {}
-            finish_batch_metrics(
+            finish_rollout_metrics(
                 state, stream_stats=snapshot.get('stream_stats'),
                 status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         finally:

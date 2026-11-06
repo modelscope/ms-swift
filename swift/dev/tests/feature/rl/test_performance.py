@@ -8,7 +8,7 @@ import pytest
 
 from swift.dev.recipe import utils as batch_metrics
 from swift.dev.recipe.utils import RunTracker
-from swift.dev.tests.component.recipe.test_iteration_metrics import iteration_rows
+from swift.dev.tests.component.recipe.test_iteration_metrics import iteration_rows, perf_clock
 
 
 def sample(prompt=3, response=2, *, tool=0):
@@ -58,7 +58,7 @@ def test_raw_training_record_uses_native_normalization_and_preserves_observation
     assert row['attributes']['non_numeric_values'] == {'loss': None, 'note': 'pending%', 'details': [1, 2]}
 
 
-def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch):
+def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch, perf_clock):
     mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
     events = []
     awake = set()
@@ -93,12 +93,13 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch):
     )
     state = NS(model=model, global_step=0, reached_max=lambda: state.global_step >= 2, should_stop=lambda: False)
     state.tracker = RunTracker(None, str(tmp_path))
-    batch_metrics.init_batch_metrics(state, [("trainer", [0])])
+    batch_metrics.init_rollout_metrics(state, [("trainer", [0])])
     monkeypatch.setattr(mod, "_advantage_pipeline", lambda *a, **kw: (None,) * 4)
     monkeypatch.setattr(mod, "_prepare_routing_replay", lambda *a: None)
 
     def train(*a, **kw):
         events.append(("train", state.global_step))
+        perf_clock.advance(1)  # one second of optimizer work per train call
         state.global_step += 1
         return 1
 
@@ -164,9 +165,9 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
     state.record = record
     state.step_tail = tail
     state.tracker = RunTracker(None, str(tmp_path))
-    batch_metrics.init_batch_metrics(state, [("trainer", [0])])
-    batch_metrics.begin_batch(state)
-    batch_metrics.observe_batch(state, [sample()])
+    batch_metrics.init_rollout_metrics(state, [("trainer", [0])])
+    batch_metrics.begin_rollout_iteration(state)
+    batch_metrics.observe_rollout_samples(state, [sample()])
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -179,7 +180,7 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
         teacher_logps=None,
         temperature=1,
     )
-    result = batch_metrics.batch_memory(state)
+    result = batch_metrics.rollout_memory_metrics(state)
     assert result["perf/max_memory_allocated_gb"] == 2
     assert events == ["memory", "checkpoint"]  # no post-checkpoint resampling
     state.tracker.close()
@@ -221,9 +222,9 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
 
     state.record = record
     state.tracker = RunTracker(None, str(tmp_path))
-    batch_metrics.init_batch_metrics(state, [("trainer", [0])])
-    batch_metrics.begin_batch(state)
-    batch_metrics.observe_batch(state, [sample()] * 3)
+    batch_metrics.init_rollout_metrics(state, [("trainer", [0])])
+    batch_metrics.begin_rollout_iteration(state)
+    batch_metrics.observe_rollout_samples(state, [sample()] * 3)
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -236,10 +237,10 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
         teacher_logps=None,
         temperature=1,
     )
-    assert batch_metrics.batch_memory(state)["perf/max_memory_allocated_gb"] == 1
+    assert batch_metrics.rollout_memory_metrics(state)["perf/max_memory_allocated_gb"] == 1
     assert snapshots == [1]
-    assert state._batch_observation.sample_visits == 2
-    assert state._batch_observation.trained_indices == {0, 1}
+    assert state._iteration_facts["sample_visits"] == 2
+    assert state._iteration_facts["trained_indices"] == {0, 1}
     state.tracker.close()
 
 
@@ -262,16 +263,15 @@ def test_fresh_grpo_horizon_counts_first_complete_accumulation_window():
 def test_failed_optimizer_never_records_a_successful_update(tmp_path, monkeypatch):
     mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
 
-    class FailedUpdate:
-        _is_lazy_collect = True
-
-        def __call__(self):
-            raise RuntimeError("optimizer failed")
+    def failed_step(**kwargs):
+        # clip_grad_and_step is declared sync=True on both model backends, so a worker
+        # failure surfaces AT the call site -- the recipe no longer wraps it in collect().
+        raise RuntimeError("optimizer failed")
 
     model = NS(
         device_mesh=NS(data_world_size=1),
         forward_backward=lambda **kwargs: None,
-        clip_grad_and_step=lambda **kwargs: FailedUpdate(),
+        clip_grad_and_step=failed_step,
     )
     state = NS(
         model=model,
