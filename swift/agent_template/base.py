@@ -178,6 +178,25 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         """
         return None
 
+    def _format_react_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
+        """Render ReAct observations followed by user turns.
+
+        Keeps the ``Observation:`` prefix instead of the template's native tool-response wrapper,
+        because a ReAct assistant turn never carried a structured tool call.
+        """
+        try:
+            res = self._format_react_standalone_tool_responses(tool_messages)
+        except NotImplementedError:
+            return None
+        for message in user_messages:
+            for context in self.template_meta.prompt:
+                if isinstance(context, str) and '{{QUERY}}' in context:
+                    prefix, suffix = context.split('{{QUERY}}', 1)
+                    res.extend([prefix, message['content'], suffix])
+                else:
+                    res.append(context)
+        return res
+
     def _supports_tool_user_followup_media(self, inputs, template_meta) -> bool:
         """Whether tool results and a following user turn may be merged for this input.
 

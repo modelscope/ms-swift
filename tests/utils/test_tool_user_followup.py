@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+import pytest
 import unittest
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers
 from transformers import PreTrainedTokenizerFast
@@ -638,6 +639,111 @@ class TestToolResultsWithoutChatTemplate(unittest.TestCase):
                         self.assertEqual(data, original)
                         # Encoding again must not depend on metadata left by earlier calls.
                         self.assertEqual(template.encode(data), actual)
+
+
+class TestReactToolUserFollowup(unittest.TestCase):
+    """A ReAct assistant turn has no structured tool call, so the merged turn must keep
+    ``Observation:`` and the following user turn must still get its own boundary."""
+
+    def setUp(self):
+        self.tokenizer = _make_tokenizer()
+
+    def make_template(self, agent, mode='train'):
+        template = get_template(self.tokenizer, template_type='qwen2_5', agent_template=agent)
+        template.set_mode(mode)
+        return template
+
+    @staticmethod
+    def make_data():
+        return {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': 'question'
+                },
+                {
+                    'role': 'assistant',
+                    'content': 'Action: lookup\nAction Input: {"q": "x"}'
+                },
+                {
+                    'role': 'tool',
+                    'content': 'observation_text'
+                },
+                {
+                    'role': 'user',
+                    'content': 'followup_text'
+                },
+                {
+                    'role': 'assistant',
+                    'content': 'final_answer'
+                },
+            ]
+        }
+
+    def test_react_followup_keeps_observation_and_user_turn(self):
+        for agent in ('react_en', 'react_zh'):
+            for mode in ('train', 'transformers'):
+                with self.subTest(agent=agent, mode=mode):
+                    template = self.make_template(agent, mode)
+                    data = self.make_data()
+                    original = copy.deepcopy(data)
+                    encoded = template.encode(data)
+                    text = self.tokenizer.decode(encoded['input_ids'])
+                    self.assertIn('Observation:', text)
+                    self.assertIn('observation_text', text)
+                    self.assertIn('followup_text', text)
+                    self.assertIn('final_answer', text)
+                    self.assertEqual(data, original)
+                    if mode == 'train':
+                        self.assertEqual(len(encoded['labels']), len(encoded['input_ids']))
+                        supervised = self.tokenizer.decode([token for token in encoded['labels'] if token != -100])
+                        # Only assistant turns carry loss; the observation and the user turn do not.
+                        self.assertIn('Action:', supervised)
+                        self.assertIn('final_answer', supervised)
+                        self.assertNotIn('observation_text', supervised)
+                        self.assertNotIn('followup_text', supervised)
+
+    def test_react_no_followup_is_unchanged(self):
+        template = self.make_template('react_en')
+        data = self.make_data()
+        del data['messages'][3]
+        encoded = template.encode(data)
+        text = self.tokenizer.decode(encoded['input_ids'])
+        self.assertIn('Observation:', text)
+        self.assertNotIn('followup_text', text)
+
+
+def test_non_chat_user_followup_requires_chat_template(self):
+    tokenizer = _make_tokenizer()
+    template = get_template(tokenizer, template_type='qwen3_5', agent_template='qwen3_5', use_chat_template=False)
+    template.set_mode('train')
+    call = '<tool_call>\n<function=lookup>\n</function>\n</tool_call>'
+    data = {
+        'messages': [
+            {
+                'role': 'user',
+                'content': 'question'
+            },
+            {
+                'role': 'assistant',
+                'content': call
+            },
+            {
+                'role': 'tool',
+                'content': 'result'
+            },
+            {
+                'role': 'user',
+                'content': 'followup'
+            },
+            {
+                'role': 'assistant',
+                'content': 'answer'
+            },
+        ]
+    }
+    with pytest.raises(ValueError, match='use_chat_template'):
+        template.encode(data)
 
 
 if __name__ == '__main__':

@@ -1396,9 +1396,13 @@ class Template(ProcessorMixin):
                 media_inputs_supported = not inputs.objects and agent._supports_tool_user_followup_media(
                     inputs, self.template_meta)
                 is_react = agent.keyword.action in pre_content and agent.keyword.action_input in pre_content
-                if (user_end > i + 1 and self.use_chat_template and not is_react
+                if (user_end > i + 1 and self.use_chat_template
                         and (not inputs.is_multimodal or media_inputs_supported)):
-                    merged = agent._format_tool_user_followup(messages[i_start:i + 1], messages[i + 1:user_end])
+                    if is_react:
+                        merged = agent._format_react_tool_user_followup(messages[i_start:i + 1],
+                                                                        messages[i + 1:user_end])
+                    else:
+                        merged = agent._format_tool_user_followup(messages[i_start:i + 1], messages[i + 1:user_end])
                     if merged is not None:
                         query_message = {
                             **messages[user_end - 1], 'role': 'tool',
@@ -1408,6 +1412,10 @@ class Template(ProcessorMixin):
                         i = user_end - 1
                 messages[i_start:i + 1] = [query_message]
                 i = i_start + 1
+            elif pre_role == 'tool' and role == 'user' and not self.use_chat_template:
+                raise ValueError('A user turn after a tool result requires use_chat_template=True: the non-chat '
+                                 'encoder keeps only the last round and would silently drop the tool context. '
+                                 'Enable use_chat_template or use a single-round sample.')
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
                 # Consecutive messages from the assistant/user role need to be merged to prevent errors.
                 if self.template_backend == 'swift' and pre_role == 'assistant':
