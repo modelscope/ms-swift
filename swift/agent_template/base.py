@@ -174,46 +174,55 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
     #: Whether the merged turn must write the ReAct observation marker itself.
     uses_react_tool_responses = False
 
-    def _format_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
-        """Replace the native renderer's trailing assistant transition with the user turns.
+    def _append_user_turns(self, tool_content, user_messages) -> Optional['Prompt']:
+        """Append user turns after already-rendered tool content, closing every round."""
+        prompt = ''.join(self.template_meta.prompt)
+        if '{{QUERY}}' not in prompt:
+            return None
+        prefix, suffix = prompt.split('{{QUERY}}', 1)
+        chat_sep = ''.join(self.template_meta.chat_sep or [])
+        if len(user_messages) > 1 and not chat_sep:
+            return None
+        res = list(tool_content)
+        if chat_sep and (not res or not (isinstance(res[-1], str) and res[-1].endswith(chat_sep))):
+            res.append(chat_sep)
+        for i, message in enumerate(user_messages):
+            res.append(prefix + message['content'])
+            res.append(suffix if i == len(user_messages) - 1 else chat_sep)
+        return res
 
-        Returns None when the tail does not match this template's user prompt.
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
+        """Append user turns after the tool round, keeping that round's terminator.
+
+        `suffix` is usually `<turn terminator><assistant start>`; only the assistant part is
+        moved to the end of the last user turn, so every round stays closed.
         """
         prompt = ''.join(self.template_meta.prompt)
         if '{{QUERY}}' not in prompt:
             return None
         prefix, suffix = prompt.split('{{QUERY}}', 1)
+        chat_sep = ''.join(self.template_meta.chat_sep or [])
+        assistant_start = suffix[len(chat_sep):] if chat_sep and suffix.startswith(chat_sep) else suffix
         try:
             _, tool_content = self._format_tool_responses('', tool_messages)
         except NotImplementedError:
             return None
         tool_content = list(tool_content)
-        if not tool_content or not suffix:
+        if not tool_content or not assistant_start:
             return None
         last = tool_content[-1]
-        if not isinstance(last, str) or not last.endswith(suffix):
+        if not isinstance(last, str) or not last.endswith(assistant_start):
             return None
-        trimmed = last[:-len(suffix)]
+        trimmed = last[:-len(assistant_start)]
         if trimmed:
             tool_content[-1] = trimmed
         else:
             tool_content.pop()
-        return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
+        return self._append_user_turns(tool_content, user_messages)
 
-    def _format_react_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
-        """Render ReAct observations followed by user turns, keeping the observation marker."""
-        try:
-            res = self._format_react_standalone_tool_responses(tool_messages)
-        except NotImplementedError:
-            return None
-        for message in user_messages:
-            for context in self.template_meta.prompt:
-                if isinstance(context, str) and '{{QUERY}}' in context:
-                    prefix, suffix = context.split('{{QUERY}}', 1)
-                    res.extend([prefix, message['content'], suffix])
-                else:
-                    res.append(context)
-        return res
+    def _format_react_tool_user_followup(self, tool_content, user_messages) -> Optional['Prompt']:
+        """Append user turns after an already-rendered ReAct observation."""
+        return self._append_user_turns(tool_content, user_messages)
 
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
         """Hook to prepend a separator before tool_call content based on the preceding message.
