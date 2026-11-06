@@ -176,11 +176,32 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
     uses_react_tool_responses = False
 
     def _format_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
-        """Render tool results and subsequent user turns, including the assistant prefix.
+        """Render tool results followed by user turns, reusing the native turn boundaries.
 
-        Return None when this agent's native turn boundaries are not supported.
+        The native renderer already emits the trailing assistant transition, so it is replaced by
+        the user turns and then restored. Returns None when the template's user prompt cannot be
+        split or the renderer's tail does not match it (the caller then leaves the turn unmerged).
         """
-        return None
+        prompt = ''.join(self.template_meta.prompt)
+        if '{{QUERY}}' not in prompt:
+            return None
+        prefix, suffix = prompt.split('{{QUERY}}', 1)
+        try:
+            _, tool_content = self._format_tool_responses('', tool_messages)
+        except NotImplementedError:
+            return None
+        tool_content = list(tool_content)
+        if not tool_content or not suffix:
+            return None
+        last = tool_content[-1]
+        if not isinstance(last, str) or not last.endswith(suffix):
+            return None
+        trimmed = last[:-len(suffix)]
+        if trimmed:
+            tool_content[-1] = trimmed
+        else:
+            tool_content.pop()
+        return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
 
     def _format_react_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
         """Render ReAct observations followed by user turns.

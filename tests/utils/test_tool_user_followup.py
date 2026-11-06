@@ -755,5 +755,109 @@ def test_non_chat_user_followup_requires_chat_template():
         template.encode(data)
 
 
+class TestNativeToolUserFollowup(unittest.TestCase):
+    """Families that render tool results through their native template must also accept a user
+    turn after the tool result, without duplicating the tool-response wrapper."""
+
+    FAMILIES = (('xing4_0', 'xing4_0'), ('minicpm5', 'minicpm5'), ('minimax_m2', 'minimax_m2'),
+                ('minimax_m3', 'minimax'), ('ling3', 'ling3'), ('spark2_5', 'spark2_5'), ('seed_oss', 'seed_oss'))
+
+    def setUp(self):
+        self.tokenizer = _make_tokenizer()
+
+    def make_template(self, template_type, agent, mode='train'):
+        template = get_template(self.tokenizer, template_type=template_type, agent_template=agent)
+        template.set_mode(mode)
+        return template
+
+    @staticmethod
+    def make_call(template):
+        call = template.agent_template._format_tool_calls([{
+            'role':
+            'tool_call',
+            'content':
+            json.dumps({
+                'name': 'lookup',
+                'arguments': {
+                    'q': 'x'
+                }
+            })
+        }])
+        return ''.join(part for part in call if isinstance(part, str)) if isinstance(call, list) else call
+
+    @staticmethod
+    def user(content):
+        return {'role': 'user', 'content': content}
+
+    @staticmethod
+    def assistant(content):
+        return {'role': 'assistant', 'content': content}
+
+    def test_single_followup_per_family(self):
+        for agent, template_type in self.FAMILIES:
+            for mode in ('train', 'transformers'):
+                with self.subTest(agent=agent, mode=mode):
+                    template = self.make_template(template_type, agent, mode)
+                    call = self.make_call(template)
+                    data = {
+                        'messages': [
+                            self.user('question'),
+                            self.assistant(call),
+                            {
+                                'role': 'tool',
+                                'content': 'OBS'
+                            },
+                            self.user('follow'),
+                            self.assistant('answer'),
+                        ]
+                    }
+                    encoded = template.encode(data)
+                    text = self.tokenizer.decode(encoded['input_ids'])
+                    self.assertIn('OBS', text)
+                    self.assertIn('follow', text)
+                    self.assertIn('answer', text)
+                    if mode == 'train':
+                        self.assertEqual(len(encoded['labels']), len(encoded['input_ids']))
+                        supervised = self.tokenizer.decode([token for token in encoded['labels'] if token != -100])
+                        self.assertIn('answer', supervised)
+                        self.assertNotIn('follow', supervised)
+
+    def test_multi_turn_followups(self):
+        # `tool -> user -> tool -> user`: the second round must be merged the same way as the first.
+        for agent, template_type in self.FAMILIES + (('hermes', 'qwen2_5'), ('glm4_5', 'qwen2_5')):
+            with self.subTest(agent=agent):
+                template = self.make_template(template_type, agent)
+                call = self.make_call(template)
+                data = {
+                    'messages': [
+                        self.user('q1'),
+                        self.assistant(call),
+                        {
+                            'role': 'tool',
+                            'content': 'OBS1'
+                        },
+                        self.user('follow1'),
+                        self.assistant('answer1'),
+                        self.user('q2'),
+                        self.assistant(call),
+                        {
+                            'role': 'tool',
+                            'content': 'OBS2'
+                        },
+                        self.user('follow2'),
+                        self.assistant('answer2'),
+                    ]
+                }
+                encoded = template.encode(data)
+                text = self.tokenizer.decode(encoded['input_ids'])
+                for token in ('OBS1', 'OBS2', 'follow1', 'follow2', 'answer1', 'answer2'):
+                    self.assertIn(token, text)
+                self.assertEqual(len(encoded['labels']), len(encoded['input_ids']))
+                supervised = self.tokenizer.decode([token for token in encoded['labels'] if token != -100])
+                self.assertNotIn('follow1', supervised)
+                self.assertNotIn('follow2', supervised)
+                self.assertIn('answer2', supervised)
+
+
 if __name__ == '__main__':
     unittest.main()
