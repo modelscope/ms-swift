@@ -3,6 +3,7 @@ import copy
 import json
 import numpy as np
 import os
+import sys
 import tempfile
 import torch
 import torch.distributed as dist
@@ -13,6 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 from tokenizers import Tokenizer, models, pre_tokenizers
 from transformers import EvalPrediction, PreTrainedTokenizerFast
+from unittest.mock import patch
 
 
 def _create_model(directory):
@@ -90,10 +92,13 @@ def _evaluate_worker(rank, directory):
     torch.set_num_threads(1)
     dist.init_process_group(
         'gloo', init_method=f'file://{directory / "init"}', rank=rank, world_size=2, timeout=timedelta(seconds=90))
-    from swift.arguments import SftArguments
-    from swift.metrics import eval_metrics_map
-    from swift.pipelines.train.sft import SwiftSft
-    from swift.trainers import EmbeddingTrainer
+    # This fixture runs on CPU, including when the CI host also has an NPU.
+    # Model patches are applied on the first Swift import, before arguments exist.
+    with patch.object(sys, 'argv', [sys.argv[0], '--enable_npu_model_patch', 'false']):
+        from swift.arguments import SftArguments
+        from swift.metrics import eval_metrics_map
+        from swift.pipelines.train.sft import SwiftSft
+        from swift.trainers import EmbeddingTrainer
 
     try:
         for kind in ['infonce', 'paired']:
@@ -105,6 +110,7 @@ def _evaluate_worker(rank, directory):
                 loss_type='infonce' if kind == 'infonce' else 'cosine_similarity',
                 output_dir=str(directory / kind),
                 use_cpu=True,
+                enable_npu_model_patch=False,
                 device_map='cpu',
                 torch_dtype='float32',
                 attn_impl='eager',
