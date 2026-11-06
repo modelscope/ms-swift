@@ -60,6 +60,63 @@ def collect(result: Any) -> Any:
 _FALLBACK_LOGGING_STEPS = 1
 
 
+def rollout_phase_times(events, *, started_ns, ended_ns, received_ns=None):
+    """Reduce a consumed batch's spans, excluding the union of logging intervals.
+
+    The caller supplies the batch/publication boundaries. Parallel and nested phase
+    totals remain separate; their sum is not the elapsed time of the batch.
+    """
+    logging = []
+    for start, end in sorted((event[4], event[5]) for event in events if event[2] == '_logging'):
+        if logging and start <= logging[-1][1]:
+            logging[-1] = (logging[-1][0], max(end, logging[-1][1]))
+        else:
+            logging.append((start, end))
+
+    def elapsed(start, end):
+        excluded = sum(max(0, min(end, hi) - max(start, lo)) for lo, hi in logging)
+        return max(0, end - start - excluded) / 1e9
+
+    phases = {}
+    for _, _, name, _, start, end, _, _ in events:
+        if name != '_logging':
+            phases[name] = phases.get(name, 0.0) + elapsed(start, end)
+    phases['step'] = elapsed(started_ns, ended_ns)
+    if 'gen' not in phases and received_ns is not None:
+        phases['gen'] = elapsed(started_ns, received_ns)
+    return phases
+
+
+def rollout_metrics(*, prompt_lengths, response_lengths, timings, num_devices,
+                    wall_seconds, truncated=(), turns=(), extra_values=None):
+    """Calculate batch statistics without owning a loop, recorder or output sink.
+
+    Token/length/throughput formulas come from Twinkle. Optional per-sample flags
+    and assistant-turn counts describe this same batch, independently of rewards.
+    """
+    from twinkle.metric import ThroughputMetric
+
+    metric = ThroughputMetric()
+    metric.accumulate(prompt_lengths=prompt_lengths, response_lengths=response_lengths,
+                      timings=timings, num_devices=num_devices)
+    values = metric.calculate()
+    values.update(extra_values or {})
+    values.update({
+        'perf/gpu_seconds': timings['step'] * num_devices,
+        'observability/iteration_wall_seconds': wall_seconds,
+        'observability/excluded_logging_seconds': max(0.0, wall_seconds - timings['step']),
+    })
+    if truncated:
+        values['response/truncated_ratio'] = sum(truncated) / len(truncated)
+    if turns and all(isinstance(turn, (int, float)) for turn in turns):
+        values.update({
+            'rollout/assistant_turns/mean': sum(turns) / len(turns),
+            'rollout/assistant_turns/min': min(turns),
+            'rollout/assistant_turns/max': max(turns),
+        })
+    return values
+
+
 class SaveKnobs(NamedTuple):
     """One training run's checkpoint-writing settings (the dissolved CheckpointSaver half)."""
 
@@ -1465,6 +1522,15 @@ def coerce_metric_scalars(metrics: Dict[str, Any]) -> Dict[str, float]:
     return result
 
 
+def _raw_metric_value(value: Any) -> Any:
+    """Adapt legacy percentages; leave all other normalization to Twinkle."""
+    if isinstance(value, str) and value.strip().endswith('%'):
+        number = _coerce_scalar(value)
+        if number is not None:
+            return number
+    return value
+
+
 class RunTracker:
     """Own tracker setup, metric writes, and teardown for one training loop."""
 
@@ -1515,10 +1581,9 @@ class RunTracker:
         filtered = self._filter_metrics(metrics)
         if self._metric_reporter is not None:
             from twinkle.metric import MetricRecord
-            raw = coerce_metric_scalars(metrics)
-            # Keep nonfinite numeric observations as JSON null, before display
-            # loss filtering replaces them with a running average.
-            raw.update({key: value for key, value in metrics.items() if isinstance(value, (int, float))})
+            # Twinkle normalizes scalars and preserves other raw observations in
+            # attributes. Only percentage strings need Swift's legacy conversion.
+            raw = {key: _raw_metric_value(value) for key, value in metrics.items()}
             self.record(MetricRecord(
                 stage='train', optimizer_step=step, values=raw, attributes={'step_unit': 'optimizer_update'}))
         if not self.should_log(step, epoch_end=epoch_end):

@@ -4,8 +4,9 @@ from importlib import import_module
 from types import SimpleNamespace as NS
 
 import json
+import pytest
 
-from swift.dev.recipe.utils import RunTracker
+from swift.dev.recipe.utils import RunTracker, rollout_metrics
 from swift.dev.utils.scoring import sample_token_lengths
 
 grpo = import_module("swift.dev.recipe.grpo.run_grpo")
@@ -41,6 +42,33 @@ def test_lengths_include_tool_observations_and_exclude_padding():
     row.encoded["labels"] = labels[1:] + labels[:1]
     row.encoded["attention_mask"] = [1] * 9 + [0, 0]
     assert sample_token_lengths(row) == (3, 6)
+
+
+def test_shared_batch_statistics_do_not_require_rewards_or_recipe_state():
+    values = rollout_metrics(
+        prompt_lengths=[3, 6, 4], response_lengths=[0, 2, 5],
+        timings={'step': 5, 'gen': 3.5}, num_devices=2, wall_seconds=7,
+        truncated=[False, True, False], turns=[1, 2, 3],
+    )
+    assert values['perf/total_num_tokens'] == 20
+    assert values['perf/throughput'] == 2
+    assert values['perf/gpu_seconds'] == 10
+    assert values['observability/iteration_wall_seconds'] == 7
+    assert values['observability/excluded_logging_seconds'] == 2
+    assert values['response/truncated_ratio'] == pytest.approx(1 / 3)
+    assert values['rollout/assistant_turns/mean'] == 2
+    assert values['rollout/assistant_turns/min'] == 1
+    assert values['rollout/assistant_turns/max'] == 3
+    assert not any(key.startswith('train/') for key in values)
+
+
+@pytest.mark.parametrize('turns', [(), (1, None), (1, '2')])
+def test_unavailable_turn_counts_are_omitted(turns):
+    values = rollout_metrics(
+        prompt_lengths=[3, 3], response_lengths=[2, 2],
+        timings={'step': 1}, num_devices=1, wall_seconds=1, turns=turns,
+    )
+    assert not any(key.startswith('rollout/assistant_turns/') for key in values)
 
 
 def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp_path):

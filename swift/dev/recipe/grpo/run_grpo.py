@@ -31,6 +31,8 @@ from swift.dev.recipe.utils import (
     prompt_rows_from_dataset,
     resolve_rollout_max_steps,
     resume_training,
+    rollout_metrics,
+    rollout_phase_times,
     rollout_step_budget,
     save_final_checkpoint,
     save_training_step,
@@ -127,37 +129,15 @@ def _iteration_memory(state):
     return memory_metrics(batch.memory_rows)
 
 
-def _phase_times(batch, ended_ns):
-    """Swift chooses to exclude reporting time; the recorder retains raw intervals."""
-    events = batch.recorder.trace_events()
-    logging = []
-    for start, end in sorted((event[4], event[5]) for event in events if event[2] == "_logging"):
-        if logging and start <= logging[-1][1]:
-            logging[-1] = (logging[-1][0], max(end, logging[-1][1]))
-        else:
-            logging.append((start, end))
-
-    def elapsed(start, end):
-        excluded = sum(max(0, min(end, hi) - max(start, lo)) for lo, hi in logging)
-        return max(0, end - start - excluded) / 1e9
-
-    phases = {}
-    for _, _, name, _, start, end, _, _ in events:
-        if name != "_logging":
-            phases[name] = phases.get(name, 0.0) + elapsed(start, end)
-    phases["step"] = elapsed(batch.started_ns, ended_ns)
-    if "gen" not in phases and batch.received_ns is not None:
-        phases["gen"] = elapsed(batch.started_ns, batch.received_ns)
-    return phases
-
-
 def _finish_iteration(state, *, stream_stats=None, resource_metrics=None, memory=None, terminal=False, publications=0):
     batch = getattr(state, "_iteration", None)
     if batch is None or not batch.lengths:
         return
     memory = _iteration_memory(state) if memory is None else memory
     ended_ns = batch.clock_ns()
-    timings = _phase_times(batch, ended_ns)
+    events = batch.recorder.trace_events()
+    timings = rollout_phase_times(events, started_ns=batch.started_ns,
+                                  ended_ns=ended_ns, received_ns=batch.received_ns)
     stats = stream_stats or {}
     for name in ("publish_time", "publishes"):
         if name in stats:
@@ -174,21 +154,21 @@ def _finish_iteration(state, *, stream_stats=None, resource_metrics=None, memory
         "timings": timings,
         "num_devices": len({rank for _, ranks in groups for rank in ranks}),
     }
-    metric = ThroughputMetric()
-    metric.accumulate(**inputs)
-    values = metric.calculate()
-    state._run_metric.accumulate(**inputs)
     wall_seconds = (ended_ns - batch.started_ns) / 1e9
-    values.update(memory)
-    values.update({f"actor/{key}": value for key, value in memory.items()})
-    values.update(resource_metrics or {})
-    values.update(
-        {
-            f"stream/{key}": value
-            for key, value in stats.items()
-            if isinstance(value, (int, float)) and key not in ("total_time", "final_version", "dropped_incomplete")
-        }
+    values = rollout_metrics(
+        **inputs, wall_seconds=wall_seconds, truncated=batch.truncated, turns=batch.turns,
+        extra_values={
+            **memory,
+            **{f"actor/{key}": value for key, value in memory.items()},
+            **(resource_metrics or {}),
+            **{
+                f"stream/{key}": value
+                for key, value in stats.items()
+                if isinstance(value, (int, float)) and key not in ("total_time", "final_version", "dropped_incomplete")
+            },
+        },
     )
+    state._run_metric.accumulate(**inputs)
     values.update(
         {
             "training/optimizer_step_start": batch.optimizer_start,
@@ -198,20 +178,8 @@ def _finish_iteration(state, *, stream_stats=None, resource_metrics=None, memory
             "training/sample_visits": batch.sample_visits,
             "training/unique_samples_trained": len(batch.trained_indices),
             "training/samples_not_trained": len(batch.lengths) - len(batch.trained_indices),
-            "response/truncated_ratio": sum(batch.truncated) / len(batch.truncated),
-            "perf/gpu_seconds": timings["step"] * inputs["num_devices"],
-            "observability/iteration_wall_seconds": wall_seconds,
-            "observability/excluded_logging_seconds": max(0.0, wall_seconds - timings["step"]),
         }
     )
-    if batch.turns and all(isinstance(turns, (int, float)) for turns in batch.turns):
-        values.update(
-            {
-                "rollout/assistant_turns/mean": sum(batch.turns) / len(batch.turns),
-                "rollout/assistant_turns/min": min(batch.turns),
-                "rollout/assistant_turns/max": max(batch.turns),
-            }
-        )
     state._completed_iterations += 1
     state._rollout_groups += len(batch.lengths) // state._metric_context["num_generations"]
     state._trained_samples += batch.sample_visits
@@ -230,7 +198,7 @@ def _finish_iteration(state, *, stream_stats=None, resource_metrics=None, memory
                 "parameter_sync_step_unit": "optimizer_update",
                 "terminal": terminal,
                 "timing_clock": "driver_monotonic_nanoseconds",
-                "timing_spans": batch.recorder.trace_events(),
+                "timing_spans": events,
                 "iteration_started_ns": batch.started_ns,
                 "iteration_ended_ns": ended_ns,
                 "batch_received_ns": batch.received_ns,

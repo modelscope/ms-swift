@@ -42,6 +42,21 @@ def test_raw_optimizer_stream_does_not_replace_webui_records(tmp_path, monkeypat
     assert json.loads((tmp_path / "metrics_raw.jsonl").read_text())["values"] == {"loss": 0.5}
 
 
+def test_raw_training_record_uses_native_normalization_and_preserves_observations(tmp_path):
+    tracker = RunTracker(None, str(tmp_path))
+    try:
+        tracker.log({
+            'loss': float('nan'), 'count': 19, 'scalar': 'tensor(2.5)', 'accuracy': '85.0%',
+            'note': 'pending%', 'details': [1, 2],
+        }, 3)
+    finally:
+        tracker.close()
+    row = json.loads((tmp_path / 'metrics_raw.jsonl').read_text())
+    assert row['optimizer_step'] == 3
+    assert row['values'] == {'count': 19, 'scalar': 2.5, 'accuracy': 85.0}
+    assert row['attributes']['non_numeric_values'] == {'loss': None, 'note': 'pending%', 'details': [1, 2]}
+
+
 def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch):
     mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
     events = []
