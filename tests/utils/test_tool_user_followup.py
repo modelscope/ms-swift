@@ -686,7 +686,7 @@ class TestReactToolUserFollowup(unittest.TestCase):
     def test_react_followup_keeps_observation_and_user_turn(self):
         # Qwen's ReAct variant is not covered: its tool result has no turn separator, so the
         # generic formatter would duplicate the ✿RESULT✿ marker. Needs a separate rendering fix.
-        for agent in ('react_en', 'react_zh'):
+        for agent in ('react_en', 'react_zh', 'react_grpo'):
             for mode in ('train', 'transformers'):
                 with self.subTest(agent=agent, mode=mode):
                     template = self.make_template(agent, mode)
@@ -695,6 +695,7 @@ class TestReactToolUserFollowup(unittest.TestCase):
                     encoded = template.encode(data)
                     text = self.tokenizer.decode(encoded['input_ids'])
                     self.assertIn(agent_template_map[agent].keyword.observation, text)
+                    self.assertEqual(text.count(agent_template_map[agent].keyword.observation), 1)
                     self.assertIn('observation_text', text)
                     self.assertIn('followup_text', text)
                     self.assertIn('final_answer', text)
@@ -817,8 +818,24 @@ class TestNativeToolUserFollowup(unittest.TestCase):
                         self.assertIn('answer', supervised)
                         self.assertNotIn('follow', supervised)
 
+    def test_every_user_turn_is_closed(self):
+        # The tool round and each user round must end with the template's own terminator.
+        for agent, template_type in self.FAMILIES:
+            for n_users in (1, 2):
+                with self.subTest(agent=agent, n_users=n_users):
+                    template = self.make_template(template_type, agent)
+                    call = self.make_call(template)
+                    messages = [self.user('q1'), self.assistant(call), {'role': 'tool', 'content': 'OBS'}]
+                    messages += [self.user(f'f{i}') for i in range(n_users)]
+                    messages.append(self.assistant('answer'))
+                    text = self.tokenizer.decode(template.encode({'messages': messages})['input_ids'])
+                    prefix, suffix = ''.join(template.template_meta.prompt).split('{{QUERY}}', 1)
+                    chat_sep = ''.join(template.template_meta.chat_sep or [])
+                    for i in range(n_users):
+                        terminator = suffix if i == n_users - 1 else chat_sep
+                        self.assertIn(prefix + f'f{i}' + terminator, text)
+
     def test_multi_turn_followups(self):
-        # `tool -> user -> tool -> user`: the second round must be merged the same way as the first.
         for agent, template_type in self.FAMILIES + (('hermes', 'qwen2_5'), ('glm4_5', 'qwen2_5')):
             with self.subTest(agent=agent):
                 template = self.make_template(template_type, agent)
