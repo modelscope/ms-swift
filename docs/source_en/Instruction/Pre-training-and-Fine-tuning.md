@@ -1,4 +1,7 @@
 # Pre-training and Fine-tuning
+
+To collect training performance data, enable the built-in callback with `--callbacks profiler`. See [Training Profiling (GPU/NPU)](Profiling.md).
+
 Training Capability:
 
 | Method                                                       | Full-Parameter                                               | LoRA | QLoRA                                                        | Deepspeed                                                    | Multi-Machine                                                | Multimodal                                                   |
