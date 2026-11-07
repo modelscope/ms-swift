@@ -270,6 +270,7 @@ class MLLMTemplateType:
     got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
     step_audio2_mini = 'step_audio2_mini'
+    sophon_realtime = 'sophon_realtime'
     kimi_vl = 'kimi_vl'
     kimi_k25 = 'kimi_k25'
     kimi_k3 = 'kimi_k3'
