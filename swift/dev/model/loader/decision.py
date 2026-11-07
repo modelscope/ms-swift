@@ -105,20 +105,15 @@ class ScoringLoader(ModelLoader):
         maybe_load_trained_scoring_head(model, model_dir)
 
     def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
-        """Attach the head for twinkle's task-readout dispatch -- no forward patching.
+        """Attach the head for the forward-layer readout dispatch -- no forward patching.
 
-        twinkle's TransformersModel dispatches on the task registry's ``readout`` kinds
-        (``TaskSpec.readout``): a model carrying ``task_head`` gets the head fed the hidden
-        states / lm logits of one normal forward via a one-shot hook inside the strategy
-        wrap, so DDP's reducer sees the head parameters used in the wrapped forward.
-        ``scoring_head`` stays as the legacy attribute name for the checkpoint / callback /
-        metrics ecosystem.
+        The placement rules (dtype/device alignment, the dual ``task_head`` / ``scoring_head``
+        names, output-embedding wiring) live on the decision task's spec
+        (``twinkle.model.tasks.Decision``); this loader only supplies the head object.
         """
-        head = self._match_head_dtype_device(model, head)
-        model.scoring_head = head
-        model.task_head = head
-        if head.needs_output_embeddings:
-            head.set_output_embeddings(model.get_output_embeddings())
+        from twinkle.model.tasks import get_task_spec_obj
+
+        get_task_spec_obj("decision").attach_transformers(model, head)
 
     def _attach_task_forward(self, model: PreTrainedModel, dispatcher, dispatch: Dict[str, Any]) -> None:
         """Install a load-time custom task forward (the 'task_forward' readout kind).
@@ -162,18 +157,11 @@ class ScoringLoader(ModelLoader):
 
     @staticmethod
     def _match_head_dtype_device(model: PreTrainedModel, head: ScoringHead) -> ScoringHead:
-        ref_weight = None
-        output_embeddings = model.get_output_embeddings()
-        if output_embeddings is not None and getattr(output_embeddings, "weight", None) is not None:
-            ref_weight = output_embeddings.weight
-        else:
-            ref_weight = next((p for p in model.parameters()), None)
-        if ref_weight is not None:
-            if head.keep_fp32:
-                head = head.to(device=ref_weight.device)
-            else:
-                head = head.to(device=ref_weight.device, dtype=ref_weight.dtype)
-        return head
+        # Thin alias: the alignment rule lives on the decision task's spec (single source);
+        # the task_forward families' attach overrides still need it locally.
+        from twinkle.model.tasks import get_task_spec_obj
+
+        return get_task_spec_obj("decision").align_head(model, head)
 
 
 @register_model

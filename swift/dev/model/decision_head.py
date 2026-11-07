@@ -108,17 +108,6 @@ def maybe_load_trained_scoring_head(model: nn.Module, adapter_dir: Optional[str]
     return loaded
 
 
-def reactivate_scoring_head(model: nn.Module) -> None:
-    """Re-activate an attached ``scoring_head`` under adapter training (from the decision recipe)"""
-    for name, p in model.named_parameters():
-        if "scoring_head" not in name:
-            continue
-        if not p.requires_grad:
-            p.requires_grad_(True)
-        if p.dtype == torch.float16:
-            p.data = p.data.to(torch.float32)
-
-
 def clef_option_ids(kind: str, criteria: Any) -> List[str]:
     if kind == "noul":
         return ["true", "false"]
