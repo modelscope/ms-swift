@@ -5,15 +5,18 @@ import pytest
 import torch
 from safetensors import safe_open
 from tokenizers import Tokenizer, models
-from transformers import PreTrainedTokenizerFast, Qwen3_5Config, Qwen3_5ForConditionalGeneration
+from transformers import PreTrainedTokenizerFast
 from types import SimpleNamespace
 
 from swift.model.decision_head import KIND_NAMES, StartLuxLetterHead, masked_softmax
 from swift.tuners import LoraConfig, Swift
 
+_qwen3_5 = pytest.importorskip(
+    'transformers.models.qwen3_5.modeling_qwen3_5', reason='Qwen3.5 requires transformers>=5.2')
+
 
 def _config():
-    return Qwen3_5Config(
+    return _qwen3_5.Qwen3_5Config(
         text_config={
             'vocab_size': 128,
             'hidden_size': 32,
@@ -72,7 +75,7 @@ def test_startlux_merge_exports_backbone_and_preserves_trained_readout(tmp_path,
         },
     }
     (base_dir / 'decision_config.json').write_text(json.dumps(factory))
-    base = Qwen3_5ForConditionalGeneration(_config())
+    base = _qwen3_5.Qwen3_5ForConditionalGeneration(_config())
     base.model_dir = str(base_dir)
     base.model_meta = SimpleNamespace(additional_saved_files=[])
     head = StartLuxLetterHead.from_pretrained(str(base_dir))
@@ -119,7 +122,7 @@ def test_startlux_merge_exports_backbone_and_preserves_trained_readout(tmp_path,
         kind: float(head.head_temperature * head.temperatures[i])
         for i, kind in enumerate(KIND_NAMES)
     }
-    reloaded = Qwen3_5ForConditionalGeneration.from_pretrained(str(out)).eval()
+    reloaded = _qwen3_5.Qwen3_5ForConditionalGeneration.from_pretrained(str(out)).eval()
     restored_head = StartLuxLetterHead.from_pretrained(str(out))
     with torch.no_grad():
         result = restored_head(None, reloaded(input_ids=tokens, use_cache=False).logits, meta)
