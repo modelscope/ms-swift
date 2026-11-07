@@ -291,7 +291,7 @@ class ClefTemplate(Qwen3_5Template):
 
 register_template(QwenTemplateMeta(MLLMTemplateType.clef, template_cls=ClefTemplate, default_system=None))
 
-# OmniJev option markers imported from the single definition site (omnijev_branch.py).
+# OmniJev option markers imported from the single definition site (decision_branch.py).
 # Lazy import: the constants are resolved inside _encode to avoid a
 # swift.template -> swift.model load cycle (swift.model.models.* import swift.template).
 _OMNIJEV_THINK_PREFIX = '<think>\n'
@@ -372,7 +372,7 @@ class OmniJevTemplate(Qwen3_5Template):
         ]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from swift.model.omnijev_branch import OPT_CLOSE, OPT_OPEN
+        from swift.model.decision_branch import OPT_CLOSE, OPT_OPEN
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
         open_ids = self._tokenize(OPT_OPEN)
@@ -482,7 +482,8 @@ class KevTemplate(DecisionTemplate, Qwen3_5Template):
 
         input_ids = [s_id] + state_ids + branch
         decide_idx = len(input_ids) - 1
-        opt_idx = [[1 + len(state_ids) + end for end in opt_ends]]  # per-question, per-option
+        branch_idx = 1 + len(state_ids)
+        opt_idx = [[branch_idx + end for end in opt_ends]]
         from swift.model.decision_head import QUESTION_TYPES
         return {
             'input_ids': input_ids,
@@ -491,6 +492,7 @@ class KevTemplate(DecisionTemplate, Qwen3_5Template):
                 'kinds': [QUESTION_TYPES[fields['kind']]],
                 'decide_idx': [decide_idx],
                 'opt_idx': opt_idx,
+                'branch_idx': [branch_idx],
             },
         }
 
@@ -499,6 +501,7 @@ class KevTemplate(DecisionTemplate, Qwen3_5Template):
             return
         flat.setdefault('decide_idx', []).extend(meta.get('decide_idx') or [])
         flat.setdefault('opt_idx', []).extend(meta.get('opt_idx') or [])
+        flat.setdefault('branch_idx', []).extend(meta.get('branch_idx') or [])
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.kev, template_cls=KevTemplate, default_system=None))

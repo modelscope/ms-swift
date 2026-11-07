@@ -173,9 +173,11 @@ def _colocate_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rewa
             entered = True
             prompts = [row['messages'] for row in batch_rows]
             extras = [{key: value for key, value in row.items() if key != 'messages'} for row in batch_rows]
-            samples = cluster.rollout.generate(
+            samples, encodings = cluster.rollout.generate(
                 prompts, num_samples=rl_config.num_generations, sampling_params=cluster.sampling_params,
                 prompt_extras=extras or None)
+            for sample, encoded in zip(samples, encodings):
+                sample.encoded = encoded
             rows = (cluster.worker.score_group(samples) if cluster.worker.orm_scorers
                     else [[] for _ in samples])
             for sample, row in zip(samples, rows):

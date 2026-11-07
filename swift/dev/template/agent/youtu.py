@@ -35,17 +35,25 @@ class YoutuAgentTemplate(HermesAgentTemplate):
         # For Youtu-LLM, tool responses are placed in user message
         if hasattr(self, "template_meta"):
             prompt = self.template_meta.prompt
-            chat_sep = self.template_meta.chat_sep
         else:
             prompt = ["<|User|>{{QUERY}}<|Assistant|>"]
-            chat_sep = ["<|end_of_text|>"]
-        res = chat_sep.copy()
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
         total_tool = self._get_tool_responses(tool_messages)
         for context in prompt:
             if isinstance(context, str):
                 context = context.replace("{{QUERY}}", total_tool)
             res.append(context)
         return assistant_content, res
+
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
+        _, tool_content = self._format_tool_responses('', tool_messages)
+        prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
+        last = tool_content[-1]
+        if suffix and isinstance(last, str) and last.endswith(suffix):
+            tool_content[-1] = last[:-len(suffix)]
+        return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]

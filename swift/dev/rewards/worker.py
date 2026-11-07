@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # GRPO's algorithm halves (advantage fusion, teacher reweighting) on twinkle's ScoreWorker.
 from __future__ import annotations
-
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 from twinkle import remote_class, remote_function
+from twinkle.perf import timed
 from twinkle_agentic.async_rl.score_worker import ScoreWorker, _resolve
 
 
@@ -32,8 +32,9 @@ def _turn_context(sample: Any):
     messages = getattr(sample, 'messages', None)
     if messages is None:
         return None
-    from .prm import MultiTurnContext
     from twinkle_agentic.rollout import turn_token_spans
+
+    from .prm import MultiTurnContext
 
     turn_spans = turn_token_spans(sample.input_feature)
     assistant_indices = [i for i, m in enumerate(messages) if m.get('role') == 'assistant']
@@ -113,8 +114,9 @@ class RewardWorker(ScoreWorker):
         old logps are read off the samples; a missing reference logp row means "no KL penalty"
         (reuses the old logps so every per-token KL term zeroes).
         """
-        from swift.dev.utils.scoring import response_positions, response_token_scores
         from twinkle.advantage import GAEAdvantage
+
+        from swift.dev.utils.scoring import response_positions, response_token_scores
 
         features = [sample.encoded for sample in samples]
         kept = [i for i, sample in enumerate(samples) if response_positions(sample.encoded)]
@@ -153,8 +155,9 @@ class RewardWorker(ScoreWorker):
         Eager small dict (a companion of ``gae`` over the same inputs): total token reward and
         completion length per sample, folded the way ``CompletionRewardMetric`` consumes them.
         """
-        from swift.dev.utils.scoring import response_positions, response_token_scores
         from twinkle.advantage import GAEAdvantage
+
+        from swift.dev.utils.scoring import response_positions, response_token_scores
 
         features = [sample.encoded for sample in samples]
         kept = [i for i, sample in enumerate(samples) if response_positions(sample.encoded)]
@@ -180,6 +183,7 @@ class RewardWorker(ScoreWorker):
                 'completion_lengths': [len(old) for old in old_logps]}
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
+    @timed
     def grpo_advantages(self, samples: List[Any], scored: Any, rl_config: Any,
                         reward_config: Any, global_step: int) -> Tuple[Any, ...]:
         """GRPO's advantage half from the scoring forwards: group-relative adv + PRM / teacher fusion.
@@ -315,6 +319,41 @@ class RewardWorker(ScoreWorker):
         rho_geo = torch.exp(torch.clamp(train_seq_mean - rollout_seq_mean, -20.0, 20.0))
         metrics['chi2_seq'] = float(rho_geo.square().mean() - 1.0)
         return metrics
+
+    @remote_function(dispatch='all', collect='first', lazy_collect=True, stash=(0,))
+    def routing_replay(self, samples: List[Any], recorded: Any) -> Tuple[List[Any]]:
+        """Stitch the R2-recorded MoE routing into new per-sample encoded references.
+
+        ``recorded`` is the router-replay forward's whole-batch output, resolved HERE (never in the
+        driver); each sample's ``encoded`` -- likewise resolved worker-side -- is rebuilt with
+        ``routed_experts`` sliced to its own input length and ``replay_mask`` mirroring
+        ``completion_mask``. The rebuilt features ride the single ``stash`` channel as per-sample
+        references; the caller re-attaches them positionally (``sample.encoded = ref``), so the
+        heavy columns never pass through the driver.
+        """
+        frame = _resolve(recorded)
+        routed_rows = frame.get('routed_experts') if isinstance(frame, dict) else None
+        if routed_rows is None:
+            raise RuntimeError(
+                'router_replay_mode="R2" asked the training model to RECORD its MoE routing, but the '
+                'forward returned none. The policy must be an MoE model built with routing replay '
+                'enabled; a dense policy has no expert routing to record (use "disabled").')
+        tensors = routed_rows if isinstance(routed_rows, (list, tuple)) else [routed_rows]
+        rows = [tensor[index] for tensor in tensors for index in range(tensor.shape[0])]
+        if len(rows) != len(samples):
+            raise RuntimeError(f'R2 routing RECORD returned {len(rows)} rows for {len(samples)} samples; '
+                               'per-row routing alignment is impossible.')
+        payloads = []
+        for sample, routed in zip(samples, rows):
+            encoded = dict(_resolve(sample).encoded)
+            length = len(encoded['input_ids'])
+            if routed.shape[0] < length:
+                raise RuntimeError(f'R2 recorded routing covers {routed.shape[0]} tokens for a {length}-token '
+                                   'sequence; the RECORD forward must route the whole sequence.')
+            encoded['routed_experts'] = routed[:length]
+            encoded['replay_mask'] = encoded['completion_mask']
+            payloads.append(encoded)
+        return (payloads,)
 
     @remote_function(dispatch='all', collect='first', lazy_collect=True)
     def fuse_prm(self, orm_advantages: List[float], prm_process: Any, mix: float) -> List[List[float]]:

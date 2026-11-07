@@ -137,14 +137,15 @@ class MinimaxM3AgentTemplate(BaseAgentTemplate):
     """
 
     tool_call_start = TOOLCALL_BEGIN_TOKEN
+    supports_tool_schema = True
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._tool_schemas(tools)
         functions: List[Function] = []
         for tc_block in _TOOLCALL_RE.findall(response):
             for tool_name, params_block in _INVOKE_RE.findall(tc_block):
-                arguments = {}
-                for key, inner in _iter_keyed(params_block):
-                    arguments[key] = _parse_xml_value(inner)
+                arguments = BaseAgentTemplate._decode_schema_args(
+                    _iter_keyed(params_block), tool_schemas, tool_name, decode=_parse_xml_value)
                 functions.append(Function(name=tool_name, arguments=arguments))
 
         if not functions:
@@ -162,15 +163,15 @@ class MinimaxM3AgentTemplate(BaseAgentTemplate):
 
         if hasattr(self, "template_meta"):
             prompt = self.template_meta.prompt.copy()
-            chat_sep = self.template_meta.chat_sep
             for i in range(len(prompt)):
                 if isinstance(prompt[i], str):
                     prompt[i] = prompt[i].replace("user", "tool")
         else:
             prompt = ["]~b]tool\n{{QUERY}}[e~[\n]~b]ai\n"]
-            chat_sep = ["[e~[\n"]
 
-        res = chat_sep.copy() if chat_sep else []
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
         tool_responses = []
         for tool_message in tool_messages:
             tool_content = tool_message["content"]

@@ -45,8 +45,16 @@ class DeepSeekV31AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
-        res = ["<｜end▁of▁sentence｜>", self._get_tool_responses(tool_messages)]
+        # the engine emits the turn separator (chat_sep) after the assistant response,
+        # so the tool responses start directly with no separator of their own.
+        res = [self._get_tool_responses(tool_messages)]
         return assistant_content, res
+
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
+        # Native tool outputs have no user wrapper or trailing turn separator.
+        _, tool_content = self._format_tool_responses('', tool_messages)
+        prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
+        return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = []

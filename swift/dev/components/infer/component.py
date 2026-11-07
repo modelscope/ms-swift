@@ -839,13 +839,15 @@ def _sample_candidates(sampler: Any, rollout: Any, batch: List[Dict[str, Any]], 
         sample_kwargs: Dict[str, Any] = {}
         if adapter_path is not None:
             sample_kwargs['adapter_path'] = adapter_path
-        samples = rollout.generate(
+        samples, encodings = rollout.generate(
             [trajectory['messages'] for trajectory in selected_trajectories],
             num_samples=wanted,
             sampling_params=asdict(params),
             prompt_extras=prompt_extras,
             force_logprobs=infer_config.save_rollout_tokens,
             **sample_kwargs)
+        for sample, encoded in zip(samples, encodings):
+            sample.encoded = encoded
         expected = len(to_sample) * wanted
         if len(samples) != expected:
             raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected}.')

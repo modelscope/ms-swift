@@ -30,25 +30,14 @@ register_template(
     )
 )
 
-OPENBUDDY2_DEFAULT_SYSTEM = (
-    "You(assistant) are a helpful, respectful and honest INTP-T AI Assistant named Buddy. "
-    "You are talking to a human(user).\nAlways answer as helpfully and logically as possible, while being safe. "
-    "Your answers should not include any harmful, political, religious, unethical, racist, "
-    "sexist, toxic, dangerous, or illegal content. "
-    "Please ensure that your responses are socially unbiased and positive in nature.\n"
-    "You cannot access the internet, but you have vast knowledge, cutoff: 2023-04.\n"
-    "You are trained by OpenBuddy team, (https://openbuddy.ai, https://github.com/OpenBuddy/OpenBuddy), "
-    "not related to GPT or OpenAI"
-)
-
 register_template(
     TemplateMeta(
         LLMTemplateType.openbuddy2,
         prefix=[],
-        prompt=["<|role|>user<|says|>{{QUERY}}<|end|>\n<|role|>assistant<|says|>"],
+        prompt=["<|role|>user<|says|>{{QUERY}}<|end|>\n"],
+        response_opener=["<|role|>assistant<|says|>"],
         chat_sep=["<|end|>\n"],
-        suffix=["<|end|>"],
-        default_system=OPENBUDDY2_DEFAULT_SYSTEM,
+        suffix=["<|end|>\n"],
         system_prefix=["<|role|>system<|says|>{{SYSTEM}}<|end|>\n"],
     )
 )

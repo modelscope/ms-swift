@@ -116,14 +116,6 @@ class ReactCompatMixin:
                 schemas[name] = parameters
         return schemas
 
-    @classmethod
-    def _declared_string_params(cls, tool_schemas: Dict[str, Dict[str, Any]], function_name: str) -> set:
-        """Parameter names the schema declares as plain strings."""
-        properties = (tool_schemas.get(function_name) or {}).get('properties')
-        if not isinstance(properties, dict):
-            return set()
-        return {name for name, schema in properties.items() if isinstance(schema, dict) and schema.get('type') == 'string'}
-
     def _format_tool_responses(
         self,
         assistant_content: str,
@@ -216,6 +208,55 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
     - `get_toolcall`: Extract tool calls from agent responses
     """
 
+    #: Whether the merged turn must write the ReAct observation marker itself.
+    uses_react_tool_responses = False
+
+    def _append_user_turns(self, tool_content, user_messages) -> Optional['Prompt']:
+        """Append user turns after already-rendered tool content, closing every round."""
+        prompt = ''.join(self.template_meta.prompt)
+        if '{{QUERY}}' not in prompt:
+            return None
+        prefix, suffix = prompt.split('{{QUERY}}', 1)
+        chat_sep = ''.join(self.template_meta.chat_sep or [])
+        if len(user_messages) > 1 and not chat_sep:
+            return None
+        res = list(tool_content)
+        if chat_sep and (not res or not (isinstance(res[-1], str) and res[-1].endswith(chat_sep))):
+            res.append(chat_sep)
+        for i, message in enumerate(user_messages):
+            res.append(prefix + message['content'])
+            res.append(suffix if i == len(user_messages) - 1 else chat_sep)
+        return res
+
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> Optional['Prompt']:
+        """Append user turns after the tool round, keeping that round's terminator."""
+        prompt = ''.join(self.template_meta.prompt)
+        if '{{QUERY}}' not in prompt:
+            return None
+        prefix, suffix = prompt.split('{{QUERY}}', 1)
+        chat_sep = ''.join(self.template_meta.chat_sep or [])
+        assistant_start = suffix[len(chat_sep):] if chat_sep and suffix.startswith(chat_sep) else suffix
+        try:
+            _, tool_content = self._format_tool_responses('', tool_messages)
+        except NotImplementedError:
+            return None
+        tool_content = list(tool_content)
+        if not tool_content or not assistant_start:
+            return None
+        last = tool_content[-1]
+        if not isinstance(last, str) or not last.endswith(assistant_start):
+            return None
+        trimmed = last[:-len(assistant_start)]
+        if trimmed:
+            tool_content[-1] = trimmed
+        else:
+            tool_content.pop()
+        return self._append_user_turns(tool_content, user_messages)
+
+    def _format_react_tool_user_followup(self, tool_content, user_messages) -> Optional['Prompt']:
+        """Append user turns after an already-rendered ReAct observation."""
+        return self._append_user_turns(tool_content, user_messages)
+
     def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
         """Hook to prepend a separator before tool_call content based on the preceding message.
 
@@ -270,6 +311,61 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
         )
         assert name_for_model is not None and description is not None, f"tool_desc: {tool_desc}"
         return tool_desc
+
+    @staticmethod
+    def _is_json_value(obj: Any) -> bool:
+        if obj is None or isinstance(obj, (str, bool, int, float)):
+            return True
+        if isinstance(obj, list):
+            return all(BaseAgentTemplate._is_json_value(value) for value in obj)
+        if isinstance(obj, dict):
+            return all(
+                isinstance(key, str) and BaseAgentTemplate._is_json_value(value) for key, value in obj.items())
+        return False
+
+    @staticmethod
+    def _schema_types(param_schema: Any) -> set:
+        if not isinstance(param_schema, dict):
+            return set()
+        types = set()
+        param_type = param_schema.get('type')
+        if isinstance(param_type, list):
+            types.update(value for value in param_type if isinstance(value, str))
+        elif isinstance(param_type, str):
+            types.add(param_type)
+        for key in ('anyOf', 'oneOf'):
+            for option in param_schema.get(key) or ():
+                types |= BaseAgentTemplate._schema_types(option)
+        return types
+
+    @staticmethod
+    def _is_string_param(param_schema: Any, value: str) -> bool:
+        types = BaseAgentTemplate._schema_types(param_schema)
+        if 'string' not in types:
+            return False
+        return not ('null' in types and value.strip() == 'null')
+
+    @staticmethod
+    def _decode_schema_args(pairs, tool_schemas, func_name, decode=None) -> Dict[str, Any]:
+        tool_schemas = tool_schemas or {}
+        properties = (tool_schemas.get(func_name) or {}).get('properties')
+        properties = properties if isinstance(properties, dict) else {}
+        decode = decode or BaseAgentTemplate._parse_json
+        args = {}
+        for key, value in pairs:
+            key = key.strip()
+            if BaseAgentTemplate._is_string_param(properties.get(key), value):
+                args[key] = value
+                continue
+            raw = value.strip()
+            parsed = decode(raw)
+            if parsed is None:
+                args[key] = None if raw == 'null' else value
+            elif BaseAgentTemplate._is_json_value(parsed):
+                args[key] = parsed
+            else:
+                args[key] = value
+        return args
 
     @staticmethod
     def _parse_json(json_str: str) -> Optional[Any]:

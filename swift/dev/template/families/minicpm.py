@@ -30,7 +30,8 @@ class MinicpmTemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ["</s>"])
 
 
-register_template(MinicpmTemplateMeta(LLMTemplateType.minicpm))
+# The official chat template emits no bos/eos around the render.
+register_template(MinicpmTemplateMeta(LLMTemplateType.minicpm, prefix=["{{SYSTEM}}"], suffix=[]))
 
 
 def _remove_idx(arr: List[int], idx_list: List[int]) -> List[int]:

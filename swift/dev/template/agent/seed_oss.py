@@ -15,6 +15,7 @@ class SeedAgentTemplate(BaseAgentTemplate):
     tool_call_start = TOOL_CALL_START
     FUNCTION_TAG = "function"
     PARAMETER_TAG = "parameter"
+    supports_tool_schema = True
 
     _PY_TYPE_MAPPING = {
         "string": "str",
@@ -28,7 +29,8 @@ class SeedAgentTemplate(BaseAgentTemplate):
     def _py_type(t: str) -> str:
         return SeedAgentTemplate._PY_TYPE_MAPPING.get(t, "Any")
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._tool_schemas(tools)
         res_list = re.findall(rf"{self.TOOL_CALL_START}(.+?){self.TOOL_CALL_END}", response, re.DOTALL)
         if not res_list:
             return super().get_toolcall(response)
@@ -41,7 +43,7 @@ class SeedAgentTemplate(BaseAgentTemplate):
 
             func_name = func_name_match.group(1)
             param_matches = re.findall(rf"<{self.PARAMETER_TAG}=([^>]+)>(.*?)</{self.PARAMETER_TAG}>", res, re.DOTALL)
-            arguments = dict(param_matches)
+            arguments = BaseAgentTemplate._decode_schema_args(param_matches, tool_schemas, func_name)
             functions.append(Function(name=func_name, arguments=arguments))
 
         return functions

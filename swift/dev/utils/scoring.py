@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Backend-agnostic scoring pieces: the response-token frame, forward-output alignment, reward folds.
 from __future__ import annotations
-
 import copy
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -236,3 +235,32 @@ def ece_score(confidences: List[float], correct: List[bool], n_bins: int = 15) -
         if cnt > 0:
             ece += (cnt / n) * abs(float(conf[m].mean()) - float(corr[m].mean()))
     return float(ece)
+  
+  
+def sample_token_lengths(sample):
+    """Unpadded initial prompt and full response, including tool observations.
+
+    Twinkle stores shifted labels/masks. Policy tokens identify the first response
+    position; subsequent masked tool tokens belong to the full response span too.
+    """
+    encoded = sample.encoded
+    ids = list(encoded["input_ids"])
+    labels = list(encoded["labels"])
+    if len(labels) != len(ids):
+        raise ValueError("performance metrics require one shifted label per input token")
+    labels = labels[-1:] + labels[:-1]
+    mask = encoded.get("completion_mask")
+    if mask is not None:
+        mask = list(mask)
+        if len(mask) != len(ids):
+            raise ValueError("completion mask and input_ids must have equal lengths")
+        mask = mask[-1:] + mask[:-1]
+    attention = encoded.get("attention_mask")
+    attention = list(attention) if attention is not None else [1] * len(ids)
+    if len(attention) != len(ids):
+        raise ValueError("performance metrics require a one-dimensional attention mask")
+    positions = [i for i, label in enumerate(labels) if label != -100 and (mask is None or mask[i]) and attention[i]]
+    first = positions[0] if positions else len(ids)
+    prompt = sum(bool(x) for x in attention[:first])
+    response = sum(bool(x) for x in attention[first:])
+    return prompt, response

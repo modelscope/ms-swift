@@ -12,13 +12,20 @@ from .utils import Prompt, Word
 
 @dataclass
 class TemplateMeta:
-    """The five rendering pieces a family declares, shown as chatml's concatenation:
+    """The six rendering pieces a family declares, shown as chatml's concatenation:
 
     <s>                                     # prefix (or system_prefix: <s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n)
-    <|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n   # prompt
+    <|im_start|>user\n{{QUERY}}<|im_end|>\n   # prompt, once per query message (user or tool)
+    <|im_start|>assistant\n                # response_opener, before every assistant response
     {{RESPONSE}}<|im_end|>\n                # chat_sep between turns...
-    <|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n   # ...prompt again...
+    <|im_start|>user\n{{QUERY}}<|im_end|>\n   # ...prompt again for the next round's query...
     {{RESPONSE}}<|im_end|>                  # ...suffix ends the final response
+
+    The opener is split out of ``prompt`` so a round can hold several query messages -- consecutive
+    user messages, or a tool response followed by a user message -- each rendering its own block
+    like the official jinja does, with the opener appearing once, before the response.
+    ``response_opener=None`` marks a family whose prompt carries no opener (agent react style:
+    queries are bare blocks and responses start wherever the response text starts).
     """
 
     template_type: str
@@ -29,6 +36,7 @@ class TemplateMeta:
     template_cls: Type[Template] = Template
     system_prefix: Optional[Prompt] = None
     default_system: Optional[str] = None
+    response_opener: Optional[Prompt] = None
 
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=list)
@@ -37,6 +45,13 @@ class TemplateMeta:
     is_thinking: bool = False  # the template thinks by default: enable_thinking defaults on
     thinking_prefix: str = ""  # response prefix when thinking is enabled
     non_thinking_prefix: str = ""  # response prefix without thinking (the empty thinking block)
+    #: empty think block the official jinja places before the final response of a training render
+    #: (Qwen3-style templates); None when the official renders the final turn as bare content.
+    train_final_think_block: Optional[str] = None
+    #: an assistant turn that continues right after tool outputs renders without the turn opener
+    #: (DeepSeek V3.1-style: the tool outputs close the assistant turn, the follow-up text just
+    #: continues); default keeps the opener before every response.
+    suppress_opener_after_tool: bool = False
     history_thinking_prefix: str = ""  # head of a history turn once its thinking is removed
 
     def to_generate_template_meta(self) -> "TemplateMeta":
@@ -64,7 +79,7 @@ class TemplateMeta:
         # check
         for x in [self.prefix, self.prompt, self.suffix]:
             assert isinstance(x, list)
-        for x in [self.chat_sep, self.system_prefix]:
+        for x in [self.chat_sep, self.system_prefix, self.response_opener]:
             assert x is None or isinstance(x, list)
 
     def __post_init__(self):
@@ -99,7 +114,7 @@ class TemplateMeta:
         return res_value
 
     def init(self, tokenizer: PreTrainedTokenizerBase) -> None:
-        for key in ["prefix", "prompt", "chat_sep", "suffix", "system_prefix"]:
+        for key in ["prefix", "prompt", "chat_sep", "suffix", "system_prefix", "response_opener"]:
             value = getattr(self, key)
             value = self._token_attr_to_id(tokenizer, value)
             setattr(self, key, value)

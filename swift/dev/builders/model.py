@@ -775,17 +775,20 @@ def _build_hf_config(model_config: ModelConfig, model_loader=None):
     rope_scaling mirrors legacy ``_init_rope_scaling``: names map to {'type': name}; a factor-less
     rope derives it from max_model_len / origin, and the budget (origin * factor) is served length.
     """
+    from swift.dev.utils import HfConfigFactory
+
     if model_loader is not None:
         config = model_loader.build_config(model_config.model, revision=model_config.model_revision)
         config = model_loader.process_config(config)
     else:
         from transformers import AutoConfig
 
-        config = AutoConfig.from_pretrained(
-            model_config.model, revision=model_config.model_revision, trust_remote_code=True
-        )
-
-    from swift.dev.utils import HfConfigFactory
+        config = HfConfigFactory.load_hf_config(
+            model_config.model, revision=model_config.model_revision, trust_remote_code=True)
+        if config is None:
+            config = AutoConfig.from_pretrained(
+                model_config.model, revision=model_config.model_revision, trust_remote_code=True
+            )
 
     rope_scaling = model_config.rope_scaling
     if isinstance(rope_scaling, str):
@@ -1024,6 +1027,8 @@ def _build_transformers_model(
         from swift.dev.model import UnslothModel
 
         _apply_unsloth_kwargs(kwargs, model_config, tuner_config, train_config, quantize_config)
+        if model_loader is not None:
+            kwargs["model_arch"] = _loader_model_arch(model_loader)
         model = UnslothModel(**kwargs)
     else:
         from swift.dev.builders.quantization import build_load_quantization_config
@@ -1044,14 +1049,7 @@ def _build_transformers_model(
             if train_config.gradient_checkpointing_kwargs:
                 kwargs["gradient_checkpointing_kwargs"] = train_config.gradient_checkpointing_kwargs
         if model_loader is not None:
-            arch = model_loader.model_arch
-            model_arch = {
-                part: list(getattr(arch, part, None) or []) for part in ("language_model", "vision_tower", "aligner")
-            }
-            lm_head = getattr(arch, "lm_head", None)
-            if lm_head:
-                model_arch["lm_head"] = lm_head
-            kwargs["model_arch"] = model_arch
+            kwargs["model_arch"] = _loader_model_arch(model_loader)
         if (
             train_config is not None
             and train_config.vit_gradient_checkpointing is not None
@@ -1113,6 +1111,22 @@ def _has_sentence_transformer_layout(model_dir) -> bool:
         os.path.exists(os.path.join(model_dir, name))
         for name in ("modules.json", "config_sentence_transformers.json", "1_Pooling")
     )
+
+
+def _loader_model_arch(model_loader) -> dict:
+    """The twinkle ``model_arch`` declaration (language_model / vision_tower / aligner / lm_head
+    module paths) of a resolved family loader, in the dict shape TransformersModel consumes.
+
+    model_arch drives twinkle's multimodal 'all-linear' narrowing (freeze_vit / freeze_aligner /
+    freeze_llm) and the frozen-tower no-autograd patch; without it those silently degrade and LoRA
+    lands on every linear in the model, vision tower included.
+    """
+    arch = model_loader.model_arch
+    model_arch = {part: list(getattr(arch, part, None) or []) for part in ("language_model", "vision_tower", "aligner")}
+    lm_head = getattr(arch, "lm_head", None)
+    if lm_head:
+        model_arch["lm_head"] = lm_head
+    return model_arch
 
 
 def _build_sentence_transformer_model(

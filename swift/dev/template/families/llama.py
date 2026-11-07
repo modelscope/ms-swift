@@ -42,11 +42,9 @@ register_template(
 @dataclass
 class Llama3TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["<|begin_of_text|>"])
-    prompt: Prompt = field(
-        default_factory=lambda: [
-            "<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>"
-            "<|start_header_id|>assistant<|end_header_id|>\n\n"
-        ]
+    prompt: Prompt = field(default_factory=lambda: ["<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>"])
+    response_opener: Optional[Prompt] = field(
+        default_factory=lambda: ["<|start_header_id|>assistant<|end_header_id|>\n\n"]
     )
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|eot_id|>"])
     suffix: Prompt = field(default_factory=lambda: ["<|eot_id|>"])
@@ -178,17 +176,8 @@ class Llama4TemplateMeta(TemplateMeta):
 
 register_template(Llama4TemplateMeta(MLLMTemplateType.llama4, template_cls=Llama4Template))
 
-register_template(
-    Llama3TemplateMeta(
-        LLMTemplateType.reflection,
-        default_system=(
-            "You are a world-class AI system, capable of complex reasoning and reflection. "
-            "Reason through the query inside <thinking> tags, and then provide your final "
-            "response inside <output> tags. If you detect that you made a mistake in your reasoning "
-            "at any point, correct yourself inside <reflection> tags."
-        ),
-    )
-)
+# the official Reflection tokenizer template renders no default system
+register_template(Llama3TemplateMeta(LLMTemplateType.reflection))
 
 
 class Llama3_1OmniTemplate(Template):

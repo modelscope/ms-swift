@@ -24,7 +24,8 @@ logger = get_logger()
 @dataclass
 class DeepseekTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: [["bos_token_id"]])
-    prompt: Prompt = field(default_factory=lambda: ["User: {{QUERY}}\n\nAssistant:"])
+    prompt: Prompt = field(default_factory=lambda: ["User: {{QUERY}}\n\n"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["Assistant:"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: [["eos_token_id"]])
     suffix: Prompt = field(default_factory=lambda: [["eos_token_id"]])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: [["bos_token_id"], "{{SYSTEM}}\n\n"])
@@ -586,7 +587,8 @@ register_template(
 @dataclass
 class DeepseekV2_5TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["<｜begin▁of▁sentence｜>{{SYSTEM}}"])
-    prompt: Prompt = field(default_factory=lambda: ["<｜User｜>{{QUERY}}<｜Assistant｜>"])
+    prompt: Prompt = field(default_factory=lambda: ["<｜User｜>{{QUERY}}"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<｜Assistant｜>"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<｜end▁of▁sentence｜>"])
     suffix: Prompt = field(default_factory=lambda: ["<｜end▁of▁sentence｜>"])
 
@@ -598,7 +600,6 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_think
 
 class DeepseekV3_1Template(Template):
     jinja_enable_thinking_key = "thinking"
-    non_thinking_prefix_only_after_user = True
 
 
 register_template(
@@ -608,8 +609,14 @@ register_template(
         is_thinking=True,
         template_cls=DeepseekV3_1Template,
         thinking_prefix="<think>",
-        non_thinking_prefix="</think>",
-        history_thinking_prefix="</think>",
+                non_thinking_prefix="</think>",
+        # the think-close marker on every post-user assistant turn comes from response_opener;
+        # a history turn therefore needs no additional head once its thinking is stripped.
+        history_thinking_prefix="",
+        # the official V3.1 jinja opens every post-user assistant turn with the think-close
+        # marker, and an assistant turn continuing after tool outputs renders headerless.
+        response_opener=["<｜Assistant｜></think>"],
+        suppress_opener_after_tool=True,
     )
 )
 
@@ -656,8 +663,14 @@ register_template(
         is_thinking=True,
         template_cls=DeepseekV4Template,
         thinking_prefix="<think>",
-        non_thinking_prefix="</think>",
-        history_thinking_prefix="</think>",
+                non_thinking_prefix="</think>",
+        # the think-close marker on every post-user assistant turn comes from response_opener;
+        # a history turn therefore needs no additional head once its thinking is stripped.
+        history_thinking_prefix="",
+        # the official V3.1 jinja opens every post-user assistant turn with the think-close
+        # marker, and an assistant turn continuing after tool outputs renders headerless.
+        response_opener=["<｜Assistant｜></think>"],
+        suppress_opener_after_tool=True,
     )
 )
 

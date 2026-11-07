@@ -22,8 +22,10 @@ class MinimaxM2AgentTemplate(BaseAgentTemplate):
     """
 
     tool_call_start = "<minimax:tool_call>"
+    supports_tool_schema = True
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._tool_schemas(tools)
         """
         Extract tool calls from MiniMax response format.
 
@@ -44,15 +46,8 @@ class MinimaxM2AgentTemplate(BaseAgentTemplate):
             invoke_blocks = re.findall(r'<invoke name="([^"]+)">(.*?)</invoke>', block, re.DOTALL)
 
             for tool_name, params_block in invoke_blocks:
-                # Extract parameters
-                params = {}
                 param_matches = re.findall(r'<parameter name="([^"]+)">(.*?)</parameter>', params_block, re.DOTALL)
-
-                for param_name, param_value in param_matches:
-                    param_value = param_value.strip()
-                    # Try to parse as JSON if it looks like a JSON structure
-                    parsed_value = self._parse_json(param_value)
-                    params[param_name] = parsed_value if parsed_value is not None else param_value
+                params = BaseAgentTemplate._decode_schema_args(param_matches, tool_schemas, tool_name)
 
                 functions.append(Function(name=tool_name, arguments=params))
 
@@ -80,16 +75,16 @@ class MinimaxM2AgentTemplate(BaseAgentTemplate):
         # Use template meta if available
         if hasattr(self, "template_meta"):
             prompt = self.template_meta.prompt.copy()
-            chat_sep = self.template_meta.chat_sep
             for i in range(len(prompt)):
                 if isinstance(prompt[i], str):
                     prompt[i] = prompt[i].replace("user", "tool")
         else:
             # Default format based on the Jinja2 template
             prompt = ["]~b]tool\n{{QUERY}}[e~[\n"]
-            chat_sep = ["[e~[\n"]
 
-        res = chat_sep.copy()
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
 
         # Format tool responses
         tool_responses = []

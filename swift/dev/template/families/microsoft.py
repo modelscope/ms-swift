@@ -91,9 +91,11 @@ register_template(
 @dataclass
 class Phi3TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
-    prompt: Prompt = field(default_factory=lambda: ["<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n"])
+    prompt: Prompt = field(default_factory=lambda: ["<|user|>\n{{QUERY}}<|end|>\n"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|assistant|>\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|end|>\n"])
-    suffix: Prompt = field(default_factory=lambda: ["<|end|>"])
+    #: the official jinja appends the tokenizer eos after the final <|end|>\n
+    suffix: Prompt = field(default_factory=lambda: ["<|end|>\n<|endoftext|>"])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ["<|system|>\n{{SYSTEM}}<|end|>\n"])
     auto_add_bos: bool = True
 

@@ -44,17 +44,35 @@ class HermesAgentTemplate(BaseAgentTemplate):
             return super()._format_tool_responses(assistant_content, tool_messages)
         if hasattr(self, "template_meta"):
             prompt = self.template_meta.prompt
-            chat_sep = self.template_meta.chat_sep
         else:
-            prompt = ["<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n"]
-            chat_sep = ["<|im_end|>\n"]
-        res = chat_sep.copy()
+            prompt = ["<|im_start|>user\n{{QUERY}}<|im_end|>\n"]
+        # no separator prefix: the encode loop emits chat_sep after the previous response, and
+        # the opener (split out of prompt) right before this round's response
+        res = []
         total_tool = self._get_tool_responses(tool_messages)
         for context in prompt:
             if isinstance(context, str):
                 context = context.replace("{{QUERY}}", total_tool)
             res.append(context)
         return assistant_content, res
+
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
+        prompt = self.template_meta.prompt
+        chat_sep = self.template_meta.chat_sep or []
+        contents = [self._get_tool_responses(tool_messages)] + [message['content'] for message in user_messages]
+        res = chat_sep.copy()
+        for i, content in enumerate(contents):
+            for context in prompt:
+                if isinstance(context, str) and '{{QUERY}}' in context:
+                    prefix, suffix = context.split('{{QUERY}}', 1)
+                    res.extend([prefix, content])
+                    if i < len(contents) - 1:
+                        res.extend(chat_sep)
+                        break
+                    res.append(suffix)
+                else:
+                    res.append(context)
+        return res
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
@@ -89,8 +107,36 @@ For each function call, return a json object with function name and arguments wi
         return self._get_tool_calls(tool_calls)
 
 
+class Qwen3AgentTemplate(HermesAgentTemplate):
+    """Qwen3 hermes variant: string arguments render verbatim.
+
+    The Qwen2.5 jinjas pass ``arguments | tojson`` (a spec-form string renders escaped); the
+    Qwen3 jinjas branch on the type and print a string as-is. A dict is inline in both.
+    """
+
+    def _format_tool_calls(self, tool_call_messages):
+        tool_calls = []
+        for message in tool_call_messages:
+            payload = self._raw_tool_call(message["content"])
+            arguments = payload["arguments"]
+            if isinstance(arguments, str):
+                rendered = '{"name": ' + json.dumps(payload["name"], ensure_ascii=False) + ', "arguments": ' + arguments + '}'
+            else:
+                rendered = json.dumps(payload, ensure_ascii=False)
+            tool_calls.append(f"<tool_call>\n{rendered}\n</tool_call>")
+        return self._get_tool_calls(tool_calls)
+
+
 class HunyuanHermesAgentTemplate(HermesAgentTemplate):
     tool_call_start = "<tool_calls>"
+
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
+        _, tool_content = self._format_tool_responses('', tool_messages)
+        prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
+        last = tool_content[-1]
+        if suffix and isinstance(last, str) and last.endswith(suffix):
+            tool_content[-1] = last[:-len(suffix)]
+        return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
 
     def get_toolcall(self, response: str) -> List[Function]:
         res_list = re.findall(r"<tool_call>(.+?)\n```json(.+?)```</tool_call>", response, re.DOTALL)
@@ -113,7 +159,15 @@ class HunyuanHermesAgentTemplate(HermesAgentTemplate):
 
     def _get_tool_calls(self, tool_calls: List[str]):
         tool_calls = "\n".join(tool_calls)
-        return f"<tool_calls>\n{tool_calls}\n</tool_calls>"
+        return f"<tool_calls>{tool_calls}</tool_calls>"
+
+    def _format_tool_calls(self, tool_call_messages):
+        tool_calls = []
+        for message in tool_call_messages:
+            tool_call = self._parse_tool_call(message['content'])
+            arguments = json.dumps(tool_call['arguments'], ensure_ascii=False)
+            tool_calls.append(f'<tool_call>{tool_call["name"]}\n```json\n{arguments}\n```</tool_call>')
+        return self._get_tool_calls(tool_calls)
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]

@@ -48,6 +48,22 @@ def make_state(ga=4, dp=2, max_steps=100):
 
     state.record = record
     state.step_tail = lambda save=None: save(str(state.global_step)) if save else None
+    # The rollout statistics methods _train_mini_batches calls; the micro-batch harness
+    # never sets up metrics, so they only need to exist and be harmless.
+    from swift.dev.recipe.utils import RolloutStepState
+
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
+                 'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
+                 'finish_rollout_metrics'):
+        setattr(state, name, getattr(RolloutStepState, name).__get__(state))
+    state._metric_context = {}
+    state._run_metric = None
+    state._completed_batches = state._batch_wall_ns = 0
+    state._rollout_groups = state._trained_samples = 0
+    state._stream_previous = {}
+    state._iteration_started_ns = None
+    state._iteration_facts = None
+    state._memory_rows = None
     return state
 
 
@@ -390,10 +406,12 @@ def test_colocate_replays_each_rollout_without_repeating_the_prompt_dataset(iter
     def generate(prompts, *, num_samples, **kwargs):
         start = generated[0]
         generated[0] += len(prompts) * num_samples
-        return [
+        samples = [
             SimpleNamespace(encoded={"input_ids": [index], "labels": [index]}, rollout_logps=[0.0])
             for index in range(start, generated[0])
         ]
+        # generate's contract is (samples, encodings); the colocate loop re-attaches them.
+        return samples, [sample.encoded for sample in samples]
 
     def advantages(cluster, config, reward, rows, *args, **kwargs):
         scored_sizes.append(len(rows))
@@ -409,6 +427,7 @@ def test_colocate_replays_each_rollout_without_repeating_the_prompt_dataset(iter
         sampler=SimpleNamespace(wake_up=lambda **kwargs: None),
         engine=SimpleNamespace(sync_weights=lambda **kwargs: None),
         rollout=SimpleNamespace(generate=generate),
+        worker=SimpleNamespace(),  # _prepare_routing_replay takes it (router_replay disabled)
         prm_scorer=None,
         orm_scorers=[],
         sampling_params={},
@@ -479,7 +498,8 @@ def test_disaggregated_loop_commits_actual_updates_before_publishing(monkeypatch
             None,
         ),
     )
-    cluster = SimpleNamespace(model=state.model, orm_scorers=[], sampling_params={"temperature": 1.0})
+    cluster = SimpleNamespace(model=state.model, worker=SimpleNamespace(), orm_scorers=[],
+                             sampling_params={"temperature": 1.0})
     grpo._disaggregated_loop(
         cluster,
         RLConfig(rl_type="grpo"),

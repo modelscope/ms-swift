@@ -63,9 +63,11 @@ register_template(
 class Qwen3MixedTemplateMeta(QwenTemplateMeta):
     default_system: Optional[str] = None
     non_thinking_prefix: str = "<think>\n\n</think>\n\n"
+    #: the official Qwen3 jinja renders this empty think block on the final response when training
+    train_final_think_block: Optional[str] = "<think>\n\n</think>\n\n"
 
 
-register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, is_thinking=True))
+register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, is_thinking=True, agent_template="qwen3"))
 
 QWEN3_GUARD_TEMPLATE = (
     "<|im_start|>user\n"
@@ -94,10 +96,13 @@ register_template(
 )
 
 register_template(
-    QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True, thinking_prefix="<think>\n")
+    QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True, thinking_prefix="<think>\n", agent_template="qwen3",
+    # the official Thinking jinja renders the mixed-family empty think block on the final
+    # response when training, while still prefilling thinking_prefix at the generation prompt
+    train_final_think_block="<think>\n\n</think>\n\n")
 )
 
-register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
+register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None, agent_template="qwen3"))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_coder, default_system=None, agent_template="qwen3_coder"))
 

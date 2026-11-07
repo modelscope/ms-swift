@@ -757,7 +757,7 @@ Decision 模型携带**可插拔打分头**，与 backbone（或 LoRA adapter）
 
 ## OmniJev：`MSO_BRANCH_CKPT` 与 `gradient_checkpointing` 互斥说明
 
-OmniJev 的 hybrid Qwen3.5-4B backbone 使用线性注意力层，沿序列携带递归状态。block-diagonal 注意力 mask 无法隔离选项，因为递归状态会在选项块之间泄漏信息。该问题用**两段缓存 branch**机制解决（`swift/model/omnijev_branch.py`）：
+OmniJev 的 hybrid Qwen3.5-4B backbone 使用线性注意力层，沿序列携带递归状态。block-diagonal 注意力 mask 无法隔离选项，因为递归状态会在选项块之间泄漏信息。该问题用**两段缓存 branch**机制解决（`swift/model/decision_branch.py`）：
 
 1. 共享前缀（chat template + 图像 token + instruction）只前向一次，保留 KV/recurrent cache。
 2. 每个 (问题, 选项) 对是一行，通过 `expand_cache` 复用前缀 cache，选项之间物理隔离。

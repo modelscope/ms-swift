@@ -11,7 +11,10 @@ from .base import BaseAgentTemplate
 class HyV3PreviewAgentTemplate(BaseAgentTemplate):
     HYTK = ''
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    supports_tool_schema = True
+
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._get_tool_schemas(tools)
         # Parse tool calls from <tool_calls>...<tool_call>name<tool_sep>...<arg_key>...<arg_value>...</tool_call>...
         tool_call_blocks = re.findall(rf'<tool_call{self.HYTK}>(.*?)</tool_call{self.HYTK}>', response, re.DOTALL)
         functions = []
@@ -25,12 +28,7 @@ class HyV3PreviewAgentTemplate(BaseAgentTemplate):
             pairs = re.findall(
                 rf'<arg_key{self.HYTK}>(.*?)</arg_key{self.HYTK}>\s*<arg_value{self.HYTK}>(.*?)</arg_value{self.HYTK}>',
                 block, re.DOTALL)
-            arguments = {}
-            for k, v in pairs:
-                k = k.strip()
-                v = v.strip()
-                parsed = self._parse_json(v)
-                arguments[k] = parsed if parsed is not None else v
+            arguments = BaseAgentTemplate._decode_schema_args(pairs, tool_schemas, name)
             functions.append(Function(name=name, arguments=arguments))
         if len(functions) == 0:
             # compat react_en

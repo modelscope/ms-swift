@@ -160,9 +160,7 @@ class Internvl2Template(InternvlTemplate):
         return encoded
 
 
-_internvl2_system = (
-    "你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。"
-)
+_internvl2_system = "You are a helpful assistant."
 register_template(
     ChatmlTemplateMeta(
         MLLMTemplateType.internvl2,
