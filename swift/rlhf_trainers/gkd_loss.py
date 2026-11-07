@@ -55,12 +55,15 @@ class TeacherOutput:
             labels=self.labels[mask] if self.labels is not None else None,
         )
 
-    def to_topk(self, k: int, topk_fn=None) -> 'TeacherOutput':
+    def to_topk(self, k: int, topk_fn=None, normalize: bool = False) -> 'TeacherOutput':
         """Convert full logits to topk representation."""
         if self.is_topk_mode:
             return self
         fn = topk_fn or (lambda logits, k: torch.topk(logits, k=k, dim=-1))
         vals, ids = fn(self.full_logits, k)
+        if normalize:
+            dtype = torch.float64 if self.full_logits.dtype == torch.float64 else torch.float32
+            vals = vals.to(dtype) - torch.logsumexp(self.full_logits.to(dtype), dim=-1, keepdim=True)
         return TeacherOutput(
             topk_logprobs=vals,
             topk_indices=ids,
@@ -84,6 +87,57 @@ def default_kl_div(input_log_probs: torch.Tensor, target_log_probs: torch.Tensor
 
 def default_gather(logits: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     return torch.gather(logits, dim=-1, index=indices)
+
+
+def topk_mopd_loss(
+    policy_topk_logps: torch.Tensor,
+    teacher_topk_logprobs: torch.Tensor,
+    completion_mask: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Eq. 5 of MOPD (arXiv:2606.30406), returning a loss for each response position.
+
+    Both inputs must contain temperature-1, full-vocabulary log probabilities at
+    the teacher's top-k token IDs, without renormalizing over the selected support.
+    Teacher targets are detached; missing API entries (negative infinity) are ignored.
+    """
+    if policy_topk_logps.shape != teacher_topk_logprobs.shape:
+        raise ValueError('Student and teacher top-k log probabilities must have the same shape.')
+    dtype = torch.promote_types(policy_topk_logps.dtype, teacher_topk_logprobs.dtype)
+    if dtype in (torch.float16, torch.bfloat16):
+        dtype = torch.float32
+    s_log = policy_topk_logps.to(dtype)
+    t_log = teacher_topk_logprobs.detach().to(dtype)
+    valid = ~torch.isneginf(t_log)
+    s_log = s_log.masked_fill(~valid, 0.)
+    t_log = t_log.masked_fill(~valid, 0.)
+    s_prob = s_log.exp()
+    loss = (s_prob * (s_log - t_log) - s_prob + t_log.exp()).masked_fill(~valid, 0.).sum(-1)
+    if completion_mask is not None:
+        if completion_mask.shape != loss.shape:
+            raise ValueError('completion_mask must match the leading dimensions of the top-k log probabilities.')
+        loss = loss.masked_fill(~completion_mask.bool(), 0.)
+    return loss
+
+
+def mopd_gkd_loss(
+    student_logits: torch.Tensor,
+    teacher_output: TeacherOutput,
+    labels: torch.Tensor,
+    chunk_size: int = 512,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Masked MOPD sum and valid-token count for the HF GKD trainer."""
+    teacher_output.validate()
+    if not teacher_output.is_topk_mode:
+        raise ValueError('MOPD requires teacher top-k full-vocabulary log probabilities.')
+    s_active, t_active, num_valid = extract_active(student_logits, teacher_output, labels)
+    dtype = torch.float64 if student_logits.dtype == torch.float64 else torch.float32
+    total = s_active[:0].to(dtype).sum()
+    for start in range(0, s_active.shape[0], chunk_size):
+        end = start + chunk_size
+        logits = s_active[start:end].to(dtype)
+        s_log = default_gather(logits, t_active.topk_indices[start:end]) - torch.logsumexp(logits, dim=-1, keepdim=True)
+        total = total + topk_mopd_loss(s_log, t_active.topk_logprobs[start:end]).sum()
+    return total, num_valid
 
 
 # ---------------------------------------------------------------------------
