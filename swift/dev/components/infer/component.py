@@ -116,7 +116,7 @@ class InferComponent(RecipeComponent):
         # per row (see _forward_pass). Split before the sampling-side validation below, which reads
         # knobs (num_return_sequences, output_format) a forward pass never uses.
         task_type = model_config.task_type or 'causal_lm'
-        if is_pooling_task(task_type) or task_type == 'generative_reranker':
+        if is_pooling_task(task_type) or task_type in ("generative_reranker", "decision"):
             return self._forward_pass(task_type)
 
         num_return = infer_config.num_return_sequences
@@ -529,15 +529,38 @@ class InferComponent(RecipeComponent):
         A pooling task routes by backend: vLLM / SGLang have a pooling head, so the model is served
         through ``sampler.encode``; transformers falls back to ``build_model`` + ``forward_only``.
         A ``generative_reranker`` is a causal LM -- generation-scored on vLLM/SGLang, the same HF
-        forward on transformers. Row assembly is shared, label from the row's ``label`` column.
+        forward on transformers. A ``decision`` (System-1 scoring) model ALWAYS takes the
+        transformers forward: no vLLM/SGLang pooling head hosts the family ``ScoringHead`` (it is
+        patched onto the HF model's own forward by the loader), so an engine backend is honoured
+        as a plain fallback with a log line, not an error. Row assembly is shared, label from the
+        row's ``label`` column.
         """
         from swift.dev.builders import to_trajectory
 
         rows = _forward_rows(self.dataset_config, self.max_rows, self.split_dataset_ratio,
                              self.distributed_config)
-        trajectories = [to_trajectory(row, list(row['messages']), self.template_config) for row in rows]
         reranker_use_activation = self.infer_config.reranker_use_activation
 
+        if task_type == "decision":
+            if self.backend in ("vllm", "sglang"):
+                logger.info(
+                    f"run_infer: sampler={self.backend!r} has no pooling head for the decision "
+                    "scoring_head; running the transformers forward instead."
+                )
+            per_row = _decision_via_transformers(
+                self.model_config,
+                self.template_config,
+                self.distributed_config,
+                rows,
+                self.adapters,
+                self.quantize_config,
+                max_batch_size=(self.engine_args or {}).get("max_batch_size"),
+            )
+            return _finalize_forward_results(
+                rows, per_row, task_type, self.backend, self.output_path, self.infer_config.metric
+            )
+
+        trajectories = [to_trajectory(row, list(row["messages"]), self.template_config) for row in rows]
         if self.backend in ('vllm', 'sglang'):
             if task_type == 'generative_reranker':
                 per_row = _generative_reranker_via_sampler(
@@ -1428,6 +1451,64 @@ def _forward_via_transformers(
             [_sigmoid(value) for value in row] if isinstance(row, (list, tuple)) else _sigmoid(row)
             for row in per_row
         ]
+    return per_row
+
+
+def _decision_via_transformers(
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    distributed_config: Optional["DistributedConfig"],
+    rows: List[Dict[str, Any]],
+    adapters: Optional[List[str]],
+    quantize_config: Optional["QuantizeConfig"],
+    max_batch_size: Optional[int] = None,
+) -> List[Any]:
+    """Run the decision (System-1 scoring) forward, one per-record prediction list per row.
+
+    Differs from :func:`_forward_via_transformers` in three deliberate ways:
+
+    * rows encode from their RAW columns (``messages`` + ``kinds`` / ``questions`` / ``options`` /
+      ``target_probs``), not ``to_trajectory`` dicts -- the decision templates read the decision
+      columns, and ``to_trajectory`` drops them;
+    * the template/task pair is built with ``task_type='decision'`` and the DEV InputProcessor is
+      installed (``set_processor`` + ``processor_kwargs``): the decision batch flatten
+      (``pop_media -> collate_media -> finalize_batch``) lives in the template's media hooks, which
+      the default twinkle processor never runs;
+    * each chunk's ``ScoringOutput`` decodes through ``template.decode_decision`` -- per record,
+      ``[{'index': argmax option, 'probs': masked softmax over real options}]`` -- rather than the
+      one-tensor-per-row unpacking of the pooling heads.
+    """
+    from twinkle.patch import apply_patch
+
+    from swift.dev.builders import build_model, build_template, load_model_processor
+    from swift.dev.config import DistributedConfig
+    from swift.dev.patch.twinkle_decision_task import TwinkleDecisionTaskPatch
+    from swift.dev.processor import InputProcessor, processor_kwargs
+
+    apply_patch(None, TwinkleDecisionTaskPatch())
+
+    _, processor = load_model_processor(model_config)
+    template = build_template(template_config, processor, task_type="decision")
+    template.set_mode("transformers")
+    model = build_model(model_config, distributed_config or DistributedConfig(), quantize_config=quantize_config)
+    if adapters:
+        # add_adapter_to_model takes a checkpoint directory as well as a PeftConfig, so a trained
+        # adapter (LoRA + its sidecar scoring_head) is loaded here rather than built.
+        for index, adapter in enumerate(adapters):
+            model.add_adapter_to_model(f"adapter_{index}" if index else "default", adapter)
+    model.set_processor(InputProcessor, **processor_kwargs(template))
+    model.set_template(template)
+
+    batch_size = max_batch_size or len(rows) or 1
+    per_row: List[Any] = []
+    for start in range(0, len(rows), batch_size):
+        chunk = rows[start : start + batch_size]
+        encoded = [template.encode(row) for row in chunk]
+        outputs = model.forward_only(inputs=encoded, task="decision", return_logits=True)
+        if callable(outputs) and getattr(outputs, "_is_lazy_collect", False):
+            outputs = outputs()
+        preds, _logprobs = template.decode_decision(outputs, top_logprobs=1)
+        per_row.extend(preds)
     return per_row
 
 

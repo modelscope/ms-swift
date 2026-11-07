@@ -37,6 +37,14 @@ class DatasetConfig:
     model_author: Optional[List[str]] = None
     custom_dataset_info: List[str] = field(default_factory=list)
 
+    # === Decision augmentation ===
+    # schema augmentation applied by every ScoringPreprocessor a
+    # loaded dataset carries, between parse_record and _build_row. All-zero/False (the default)
+    decision_drop_instructions: float = 0.0
+    decision_subsample_options: int = 0
+    decision_state_as_text: float = 0.0
+    decision_shuffle_fields: bool = False
+
     # === Hub ===
     use_hf: bool = False
     hub_token: Optional[str] = None

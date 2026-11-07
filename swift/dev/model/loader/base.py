@@ -263,6 +263,7 @@ def register_model(loader_cls: Type["ModelLoader"] = None, *, exist_ok: bool = F
     def _register(cls: Type["ModelLoader"]) -> Type["ModelLoader"]:
         model_type = cls.model_type
         assert model_type, f"{cls.__name__} must set `model_type`."
+        validate_tags(cls.tags, context=f"model_type `{model_type}`")
         if not exist_ok and model_type in MODEL_MAPPING:
             raise ValueError(
                 f"model_type `{model_type}` is already registered by {MODEL_MAPPING[model_type].__name__}."

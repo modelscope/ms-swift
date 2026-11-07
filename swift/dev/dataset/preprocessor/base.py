@@ -32,6 +32,10 @@ class Preprocessor:
     columns: Dict[str, str] = {}
     converter_kwargs: Dict[str, Any] = {}
 
+    # Run-level augmentation channel this preprocessor consumes, or None when it consumes none.
+    # declaring a channel is the opt-in, so preprocessors without one are never touched.
+    augment_channel: Optional[str] = None
+
     # Columns whose Arrow type must be pinned rather than inferred: inference sees only the rows in
     # hand, so two shards of one dataset can infer types that only fail to align at concatenation.
     MESSAGE_COLUMNS = ("messages", "rejected_messages", "positive_messages", "negative_messages")
@@ -111,6 +115,15 @@ class Preprocessor:
         inventing an assistant turn. Set such columns on the row conversion *returns*.
         """
         return self.converter.apply_aliases(row)
+
+    def bind_augment(self, config: Any, seed: int) -> None:
+        """Receive this run's augmentation ``config`` for :attr:`augment_channel`.
+
+        Called by the dataset loader only on preprocessors whose ``augment_channel`` names a
+        config the run carried (DatasetConfig-driven, keyed by channel); ``seed`` is the dataset
+        seed, so a fresh per-run RNG derived from it stays identical across ranks and resumes.
+        Override together with ``augment_channel``; the base implementation is a no-op.
+        """
 
     def __call__(
         self,

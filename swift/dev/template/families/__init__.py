@@ -2,6 +2,7 @@ from . import (
     baai,
     baidu,
     bert,
+    decision,
     deepseek,
     dots,
     gemma,

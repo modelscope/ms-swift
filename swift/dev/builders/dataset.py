@@ -87,6 +87,7 @@ def _load_kwargs(dataset_config: DatasetConfig) -> dict:
                          'Pass `columns` to override individual names instead.')
     return dict(
         seed=dataset_config.data_seed,
+        augment_configs=_augment_configs(dataset_config),
         num_proc=dataset_config.dataset_num_proc,
         load_from_cache_file=dataset_config.load_from_cache_file,
         streaming=dataset_config.streaming,
@@ -101,6 +102,26 @@ def _load_kwargs(dataset_config: DatasetConfig) -> dict:
         model_name=dataset_config.model_name,
         model_author=dataset_config.model_author,
     )
+
+
+def _augment_configs(dataset_config: DatasetConfig) -> Optional[Dict[str, Any]]:
+    if (
+        dataset_config.decision_drop_instructions <= 0
+        and dataset_config.decision_subsample_options <= 0
+        and dataset_config.decision_state_as_text <= 0
+        and not dataset_config.decision_shuffle_fields
+    ):
+        return None
+    from swift.dev.dataset.preprocessor import DecisionAugmentConfig
+
+    return {
+        "decision": DecisionAugmentConfig(
+            drop_instructions=dataset_config.decision_drop_instructions,
+            subsample_options=dataset_config.decision_subsample_options,
+            state_as_text=dataset_config.decision_state_as_text,
+            shuffle_fields=dataset_config.decision_shuffle_fields,
+        )
+    }
 
 
 def _load_cached_datasets(dataset_config: DatasetConfig, template_config: Any) -> tuple:

@@ -69,7 +69,7 @@ def parse_sft_configs(
 
 def sft_main(argv: Optional[List[str]] = None) -> List[dict]:
     from swift.dev.config import process_and_validate_configs
-    from swift.dev.recipe.sft import run_embedding, run_reranker, run_seq_cls, run_sft
+    from swift.dev.recipe.sft import run_decision, run_embedding, run_reranker, run_seq_cls, run_sft
 
     configs = parse_sft_configs(argv)
     process_and_validate_configs(configs)
@@ -84,12 +84,15 @@ def sft_main(argv: Optional[List[str]] = None) -> List[dict]:
         'embedding': run_embedding,
         'reranker': run_reranker,
         'generative_reranker': run_reranker,
+        "decision": run_decision,
     }
     if task_type not in recipes:
         raise ValueError(f'Unsupported SFT task_type: {task_type!r}.')
     if is_megatron and task_type != 'causal_lm':
-        raise ValueError(f'--backend megatron supports only causal_lm SFT, got task_type={task_type!r}. '
-                         'Drop --backend to train seq_cls/embedding/reranker on the transformers backend.')
+        raise ValueError(
+            f"--backend megatron supports only causal_lm SFT, got task_type={task_type!r}. "
+            "Drop --backend to train seq_cls/embedding/reranker/decision on the transformers backend."
+        )
     # Only run_sft/run_pt/run_rl accept the Megatron Configs; the other task types are HF-only.
     megatron_kwargs = ({
         'megatron_config': configs['megatron_config'],

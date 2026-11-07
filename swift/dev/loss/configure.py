@@ -117,6 +117,37 @@ def configure_seq_cls_loss(model: TrainableModel, *, problem_type: str, num_labe
     model.set_loss(loss_cls(problem_type=problem_type, num_labels=num_labels, **kwargs))
 
 
+# Decision (typed-decision System-1 scoring) loss types;
+DECISION_LOSS_TYPES = ("scoring", "distill_rps", "smooth_brier", "ce_rps")
+
+
+def configure_decision_loss(model: TrainableModel, *, loss_type: str = "scoring", **kwargs) -> None:
+    from swift.dev.utils.naming import resolve_loss
+
+    if loss_type not in DECISION_LOSS_TYPES:
+        raise ValueError(f"configure_decision_loss supports {list(DECISION_LOSS_TYPES)}, got {loss_type!r}.")
+    loss_cls = resolve_loss(loss_type)
+    model.set_loss(loss_cls(**kwargs))
+
+
+def configure_decision_metric(model: TrainableModel) -> None:
+    from twinkle.metric import Accuracy
+
+    from swift.dev.metrics import DecisionScoringMetric
+
+    model.add_metric(DecisionScoringMetric, is_training=None)
+    # add_metric resolves the same default adapter group; strip the seeded token Accuracy from it.
+    adapter_name = model._get_default_group()
+    optimizer_config = model.optimizer_group.get(adapter_name)
+    if optimizer_config is None:
+        raise RuntimeError(
+            "configure_decision_metric must run after configure_optimizer: the optimizer "
+            f"group {adapter_name!r} has no metric statuses yet."
+        )
+    for status in (optimizer_config.train_status, optimizer_config.eval_status):
+        status.metrics = [m for m in status.metrics if not isinstance(m, Accuracy)]
+
+
 _RL_LOSS_NAME = {
     'grpo': 'grpo',
     'dpo': 'dpo',

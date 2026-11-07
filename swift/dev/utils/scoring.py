@@ -187,6 +187,56 @@ def accumulate_reward_metric(metric: Any,
     metric.accumulate(rewards=rewards, completion_lengths=completion_lengths)
 
 
+def brier_per_question(probs: "torch.Tensor", target: "torch.Tensor", mask: "torch.Tensor") -> "torch.Tensor":
+    """Per-question Brier score over real option slots (row-wise; the batch form averages these)."""
+    diff2 = (probs - target).pow(2) * mask
+    n_real = mask.sum(dim=-1).clamp(min=1).to(diff2.dtype)
+    return diff2.sum(dim=-1) / n_real
+
+
+def brier_score(probs: "torch.Tensor", target: "torch.Tensor", mask: "torch.Tensor") -> float:
+    """Mean Brier score over real option slots (lower is better)."""
+    return float(brier_per_question(probs, target, mask).mean())
+
+
+def nll_per_question(
+    logits: "torch.Tensor", target: "torch.Tensor", mask: "torch.Tensor", temperature: float
+) -> "torch.Tensor":
+    """Per-question NLL (cross-entropy) of ``softmax(logits / temperature)`` vs target, masked."""
+    scaled = logits.float() / max(temperature, 1e-8)
+    scaled = scaled.masked_fill(~mask, float("-inf"))
+    log_probs = torch.log_softmax(scaled, dim=-1)
+    log_probs = torch.nan_to_num(log_probs, nan=-1e4)
+    loss = -(target * log_probs).sum(dim=-1)
+    n_real = mask.sum(dim=-1).clamp(min=1).to(loss.dtype)
+    return loss / n_real
+
+
+def nll_score(logits: "torch.Tensor", target: "torch.Tensor", mask: "torch.Tensor", temperature: float) -> float:
+    """Mean NLL (cross-entropy) of ``softmax(logits / temperature)`` vs target, masked."""
+    return float(nll_per_question(logits, target, mask, temperature).mean())
+
+
+def ece_score(confidences: List[float], correct: List[bool], n_bins: int = 15) -> float:
+    """Expected Calibration Error via uniform binning on [0, 1] (lower is better; ~0 = calibrated)."""
+    import numpy as np
+
+    if not confidences:
+        return 0.0
+    conf = np.asarray(confidences, dtype=np.float64)
+    corr = np.asarray([1.0 if c else 0.0 for c in correct], dtype=np.float64)
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_idx = np.clip(np.digitize(conf, bin_edges) - 1, 0, n_bins - 1)
+    ece = 0.0
+    n = len(conf)
+    for b in range(n_bins):
+        m = bin_idx == b
+        cnt = int(m.sum())
+        if cnt > 0:
+            ece += (cnt / n) * abs(float(conf[m].mean()) - float(corr[m].mean()))
+    return float(ece)
+  
+  
 def sample_token_lengths(sample):
     """Unpadded initial prompt and full response, including tool observations.
 

@@ -17,9 +17,12 @@ from twinkle.loss import (
 )
 
 from .configure import (
+                          DECISION_LOSS_TYPES,
                           EMBEDDING_LOSS_TYPES,
                           PROBLEM_TYPES,
                           RERANKER_LOSS_TYPES,
+                          configure_decision_loss,
+                          configure_decision_metric,
                           configure_embedding_loss,
                           configure_embedding_metric,
                           configure_loss,
@@ -31,6 +34,7 @@ from .configure import (
                           configure_seq_cls_loss,
                           liger_fused_ce_enabled,
 )
+from .decision import CERPSLoss, DistillRPSLoss, ScoringLoss, SmoothBrierLoss
 
 __all__ = [
     'Loss', 'CrossEntropyLoss', 'ChannelLoss', 'GRPOLoss', 'configure_loss', 'EmbeddingLoss', 'InfonceLoss',
@@ -38,5 +42,7 @@ __all__ = [
     'ContrastiveLoss', 'OnlineContrastiveLoss', 'configure_embedding_loss', 'EMBEDDING_LOSS_TYPES',
     'PointwiseRerankerLoss', 'ListwiseRerankerLoss', 'SeqClsLoss', 'configure_reranker_loss', 'configure_seq_cls_loss',
     'RERANKER_LOSS_TYPES', 'PROBLEM_TYPES', 'configure_rl_loss', 'configure_ppo_value_loss', 'liger_fused_ce_enabled',
-    'configure_rl_metrics', 'configure_ppo_value_metric', 'configure_embedding_metric'
+    'configure_rl_metrics', 'configure_ppo_value_metric', 'configure_embedding_metric',
+    'ScoringLoss', 'DistillRPSLoss', 'SmoothBrierLoss', 'CERPSLoss', 'DECISION_LOSS_TYPES',
+    'configure_decision_loss', 'configure_decision_metric'
 ]

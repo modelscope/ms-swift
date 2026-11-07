@@ -140,6 +140,9 @@ class LLMTemplateType:
     olmoe = "olmoe"
     olmoe_0924 = "olmoe_0924"
 
+    generic_decision = "generic_decision"
+    laya = "laya"
+
 
 class RMTemplateType:
     internlm2_reward = "internlm2_reward"
@@ -284,6 +287,13 @@ class MLLMTemplateType:
     hunyuan_ocr = "hunyuan_ocr"
     step3_vl = "step3_vl"
     minimax_m3_vl = "minimax_m3_vl"
+
+    jev = "jev"
+    clef = "clef"
+    omnijev = "omnijev"
+    kev = "kev"
+    thx02 = "thx02"
+    startlux = "startlux"
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

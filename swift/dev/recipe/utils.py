@@ -1145,7 +1145,6 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
             [(name, (mesh.world_size if mesh else 1)) for name, mesh in auxiliary_meshes.items()])
     else:
         groups = resource_device_groups(resource_plan, adaptive=rollout_config.resource_mode == 'adaptive')
-        colocate = False
         auxiliary_meshes = {}
         logger.info('RL resource plan:\n%s', resource_plan.describe())
     if distributed_config.mode != 'ray':
@@ -1451,7 +1450,14 @@ def resolve_step_intervals(train_config: 'TrainConfig',
 
 
 def plan_supervised_steps(recipe: str, train_config: 'TrainConfig', dataloader: Any) -> int:
-    """Count optimizer updates, including an epoch's final group of fewer than GA batches."""
+    """The optimizer-step budget, with the zero-step fail-fast.
+
+    ``N <= ga`` micro-batches yield 0 optimizer steps (the GA gate lags one step, so a dataset that
+    never fills a full lagged window would run forward/backward but NEVER update the model); rather
+    than silently run a no-op training, fail with an actionable message. Runs BEFORE build_model so
+    we fail before loading heavy weights.
+    """
+
     if train_config.max_steps and train_config.max_steps > 0:
         return train_config.max_steps
     ga = max(1, train_config.gradient_accumulation_steps)
@@ -1627,6 +1633,15 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
     for key, value in metrics.items():
         if key.startswith('loss_'):
             result[f'eval_{key}'] = float(value)
+        elif key != "loss":
+            # Non-loss metrics (decision's acc/record_acc/ece, or a task head's own component)
+            # pass through under an eval_ prefix. Values that are already numeric stay numeric so
+            # best-model tracking can compare them; formatted strings ('0.9000', '-') ride along
+            # verbatim -- forcing them through float() would crash the eval loop.
+            try:
+                result[f"eval_{key}"] = float(value)
+            except (TypeError, ValueError):
+                result[f"eval_{key}"] = value
     if manual_gc and manual_gc_eval:
         import gc
         gc.collect(0)
