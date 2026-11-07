@@ -259,13 +259,11 @@ def run_decision(
     training (LoRA freezes the base; the scoring head must stay trainable in fp32). Every
     checkpoint also persists the head beside the adapter/model weights
     """
-    from twinkle.patch import apply_patch
-
     from swift.dev.loss import configure_decision_loss, configure_decision_metric
     from swift.dev.model.decision_head import reactivate_scoring_head
-    from swift.dev.patch.twinkle_decision_task import TwinkleDecisionTaskPatch
 
-    apply_patch(None, TwinkleDecisionTaskPatch())
+    # No twinkle patching needed here: 'decision' is a first-class forward task in twinkle's
+    # task registry (twinkle.processor.tasks), so every worker process resolves it natively.
 
     # Legacy parity: task_type='decision' defaults the temperature-calibration and head-checkpoint
     # callbacks on (sft_args._init_decision_callbacks + ScoringTrainer._save). Both no-op unless
