@@ -649,6 +649,8 @@ Choose the preprocessor based on your data schema (one-to-one with the three sch
 
 Decision datasets support training-time schema augmentation via CLI parameters. All disabled by default — when all parameters are at their defaults, augmentation is a zero-cost passthrough.
 
+When augmentation is disabled, loading a dataset does not consume an augmentation seed from the shared data random state. Training/validation splitting and shuffling therefore use the same random stream as the unaugmented data pipeline.
+
 | CLI Parameter | Type | Default | Description |
 |---------------|------|---------|-------------|
 | `--decision_drop_instructions` | `float` | `0.0` | Probability of dropping the question's instruction text (the layout is still rendered, but the text is emptied) |
