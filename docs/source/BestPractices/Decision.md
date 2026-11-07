@@ -499,6 +499,18 @@ swift sft \
 
 
 
+训练后可合并 adapter，供官方决策服务器使用：
+
+```bash
+swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
+```
+
+StartLux 合并后的底座权重不再包含 vLLM 无法加载的 `scoring_head.*`。导出会把训练后的 read-out 写入
+`decision_config.json`：`letter_bias` 按 A–Z 顺序保存 26 个偏置，`temperature_by_type` 包含全局和 per-kind
+校准温度的乘积，同时保留原目录的 prompt 和 AutoThink 设置。**请保留导出的配置；用原始配置覆盖它会丢失
+训练后的 read-out。** 推理需要支持 `letter_bias` 的 `startlux-decide` 版本；旧版本会忽略这些偏置。
+计算时先将偏置加到对应字母的 log-probability 上，再除以该问题类型的温度。
+
 ### 从零训练任意 CausalLM
 
 `generic_decision` 模型类型允许将任意文本 CausalLM 转为决策模型。与各模型专属路径不同，此路径从 tokenizer 构建随机初始化的 `JevVerbalizerHead`，无需预置头权重：

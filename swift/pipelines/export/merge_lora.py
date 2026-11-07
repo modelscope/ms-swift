@@ -3,6 +3,7 @@ import os
 
 from swift.arguments import ExportArguments
 from swift.model import save_checkpoint
+from swift.model.decision_head import StartLuxLetterHead, get_scoring_head
 from swift.tuners import Swift
 from swift.utils import HfConfigFactory, get_logger
 from ..utils import prepare_model_template
@@ -46,6 +47,11 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
             Swift.merge_and_unload(model)
             model = model.model
             logger.info('Saving merged weights...')
+            head = get_scoring_head(model) if getattr(args, 'task_type', None) == 'decision' else None
+            state_dict = None
+            if isinstance(head, StartLuxLetterHead):
+                # vLLM loads the Qwen backbone; the letter read-out belongs to the decision server.
+                state_dict = {k: v for k, v in model.state_dict().items() if not k.startswith('scoring_head.')}
 
             save_checkpoint(
                 model,
@@ -54,13 +60,14 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
                 safe_serialization=args.safe_serialization,
                 model_dirs=args.adapters,
                 max_shard_size=args.max_shard_size,
-                additional_saved_files=model.model_meta.additional_saved_files)
-            if getattr(args, 'task_type', None) == 'decision':
-                from swift.model.decision_head import get_scoring_head
-                head = get_scoring_head(model)
-                if head is not None:
-                    head.save_pretrained(output_dir, save_weights=False)
-                    logger.info(f'decision: saved scoring_head meta ({head.HEAD_META_NAME}) to {output_dir}.')
+                additional_saved_files=model.model_meta.additional_saved_files,
+                state_dict=state_dict)
+            if head is not None:
+                head.save_pretrained(output_dir, save_weights=False)
+                logger.info(f'decision: saved scoring_head meta ({head.HEAD_META_NAME}) to {output_dir}.')
+                if isinstance(head, StartLuxLetterHead):
+                    head.save_decision_config(model.model_dir, output_dir)
+                    logger.info('StartLux export requires a startlux-decide version that supports letter_bias.')
             logger.info(f'Successfully merged LoRA and saved in `{output_dir}`.')
         finally:
             args.quant_method = origin_quant_method

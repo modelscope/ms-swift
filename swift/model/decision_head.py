@@ -576,8 +576,33 @@ class StartLuxLetterHead(JevVerbalizerHead):
         if not isinstance(letters, (list, tuple)) or len(letters) != len(string.ascii_uppercase) \
                 or not all(isinstance(t, int) for t in letters) or len(set(letters)) != len(letters):
             raise ValueError(f'{head_file}: letter_token_ids must be 26 distinct token ids (A to Z).')
-        bias = [0.0] * len(letters)
+        bias = head.get('letter_bias', [0.0] * len(letters))
+        if not isinstance(bias, (list, tuple)) or len(bias) != len(letters) \
+                or not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in bias):
+            raise ValueError(f'{head_file}: letter_bias must be 26 finite numbers (A to Z).')
         return cls(bias, list(letters), dict(cls.DEFAULT_RANGES), temperatures, head_temperature=1.0)
+
+    def save_decision_config(self, model_dir: str, output_dir: str) -> None:
+        """Export the trained letter read-out in StartLux's decision_config.json format.
+
+        The native head has only one parameter (the letter bias). Keeping it in JSON
+        lets the backbone weights load in engines that do not implement scoring_head.
+        Preserve the source folder's AutoThink and prompt settings, replacing only the
+        letter ids, bias and effective per-kind temperatures with the trained values.
+        """
+        source = self._locate(model_dir, 'decision_config.json', 'STARTLUX_DECISION_CONFIG')
+        if source is None:
+            raise FileNotFoundError(f'StartLux decision_config.json not found under {model_dir!r}.')
+        with open(source, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        config['letter_token_ids'] = self.verbalizer_ids.tolist()
+        config['letter_bias'] = self.bias.detach().float().tolist()
+        config['temperature_by_type'] = {
+            name: float(self.head_temperature * self.temperatures[k])
+            for k, name in enumerate(KIND_NAMES)
+        }
+        with open(os.path.join(output_dir, 'decision_config.json'), 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
 
 
 class EvidenceRoutingLayer(nn.Module):

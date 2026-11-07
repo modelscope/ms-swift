@@ -487,6 +487,19 @@ Key parameters:
 - The **Instant** (prompt-bidirectional) StartLux folders are rejected by the loader — they need a
   different attention mode this integration does not implement; point `--model` at an AutoThink checkpoint
 
+After training, merge the adapter for the official decision server:
+
+```bash
+swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
+```
+
+For StartLux, the merged backbone weights exclude `scoring_head.*`, which vLLM cannot load. The export writes the
+trained read-out to `decision_config.json`: `letter_bias` contains 26 offsets in A–Z order, and
+`temperature_by_type` includes both global and per-kind calibration. The source folder's prompt and AutoThink
+settings are preserved. **Keep the exported config; copying the original config over it discards the trained
+read-out.** Use a `startlux-decide` version that supports `letter_bias`; older versions ignore these offsets.
+The bias is added to each letter's log-probability before dividing by the question type's temperature.
+
 ### Train Any CausalLM from Scratch
 
 The `generic_decision` model type lets you convert **any text CausalLM** into a decision model. Unlike the model-specific paths, this builds a randomly-initialized `JevVerbalizerHead` from the tokenizer — no factory weights required:
