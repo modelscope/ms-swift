@@ -4,7 +4,7 @@
 from __future__ import annotations
 import os
 from functools import wraps
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 import json
 import torch
@@ -138,6 +138,28 @@ class ScoringLoader(ModelLoader):
         patch_module_forward(model, new_forward)
         model.task_forward = new_forward
 
+    def megatron_head_loader(self) -> Tuple[str, str]:
+        """The ``(module, class)`` name pair the megatron worker replays ``build_megatron_head`` on.
+
+        A built head (an nn.Module with live tensors) cannot cross the Ray worker boundary, so
+        the megatron builder ships this NAME instead; the worker rebuilds the head from the
+        local model path / config / tokenizer and attaches it to the last-PP chunk
+        (twinkle ``MegatronModel._attach_task_head``).
+        """
+        return type(self).__module__, type(self).__name__
+
+    @classmethod
+    def build_megatron_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        """Worker-side head build for the megatron backend (classmethod: no loader instance there).
+
+        The default replays the family's ``head_cls.from_pretrained``; families whose head needs
+        the tokenizer override. The transformers-only ``task_forward`` families override with a
+        raise, and hidden-state heads fail at the megatron readout (``needs_lm_logits``).
+        """
+        if cls.head_cls is None:
+            raise NotImplementedError(f"{cls.__name__} must set `head_cls` or override `build_megatron_head`.")
+        return cls.head_cls.from_pretrained(model_dir, config=config)
+
     @staticmethod
     def _match_head_dtype_device(model: PreTrainedModel, head: ScoringHead) -> ScoringHead:
         ref_weight = None
@@ -248,6 +270,17 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
                 "close_ids": close_ids,
             },
         )
+
+    @classmethod
+    def build_megatron_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        raise NotImplementedError(
+            f"{cls.__name__} runs a load-time custom forward (option branch isolation over a shared "
+            'HF KV cache) with no megatron equivalent; use the transformers backend for this family.'
+        )
+
+    def megatron_head_loader(self) -> Tuple[str, str]:
+        # Driver-side twin of build_megatron_head's raise: fail at build time, before Ray starts.
+        self.build_megatron_head("", None, None)
 
     @staticmethod
     def _omnijev_branch_forward(  # noqa: C901
@@ -384,6 +417,17 @@ class KevLoader(ScoringLoader, Qwen3_5Loader):
             {"head": head, "origin_forward": get_original_forward(model), "backbone_model": model},
         )
 
+    @classmethod
+    def build_megatron_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        raise NotImplementedError(
+            f"{cls.__name__} runs a load-time custom forward (option branch isolation over a shared "
+            'HF KV cache) with no megatron equivalent; use the transformers backend for this family.'
+        )
+
+    def megatron_head_loader(self) -> Tuple[str, str]:
+        # Driver-side twin of build_megatron_head's raise: fail at build time, before Ray starts.
+        self.build_megatron_head("", None, None)
+
     @staticmethod
     def _kev_forward(self, *args, head: ScoringHead, origin_forward, backbone_model, **kwargs):
         meta = kwargs.pop("decision_meta", None)
@@ -488,6 +532,18 @@ class Thx02Loader(ScoringLoader, Qwen3_5Loader):
         model.scoring_head = head
         self._attach_task_forward(model, self._thx02_forward, {"head": head})
 
+    @classmethod
+    def build_megatron_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        raise NotImplementedError(
+            f"{cls.__name__} runs a load-time custom forward (direct backbone readout past the "
+            'top-level lm_head, plus noncausal attention pre-hooks) with no megatron equivalent; '
+            'use the transformers backend for this family.'
+        )
+
+    def megatron_head_loader(self) -> Tuple[str, str]:
+        # Driver-side twin of build_megatron_head's raise: fail at build time, before Ray starts.
+        self.build_megatron_head("", None, None)
+
     @staticmethod
     def _thx02_forward(self, *args, head: ScoringHead, **kwargs):
         meta = kwargs.pop("decision_meta", None)
@@ -521,6 +577,10 @@ class StartLuxLoader(ScoringLoader, Qwen3_5Loader):
     def build_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
         return self.head_cls.from_pretrained(model_dir, model=model, config=config, tokenizer=_tokenizer_of(processor))
 
+    @classmethod
+    def build_megatron_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        return cls.head_cls.from_pretrained(model_dir, config=config, tokenizer=_tokenizer_of(processor))
+
 
 @register_model
 class GenericDecisionLoader(ScoringLoader):
@@ -536,6 +596,10 @@ class GenericDecisionLoader(ScoringLoader):
 
     def build_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
         return self.head_cls.from_tokenizer(_tokenizer_of(processor), config=config)
+
+    @classmethod
+    def build_megatron_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        return cls.head_cls.from_tokenizer(_tokenizer_of(processor), config=config)
 
 
 @register_model

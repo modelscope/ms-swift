@@ -365,11 +365,25 @@ class JevVerbalizerHead(ScoringHead):
     ) -> ScoringOutput:
         if lm_logits is None:
             raise ValueError("JevVerbalizerHead requires lm_logits (needs_lm_logits must be True).")
+        record_index = [int(r) for r in meta["record_index"]]
+        rows, cols = self._readout_positions(record_index, meta, lm_logits.shape[1], lm_logits.device)
+        read_logits = lm_logits[rows, cols, :].float()  # [total_q, vocab]
+        return self.forward_readout(read_logits, meta)
+
+    def forward_readout(self, readout_logits: torch.Tensor, meta: Dict[str, Any]) -> ScoringOutput:
+        """Score pre-read full-vocab logits: ``[total_q, vocab]`` rows, one per question, each
+        already sliced at its readout position by the caller.
+
+        Two readout granularities share this scoring core: the transformers backend goes
+        through ``forward`` (which reads the rows out of one normal forward's lm_logits),
+        while the megatron backend hands pre-read rows directly -- its forward_step owns the
+        position machinery (packed / CP / mask) and gathers the vocab-parallel shards first.
+        A third granularity would be another entry method, not a change to this one.
+        """
         kinds = [int(k) for k in meta["kinds"]]
         n_options = [int(n) for n in meta["n_options"]]
-        record_index = [int(r) for r in meta["record_index"]]
         total_q = len(n_options)
-        device = lm_logits.device
+        device = readout_logits.device
         counts = meta.get("counts")
         counts_t = torch.as_tensor([int(c) for c in counts], dtype=torch.long) if counts else None
         if total_q == 0:
@@ -382,9 +396,7 @@ class JevVerbalizerHead(ScoringHead):
                 counts=counts_t,
             )
 
-        rows, cols = self._readout_positions(record_index, meta, lm_logits.shape[1], device)
-        read_logits = lm_logits[rows, cols, :].float()  # [total_q, vocab]
-        log_probs = torch.log_softmax(read_logits, dim=-1)  # log P(token), matching vLLM's logprob
+        log_probs = torch.log_softmax(readout_logits.float(), dim=-1)  # log P(token), matching vLLM's logprob
 
         verbalizer_ids = self.verbalizer_ids.to(device)
         bias = self.bias.to(device=device, dtype=torch.float32)
