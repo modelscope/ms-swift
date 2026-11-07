@@ -1596,7 +1596,7 @@ def _build_megatron_model(
                 "megatron backend: the readout head lives on the last virtual chunk only. Drop "
                 "vpp (or wait for per-chunk readout routing) to train decision models."
             )
-        extra_kwargs["task_head_loader"] = model_loader.megatron_head_loader()
+        extra_kwargs["task_head_loader"] = model_loader.task_head_loader()
 
     for name in ("vit_attn_impl", "language_model_only"):
         value = getattr(model_config, name)
