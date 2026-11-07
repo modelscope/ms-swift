@@ -105,46 +105,38 @@ class ScoringLoader(ModelLoader):
         maybe_load_trained_scoring_head(model, model_dir)
 
     def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        """Attach the head for twinkle's task-readout dispatch -- no forward patching.
+
+        twinkle's TransformersModel dispatches on the task registry's ``readout`` kinds
+        (``TaskSpec.readout``): a model carrying ``task_head`` gets the head fed the hidden
+        states / lm logits of one normal forward via a one-shot hook inside the strategy
+        wrap, so DDP's reducer sees the head parameters used in the wrapped forward.
+        ``scoring_head`` stays as the legacy attribute name for the checkpoint / callback /
+        metrics ecosystem.
+        """
         head = self._match_head_dtype_device(model, head)
         model.scoring_head = head
+        model.task_head = head
         if head.needs_output_embeddings:
             head.set_output_embeddings(model.get_output_embeddings())
 
+    def _attach_task_forward(self, model: PreTrainedModel, dispatcher, dispatch: Dict[str, Any]) -> None:
+        """Install a load-time custom task forward (the 'task_forward' readout kind).
+
+        The branch-isolation / direct-backbone families drive the backbone themselves
+        (multiple passes over a shared KV prefix, or reading past the top-level lm_head),
+        which the generic head readout cannot express. The custom forward replaces the
+        module forward and is marked ``task_forward`` so twinkle's dispatch takes the
+        plain call and lets it consume the batch's decision meta itself.
+        """
         origin_forward = get_original_forward(model)
-        dispatch = self._forward_dispatch_state(model, head, origin_forward)
-        dispatcher = self._scoring_dispatcher
 
         @wraps(origin_forward.__func__ if hasattr(origin_forward, "__func__") else origin_forward)
         def new_forward(self, *args, **kwargs):
             return dispatcher(self, *args, **dispatch, **kwargs)
 
         patch_module_forward(model, new_forward)
-
-    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
-        return {"head": head, "origin_forward": origin_forward}
-
-    @staticmethod
-    def _scoring_head_forward(self, *args, head: ScoringHead, origin_forward, **kwargs):
-        meta = kwargs.pop("decision_meta", None)
-        if meta is None:
-            raise ValueError(
-                "Decision forward requires decision_meta from the decision template's _encode "
-                "(kinds / n_options / model-specific positions); got none."
-            )
-        kwargs.pop("labels", None)
-        kwargs["return_dict"] = True
-        if head.encoder_backbone:
-            output = origin_forward(*args, **kwargs)
-            hidden_states = output.last_hidden_state
-        else:
-            kwargs["output_hidden_states"] = True
-            output = origin_forward(*args, **kwargs)
-            hidden_states = output.hidden_states[-1]
-        lm_logits = output.logits if head.needs_lm_logits else None
-        return head(hidden_states, lm_logits, meta)
-
-    # The default forward dispatcher; subclasses point this at their own (staticmethod) forward.
-    _scoring_dispatcher = staticmethod(_scoring_head_forward)
+        model.task_forward = new_forward
 
     @staticmethod
     def _match_head_dtype_device(model: PreTrainedModel, head: ScoringHead) -> ScoringHead:
@@ -229,9 +221,13 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
         self._attach_and_load(model, head, model_dir)
         return model
 
-    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        # The branch forward trains the head jointly with the adapter, so it must stay trainable
+        # regardless of any later freeze sweep.
         for p in head.parameters():
             p.requires_grad_(True)
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
         open_ids = getattr(self, "_omnijev_open_ids", None)
         close_ids = getattr(self, "_omnijev_close_ids", None)
         tokenizer = getattr(self, "_omnijev_tokenizer", None)
@@ -240,14 +236,18 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
                 "OmniJevLoader.attach_scoring_head needs the option tokens registered first; go "
                 "through build_model (which runs add_option_tokens), not attach_scoring_head directly."
             )
-        return {
-            "head": head,
-            "origin_forward": origin_forward,
-            "backbone_model": model,
-            "tokenizer": tokenizer,
-            "open_ids": open_ids,
-            "close_ids": close_ids,
-        }
+        self._attach_task_forward(
+            model,
+            self._omnijev_branch_forward,
+            {
+                "head": head,
+                "origin_forward": get_original_forward(model),
+                "backbone_model": model,
+                "tokenizer": tokenizer,
+                "open_ids": open_ids,
+                "close_ids": close_ids,
+            },
+        )
 
     @staticmethod
     def _omnijev_branch_forward(  # noqa: C901
@@ -337,8 +337,6 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
 
         return head.forward_features(per_question_features, meta)
 
-    _scoring_dispatcher = staticmethod(_omnijev_branch_forward)
-
 
 @register_model
 class KevLoader(ScoringLoader, Qwen3_5Loader):
@@ -377,8 +375,14 @@ class KevLoader(ScoringLoader, Qwen3_5Loader):
         self._attach_and_load(model, head, model_dir)
         return model
 
-    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
-        return {"head": head, "origin_forward": origin_forward, "backbone_model": model}
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
+        self._attach_task_forward(
+            model,
+            self._kev_forward,
+            {"head": head, "origin_forward": get_original_forward(model), "backbone_model": model},
+        )
 
     @staticmethod
     def _kev_forward(self, *args, head: ScoringHead, origin_forward, backbone_model, **kwargs):
@@ -398,8 +402,6 @@ class KevLoader(ScoringLoader, Qwen3_5Loader):
         output = origin_forward(*args, **kwargs)
         hidden_states = output.hidden_states[-1]
         return head(hidden_states, None, meta)
-
-    _scoring_dispatcher = staticmethod(_kev_forward)
 
 
 def enable_thx02_noncausal_attention(language_model) -> None:
@@ -479,8 +481,12 @@ class Thx02Loader(ScoringLoader, Qwen3_5Loader):
         self._attach_and_load(model, head, model_dir)
         return model
 
-    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
-        return {"head": head}
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        # THX-02's dispatcher calls the backbone (self.model) directly -- past the top-level
+        # lm_head the base model never applies -- so it is a task_forward, not a task_head.
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
+        self._attach_task_forward(model, self._thx02_forward, {"head": head})
 
     @staticmethod
     def _thx02_forward(self, *args, head: ScoringHead, **kwargs):
@@ -494,8 +500,6 @@ class Thx02Loader(ScoringLoader, Qwen3_5Loader):
         # never applied (THX-02 ships none), so call the Qwen3.5 backbone directly.
         output = self.model(*args, **kwargs)
         return head(output.last_hidden_state, None, meta)
-
-    _scoring_dispatcher = staticmethod(_thx02_forward)
 
 
 @register_model
