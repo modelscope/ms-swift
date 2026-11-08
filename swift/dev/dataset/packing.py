@@ -93,7 +93,16 @@ class PackingDataset(SwiftDataset):
             self.packed_idx, self.packed_length = self.plan_packing(self.lengths)
         else:
             self.packed_idx, self.packed_length = None, None
-        if dist.is_initialized() and is_dist():
+        if is_dist():
+            # A torchrun/megatron rank may reach dataset assembly BEFORE any model init has called
+            # dist.init_process_group (the megatron backend does so inside MegatronModel.__init__).
+            # Without the group the non-master ranks would keep packed_idx=None and crash at the
+            # first __len__ -- so ensure the group here, the same lazy way twinkle's model base does.
+            if not dist.is_initialized():
+                from twinkle.utils import Platform, torch_util
+
+                torch_util.set_device()
+                dist.init_process_group(backend=Platform.device_backend(), init_method='env://')
             obj_list = [(self.packed_idx, self.packed_length)]
             dist.broadcast_object_list(obj_list)
             self.packed_idx, self.packed_length = obj_list[0]
