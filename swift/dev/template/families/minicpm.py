@@ -719,6 +719,9 @@ register_template(
 register_template(
     ChatmlTemplateMeta(
         LLMTemplateType.minicpm5,
+        # the official jinja opens with a bos token before the first turn
+        prefix=["<s>"],
+        system_prefix=["<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n"],
         is_thinking=True,
         thinking_prefix="<think>\n",
         non_thinking_prefix="<think>\n\n</think>\n\n",

@@ -52,6 +52,12 @@ class TemplateMeta:
     #: (DeepSeek V3.1-style: the tool outputs close the assistant turn, the follow-up text just
     #: continues); default keeps the opener before every response.
     suppress_opener_after_tool: bool = False
+    #: the jinja keeps no newline after the opener when the opener ends the generation prompt but
+    #: keeps it before a response (GLM-4-0414-style asymmetry); strip only in the prompt-final case.
+    strip_opener_newline: bool = False
+    #: the jinja omits the response opener entirely at the generation prompt (Mistral-Nemo-style:
+    #: '[/INST] ' before a response, '[/INST]' when the prompt ends there)
+    opener_on_generation_prompt: bool = True
     history_thinking_prefix: str = ""  # head of a history turn once its thinking is removed
 
     def to_generate_template_meta(self) -> "TemplateMeta":

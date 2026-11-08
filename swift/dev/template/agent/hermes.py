@@ -60,18 +60,21 @@ class HermesAgentTemplate(BaseAgentTemplate):
         prompt = self.template_meta.prompt
         chat_sep = self.template_meta.chat_sep or []
         contents = [self._get_tool_responses(tool_messages)] + [message['content'] for message in user_messages]
-        res = chat_sep.copy()
+        # the official jinja prints every content of this run inside ONE user turn: the separator
+        # goes between rounds, never between the tool response and the follow-up user content
+        res = []
         for i, content in enumerate(contents):
             for context in prompt:
                 if isinstance(context, str) and '{{QUERY}}' in context:
                     prefix, suffix = context.split('{{QUERY}}', 1)
-                    res.extend([prefix, content])
+                    res.append(prefix)
+                    res.append(content)
                     if i < len(contents) - 1:
                         res.extend(chat_sep)
-                        break
-                    res.append(suffix)
                 else:
                     res.append(context)
+        if contents:
+            res.append(suffix)
         return res
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
@@ -133,6 +136,11 @@ class HunyuanHermesAgentTemplate(HermesAgentTemplate):
     def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
         _, tool_content = self._format_tool_responses('', tool_messages)
         prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
+        # the follow-up user content continues inside the tool_responses block: this jinja branch
+        # drops its closing marker before the next user turn
+        tool_content = [
+            item.replace('</tool_responses>', '') if isinstance(item, str) else item for item in tool_content
+        ]
         last = tool_content[-1]
         if suffix and isinstance(last, str) and last.endswith(suffix):
             tool_content[-1] = last[:-len(suffix)]

@@ -58,8 +58,10 @@ class HyV3PreviewAgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
-        res = [f"<｜hy_eos{self.HYTK}｜>", self._get_tool_responses(tool_messages), f"<｜hy_Assistant{self.HYTK}｜>"]
-        return assistant_content, res
+        # the round separator and the next response opener are the engine's job (chat_sep /
+        # response_opener, both already carrying this family's eos and assistant markers); the
+        # merged tool turn only adds the tool responses block, as the official jinja does
+        return assistant_content, [self._get_tool_responses(tool_messages)]
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]

@@ -15,11 +15,10 @@ from ..utils import Context, Prompt, findall
 @dataclass
 class MegrezTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["<|role_start|>system<|role_end|>{{SYSTEM}}<|turn_end|>"])
-    prompt: Prompt = field(
-        default_factory=lambda: [
-            "<|role_start|>user<|role_end|>{{QUERY}}<|turn_end|><|role_start|>assistant<|role_end|>"
-        ]
-    )
+    # the opener belongs to the assistant turn, not the query block: consecutive user
+    # messages each render their own query block and share one opener, like the official jinja
+    prompt: Prompt = field(default_factory=lambda: ["<|role_start|>user<|role_end|>{{QUERY}}<|turn_end|>"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|role_start|>assistant<|role_end|>"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|turn_end|>"])
     suffix: Prompt = field(default_factory=lambda: ["<|turn_end|>"])
     default_system: str = "你是Megrez-3B-Instruct，将针对用户的问题给出详细的、积极的回答。"
@@ -30,6 +29,7 @@ register_template(MegrezTemplateMeta(LLMTemplateType.megrez))
 
 class MegrezOmniTemplate(Template):
     media_requires_text = True
+    # the opener lives in response_opener, not the prompt tail (official-jinja parity)
     skip_prompt = False
     placeholder_tokens = ["<|unk|>"]
 

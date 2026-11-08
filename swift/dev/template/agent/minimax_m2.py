@@ -168,6 +168,6 @@ When making tool calls, use XML format to invoke tools and pass parameters:
 
         # Wrap all invocations in tool_call tags
         if tool_calls:
-            return "<minimax:tool_call>\n" + "\n".join(tool_calls) + "\n</minimax:tool_call>"
+            return "\n<minimax:tool_call>\n" + "\n".join(tool_calls) + "\n</minimax:tool_call>"
 
         return ""

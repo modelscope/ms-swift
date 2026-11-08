@@ -44,7 +44,26 @@ register_template(
     )
 )
 
-register_template(ChatmlTemplateMeta(RMTemplateType.internlm2_reward, suffix=["<|im_end|>\n<|reward|>"]))
+class InternLM2RewardTemplate(Template):
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        if not self.is_training:
+            # get_score appends the reward token after the prompt (the coding path only)
+            res_context_list.append('<|reward|>')
+            loss_scale_list.append(0.0)
+        return res_context_list, loss_scale_list, answer_len
+
+
+register_template(
+    ChatmlTemplateMeta(
+        RMTemplateType.internlm2_reward,
+        template_cls=InternLM2RewardTemplate,
+        # the shipped jinja starts with {{ bos_token }}; prefix and system_prefix must both carry it
+        prefix=["<s>"],
+        system_prefix=["<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n"],
+        suffix=["<|im_end|>\n<|reward|>"],
+    )
+)
 
 
 class InternLMXComposer2Template(Template):

@@ -106,8 +106,11 @@ register_template(Phi3TemplateMeta(LLMTemplateType.phi3))
 @dataclass
 class Phi4TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
-    prompt: Prompt = field(
-        default_factory=lambda: ["<|im_start|>user<|im_sep|>{{QUERY}}<|im_end|><|im_start|>assistant<|im_sep|>"]
+    # the opener belongs to the assistant turn: consecutive user messages each render their
+    # own query block and share one opener, like the official jinja
+    prompt: Prompt = field(default_factory=lambda: ["<|im_start|>user<|im_sep|>{{QUERY}}<|im_end|>"])
+    response_opener: Optional[Prompt] = field(
+        default_factory=lambda: ["<|im_start|>assistant<|im_sep|>"]
     )
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|im_end|>"])
     suffix: Prompt = field(default_factory=lambda: ["<|im_end|>"])

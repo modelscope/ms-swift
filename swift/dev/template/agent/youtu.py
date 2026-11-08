@@ -74,8 +74,15 @@ For tool call returns, you MUST use the following format:
     def _format_tool_calls(self, tool_call_messages):
         tool_calls = []
         for message in tool_call_messages:
-            # Raw payload (see hermes): json.dumps then reproduces the model jinja's tojson for
-            # both argument forms -- a spec-form str renders as an escaped JSON string.
             tool_call = self._raw_tool_call(message["content"])
-            tool_calls.append(f"<tool_call>{json.dumps(tool_call, ensure_ascii=False)}</tool_call>")
-        return "".join(tool_calls)
+            arguments = tool_call["arguments"]
+            if isinstance(arguments, str):
+                # the jinja prints a str arguments verbatim; only a dict goes through tojson
+                rendered = (
+                    '{"name": ' + json.dumps(tool_call["name"], ensure_ascii=False)
+                    + ', "arguments": ' + arguments + "}"
+                )
+            else:
+                rendered = json.dumps(tool_call, ensure_ascii=False)
+            tool_calls.append(f"<tool_call>{rendered}</tool_call>")
+        return "\n".join(tool_calls)

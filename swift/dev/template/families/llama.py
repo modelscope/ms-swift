@@ -58,8 +58,9 @@ register_template(Llama3TemplateMeta(LLMTemplateType.llama3))
 
 
 def _get_llama3_2_prefix() -> Prompt:
-    now = dt.datetime.now()
-    date_string = now.strftime("%d %b %Y")
+    # the jinja takes date_string from the transformers default ('26 Jul 2024') unless the caller
+    # passes one; follow that default so a plain render matches the official template
+    date_string = get_env_args("today_date", str, "26 Jul 2024")
     date_prompt = f"Cutting Knowledge Date: December 2023\nToday Date: {date_string}"
     return [f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{date_prompt}\n\n{{{{SYSTEM}}}}<|eot_id|>"]
 

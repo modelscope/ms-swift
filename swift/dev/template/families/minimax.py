@@ -16,13 +16,12 @@ logger = get_logger()
 class MinimaxTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
     prompt: Prompt = field(
-        default_factory=lambda: [
-            "<beginning_of_sentence>user name=user\n{{QUERY}}<end_of_sentence>\n"
-            "<beginning_of_sentence>ai name=assistant\n"
-        ]
+        default_factory=lambda: ["<beginning_of_sentence>user name=user\n{{QUERY}}<end_of_sentence>\n"]
     )
+    response_opener: Optional[Prompt] = field(
+        default_factory=lambda: ["<beginning_of_sentence>ai name=assistant\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<end_of_sentence>\n"])
-    suffix: Prompt = field(default_factory=lambda: ["<end_of_sentence>"])
+    suffix: Prompt = field(default_factory=lambda: ["<end_of_sentence>\n"])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ["<beginning_of_sentence>system ai_setting=assistant\n{{SYSTEM}}<end_of_sentence>\n"]
     )
@@ -136,7 +135,8 @@ register_template(MinimaxTemplateMeta(LLMTemplateType.minimax_vl, template_cls=M
 @dataclass
 class MinimaxM2TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["]~!b[]~b]system\n{{SYSTEM}}[e~[\n"])
-    prompt: Prompt = field(default_factory=lambda: ["]~b]user\n{{QUERY}}[e~[\n]~b]ai\n"])
+    prompt: Prompt = field(default_factory=lambda: ["]~b]user\n{{QUERY}}[e~[\n"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["]~b]ai\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["[e~[\n"])
     suffix: Prompt = field(default_factory=lambda: ["[e~[\n"])
     agent_template: Optional[str] = "minimax_m2"
@@ -312,7 +312,8 @@ class MinimaxM3VLTemplate(Template):
 @dataclass
 class MinimaxM3VLTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["]~!b[]~b]system\n{{SYSTEM}}[e~[\n"])
-    prompt: Prompt = field(default_factory=lambda: ["]~b]user\n{{QUERY}}[e~[\n]~b]ai\n"])
+    prompt: Prompt = field(default_factory=lambda: ["]~b]user\n{{QUERY}}[e~[\n"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["]~b]ai\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["[e~[\n"])
     suffix: Prompt = field(default_factory=lambda: ["[e~[\n"])
     default_system: Optional[str] = _MINIMAX_M3_DEFAULT_DEVELOPER

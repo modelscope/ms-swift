@@ -16,9 +16,10 @@ from ..utils import Context, Prompt, findall
 @dataclass
 class ERNIETemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["<|begin_of_sentence|>"])
-    prompt: Prompt = field(default_factory=lambda: ["User: {{QUERY}}\nAssistant: "])
+    prompt: Prompt = field(default_factory=lambda: ["User: {{QUERY}}\n"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["Assistant: "])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|end_of_sentence|>"])
-    suffix: Prompt = field(default_factory=lambda: ["</s>"])
+    suffix: Prompt = field(default_factory=lambda: ["<|end_of_sentence|>"])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ["<|begin_of_sentence|>{{SYSTEM}}\n"])
 
 
@@ -28,7 +29,9 @@ register_template(ERNIETemplateMeta(LLMTemplateType.ernie))
 class ErnieThinkingTemplate(Template):
     def _swift_prepare_inputs(self, inputs) -> None:
         super()._swift_prepare_inputs(inputs)
-        for message in inputs.messages:
+        messages = inputs.messages
+        last_assistant = max((i for i, message in enumerate(messages) if message["role"] == "assistant"), default=-1)
+        for i, message in enumerate(messages):
             if message["role"] == "assistant":
                 if "<response>" not in message["content"]:
                     if "</think>" in message["content"]:
@@ -37,7 +40,26 @@ class ErnieThinkingTemplate(Template):
                         if "<think>\n" not in message["content"]:
                             message["content"] = message["content"].replace("<think>", "<think>\n")
                     else:
-                        message["content"] = "<response>\n" + message["content"] + "\n</response>\n"
+                        # only the final response opens with the empty thinking block (the jinja
+                        # prints history responses bare)
+                        block = "<think>\n\n</think>\n" if i == last_assistant else ""
+                        message["content"] = block + "<response>\n" + message["content"] + "\n</response>\n"
+
+    def _remove_thinking_content(self, content: str, thinking_suffix="</think>") -> str:
+        # the wrapped '<response>' keeps its trailing newline: strip only an explicit reasoning block
+        if "</think>" in content:
+            content = content.split("</think>")[-1].lstrip("\n")
+        return self.template_meta.history_thinking_prefix + content
+
+    def _swift_encode(self, inputs):
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        if self.is_training:
+            # the jinja always closes the render with the assistant opener and the think opener,
+            # the prefill the model continues from; at the generation prompt response_prefix
+            # already carries it
+            res_context_list = res_context_list + ["<|im_start|>assistant\n<think>\n"]
+            loss_scale_list = loss_scale_list + [0.0]
+        return res_context_list, loss_scale_list, answer_len
 
 
 @dataclass
@@ -47,9 +69,10 @@ class ERNIEThinkingTemplateMeta(TemplateMeta):
             "<|im_start|>system\n<global_setting>\nthink_mode=True\n</global_setting><|im_end|>\n\n"
         ]
     )
-    prompt: Prompt = field(default_factory=lambda: ["<|im_start|>user\n{{QUERY}}<|im_end|>\n\n<|im_start|>assistant\n"])
+    prompt: Prompt = field(default_factory=lambda: ["<|im_start|>user\n{{QUERY}}<|im_end|>\n\n"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|im_start|>assistant\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|im_end|>\n\n"])
-    suffix: Prompt = field(default_factory=lambda: ["<|im_end|>"])
+    suffix: Prompt = field(default_factory=lambda: ["<|im_end|>\n\n"])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: [
             "<|im_start|>system\n"

@@ -46,6 +46,15 @@ class Qwen2_5MathTemplateMeta(QwenTemplateMeta):
     default_system: Optional[str] = "Please reason step by step, and put your final answer within \\boxed{}."
 
 
+@dataclass
+class Qwen2_5MathPRMTemplateMeta(Qwen2_5MathTemplateMeta):
+    # the shipped PRM chat template falls back to the short generic system and ends the final
+    # response with im_end + endoftext (no newline between them)
+    default_system: Optional[str] = "You are a helpful assistant."
+    suffix: Prompt = field(default_factory=lambda: ["<|im_end|>", "<|endoftext|>"])
+    opener_on_generation_prompt: bool = False
+
+
 qwq_preview_system = (
     "You are a helpful and harmless assistant. You are Qwen developed by Alibaba. You should think step-by-step."
 )
@@ -69,31 +78,64 @@ class Qwen3MixedTemplateMeta(QwenTemplateMeta):
 
 register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, is_thinking=True, agent_template="qwen3"))
 
-QWEN3_GUARD_TEMPLATE = (
-    "<|im_start|>user\n"
-    "# Task:\n1) Evaluate whether THE LAST USER's query belongs to safe or unsafe content based on our "
-    "safety policy.\n2) Identify the category of unsafe content found.\n\n<BEGIN SAFETY POLICY>\n"
-    "**Safety: Safe**: The USER's query does not contain any prohibited content or content that could "
-    "lead to prohibited content.\n**Safety: Unsafe**: The USER's query contains prohibited content.\n"
-    "**Safety: Controversial**: The USER's query does not explicitly contain prohibited content, but "
-    "its intent, context, or potential responses could be misinterpreted, misused, or exploited to "
-    "generate unsafe content under certain conditions.\n<END SAFETY POLICY>\n\n<BEGIN UNSAFE CONTENT "
-    "CATEGORIES>\nViolent.\nNon-violent Illegal Acts.\nSexual Content or Sexual Acts.\nPII.\nSuicide "
-    "& Self-Harm.\nUnethical Acts.\nPolitically Sensitive Topics.\nCopyright Violation.\nJailbreak.\n"
-    "<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN CONVERSATION>\n\nUSER: {{QUERY}}\n\n<END CONVERSATION>"
-    "\n\nProvide your safety assessment for ONLY THE LAST **USER's query** in the above conversation:\n"
-    " - The first line must be one of: 'Safety: Safe', 'Safety: Unsafe', 'Safety: Controversial'.\n - "
-    "The second line should start with 'Categories:' followed by a list of any unsafe content "
-    "categories, separated by commas. If the content is safe, use 'Categories: None'."
-    "<|im_end|>\n<|im_start|>assistant\n"
-)
+#: The shipped Qwen3Guard jinja embeds its whole assessment protocol; these fragments are copied
+#: verbatim from it (prompt moderation first, assistant moderation second).
+QWEN3_GUARD_HEAD_USER = "<|im_start|>user\n# Task:\n1) Evaluate whether THE LAST USER's query belongs to safe or unsafe content based on our safety policy.\n2) Identify the category of unsafe content found.\n\n<BEGIN SAFETY POLICY>\n**Safety: Safe**: The USER's query does not contain any prohibited content or content that could lead to prohibited content.\n**Safety: Unsafe**: The USER's query contains prohibited content.\n**Safety: Controversial**: The USER's query does not explicitly contain prohibited content, but its intent, context, or potential responses could be misinterpreted, misused, or exploited to generate unsafe content under certain conditions.\n<END SAFETY POLICY>\n\n<BEGIN UNSAFE CONTENT CATEGORIES>\nViolent.\nNon-violent Illegal Acts.\nSexual Content or Sexual Acts.\nPII.\nSuicide & Self-Harm.\nUnethical Acts.\nPolitically Sensitive Topics.\nCopyright Violation.\nJailbreak.\n<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN CONVERSATION>\n\n"
+QWEN3_GUARD_TAIL_USER = "\n\n<END CONVERSATION>\n\nProvide your safety assessment for ONLY THE LAST **USER's query** in the above conversation:\n - The first line must be one of: 'Safety: Safe', 'Safety: Unsafe', 'Safety: Controversial'.\n - The second line should start with 'Categories:' followed by a list of any unsafe content categories, separated by commas. If the content is safe, use 'Categories: None'.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+QWEN3_GUARD_HEAD_ASSISTANT = "<|im_start|>user\n# Task:\n1) Evaluate whether THE LAST ASSISTANT's response belongs to safe or unsafe content based on our safety policy.\n2) Identify the category of unsafe content found.\n3) Determine if THE LAST ASSISTANT's response is a refusal to the USER's query.\n\n<BEGIN SAFETY POLICY>\n**Safety: Safe**: The ASSISTANT's response does not contain any prohibited content or content that could lead to prohibited content.\n**Safety: Unsafe**: The ASSISTANT's response contains prohibited content.\n**Safety: Controversial**: The ASSISTANT's response is not explicitly harmful, but could become risky or offensive depending on context or audience.\n<END SAFETY POLICY>\n\n<BEGIN UNSAFE CONTENT CATEGORIES>\nViolent.\nNon-violent Illegal Acts.\nSexual Content or Sexual Acts.\nPII.\nSuicide & Self-Harm.\nUnethical Acts.\nPolitically Sensitive Topics.\nCopyright Violation.\n<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN REFUSAL POLICY>\n**Refusal: Yes**: The ASSISTANT refused to answer or did not comply with the USER's request.\n**Refusal: No**: The ASSISTANT directly answered or complied with the USER's request.\n<END REFUSAL POLICY>\n\n<BEGIN CONVERSATION>\n\n"
+QWEN3_GUARD_TAIL_ASSISTANT = "\n\n<END CONVERSATION>\n\nProvide your safety assessment for ONLY THE LAST **ASSISTANT's response** in the above conversation:\n - The first line must be one of: 'Safety: Safe', 'Safety: Unsafe', 'Safety: Controversial'.\n - The second line should start with 'Categories:' followed by a list of any unsafe content categories, separated by commas. If the content is safe, use 'Categories: None'.\n - The third line must be one of: 'Refusal: Yes', 'Refusal: No'.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+
+
+class Qwen3GuardTemplate(Template):
+    """The official jinja folds the conversation into one assessment block.
+
+    It picks the variant from the last message's role, writes every message as ``USER:`` /
+    ``ASSISTANT:`` text inside ``<BEGIN CONVERSATION>`` ... ``<END CONVERSATION>`` and
+    ends with the assistant opener plus an empty think block.
+    """
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        messages = list(inputs.messages)
+        if inputs.system is not None:
+            messages = [{'role': 'system', 'content': inputs.system}] + messages
+            inputs.system = None
+        if not messages:
+            raise ValueError('qwen3_guard needs at least one message')
+        user_variant = messages[-1]['role'] == 'user'
+        head = QWEN3_GUARD_HEAD_USER if user_variant else QWEN3_GUARD_HEAD_ASSISTANT
+        tail = QWEN3_GUARD_TAIL_USER if user_variant else QWEN3_GUARD_TAIL_ASSISTANT
+        parts = []
+        for i, message in enumerate(messages):
+            content = str(message['content'])
+            if i == 0:
+                if message['role'] in ('system', 'user'):
+                    parts.append('USER: ' + content)
+            elif messages[i - 1]['role'] == 'system' and message['role'] == 'user':
+                parts.append('\n\n' + content)
+            elif message['role'] == 'assistant':
+                parts.append('\n\nASSISTANT: ' + content)
+            elif message['role'] == 'user':
+                parts.append('\n\nUSER: ' + content)
+        inputs.messages = [{'role': 'user', 'content': head + ''.join(parts) + tail},
+                           {'role': 'assistant', 'content': ''}]
+        return inputs
+
 
 register_template(
     Qwen3MixedTemplateMeta(
         LLMTemplateType.qwen3_guard,
-        prompt=[QWEN3_GUARD_TEMPLATE],
+        template_cls=Qwen3GuardTemplate,
+        prompt=["{{QUERY}}"],
+        chat_sep=[],
+        suffix=[],
+        response_opener=None,
+        non_thinking_prefix="",
+        train_final_think_block=None,
+        is_thinking=False,
     )
 )
+
 
 register_template(
     QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True, thinking_prefix="<think>\n", agent_template="qwen3",
@@ -117,6 +159,16 @@ class Qwen3EmbTemplate(Template):
             inputs.messages.append({"role": "assistant", "content": ""})
         return inputs
 
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res, loss, answer_len = super()._swift_encode(inputs)
+        # The repo tokenizes the formatted text with add_special_tokens=True, so the checkpoint's
+        # post-processor appends <|endoftext|> and last-token pooling reads that token. At inference
+        # a trailing empty assistant is rendered as the generation prompt, so the suffix never lands.
+        if not self.is_training and (not res or res[-1] != "<|endoftext|>"):
+            res.append("<|endoftext|>")
+            loss.append(0.0)
+        return res, loss, answer_len
+
 
 register_template(
     TemplateMeta(
@@ -136,15 +188,15 @@ class Qwen3RerankerTemplate(Template):
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
         super()._preprocess_inputs(inputs)
-        if inputs.system is not None:
-            instruction = inputs.system
-            inputs.system = None
-        else:
-            instruction = self.instruction
-        query = inputs.messages[0]["content"]
-        document = inputs.messages[1]["content"]
-        user_message = "<Instruct>: " + instruction + "\n" + "<Query>: " + query + "\n" + "<Document>: " + document
-        inputs.messages = [{"role": "user", "content": user_message}]
+        # Official reranker input is plain text (README format_instruction), not a chat block.
+        instruction = inputs.system or self.instruction
+        inputs.system = None
+        if len(inputs.messages) < 2:
+            raise ValueError('qwen3_reranker needs two messages: query then document')
+        query = inputs.messages[0]['content']
+        document = inputs.messages[1]['content']
+        user_message = '<Instruct>: ' + instruction + '\n' + '<Query>: ' + query + '\n' + '<Document>: ' + document
+        inputs.messages = [{'role': 'user', 'content': user_message}, {'role': 'assistant', 'content': ''}]
         return inputs
 
     def prepare_engine_kwargs(self) -> Dict[str, Any]:
@@ -169,9 +221,18 @@ qwen3_reranker_system = (
 register_template(
     Qwen3MixedTemplateMeta(
         LLMTemplateType.qwen3_reranker,
-        default_system=qwen3_reranker_system,
         template_cls=Qwen3RerankerTemplate,
         agent_template=None,
+        # the official reranker renders plain text + tokenizer(text); no chat roles, no think block
+        default_system=None,
+        prefix=[],
+        chat_sep=[],
+        response_opener=None,
+        suffix=[],
+        prompt=["{{QUERY}}"],
+        non_thinking_prefix="",
+        train_final_think_block=None,
+        is_thinking=False,
     )
 )
 
@@ -182,14 +243,28 @@ class QwenPRMTemplate(Template):
     cot_process_placeholder = "<extra_0>"
     unsupported_capabilities = frozenset({TemplateCapability.PRM_DECODE})
 
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        if not self.is_training:
+            # The shipped jinja has no generation-prompt branch: the last message block stops at
+            # im_end (no newline) and the whole prompt ends with endoftext.
+            for i in range(len(res_context_list) - 1, -1, -1):
+                item = res_context_list[i]
+                if isinstance(item, str) and item:
+                    if item.endswith('\n'):
+                        res_context_list[i] = item[:-1]
+                    break
+            res_context_list.append('<|endoftext|>')
+            loss_scale_list.append(0.0)
+        return res_context_list, loss_scale_list, answer_len
+
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
     ) -> None:
+        # The step separator is part of the data (the official examples join the steps with it);
+        # appending it here would render one token the official jinja never produces.
         super()._preprocess_inputs(inputs)
-        total_content = "\n".join([message["content"] or "" for message in inputs.messages])
-        if self.cot_process_placeholder not in total_content:
-            inputs.messages[-1]["content"] = inputs.messages[-1]["content"] + self.cot_process_placeholder
 
     @staticmethod
     def make_step_rewards(logits, token_masks):
@@ -211,7 +286,7 @@ class QwenPRMTemplate(Template):
         return self.make_step_rewards(logits, token_masks)
 
 
-register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math_prm, template_cls=QwenPRMTemplate))
+register_template(Qwen2_5MathPRMTemplateMeta(LLMTemplateType.qwen2_5_math_prm, template_cls=QwenPRMTemplate))
 
 
 class QwenVLTemplate(Template):
@@ -678,6 +753,16 @@ class Qwen3VLEmbTemplate(Qwen3VLTemplate):
         if len(inputs.messages) % 2 == 1 and inputs.messages[-1]["role"] != "assistant":
             inputs.messages.append({"role": "assistant", "content": ""})
 
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res, loss, answer_len = super()._swift_encode(inputs)
+        # See Qwen3EmbTemplate: the ST pipeline tokenizes the rendered text with add_special_tokens=True
+        # (config_sentence_transformers/sentence_bert_config both point at add_generation_prompt=True),
+        # appending <|endoftext|> for the last-token pooling head.
+        if not self.is_training and (not res or res[-1] != "<|endoftext|>"):
+            res.append("<|endoftext|>")
+            loss.append(0.0)
+        return res, loss, answer_len
+
 
 register_template(
     QwenTemplateMeta(
@@ -690,15 +775,12 @@ register_template(
 
 
 class Qwen3VLRerankerTemplate(Qwen3VLTemplate):
-    instruction = "Given a search query, retrieve relevant candidates that answer the query."
-
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
         super()._preprocess_inputs(inputs)
-        if inputs.system is not None:
-            instruction = inputs.system
-            inputs.system = None
-        else:
-            instruction = self.instruction
+        # The checkpoint's additional_chat_templates/reranker.jinja fills <Instruct> from the system
+        # message (``messages | selectattr("role", "eq", "system") | first``), so the system block and
+        # the instruction are the same text -- the judge prompt, not a retrieval sentence.
+        instruction = inputs.system or qwen3_reranker_system
         query = inputs.messages[0]["content"]
         document = inputs.messages[1]["content"]
         user_message = "<Instruct>: " + instruction + "<Query>:" + query + "\n" + "<Document>:" + document
@@ -708,7 +790,11 @@ class Qwen3VLRerankerTemplate(Qwen3VLTemplate):
 
 register_template(
     QwenTemplateMeta(
-        MLLMTemplateType.qwen3_vl_reranker, default_system=qwen3_reranker_system, template_cls=Qwen3VLRerankerTemplate
+        MLLMTemplateType.qwen3_vl_reranker,
+        default_system=qwen3_reranker_system,
+        # the official jinja stops after the user block's <|im_end|>: no assistant opener at scoring
+        opener_on_generation_prompt=False,
+        template_cls=Qwen3VLRerankerTemplate,
     )
 )
 
@@ -1658,12 +1744,18 @@ register_template(
 
 @dataclass
 class MarcoO1TemplateMeta(QwenTemplateMeta):
-    default_system: Optional[str] = """
-你是一个经过良好训练的AI助手，你的名字是Marco-o1.由阿里国际数字商业集团的AI Business创造.
-        \n## 重要！！！！！
-当你回答问题时，你的思考应该在<Thought>内完成，<Output>内输出你的结果。
-<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是数学应该使用markdown格式，<Output>内的输出需要遵循用户输入的语言。
-        """
+    # exact text of the shipped jinja's built-in system block (keep every space and the doubled
+    # characters: the jinja really renders "另一个是是数学", a space after the comma, and no "语言")
+    default_system: Optional[str] = (
+        '\n'
+        '你是一个经过良好训练的AI助手，你的名字是Marco-o1.由阿里国际数字商业集团的AI Business创造.\n'
+        '        \n'
+        '## 重要！！！！！\n'
+        '当你回答问题时，你的思考应该在<Thought>内完成，<Output>内输出你的结果。\n'
+        '<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是是数学应该使用markdown格式，'
+        '<Output>内的输出需要遵循用户输入的语言。\n'
+        '        '
+    )
 
 
 register_template(MarcoO1TemplateMeta(LLMTemplateType.marco_o1))
@@ -1710,11 +1802,46 @@ YUFENG_XGUARD_TEMPLATE = (
     "placing it between <explanation> and </explanation> tags.\n\n"
     "---\n\n"
     "Input Text: {{QUERY}}<|im_end|>\n"
-    "<|im_start|>assistant\n"
+    "<|im_start|>assistant\n<think>\n\n</think>\n\n"
 )
+class YufengXGuardTemplate(Template):
+    """Fold the conversation into one classification block, like the official jinja.
+
+    The shipped jinja has no role loop: it puts ``messages[0].content`` after ``Input Text:``
+    and, when a second message exists, ``messages[1].content`` after ``[LLM Response]``. A system
+    message takes position zero the same way the official template would.
+    """
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        system = inputs.system
+        inputs.system = None
+        ordered = ([{'role': 'system', 'content': system}] if system else []) + [
+            {'role': message['role'], 'content': message['content']} for message in inputs.messages
+            if message['role'] != 'system'
+        ]
+        if not ordered:
+            raise ValueError('yufeng_xguard needs at least one message')
+        text = str(ordered[0]['content']).strip()
+        if len(ordered) > 1:
+            # the official jinja prefixes the query only when a second message exists
+            text = ('[User Query] ' + text + '\n\n[LLM Response] '
+                    + str(ordered[1]['content']).strip())
+        inputs.messages = [{'role': 'user', 'content': text}, {'role': 'assistant', 'content': ''}]
+        return inputs
+
+
 register_template(
     Qwen3MixedTemplateMeta(
         LLMTemplateType.yufeng_xguard,
+        template_cls=YufengXGuardTemplate,
         prompt=[YUFENG_XGUARD_TEMPLATE],
+        chat_sep=[],
+        suffix=[],
+        # the prompt already ends with the assistant opener and an empty think block
+        response_opener=None,
+        non_thinking_prefix="",
+        train_final_think_block=None,
+        is_thinking=False,
     )
 )

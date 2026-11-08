@@ -178,9 +178,13 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         _, tool_content = self._format_tool_responses('', tool_messages)
         prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
         chat_sep = ''.join(self.template_meta.chat_sep or [])
+        # the opener closing the tool block moves behind the trailing user content: the engine
+        # suppresses the response opener on a tool-only round, so this block owns the opener
+        opener = tool_content[-1]
         res = tool_content[:-1]
         for i, message in enumerate(user_messages):
             res.extend([prefix + message['content'], suffix if i == len(user_messages) - 1 else chat_sep])
+        res.append(opener)
         return res
 
     def _format_tool_calls(self, tool_call_messages) -> str:

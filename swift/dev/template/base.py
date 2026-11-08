@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # ruff: noqa: C901
+import bisect
 import hashlib
 import importlib
 import inspect
@@ -1639,6 +1640,45 @@ class Template(ProcessorMixin):
                         "We will only replace the frontmost media_tags while keeping the subsequent media_tags."
                     )
 
+    def _tokenize_run(self, pieces: List[str]) -> Tuple[List[int], List[int]]:
+        """Tokenize adjacent string contexts as one string and map tokens back to their piece.
+
+        Tokenizing each piece on its own inserts a word-start stride at every piece boundary
+        (sentencepiece dummy prefix): the official jinja encodes the whole prompt at once and has
+        no such strides. Running the pieces together, then mapping tokens back through character
+        offsets, keeps labels/loss aligned per piece while producing the ids the jinja produces.
+
+        Returns ``(token_ids, piece_index_per_token)``. A piece that overrides ``_tokenize``
+        (custom processor kwargs) keeps the per-piece path: its offsets are not ours to assume.
+        """
+        merged = ''.join(pieces)
+        token_ids = offsets = None
+        if type(self)._tokenize is Template._tokenize:
+            try:
+                encoded = self.tokenizer(
+                    merged, add_special_tokens=False, return_attention_mask=False, return_offsets_mapping=True)
+                token_ids = encoded['input_ids']
+                offsets = encoded['offset_mapping']
+            except Exception:  # noqa: BLE001 -- slow tokenizers expose no offsets
+                token_ids = offsets = None
+        if token_ids is None or offsets is None or len(offsets) != len(token_ids):
+            token_ids, owners = [], []
+            for index, piece in enumerate(pieces):
+                ids = self._tokenize(piece)
+                token_ids += ids
+                owners += [index] * len(ids)
+            return token_ids, owners
+        starts = []
+        position = 0
+        for piece in pieces:
+            starts.append(position)
+            position += len(piece)
+        owners = []
+        for start, _ in offsets:
+            index = bisect.bisect_right(starts, start) - 1
+            owners.append(min(max(index, 0), len(pieces) - 1))
+        return token_ids, owners
+
     def _encode_context_list(
         self, context_list: List[Context], loss_scale_list: Optional[List[float]] = None
     ) -> Tuple[List[int], List[int], List[float]]:
@@ -1650,18 +1690,28 @@ class Template(ProcessorMixin):
         loss_scale: List[float] = []
         if loss_scale_list is None:
             loss_scale_list = [0.0] * len(context_list)
-        for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
-            if isinstance(context, str):
-                token_list = self._tokenize(context)
+        index = 0
+        while index < len(context_list):
+            context = context_list[index]
+            if not isinstance(context, str):
+                token_list = list(context)
+                weights = [loss_scale_list[index]] * len(token_list)
+                index += 1
             else:
-                token_list = context
+                # A run of adjacent strings is tokenized as one string, boundary strides and all.
+                end = index
+                while end < len(context_list) and isinstance(context_list[end], str):
+                    end += 1
+                pieces = context_list[index:end]
+                piece_weights = loss_scale_list[index:end]
+                token_list, owners = self._tokenize_run(pieces)
+                weights = [piece_weights[owner] for owner in owners]
+                index = end
             input_ids += token_list
-            if loss_scale_list[i] > 0.0:
-                labels += token_list
-            else:
-                labels += [-100] * len(token_list)
+            for token, weight in zip(token_list, weights):
+                labels.append(token if weight > 0.0 else -100)
             if not is_binary_loss_scale:
-                loss_scale.extend([loss_weight] * len(token_list))
+                loss_scale.extend(weights)
         if is_binary_loss_scale:
             loss_scale = None
         return input_ids, labels, loss_scale
@@ -1965,7 +2015,9 @@ class Template(ProcessorMixin):
                     # the agent template pre-rendered this block (separator and query text in place)
                     context_list = query.copy() if isinstance(query, list) else [query]
                     query = ""
-                elif template_meta.is_post_system and last_round and system is not None:
+                elif template_meta.is_post_system and system is not None and last_round and response_message is None:
+                    # post-system families render the system block on the trailing generation prompt
+                    # only, never on the rounds that carry a response (Mistral-Nemo)
                     context_list = template_meta.system_prompt.copy()
                 else:
                     context_list = template_meta.prompt.copy()
@@ -1983,7 +2035,15 @@ class Template(ProcessorMixin):
                 query_message["role"] == "tool" for query_message in query_messages
             )
             if template_meta.response_opener and not opener_suppressed:
-                self._concat_context_list(template_meta.response_opener.copy(), res_context_list, res_context_types)
+                opener = template_meta.response_opener.copy()
+                if response_message is None and not template_meta.opener_on_generation_prompt:
+                    opener = []
+                elif response_message is None and template_meta.strip_opener_newline:
+                    # generation prompt: this family's jinja leaves the opener without the newline
+                    opener = [
+                        item[:-1] if isinstance(item, str) and item.endswith('\n') else item for item in opener
+                    ]
+                self._concat_context_list(opener, res_context_list, res_context_types)
             response = None if response_message is None else response_message["content"]
             context_list = []
             extra_context_list = []

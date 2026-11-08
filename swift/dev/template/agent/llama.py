@@ -56,11 +56,17 @@ class Llama3AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
-        res = [self.eot_token]
+        # the engine owns the round separator (<|eot_id|>) and the response opener
+        # (<|start_header_id|>assistant...): the tool block only carries the tool turns
+        res = []
         for tool_message in tool_messages:
             tool_content = tool_message["content"]
-            res.append(f"{self.start_token}tool{self.end_token}\n\n{tool_content}{self.eot_token}")
-        res.append(f"{self.start_token}assistant{self.end_token}\n\n")
+            # the jinja renders every tool turn under the 'ipython' header and passes the content
+            # through tojson (a str counts as iterable there, so it is quoted and escaped)
+            if not isinstance(tool_content, (str, dict, list)):
+                raise TypeError(f"unsupported tool content type: {type(tool_content).__name__}")
+            rendered = json.dumps(tool_content, ensure_ascii=False)
+            res.append(f"{self.start_token}ipython{self.end_token}\n\n{rendered}{self.eot_token}")
         return assistant_content, res
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
@@ -84,7 +90,8 @@ Respond in the format {"name": function name, "parameters": dictionary of argume
     def _format_tool_calls(self, tool_call_messages) -> str:
         tool_calls = []
         for message in tool_call_messages:
-            tool_call = self._parse_tool_call(message["content"])
+            # the jinja keeps the arguments form: a str renders through tojson as an escaped string
+            tool_call = self._raw_tool_call(message["content"])
             tool_call["parameters"] = tool_call.pop("arguments")
             tool_calls.append(json.dumps(tool_call, ensure_ascii=False))
         return "\n".join(tool_calls)

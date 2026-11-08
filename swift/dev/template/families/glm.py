@@ -20,24 +20,8 @@ class GLMTemplateMeta(TemplateMeta):
 
 
 class GLM4Template(Template):
-    strip_newline = True
-
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
-        if self.strip_newline:
-            for i, res_context in enumerate(res_context_list):
-                # The last round or is tool_call.
-                if (
-                    isinstance(res_context, str)
-                    and (res_context.endswith("<|assistant|>\n") or res_context.endswith("<think></think>\n"))
-                    and (i + 1 >= len(res_context_list) or "<|observation|>" in res_context_list[i + 1])
-                ):
-                    res_context_list[i] = res_context_list[i][: -len("\n")]
-        return res_context_list, loss_scale_list, answer_len
-
     def decode_generate_ids(self, *args, **kwargs):
-        response = super().decode_generate_ids(*args, **kwargs)
-        return response.lstrip("\n") if self.strip_newline else response
+        return super().decode_generate_ids(*args, **kwargs).lstrip("\n")
 
 
 register_template(
@@ -53,9 +37,13 @@ register_template(
 @dataclass
 class ChatGLM4TemplateMeta(GLMTemplateMeta):
     prefix: Prompt = field(default_factory=list)
-    prompt: Prompt = field(default_factory=lambda: ["<|user|>\n{{QUERY}}<|assistant|>\n"])
+    prompt: Prompt = field(default_factory=lambda: ["<|user|>\n{{QUERY}}"])
     chat_sep: Optional[Prompt] = field(default_factory=list)
-    suffix: Prompt = field(default_factory=lambda: ["<|user|>"])
+    # the opener belongs to the assistant turn, not the query block: consecutive user messages
+    # render their own query blocks and share one opener, the way the official jinja does
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|assistant|>\n"])
+    # the official jinja ends the conversation right after the final response: no trailing marker
+    suffix: Prompt = field(default_factory=list)
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ["<|system|>\n{{SYSTEM}}"])
 
     agent_template: str = "chatglm4"
@@ -67,6 +55,9 @@ class GLM4TemplateMeta(ChatGLM4TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["[gMASK]<sop>"])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ["[gMASK]<sop><|system|>\n{{SYSTEM}}"])
     agent_template: str = "glm4"
+    # this jinja omits the newline after the opener at the generation prompt but keeps it before
+    # a response: strip it only when the opener is the last context of the prompt
+    strip_opener_newline: bool = True
 
 
 @dataclass
@@ -309,7 +300,7 @@ class GLM4VTemplate(GLM4vPackingTemplateMixin, Template):
         return {"inputs_embeds": inputs_embeds}
 
 
-register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template, thinking_prefix="<think>"))
+register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
 register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate))
 
 
@@ -328,20 +319,54 @@ class GLM4_5Template(GLM4Template):
 register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
 
 
+class GLM4_7Template(GLM4_5Template):
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        # the jinja renders the full empty thinking block only on the turns after the last user
+        # message; earlier turns keep just the closing marker (their thinking was stripped).
+        # '<think></think>' for GLM5.1, '</think>' only everywhere for GLM4.7
+        history_block = self.template_meta.history_thinking_prefix
+        final_block = self.template_meta.non_thinking_prefix
+        # the merged tool turn carries the trailing user content, so it counts as a user position
+        # for the jinja's last_user_index
+        last_user = -1
+        for i, message in enumerate(inputs.messages):
+            if message['role'] == 'user' or message.get('_tool_user_followup'):
+                last_user = i
+        for i, message in enumerate(inputs.messages):
+            if message['role'] == 'assistant':
+                content = message.get('content')
+                if isinstance(content, str) and not content.startswith(('<think>', '</think>')):
+                    message['content'] = (history_block if i < last_user else final_block) + content
+        return super()._swift_encode(inputs)
+
+    def _get_response_prefix(self, inputs=None):
+        # this jinja prefills the think opener at every generation prompt regardless of the flag:
+        # the markers are part of the format, not of an enable_thinking switch
+        explicit = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
+        if explicit is not None:
+            return explicit
+        if self.response_prefix is not None:
+            return self.response_prefix
+        return self.template_meta.thinking_prefix or None
+
+
 @dataclass
 class GLM4_7TemplateMeta(GLM4_5TemplateMeta):
-    prompt: Prompt = field(default_factory=lambda: ["<|user|>{{QUERY}}<|assistant|>"])
+    prompt: Prompt = field(default_factory=lambda: ["<|user|>{{QUERY}}"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|assistant|>"])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ["[gMASK]<sop><|system|>{{SYSTEM}}"])
 
     thinking_prefix: str = "<think>"
     non_thinking_prefix: str = "</think>"
     history_thinking_prefix: str = "</think>"
+    # the assistant continuation after tool outputs renders without the turn opener
+    suppress_opener_after_tool: bool = True
 
 
 register_template(
     GLM4_7TemplateMeta(
         LLMTemplateType.glm4_7,
-        template_cls=GLM4_5Template,
+        template_cls=GLM4_7Template,
         agent_template="glm4_7",
     )
 )
@@ -349,15 +374,22 @@ register_template(
 register_template(
     GLM4_7TemplateMeta(
         LLMTemplateType.glm5_1,
-        template_cls=GLM4_5Template,
+        template_cls=GLM4_7Template,
         agent_template="glm5_1",
+        # the end-of-turn empty block is full, but stripped history turns keep only '</think>'
+        non_thinking_prefix="<think></think>",
+        history_thinking_prefix="</think>",
     )
 )
 
 
-class GLM5_2Template(GLM4_5Template):
+class GLM5_2Template(GLM4_7Template):
     def init_env_args(self):
         super().init_env_args()
+        if not self._explicit_enable_thinking:
+            # this generation thinks by default: the system leads with 'Reasoning Effort: Max'
+            # and the generation prompt ends with the think opener
+            self.enable_thinking = True
         # reasoning_effort: "max" or "high"
         self.reasoning_effort = get_env_args("reasoning_effort", str, "max")
         self.chat_template_kwargs["reasoning_effort"] = self.reasoning_effort
@@ -381,6 +413,7 @@ register_template(
         LLMTemplateType.glm5_2,
         template_cls=GLM5_2Template,
         agent_template="glm5_1",
+        # this jinja renders the full empty block on every turn, history included
         non_thinking_prefix="<think></think>",
         history_thinking_prefix="<think></think>",
     )
@@ -389,7 +422,6 @@ register_template(
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
     placeholder_tokens = ["<|image|>", "<|video|>"]
-    strip_newline = False
 
     def replace_tag(
         self, media_type: Literal["image", "video", "audio"], index: int, inputs: StdTemplateInputs
@@ -484,10 +516,24 @@ glm4z1rumination_system = (
     '"parameters": {"type": "object", "properties": {}, "additionalProperties": false}}]'
 )
 
+@dataclass
+class GLM4Z1RuminationTemplateMeta(GLM4TemplateMeta):
+    # The official jinja skips every system message (`if message.role != 'system'`) and always
+    # renders its built-in research protocol prompt; its prefix also keeps the newline after sop.
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ["[gMASK]<sop>\n<|system|>\n{{SYSTEM}}"])
+
+
+class GLM4Z1RuminationTemplate(GLM4Template):
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        inputs.system = self.template_meta.default_system
+        return inputs
+
+
 register_template(
-    GLM4TemplateMeta(
+    GLM4Z1RuminationTemplateMeta(
         LLMTemplateType.glm4_z1_rumination,
-        template_cls=GLM4Template,
+        template_cls=GLM4Z1RuminationTemplate,
         default_system=glm4z1rumination_system,
         is_thinking=True,
     )

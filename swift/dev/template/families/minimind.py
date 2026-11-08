@@ -11,7 +11,8 @@ DEFAULT_SYSTEM = "You are a helpful assistant"
 @dataclass
 class MiniMindTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
-    prompt: Prompt = field(default_factory=lambda: ["<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n"])
+    prompt: Prompt = field(default_factory=lambda: ["<|im_start|>user\n{{QUERY}}<|im_end|>\n"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|im_start|>assistant\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|im_end|>\n"])
     suffix: Prompt = field(default_factory=lambda: ["<|im_end|>\n"])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ["<|im_start|>system\n{{SYSTEM}}<|im_end|>\n"])

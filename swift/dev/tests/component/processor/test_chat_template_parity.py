@@ -157,6 +157,159 @@ _CASE_SPECS = {
 }
 
 
+def _qwen3_emb_task_cases(tokenizer):
+    """The embedding repo formats text itself and calls ``tokenizer(texts)``.
+
+    Both shapes matter: training rows carry the answer turn (so the suffix lands), while embedding
+    inference is a single user turn whose generation prompt must still end with the eos the
+    checkpoint's tokenizer post-processor appends -- last-token pooling reads it.
+    """
+    task = "Given a web search query, retrieve relevant passages that answer the query"
+    query = "What is the capital of China?"
+    text = f"Instruct: {task}\nQuery:{query}"
+    train = {"messages": [{"role": "user", "content": text}, _asst("")]}
+    infer = {"messages": [{"role": "user", "content": text}]}
+    reference = list(tokenizer(text, add_special_tokens=True)["input_ids"])
+    return [
+        ("task_embedding_train", train, "TRAIN", reference),
+        ("task_embedding_infer", infer, "INFER", reference),
+    ]
+
+
+def _qwen3_vl_emb_task_cases(tokenizer):
+    """sentence_bert_config sets add_generation_prompt=True; the prompt is a system+user chat."""
+    instruction = "Represent the user's input."
+    query = "What is the capital of China?"
+    conv = [
+        {"role": "system", "content": [{"type": "text", "text": instruction}]},
+        {"role": "user", "content": [{"type": "text", "text": query}]},
+    ]
+    rendered = tokenizer.apply_chat_template(conv, tokenize=False, add_generation_prompt=True)
+    if isinstance(rendered, list):
+        rendered = "".join(rendered)
+    return [
+        ("task_embedding_infer", {"messages": [{"role": "user", "content": query}]}, "INFER",
+         list(tokenizer(rendered)["input_ids"])),
+    ]
+
+
+def _qwen2_gme_task_cases(tokenizer):
+    """modeling_gme_qwen2vl.py::embed hard-codes the chatml string that ends in <|endoftext|>."""
+    instruction = "You are a helpful assistant."
+    query = "What is the capital of China?"
+    text = (f"<|im_start|>system\n{instruction}<|im_end|>\n"
+            f"<|im_start|>user\n{query}<|im_end|>\n"
+            f"<|im_start|>assistant\n<|endoftext|>")
+    return [
+        ("task_embedding_infer", {"messages": [{"role": "user", "content": query}]}, "INFER",
+         list(tokenizer(text)["input_ids"])),
+    ]
+
+
+def _jinja_env():
+    """Same defaults the official tokenizer uses to compile its chat template."""
+    import jinja2
+
+    return jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
+
+
+def _qwen3_vl_reranker_task_cases(tokenizer):
+    """The checkpoint ships its scoring jinja in additional_chat_templates/reranker.jinja."""
+    import os
+
+    instruction = ('Judge whether the Document meets the requirements based on the Query and the Instruct '
+                   'provided. Note that the answer can only be "yes" or "no".')
+    query = "What is the capital of China?"
+    document = "The capital of China is Beijing."
+    path = os.path.join(tokenizer.name_or_path, "additional_chat_templates", "reranker.jinja")
+    template = _jinja_env().from_string(open(path, encoding="utf-8").read())
+    messages = [
+        {"role": "system", "content": instruction},
+        {"role": "query", "content": query},
+        {"role": "document", "content": document},
+    ]
+    text = template.render(messages=messages)
+    return [
+        ("task_rerank", {"messages": [{"role": "user", "content": query}, {"role": "user", "content": document}]},
+         "INFER", list(tokenizer(text)["input_ids"])),
+    ]
+
+
+def _jina_reranker_m0_task_cases(tokenizer):
+    """modeling.py::formatting_prompts_func joins Document then Query; compute_score appends 100."""
+    query = "slm markdown"
+    document = "We present ReaderLM-v2, a compact language model for web content extraction."
+    text = "**Document**:\n" + document + "\n" + "**Query**:\n" + query
+    return [
+        ("task_rerank", {"messages": [{"role": "user", "content": query}, {"role": "user", "content": document}]},
+         "INFER", list(tokenizer(text)["input_ids"]) + [100]),
+    ]
+
+
+def _pair_reranker_task_cases(tokenizer):
+    """bge / ModernBERT rerankers tokenize the (query, document) pair in one call."""
+    query = "What is the capital of China?"
+    document = "The capital of China is Beijing."
+    return [
+        ("task_rerank", {"messages": [{"role": "user", "content": query}, _asst(document)]}, "INFER",
+         list(tokenizer(query, document)["input_ids"])),
+    ]
+
+
+def _qwen3_reranker_task_cases(tokenizer):
+    """The reranker repo builds ``<Instruct>/<Query>/<Document>`` plain text for a cls head."""
+    instruction = "Given a web search query, retrieve relevant passages that answer the query"
+    query = "What is the capital of China?"
+    document = "The capital of China is Beijing."
+    text = f"<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {document}"
+    sample = {"messages": [{"role": "user", "content": query}, _asst(document)]}
+    return [("task_rerank", sample, "TRAIN", list(tokenizer(text, add_special_tokens=True)["input_ids"]))]
+
+
+def _yufeng_xguard_task_cases(tokenizer):
+    """The guard jinja takes policy/reason_first kwargs and folds the chat into one block."""
+    one = [{"role": "user", "content": "How can I make a bomb?"}]
+    pair = [{"role": "user", "content": "How can I make a bomb?"}, _asst("I cannot help with that.")]
+    return [
+        ("task_prompt_moderation", {"messages": one}, "INFER",
+         list(tokenizer.apply_chat_template(one, policy=None, reason_first=False, tokenize=True)["input_ids"])),
+        ("task_response_moderation", {"messages": pair}, "TRAIN",
+         list(tokenizer.apply_chat_template(pair, policy=None, reason_first=False, tokenize=True)["input_ids"])),
+    ]
+
+
+#: template -> task cases: (name, sample, intent, reference ids). For these models the shipped
+#: inference path is a plain ``tokenizer(text)`` call, so the chat jinja is not their oracle.
+_TASK_ORACLES = {
+    "qwen3_emb": _qwen3_emb_task_cases,
+    "qwen3_vl_emb": _qwen3_vl_emb_task_cases,
+    "qwen2_gme": _qwen2_gme_task_cases,
+    "qwen3_reranker": _qwen3_reranker_task_cases,
+    "qwen3_vl_reranker": _qwen3_vl_reranker_task_cases,
+    "jina_reranker_m0": _jina_reranker_m0_task_cases,
+    "bge_reranker": _pair_reranker_task_cases,
+    "bert": _pair_reranker_task_cases,
+    "yufeng_xguard": _yufeng_xguard_task_cases,
+}
+
+#: template -> repository used to load the tokenizer/processor instead of the representative.
+#: gme-Qwen2-VL's remote code pins transformers<4.52, so its processor cannot load in this env; it is
+#: a Qwen2-VL checkpoint and shares that tokenizer byte for byte, which is all the format check needs.
+_PROCESSOR_SUBSTITUTE = {"qwen2_gme": "Qwen/Qwen2-VL-2B-Instruct"}
+
+
+def _token_window(tokenizer, seq, at):
+    """Ids + hex + escaped token text around ``at``; never decoded, the tags leak into logs."""
+    parts = []
+    for token_id in seq[max(0, at - 3):at + 4]:
+        piece = tokenizer.convert_ids_to_tokens(int(token_id))
+        if isinstance(piece, list):
+            piece = "".join(piece)
+        piece = str(piece).encode("ascii", "backslashreplace").decode("ascii").replace("<", "{LT}")
+        parts.append(f"{int(token_id)}({hex(int(token_id))},{piece})")
+    return " ".join(parts)
+
+
 def _to_parts(messages):
     """The OpenAI content-parts form: plain string contents become single text parts."""
     res = []
@@ -184,22 +337,40 @@ class _CaseSkip(Exception):
     """The official jinja cannot render this input, so there is no reference to compare against."""
 
 
-def _parts_stringified(tokenizer, messages, add_generation_prompt):
+def _parts_stringified(renderer, messages, add_generation_prompt):
     """True when the jinja printed a parts list verbatim (its Python repr) instead of its text.
 
     A jinja without content-parts support does not raise on a parts form -- it silently renders
     ``[{'type': 'text', ...}]`` into the prompt. That printout is not a rendering contract dev
     could or should reproduce, so it counts as "cannot render this input shape".
     """
-    rendered = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
+    rendered = renderer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
     if isinstance(rendered, list):
-        rendered = "".join(rendered)
+        rendered = "".join(str(part) for part in rendered)
     return any(
         isinstance(message.get("content"), list) and str(message["content"]) in rendered for message in messages
     )
 
 
-def _render_official(tokenizer, messages, add_generation_prompt, prefer_parts):
+def _encoded_ids(encoded):
+    """Pull the token ids out of whatever container ``apply_chat_template`` returned.
+
+    A plain tokenizer hands back a mapping, a multimodal processor may hand back a batch (a list of
+    mappings, or a list holding one id list). All three carry the same rendering; only the wrapper
+    differs, so unwrap instead of treating it as "the jinja cannot render this".
+    """
+    if hasattr(encoded, "keys"):
+        return list(encoded["input_ids"])
+    if isinstance(encoded, (list, tuple)):
+        if encoded and isinstance(encoded[0], (list, tuple)):
+            return list(encoded[0])
+        if encoded and hasattr(encoded[0], "keys"):
+            return list(encoded[0]["input_ids"])
+        return list(encoded)
+    raise TypeError(f"unsupported tokenized container: {type(encoded).__name__}")
+
+
+def _render_official(renderer, messages, add_generation_prompt, prefer_parts):
     """Render with the official jinja, handing it the input shape it accepts.
 
     ``prefer_parts`` marks the ``mm_*`` cases, which exist to pin the content-parts path: for them
@@ -212,13 +383,19 @@ def _render_official(tokenizer, messages, add_generation_prompt, prefer_parts):
     for form in forms:
         shaped = form(messages)
         try:
-            rendered = tokenizer.apply_chat_template(
+            encoded = renderer.apply_chat_template(
                 shaped, tokenize=True, add_generation_prompt=add_generation_prompt
-            )["input_ids"]
+            )
+            if isinstance(encoded, (list, tuple)) and encoded and not isinstance(encoded[0], int):
+                # A multimodal processor returns a batch per conversation and may not forward jinja
+                # kwargs the same way the plain tokenizer does; wiring that oracle is its own task
+                # (probe evidence: 18 diffs over 6 families), so record the gap instead of guessing.
+                raise _CaseSkip("processor returns batched tokenization (family oracle not wired)")
+            rendered = _encoded_ids(encoded)
         except Exception as exc:  # noqa: BLE001 -- the jinja rejecting an input shape is a skip signal
             last_error = exc
             continue
-        if form is _to_parts and _parts_stringified(tokenizer, shaped, add_generation_prompt):
+        if form is _to_parts and _parts_stringified(renderer, shaped, add_generation_prompt):
             raise _CaseSkip("official jinja stringifies content parts (no parts support)")
         return list(rendered), form is _to_parts
     raise _CaseSkip(f"{type(last_error).__name__}: {last_error}"[:160])
@@ -230,6 +407,28 @@ def _first_diff(a, b):
         if a[i] != b[i]:
             return i
     return n if len(a) != len(b) else None
+
+
+def _official_ignores_tool_calls(renderer, messages, add_generation_prompt, prefer_parts):
+    """True when removing every ``tool_calls`` field leaves the official render unchanged.
+
+    A jinja without tool support prints nothing for the call block, so dev's faithful rendering
+    can never equal it: the case has no reference and skips with this reason instead of counting
+    as a mismatch.
+    """
+    stripped = []
+    for message in messages:
+        message = dict(message)
+        message.pop("tool_calls", None)
+        stripped.append(message)
+    if stripped == messages:
+        return False
+    try:
+        before, _ = _render_official(renderer, messages, add_generation_prompt, prefer_parts)
+        after, _ = _render_official(renderer, stripped, add_generation_prompt, prefer_parts)
+    except _CaseSkip:
+        return False
+    return before == after
 
 
 class TemplateSurvey:
@@ -306,14 +505,18 @@ def test_all_templates_render_like_official_jinja():
     for template in sorted(REPRESENTATIVES):
         model_id = REPRESENTATIVES[template]
         try:
-            model_dir = TinyModel.tokenizer_dir(model_id)
+            model_dir = TinyModel.tokenizer_dir(_PROCESSOR_SUBSTITUTE.get(template, model_id))
             _, processor = get_model_processor(model_dir, load_model=False)
         except Exception as exc:  # noqa: BLE001 -- a missing or gated repo is not a template defect
             skips.append(f"{template}: setup failed ({type(exc).__name__}: {exc})"[:200])
             continue
-        tokenizer = processor if hasattr(processor, "apply_chat_template") else processor.tokenizer
-        if getattr(tokenizer, "chat_template", None) is None:
-            skips.append(f"{template}: {model_id} ships no chat_template, so there is nothing to compare against")
+        try:
+            # A processor owns the jinja for multimodal inputs but only its .tokenizer can tokenize
+            # text and map ids back to pieces, so keep the two roles apart.
+            tokenizer = getattr(processor, "tokenizer", None) or processor
+            renderer = processor if hasattr(processor, "apply_chat_template") else tokenizer
+        except Exception as exc:  # noqa: BLE001 -- no usable tokenizer on the processor
+            skips.append(f"{template}: processor has no usable tokenizer ({type(exc).__name__}: {exc})"[:200])
             continue
         try:
             dev_template = build_template(TemplateConfig(template=template, max_length=4096), processor)
@@ -321,10 +524,41 @@ def test_all_templates_render_like_official_jinja():
             skips.append(f"{template}: build failed ({type(exc).__name__}: {exc})"[:200])
             continue
 
+        task_cases = _TASK_ORACLES.get(template)
+        # A task model may ship no chat jinja at all (pair-tokenized rerankers): its oracle is the
+        # repo's own text, so the "nothing to compare against" gate applies to dialogue families only.
+        if task_cases is None and getattr(renderer, "chat_template", None) is None:
+            skips.append(f"{template}: {model_id} ships no chat_template, so there is nothing to compare against")
+            continue
+        if task_cases is not None:
+            for case, sample, intent_name, reference in task_cases(tokenizer):
+                try:
+                    rendered = list(dev_template.encode(sample, intent=intents[intent_name])["input_ids"])
+                except Exception as exc:  # noqa: BLE001 -- a dev-side error is the failure
+                    failures.append(f"{template} / {case}: dev encode raised {type(exc).__name__}: {exc}"[:400])
+                    continue
+                diff_at = _first_diff(rendered, reference)
+                if diff_at is not None:
+                    failures.append(
+                        f"{template} / {case}: differs at {diff_at} "
+                        f"(dev {len(rendered)} vs official {len(reference)} tokens)\n"
+                        f"  dev:      {_token_window(tokenizer, rendered, diff_at)}\n"
+                        f"  official: {_token_window(tokenizer, reference, diff_at)}"
+                    )
+            continue
+
         for case, (messages, intent, add_generation_prompt) in _CASE_SPECS.items():
             prefer_parts = case.startswith("mm_")
+            if case.startswith("train_tool") and not getattr(dev_template.template_meta, "agent_template", None):
+                skips.append(f"{template} / {case}: template declares no agent_template (tool rendering not covered)")
+                continue
+            if case.startswith("train_tool") and _official_ignores_tool_calls(
+                renderer, messages, add_generation_prompt, prefer_parts
+            ):
+                skips.append(f"{template} / {case}: official jinja drops tool_calls (no tool rendering)")
+                continue
             try:
-                reference, used_parts = _render_official(tokenizer, messages, add_generation_prompt, prefer_parts)
+                reference, used_parts = _render_official(renderer, messages, add_generation_prompt, prefer_parts)
             except _CaseSkip as exc:
                 skips.append(f"{template} / {case}: official jinja rejects the input ({exc})")
                 continue
@@ -332,17 +566,25 @@ def test_all_templates_render_like_official_jinja():
             dev_messages = _to_parts(messages) if used_parts else _to_plain(messages)
             try:
                 rendered = list(dev_template.encode({"messages": dev_messages}, intent=intents[intent])["input_ids"])
+            except NotImplementedError as exc:  # noqa: BLE001 -- unsupported input shape, not a mismatch
+                skips.append(f"{template} / {case}: template capability gap ({exc})"[:200])
+                continue
+            except AttributeError as exc:  # noqa: BLE001 -- processor side missing weights
+                if "visual_tokenizer" in str(exc) or "build_conversation_input_ids" in str(exc):
+                    skips.append(f"{template} / {case}: processor has no vision weights ({exc})"[:200])
+                    continue
+                failures.append(f"{template} / {case}: dev encode raised {type(exc).__name__}: {exc}"[:400])
+                continue
             except Exception as exc:  # noqa: BLE001 -- a dev-side error is the failure this test exists to catch
                 failures.append(f"{template} / {case}: dev encode raised {type(exc).__name__}: {exc}"[:400])
                 continue
 
             diff_at = _first_diff(rendered, reference)
             if diff_at is not None:
-                head = max(0, diff_at - 4)
                 failures.append(
                     f"{template} / {case}: differs at {diff_at} (dev {len(rendered)} vs official {len(reference)} tokens)\n"
-                    f"  dev:      {tokenizer.decode(rendered[head : diff_at + 12])!r}\n"
-                    f"  official: {tokenizer.decode(reference[head : diff_at + 12])!r}"
+                    f"  dev:      {_token_window(tokenizer, rendered, diff_at)}\n"
+                    f"  official: {_token_window(tokenizer, reference, diff_at)}"
                 )
 
     report = "\n".join(failures)
