@@ -990,7 +990,35 @@ def _build_transformers_model(
     strategy = "accelerate"
     if distributed_config.deepspeed:
         strategy = "deepspeed"
-        kwargs["deepspeed_config"] = _resolve_deepspeed_config(distributed_config)
+        config = _resolve_deepspeed_config(distributed_config)
+        # The "auto" batch placeholders must be resolved before the strategy runs: neither HF
+        # Trainer (trainer_config_process) nor accelerate's dataloader-carrying prepare ever
+        # executes on this path, and a raw "auto" string crashes DeepSpeed's batch assertion
+        # (in ZeRO-3's zero.Init at model construction, or at Accelerator.prepare).
+        world = distributed_config.nproc_per_node or 1
+        micro_bs = (train_config.per_device_train_batch_size if train_config is not None else 1) or 1
+        ga = (train_config.gradient_accumulation_steps if train_config is not None else 1) or 1
+        for key, value in (('train_micro_batch_size_per_gpu', micro_bs),
+                           ('gradient_accumulation_steps', ga),
+                           ('train_batch_size', world * micro_bs * ga)):
+            if config.get(key) == 'auto':
+                config[key] = value
+        # ZeRO-3 bucket sizes: HF Trainer fills these "auto" values from config.hidden_size; a
+        # VL-style checkpoint nests it in text_config (PeftModel's .config never exposes it), so
+        # resolve them here from the resolved hidden size, using the same formula HF applies.
+        zero_opt = config.get('zero_optimization')
+        if isinstance(zero_opt, dict):
+            text_config = getattr(hf_config, 'text_config', None) or hf_config
+            hidden_size = getattr(text_config, 'hidden_size', None) or getattr(
+                getattr(text_config, 'text_config', None), 'hidden_size', None)
+            if hidden_size:
+                if zero_opt.get('reduce_bucket_size') == 'auto':
+                    zero_opt['reduce_bucket_size'] = hidden_size * hidden_size
+                if zero_opt.get('stage3_prefetch_bucket_size') == 'auto':
+                    zero_opt['stage3_prefetch_bucket_size'] = int(0.9 * hidden_size * hidden_size)
+                if zero_opt.get('stage3_param_persistence_threshold') == 'auto':
+                    zero_opt['stage3_param_persistence_threshold'] = 10 * hidden_size
+        kwargs["deepspeed_config"] = config
     elif distributed_config.fsdp:
         strategy = "native_fsdp"
     kwargs["strategy"] = resolve_strategy(strategy)
