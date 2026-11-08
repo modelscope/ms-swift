@@ -126,9 +126,14 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
         )
 
         model = None
+        # Classification attrs must land on the config regardless of load_model: the template's
+        # processor is loaded through this same seam with load_model=False, and its collators
+        # (one-hot width, problem_type dispatch) read config.problem_type / config.num_labels.
+        # Without this the multi-label collator falls to the single-label branch and BCE gets
+        # raw label indices shaped [B, len(indices)] instead of a one-hot [B, num_labels].
+        if info.task_type in ("seq_cls", "reranker"):
+            _prepare_seq_cls_config(config, model_config, info, pad_token_id)
         if load_model:
-            if info.task_type in ("seq_cls", "reranker"):
-                _prepare_seq_cls_config(config, model_config, info, pad_token_id)
             load_kwargs = dict(model_config.model_kwargs or {})
             # device_map has no default: it reaches from_pretrained only when a caller passes it
             # explicitly (merge's CPU load, quantize's 'auto' guard) or via model_kwargs.

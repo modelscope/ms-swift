@@ -720,6 +720,15 @@ class Template(ProcessorMixin):
             problem_type = self.config.problem_type
             if problem_type == "single_label_classification":
                 labels = int(labels)
+            elif problem_type == "multi_label_classification" and isinstance(labels, (list, tuple)):
+                # The training collator is twinkle's generic batcher: it stacks per-sample values
+                # verbatim, so the multi-label ONE-HOT must exist at encode time. Raw index lists
+                # would stack into [B, n_pos] and BCE would see a rank-2 target of the wrong width
+                # (the legacy HF-side _seq_cls_data_collator's one-hot never runs in dev training).
+                one_hot = [0.0] * self.config.num_labels
+                for index in labels:
+                    one_hot[int(index)] = 1.0
+                labels = one_hot
             encoded["labels"] = labels
         return encoded
 
