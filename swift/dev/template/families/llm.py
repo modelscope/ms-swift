@@ -689,7 +689,7 @@ register_template(
         chat_sep=["<|role_end|>\n\n"],
         suffix=["<|role_end|>\n\n"],
         is_thinking=True,
-        strip_opener_newline=True,
+        strip_opener_whitespace=True,
     )
 )
 
@@ -697,6 +697,8 @@ register_template(
     QwenTemplateMeta(
         LLMTemplateType.iquestcoder,
         default_system="You are LoopCoder, a helpful assistant developed by IQuest.",
+        # the shipped jinja prints a string arguments value verbatim, like the qwen3 family
+        agent_template="qwen3",
     )
 )
 

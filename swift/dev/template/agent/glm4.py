@@ -91,6 +91,8 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
     tool_call_start = "<tool_call>"
     model_type = "glm4_5"
     supports_tool_schema = True
+    #: literal text the jinja keeps after every '</tool_response>' block before the next turn
+    tool_response_suffix = ""
 
     @staticmethod
     def _find_function_call(single_content: str, tool_schemas: Optional[dict] = None) -> Optional[Function]:
@@ -164,7 +166,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             res = []
             for tool_message in tool_messages:
                 tool_content = tool_message["content"]
-                res.append(f"\n<tool_response>\n{tool_content}\n</tool_response>")
+                res.append(f"\n<tool_response>\n{tool_content}\n</tool_response>{self.tool_response_suffix}")
             res.append("<|assistant|>\n")
         elif self.model_type in {"glm4_7", "glm5_1"}:
             res = []
@@ -178,13 +180,11 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         _, tool_content = self._format_tool_responses('', tool_messages)
         prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
         chat_sep = ''.join(self.template_meta.chat_sep or [])
-        # the opener closing the tool block moves behind the trailing user content: the engine
-        # suppresses the response opener on a tool-only round, so this block owns the opener
-        opener = tool_content[-1]
+        # the tool block ends with its own turn opener; drop it, the follow-up user turns close the
+        # block and the encode loop opens the response turn where the jinja does
         res = tool_content[:-1]
         for i, message in enumerate(user_messages):
             res.extend([prefix + message['content'], suffix if i == len(user_messages) - 1 else chat_sep])
-        res.append(opener)
         return res
 
     def _format_tool_calls(self, tool_call_messages) -> str:
@@ -201,6 +201,12 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         elif self.model_type in {"glm4_7", "glm5_1"}:
             sep = ""
         return sep.join(tool_calls) + "<|observation|>"
+
+
+class GLMOCRAgentTemplate(GLM4_5AgentTemplate):
+    #: GLM-OCR's jinja leaves the newline that follows the closing tool_response tag, GLM-4.5V's
+    #: strips it, so only this family keeps it before the assistant continuation
+    tool_response_suffix = "\n"
 
 
 class GLM4_7AgentTemplate(GLM4_5AgentTemplate):

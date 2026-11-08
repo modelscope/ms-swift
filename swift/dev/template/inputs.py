@@ -35,6 +35,11 @@ class StdTemplateInputs:
 
     mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
 
+    #: the messages arrived as content-parts lists and were folded down to text here. Some shipped
+    #: jinjas branch on the shape (they scan for a query turn whose content *is a string*), so the
+    #: renderer has to know which shape the caller used even though it renders text either way.
+    content_parts: bool = False
+
     def __post_init__(self):
         self.image_idx = 0
         self.audio_idx = 0
@@ -78,6 +83,9 @@ class StdTemplateInputs:
             if message["role"] in {"tool_call", "tool"} and not isinstance(message["content"], str):
                 message["content"] = json.dumps(message["content"], ensure_ascii=False)
 
+        content_parts = any(
+            isinstance(message["content"], list) and message["content"]
+            and not isinstance(message["content"][0], int) for message in messages)
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         # the system message rides the same parts folding as every other message (a parts-form
         # system would otherwise reach the renderer as a list), then lifts out as `system`.
@@ -110,6 +118,7 @@ class StdTemplateInputs:
             chat_template_kwargs=chat_template_kwargs,
             extra_kwargs=extra_kwargs,
             mm_processor_kwargs=mm_processor_kwargs,
+            content_parts=content_parts,
             **kwargs,
             **media_kwargs,
         )

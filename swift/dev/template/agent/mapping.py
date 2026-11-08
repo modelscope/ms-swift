@@ -9,6 +9,7 @@ from .glm4 import (
     GLM4_7AgentTemplate,
     GLM4AgentTemplate,
     GLM5_1AgentTemplate,
+    GLMOCRAgentTemplate,
 )
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate, Qwen3AgentTemplate
 from .hy_v3 import HyV3AgentTemplate, HyV3PreviewAgentTemplate
@@ -46,6 +47,7 @@ agent_template_map = {
     "chatglm4": ChatGLM4AgentTemplate,
     "glm4": GLM4AgentTemplate,  # ref: https://modelscope.cn/models/ZhipuAI/GLM-4-9B-0414
     "glm4_5": GLM4_5AgentTemplate,
+    "glm_ocr": GLMOCRAgentTemplate,
     "glm4_7": GLM4_7AgentTemplate,
     "glm5_1": GLM5_1AgentTemplate,
     "llama3": Llama3AgentTemplate,

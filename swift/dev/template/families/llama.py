@@ -57,18 +57,24 @@ class Llama3TemplateMeta(TemplateMeta):
 register_template(Llama3TemplateMeta(LLMTemplateType.llama3))
 
 
-def _get_llama3_2_prefix() -> Prompt:
-    # the jinja takes date_string from the transformers default ('26 Jul 2024') unless the caller
-    # passes one; follow that default so a plain render matches the official template
-    date_string = get_env_args("today_date", str, "26 Jul 2024")
+def _get_llama3_2_prefix(date_string: str) -> Prompt:
     date_prompt = f"Cutting Knowledge Date: December 2023\nToday Date: {date_string}"
     return [f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{date_prompt}\n\n{{{{SYSTEM}}}}<|eot_id|>"]
 
 
 @dataclass
 class Llama3_2TemplateMeta(Llama3TemplateMeta):
-    prefix: Prompt = field(default_factory=lambda: _get_llama3_2_prefix())
+    # the text jinja hardcodes this date while the mllama processor one takes transformers'
+    # default (today, '%d %b %Y'); keep the two apart so each render matches its own jinja
+    prefix: Prompt = field(default_factory=lambda: _get_llama3_2_prefix(get_env_args("today_date", str, "26 Jul 2024")))
     system_prefix: Optional[Prompt] = None
+
+
+@dataclass
+class Llama3_2VisionTemplateMeta(Llama3_2TemplateMeta):
+    prefix: Prompt = field(
+        default_factory=lambda: _get_llama3_2_prefix(get_env_args("today_date", str, dt.date.today().strftime("%d %b %Y")))
+    )
 
 
 register_template(Llama3_2TemplateMeta(LLMTemplateType.llama3_2))
@@ -121,7 +127,7 @@ class Llama3_2VisionTemplate(Template):
         return res
 
 
-register_template(Llama3_2TemplateMeta(MLLMTemplateType.llama3_2_vision, template_cls=Llama3_2VisionTemplate))
+register_template(Llama3_2VisionTemplateMeta(MLLMTemplateType.llama3_2_vision, template_cls=Llama3_2VisionTemplate))
 
 
 class Llama4Template(Template):
@@ -161,11 +167,11 @@ class Llama4Template(Template):
 @dataclass
 class Llama4TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["<|begin_of_text|>"])
-    prompt: Prompt = field(
-        default_factory=lambda: [
-            "<|header_start|>user<|header_end|>\n\n{{QUERY}}<|eot|><|header_start|>assistant<|header_end|>\n\n"
-        ]
-    )
+    # the user block closes with <|eot|>: the jinja writes the assistant header once, right before
+    # the response, so consecutive user messages render back to back
+    prompt: Prompt = field(default_factory=lambda: ["<|header_start|>user<|header_end|>\n\n{{QUERY}}<|eot|>"])
+    response_opener: Optional[Prompt] = field(
+        default_factory=lambda: ["<|header_start|>assistant<|header_end|>\n\n"])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|eot|>"])
     suffix: Prompt = field(default_factory=lambda: ["<|eot|>"])
     stop_words: List[Word] = field(default_factory=lambda: ["<|end_of_text|>", "<|eom|>"])

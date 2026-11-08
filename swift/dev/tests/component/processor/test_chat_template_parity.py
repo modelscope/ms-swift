@@ -26,7 +26,10 @@ contract the matrix guards.
 
 Skipping is per template+case and always carries the reason: no registered model, an unfetchable
 tokenizer, no shipped chat template, or an official render failure on the case's input. A dev-side
-error is never a skip -- it is the failure this test exists to catch.
+error is never a skip -- it is the failure this test exists to catch. The one exception is the
+decision family (``swift/dev/template/families/decision.py``): its input is a record of questions and
+options, not a dialogue, so a chat sample is the wrong probe for it. Those templates are skipped
+here with that reason and checked by ``test_decision_templates_refuse_a_dialogue_sample`` instead.
 
 Token ids rather than decoded text: ``decode`` is not the inverse of ``encode`` for sentencepiece
 tokenizers -- it reinserts word-piece boundaries as spaces (``assistant`` came back as
@@ -352,6 +355,48 @@ def _parts_stringified(renderer, messages, add_generation_prompt):
     )
 
 
+def _plain_ignored(renderer, messages, add_generation_prompt):
+    """True when the jinja drops plain string content, i.e. it only understands content parts.
+
+    A parts-only jinja (LLaVA-HF, Idefics3, PaddleOCR-VL 1.5) does not raise on a plain string
+    content -- it iterates it as a sequence of parts and renders nothing -- so the string form
+    silently produces an empty conversation. Comparing dev against that would report a faithful
+    render as a mismatch, so the case is retried with the parts form instead.
+    """
+    probe = []
+    for message in messages:
+        message = dict(message)
+        if isinstance(message.get("content"), str):
+            message["content"] = "swift parity probe"
+        probe.append(message)
+    if probe == messages:
+        return False
+
+    def render(msgs):
+        rendered = renderer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=add_generation_prompt)
+        if isinstance(rendered, list):
+            rendered = "".join(str(part) for part in rendered)
+        return rendered
+
+    return render(messages) == render(probe)
+
+
+def _unwrap_official(encoded):
+    """A multimodal processor returns a batch (a list holding one row); keep that row."""
+    if hasattr(encoded, "keys"):
+        return list(encoded["input_ids"])
+    if isinstance(encoded, (list, tuple)):
+        if not encoded:
+            return []
+        head = encoded[0]
+        if hasattr(head, "keys"):
+            return list(head["input_ids"])
+        if isinstance(head, (list, tuple)):
+            return list(head)
+        return list(encoded)
+    raise TypeError(f"official renderer returned {type(encoded).__name__}")
+
+
 def _render_official(renderer, messages, add_generation_prompt, prefer_parts):
     """Render with the official jinja, handing it the input shape it accepts.
 
@@ -368,17 +413,20 @@ def _render_official(renderer, messages, add_generation_prompt, prefer_parts):
             encoded = renderer.apply_chat_template(
                 shaped, tokenize=True, add_generation_prompt=add_generation_prompt
             )
-            # A multimodal processor returns a batch per conversation and a few families hand back a
-            # bare id list; both hide a family-level oracle that still has to be wired (probe: 18
-            # diffs over 6 VL families, 10 over iquestcoder), so they stay a recorded skip.
-            if not hasattr(encoded, "keys"):
-                raise _CaseSkip("official renderer returns a non-mapping container (family oracle not wired)")
-            rendered = list(encoded["input_ids"])
+            rendered = _unwrap_official(encoded)
         except Exception as exc:  # noqa: BLE001 -- the jinja rejecting an input shape is a skip signal
             last_error = exc
             continue
         if form is _to_parts and _parts_stringified(renderer, shaped, add_generation_prompt):
             raise _CaseSkip("official jinja stringifies content parts (no parts support)")
+        if form is _to_plain:
+            try:
+                ignored = _plain_ignored(renderer, messages, add_generation_prompt)
+            except Exception:  # noqa: BLE001 -- a jinja that cannot render the probe is not parts-only
+                ignored = False
+            if ignored:
+                last_error = _CaseSkip("the jinja ignores plain string content (content-parts only)")
+                continue
         return list(rendered), form is _to_parts
     raise _CaseSkip(f"{type(last_error).__name__}: {last_error}"[:160])
 
@@ -411,6 +459,62 @@ def _official_ignores_tool_calls(renderer, messages, add_generation_prompt, pref
     except _CaseSkip:
         return False
     return before == after
+
+
+def _is_decision_template(dev_template) -> bool:
+    """True for the decision-head families, whose input is a record rather than a dialogue.
+
+    The check is the shared mixin rather than a name list: every decision template inherits
+    ``DecisionBatchMixin`` (some directly, the rest through ``DecisionTemplate``), so a new family
+    is covered the moment it is registered.
+    """
+    from swift.dev.template.families.decision import DecisionBatchMixin
+
+    return isinstance(dev_template, DecisionBatchMixin)
+
+
+def _decision_template_names():
+    """Registered decision template names, read from the registry rather than probing every model."""
+    from swift.dev.template.families.decision import DecisionBatchMixin
+    from swift.dev.template.register import TEMPLATE_MAPPING, _ensure_registered
+
+    _ensure_registered()
+    return sorted(
+        name for name, meta in TEMPLATE_MAPPING.items()
+        if isinstance(meta.template_cls, type) and issubclass(meta.template_cls, DecisionBatchMixin)
+    )
+
+
+def test_decision_templates_refuse_a_dialogue_sample():
+    """A decision template reads a record, not a chat: it must say so instead of guessing.
+
+    Every decision family consumes ``question_ids`` / ``kinds`` / ``questions`` /
+    ``options`` / ``criteria``, written into ``extra_kwargs`` by its dataset preprocessor. A
+    dialogue sample carries none of them, so the template has to fail loudly and name the missing
+    field: rendering a per-option record out of chat turns would train the decision head on
+    nonsense while the dialogue matrix stayed quiet about it. Reverse check: teach any of these
+    templates to render a plain dialogue sample and this test goes red.
+    """
+    from swift.dev.builders import build_template
+    from swift.dev.config import TemplateConfig
+    from swift.dev.template import TRAIN
+    from swift.model import get_model_processor
+
+    checked = []
+    for template in _decision_template_names():
+        if template not in REPRESENTATIVES:
+            continue
+        try:
+            model_dir = TinyModel.tokenizer_dir(_PROCESSOR_SUBSTITUTE.get(template, REPRESENTATIVES[template]))
+            _, processor = get_model_processor(model_dir, load_model=False)
+            dev_template = build_template(TemplateConfig(template=template, max_length=4096), processor)
+        except Exception:  # noqa: BLE001 -- no usable representative; the matrix test records it
+            continue
+        messages, _, _ = _CASE_SPECS["train_basic"]
+        with pytest.raises(ValueError, match="extra_kwargs"):
+            dev_template.encode({"messages": _to_plain(messages)}, intent=TRAIN)
+        checked.append(template)
+    assert checked, "no decision template was exercised: the fail-loudly rule lost its coverage"
 
 
 class TemplateSurvey:
@@ -507,6 +611,12 @@ def test_all_templates_render_like_official_jinja():
             dev_template = build_template(TemplateConfig(template=template, max_length=4096), processor)
         except Exception as exc:  # noqa: BLE001 -- e.g. legacy registry pointing at an unregistered template
             skips.append(f"{template}: build failed ({type(exc).__name__}: {exc})"[:200])
+            continue
+        if _is_decision_template(dev_template):
+            skips.append(
+                f"{template}: decision head reads a record (state + questions + options) written by its "
+                "dataset preprocessor, not a dialogue sample"
+            )
             continue
 
         task_cases = _TASK_ORACLES.get(template)

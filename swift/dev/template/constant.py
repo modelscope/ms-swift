@@ -159,6 +159,7 @@ class MLLMTemplateType:
     qwen3_asr = "qwen3_asr"
     qwen3_tts = "qwen3_tts"
     qwen3_vl = "qwen3_vl"
+    qwen3_vl_thinking = "qwen3_vl_thinking"
     qwen3_vl_emb = "qwen3_vl_emb"
     qwen3_vl_reranker = "qwen3_vl_reranker"
     qwen3_5 = "qwen3_5"

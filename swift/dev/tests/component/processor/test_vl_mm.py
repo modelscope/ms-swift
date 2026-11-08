@@ -129,12 +129,19 @@ def test_vl_batch_matches_legacy_collator(vl, padding_free):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("template_type,model_id", sorted(_ENGINE_MODE_CASES.items()))
-def test_native_engine_encode_matches_legacy(template_type, model_id):
+def test_native_engine_encode_agrees_with_the_full_render(template_type, model_id):
+    """The native engine prompt is the very prompt the inference intent renders.
+
+    The text rendering itself is pinned to the checkpoint's chat template by the parity matrix. What
+    is checked here is that the prompt form handed to the engine (one placeholder per image, not the
+    expanded form) agrees with the full inference render it was built from -- legacy is not a
+    reference: the served ids have no official counterpart to compare against, because the processor
+    exposes the expanded form only through the model's own image-token count.
+    """
     from swift.dev.builders import build_template
     from swift.dev.config import TemplateConfig
     from swift.dev.template import ENGINE, INFER
     from swift.model import get_model_processor
-    from swift.template import get_template
 
     if template_type == "qwen3_5":
         import inspect
@@ -145,15 +152,17 @@ def test_native_engine_encode_matches_legacy(template_type, model_id):
             pytest.skip("installed qwen-vl-utils lacks Qwen3.5 image_patch_size support")
     _, processor = get_model_processor(model_id, load_model=False)
     dev = build_template(TemplateConfig(template=template_type, max_length=8192), processor)
-    legacy = get_template(processor, template_type=template_type, max_length=8192)
     prompt = {"messages": _sample(2)["messages"][:1], "images": _sample(2)["images"]}
     encoded = dev.encode_prompt(copy.deepcopy(prompt))
     expanded = dev.encode(copy.deepcopy(prompt), intent=INFER)["input_ids"]
     engine = dev.encode(copy.deepcopy(prompt), intent=ENGINE)["input_ids"]
-    legacy.set_mode("vllm")
-    legacy_engine = legacy.encode(copy.deepcopy(prompt))["input_ids"]
     assert encoded.state.feature["input_ids"] == expanded
-    assert list(encoded.state.engine_input_ids) == list(engine) == list(legacy_engine)
+    assert list(encoded.state.engine_input_ids) == list(engine)
+    from swift.dev.template import MediaBundle
+
+    # one placeholder per image: the engine expands it itself, so a prompt carrying the expanded form
+    # (or a stale count) is a wrong prompt
+    dev._check_engine_placeholders(list(engine), MediaBundle(images=encoded.state.media.images))
 
 
 @pytest.mark.slow

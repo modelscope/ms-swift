@@ -23,7 +23,7 @@ from ..meta import TemplateMeta
 from ..register import register_template
 from ..runtime import get_env_args, to_float_dtype
 from ..runtime import is_deepspeed_zero3_enabled as swift_is_zero3_enabled
-from ..utils import Context, Word, findall
+from ..utils import Context, Prompt, Word, findall
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -582,9 +582,10 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_vl, template_cls=Qwen2
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qvq,
+        # the checkpoint jinja hardcodes this sentence: no 'answer in the language of the question'
         default_system=(
             "You are a helpful and harmless assistant. You are Qwen developed by Alibaba. "
-            "Answer in the language of the question. You should think step-by-step."
+            "You should think step-by-step."
         ),
         template_cls=Qwen2VLTemplate,
     )
@@ -676,7 +677,22 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
 
 register_template(
     QwenTemplateMeta(
-        MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, thinking_prefix="<think>\n"
+        MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, agent_template="qwen3"
+    )
+)
+
+register_template(
+    # The Instruct checkpoint stops its jinja at the assistant opener; the Thinking one appends the
+    # think opener there. Same conversation format otherwise, so only the prefill differs.
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_vl_thinking,
+        template_cls=Qwen3VLTemplate,
+        default_system=None,
+        agent_template="qwen3",
+        is_thinking=True,
+        thinking_prefix="<think>\n",
+        # the final response always carries the empty think block, the way its jinja writes it
+        train_final_think_block="<think>\n\n</think>\n\n",
     )
 )
 
@@ -692,6 +708,36 @@ class Qwen3_5Template(Qwen3VLTemplate):
                 f"transformers>=5.9.0 (current: {self.transformers_version}). "
             )
         return Qwen2VLTemplate._post_encode(self, model, inputs)
+
+    def _swift_encode(self, inputs):
+        # The 3.5 jinja wraps every assistant turn that follows the last real user query in the
+        # thinking block; earlier turns render bare, their reasoning already stripped from history.
+        block = self.template_meta.non_thinking_prefix
+        if block:
+            last_query = -1
+            for i, message in enumerate(inputs.messages):
+                # the agent template folds a user follow-up into the tool turn, so it still marks
+                # where the model's next answer begins
+                if message.get("role") == "user" or message.get("_tool_user_followup"):
+                    last_query = i
+            for i, message in enumerate(inputs.messages):
+                content = message.get("content")
+                if (
+                    message.get("role") == "assistant" and i > last_query and isinstance(content, str)
+                    and not content.startswith("<think>")
+                ):
+                    message["content"] = block + content
+        return super()._swift_encode(inputs)
+
+    def _get_response_prefix(self, inputs=None):
+        prefix = super()._get_response_prefix(inputs)
+        if prefix is not None:
+            return prefix
+        # The 3.5 jinja renders the empty thinking block in its else branch, so a render that does
+        # not switch thinking on still carries it; switching it on prefills the bare opener.
+        if not self._get_enable_thinking(inputs):
+            return self.template_meta.non_thinking_prefix or None
+        return self.template_meta.thinking_prefix or None
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         # Normalize message content so the swift backend byte-matches Qwen3.5/Qwen3.6
@@ -1165,10 +1211,25 @@ class Qwen3OmniTemplate(Qwen2_5OmniTemplate):
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return inputs
 
+    def _add_non_thinking_prefix(self, inputs, thinking_prefix="<think>") -> None:
+        # the jinja counts a user turn as the query only when its content is a string; a parts-form
+        # conversation has no such turn, nothing counts as after-the-query, and the final response
+        # renders without the empty think block
+        if inputs.content_parts:
+            return
+        super()._add_non_thinking_prefix(inputs, thinking_prefix)
+
 
 register_template(
+    # the shipped Omni jinja ends at the assistant opener: no think prefill (its Thinking checkpoint
+    # ships the same template), but it does render the empty think block on the final training
+    # response, and its string arguments go through verbatim (the qwen3 agent, not hermes)
     QwenTemplateMeta(
-        MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate, default_system=None, thinking_prefix="<think>\n"
+        MLLMTemplateType.qwen3_omni,
+        template_cls=Qwen3OmniTemplate,
+        default_system=None,
+        agent_template="qwen3",
+        train_final_think_block="<think>\n\n</think>\n\n",
     )
 )
 

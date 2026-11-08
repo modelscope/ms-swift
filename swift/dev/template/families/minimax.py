@@ -129,7 +129,16 @@ class MinimaxVLTemplate(Template):
         return res
 
 
-register_template(MinimaxTemplateMeta(LLMTemplateType.minimax_vl, template_cls=MinimaxVLTemplate))
+@dataclass
+class MinimaxVLTemplateMeta(MinimaxTemplateMeta):
+    # the jinja ignores add_generation_prompt and always closes the render with the assistant
+    # opener, so a training sample carries one after its final response too; suffix is where dev
+    # puts what follows that response
+    suffix: Prompt = field(
+        default_factory=lambda: ["<end_of_sentence>\n", "<beginning_of_sentence>ai name=assistant\n"])
+
+
+register_template(MinimaxVLTemplateMeta(LLMTemplateType.minimax_vl, template_cls=MinimaxVLTemplate))
 
 
 @dataclass

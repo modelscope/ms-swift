@@ -57,7 +57,7 @@ class GLM4TemplateMeta(ChatGLM4TemplateMeta):
     agent_template: str = "glm4"
     # this jinja omits the newline after the opener at the generation prompt but keeps it before
     # a response: strip it only when the opener is the last context of the prompt
-    strip_opener_newline: bool = True
+    strip_opener_whitespace: bool = True
 
 
 @dataclass
@@ -66,6 +66,8 @@ class GLM4_5TemplateMeta(GLM4TemplateMeta):
     is_thinking: bool = True
     non_thinking_prefix: str = "<think></think>\n"
     history_thinking_prefix: str = "<think></think>\n"
+    # the tool block already ends with the assistant opener, so the continuation renders none
+    suppress_opener_after_tool: bool = True
 
 
 class ChatGLM4VTemplate(Template):
@@ -301,7 +303,15 @@ class GLM4VTemplate(GLM4vPackingTemplateMixin, Template):
 
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template))
-register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate))
+
+
+@dataclass
+class GLM4vTemplateMeta(GLM4TemplateMeta):
+    # this jinja keeps the newline after the opener even when the opener ends the prompt
+    strip_opener_whitespace: bool = False
+
+
+register_template(GLM4vTemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate))
 
 
 class GLM4_5Template(GLM4Template):
@@ -423,6 +433,18 @@ register_template(
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
     placeholder_tokens = ["<|image|>", "<|video|>"]
 
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        # The jinja's else branch renders '\n<think></think>' ahead of every assistant content that
+        # carries no reasoning -- history turns included, unlike the trailing-only 3.5 rule.
+        for message in inputs.messages:
+            content = message.get("content")
+            if message.get("role") == "assistant" and isinstance(content, str) and not content.startswith(
+                ("<think>", "</think>")
+            ):
+                # the response opener already ends with the newline the jinja prints before the block
+                message["content"] = "<think></think>\n" + content
+        return super()._swift_encode(inputs)
+
     def replace_tag(
         self, media_type: Literal["image", "video", "audio"], index: int, inputs: StdTemplateInputs
     ) -> List[Context]:
@@ -480,7 +502,16 @@ class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
             self._patch_create_causal_mask(modeling_glm4v_moe)
 
 
-register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
+@dataclass
+class GLM4_5VTemplateMeta(GLM4_5TemplateMeta):
+    # this jinja keeps the newline the template file ends with after the generation prompt
+    strip_opener_whitespace: bool = False
+    # the tool block already ends with the assistant opener, so the following turn renders
+    # without a second one (same reason as GLM-4.7)
+    suppress_opener_after_tool: bool = True
+
+
+register_template(GLM4_5VTemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 glm4z1rumination_system = (
     "你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。"
@@ -704,6 +735,17 @@ class GLMOCRTemplate(Template):
     end_of_image_token = 59257
     placeholder_tokens = ["<|image|>"]
 
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        # Same else branch as GLM4.5V: an assistant turn without reasoning still opens with the
+        # empty thinking block, history turns included.
+        for message in inputs.messages:
+            content = message.get("content")
+            if message.get("role") == "assistant" and isinstance(content, str) and not content.startswith(
+                ("<think>", "</think>")
+            ):
+                message["content"] = "<think></think>\n" + content
+        return super()._swift_encode(inputs)
+
     def init_processor(self, processor) -> None:
         if processor is None:
             return
@@ -759,8 +801,19 @@ class GLMOCRTemplate(Template):
         return {"inputs_embeds": inputs_embeds}
 
 
+@dataclass
+class GLMOCRTemplateMeta(GLM4TemplateMeta):
+    # the jinja keeps the newline its source ends with after the generation prompt
+    strip_opener_whitespace: bool = False
+    # its tool block is already the GLM-4.5 one: '<tool_call>{name}' with <arg_key>/<arg_value>
+    # pairs and '<tool_response>' wraps, not the legacy 'name\n{json}' + '<|assistant|>' form
+    agent_template: str = "glm_ocr"
+    # the tool block ends with the opener, the following turn renders without a second one
+    suppress_opener_after_tool: bool = True
+
+
 register_template(
-    GLM4TemplateMeta(
+    GLMOCRTemplateMeta(
         MLLMTemplateType.glm_ocr,
         template_cls=GLMOCRTemplate,
     )

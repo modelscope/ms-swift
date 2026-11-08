@@ -223,21 +223,13 @@ class Qwen3VLLoader(Qwen2VLLoader):
     min_qwen_vl_utils = "0.0.14"
     models = [
         "Qwen/Qwen3-VL-2B-Instruct",
-        "Qwen/Qwen3-VL-2B-Thinking",
         "Qwen/Qwen3-VL-2B-Instruct-FP8",
-        "Qwen/Qwen3-VL-2B-Thinking-FP8",
         "Qwen/Qwen3-VL-4B-Instruct",
-        "Qwen/Qwen3-VL-4B-Thinking",
         "Qwen/Qwen3-VL-4B-Instruct-FP8",
-        "Qwen/Qwen3-VL-4B-Thinking-FP8",
         "Qwen/Qwen3-VL-8B-Instruct",
-        "Qwen/Qwen3-VL-8B-Thinking",
         "Qwen/Qwen3-VL-8B-Instruct-FP8",
-        "Qwen/Qwen3-VL-8B-Thinking-FP8",
         "Qwen/Qwen3-VL-32B-Instruct",
-        "Qwen/Qwen3-VL-32B-Thinking",
         "Qwen/Qwen3-VL-32B-Instruct-FP8",
-        "Qwen/Qwen3-VL-32B-Thinking-FP8",
     ]
 
     def setup_environment(self) -> None:
@@ -258,6 +250,25 @@ class Qwen3VLLoader(Qwen2VLLoader):
 
 
 @register_model
+class Qwen3VLThinkingLoader(Qwen3VLLoader):
+    """Qwen3-VL Thinking; same architecture, its jinja prefills the think opener at the prompt."""
+
+    model_type = "qwen3_vl_thinking"
+    architectures = []
+    template = "qwen3_vl_thinking"
+    models = [
+        "Qwen/Qwen3-VL-2B-Thinking",
+        "Qwen/Qwen3-VL-2B-Thinking-FP8",
+        "Qwen/Qwen3-VL-4B-Thinking",
+        "Qwen/Qwen3-VL-4B-Thinking-FP8",
+        "Qwen/Qwen3-VL-8B-Thinking",
+        "Qwen/Qwen3-VL-8B-Thinking-FP8",
+        "Qwen/Qwen3-VL-32B-Thinking",
+        "Qwen/Qwen3-VL-32B-Thinking-FP8",
+    ]
+
+
+@register_model
 class Qwen3VLMoeLoader(Qwen3VLLoader):
     model_type = "qwen3_vl_moe"
     model_cls = "transformers:Qwen3VLMoeForConditionalGeneration"
@@ -265,12 +276,23 @@ class Qwen3VLMoeLoader(Qwen3VLLoader):
     is_moe = True
     models = [
         "Qwen/Qwen3-VL-30B-A3B-Instruct",
-        "Qwen/Qwen3-VL-30B-A3B-Thinking",
         "Qwen/Qwen3-VL-30B-A3B-Instruct-FP8",
-        "Qwen/Qwen3-VL-30B-A3B-Thinking-FP8",
         "Qwen/Qwen3-VL-235B-A22B-Instruct",
-        "Qwen/Qwen3-VL-235B-A22B-Thinking",
         "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8",
+    ]
+
+
+@register_model
+class Qwen3VLMoeThinkingLoader(Qwen3VLMoeLoader):
+    """Qwen3-VL-MoE Thinking; its jinja is byte-identical to the dense Thinking one."""
+
+    model_type = "qwen3_vl_moe_thinking"
+    architectures = []
+    template = "qwen3_vl_thinking"
+    models = [
+        "Qwen/Qwen3-VL-30B-A3B-Thinking",
+        "Qwen/Qwen3-VL-30B-A3B-Thinking-FP8",
+        "Qwen/Qwen3-VL-235B-A22B-Thinking",
         "Qwen/Qwen3-VL-235B-A22B-Thinking-FP8",
     ]
 

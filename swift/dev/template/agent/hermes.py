@@ -144,7 +144,14 @@ class HunyuanHermesAgentTemplate(HermesAgentTemplate):
         last = tool_content[-1]
         if suffix and isinstance(last, str) and last.endswith(suffix):
             tool_content[-1] = last[:-len(suffix)]
-        return tool_content + [prefix + message['content'] for message in user_messages] + [suffix]
+        # this jinja closes every user turn with the assistant opener, not just the last one
+        res = list(tool_content)
+        for i, message in enumerate(user_messages):
+            res.append(prefix + message['content'])
+            if i < len(user_messages) - 1:
+                res.append(suffix)
+        res.append(suffix)
+        return res
 
     def get_toolcall(self, response: str) -> List[Function]:
         res_list = re.findall(r"<tool_call>(.+?)\n```json(.+?)```</tool_call>", response, re.DOTALL)

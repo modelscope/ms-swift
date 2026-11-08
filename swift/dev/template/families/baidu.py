@@ -328,8 +328,17 @@ class PaddleOCR1_5Template(PaddleOCRTemplate):
         return {"inputs_embeds": inputs_embeds}
 
 
+@dataclass
+class PaddleOCR1_5TemplateMeta(ERNIETemplateMeta):
+    # its jinja writes the whole opener itself ('Assistant:' plus a newline) and ends every turn
+    # with the tokenizer's eos text, not with ERNIE's chat marker
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["Assistant:\n"])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ["</s>"])
+    suffix: Prompt = field(default_factory=lambda: ["</s>"])
+
+
 register_template(
-    ERNIETemplateMeta(
-        MLLMTemplateType.paddle_ocr_1_5, prompt=["User: {{QUERY}}\nAssistant:\n"], template_cls=PaddleOCR1_5Template
+    PaddleOCR1_5TemplateMeta(
+        MLLMTemplateType.paddle_ocr_1_5, template_cls=PaddleOCR1_5Template
     )
 )

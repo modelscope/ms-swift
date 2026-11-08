@@ -103,3 +103,9 @@ class Llama4AgentTemplate(Llama3AgentTemplate):
     end_token = "<|header_end|>"
     eot_token = "<|eot|>"
     toolcall_pattern = r"(.+?)<\|eom\|>"
+
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        # the jinja wraps the assistant content of a tool-call turn in <|python_start|>...<|python_end|>
+        # and puts the call JSON after it; dev renders the JSON as that turn's content, so the
+        # (empty) content sits between the two markers
+        return f"<|python_start|><|python_end|>{tool_content}"

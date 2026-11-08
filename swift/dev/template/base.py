@@ -82,6 +82,12 @@ _PROCESS_LOCAL_ATTRS = ("dummy_model", "model")
 # Settings a caller may override on a derived template (``Template.replace``).
 _REPLACEABLE = frozenset({"max_length", "truncation_strategy"})
 
+#: The slots a prompt block may carry; substituted in one pass so injected payload text is never rescanned.
+_PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY = "{{SYSTEM}}", "{{QUERY}}"
+_PLACEHOLDER_ROUND0, _PLACEHOLDER_ROUND1 = "{{ROUND0}}", "{{ROUND1}}"
+_PLACEHOLDER_RE = re.compile("|".join(
+    re.escape(name) for name in (_PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY, _PLACEHOLDER_ROUND0, _PLACEHOLDER_ROUND1)))
+
 
 @contextmanager
 def _rendering(mode: str):
@@ -1442,6 +1448,15 @@ class Template(ProcessorMixin):
         if round0 is not None:
             round1 = str(round0 + 1)
             round0 = str(round0)
+        # One pass, so payload text that happens to contain a placeholder survives verbatim:
+        # substituting one placeholder at a time rescans the text it just injected and would
+        # rewrite a user's literal '{{RESPONSE}}'.
+        replacements = {
+            name: value
+            for name, value in ((_PLACEHOLDER_SYSTEM, system), (_PLACEHOLDER_QUERY, query),
+                                (_PLACEHOLDER_ROUND0, round0), (_PLACEHOLDER_ROUND1, round1))
+            if value is not None
+        }
         for context in context_list:
             if isinstance(context, str):
                 if "{{RESPONSE}}" == context:
@@ -1449,12 +1464,9 @@ class Template(ProcessorMixin):
                     res_context_list.append(response)
                     res_context_type.append(ContextType.RESPONSE)
                     continue
-                old_str_list = ["{{SYSTEM}}", "{{QUERY}}", "{{ROUND0}}", "{{ROUND1}}"]
-                new_str_list = [system, query, round0, round1]
-                for old_str, new_str in zip(old_str_list, new_str_list):
-                    if new_str is not None and old_str in context:
-                        assert isinstance(new_str, str), f"new_str: {new_str}"
-                        context = context.replace(old_str, new_str)
+                if replacements and "{{" in context:
+                    context = _PLACEHOLDER_RE.sub(lambda match: replacements.get(match.group(0), match.group(0)),
+                                                  context)
             if len(context) == 0:
                 continue
             res_context_list.append(context)
@@ -1720,12 +1732,7 @@ class Template(ProcessorMixin):
             except Exception:  # noqa: BLE001 -- slow tokenizers expose no offsets
                 token_ids = offsets = None
         if token_ids is None or offsets is None or len(offsets) != len(token_ids):
-            token_ids, owners = [], []
-            for index, piece in enumerate(pieces):
-                ids = self._tokenize(piece)
-                token_ids += ids
-                owners += [index] * len(ids)
-            return token_ids, owners
+            return self._tokenize_run_by_prefix(merged, pieces)
         starts = []
         position = 0
         for piece in pieces:
@@ -1735,6 +1742,35 @@ class Template(ProcessorMixin):
         for start, _ in offsets:
             index = bisect.bisect_right(starts, start) - 1
             owners.append(min(max(index, 0), len(pieces) - 1))
+        return token_ids, owners
+
+    def _tokenize_run_by_prefix(self, merged: str, pieces: List[str]) -> Tuple[List[int], List[int]]:
+        """``_tokenize_run`` for a tokenizer that exposes no offsets (slow sentencepiece).
+
+        The merged string is encoded once -- the same single call the official jinja makes -- and
+        each piece boundary is located by encoding the merged string's prefix there. A
+        left-to-right encoder yields the same ids for a prefix as for the leading part of the
+        whole string, so the boundary is trusted only when the ids match exactly; a token spanning
+        a boundary leaves the split ambiguous and each piece is encoded on its own instead (the
+        ids then differ from the jinja's, but no piece boundary can be invented).
+        """
+        token_ids = list(self._tokenize(merged))
+        bounds, position = [], 0
+        for piece in pieces[:-1]:
+            position += len(piece)
+            prefix = list(self._tokenize(merged[:position]))
+            if prefix != token_ids[:len(prefix)] or (bounds and len(prefix) < bounds[-1]):
+                token_ids, owners = [], []
+                for index, single in enumerate(pieces):
+                    ids = self._tokenize(single)
+                    token_ids += ids
+                    owners += [index] * len(ids)
+                return token_ids, owners
+            bounds.append(len(prefix))
+        owners = []
+        for index, bound in enumerate(bounds + [len(token_ids)]):
+            previous = bounds[index - 1] if index else 0
+            owners += [index] * (bound - previous)
         return token_ids, owners
 
     def _encode_context_list(
@@ -2070,36 +2106,47 @@ class Template(ProcessorMixin):
             for query_message in query_messages:
                 query_role, query = query_message["role"], query_message["content"]
                 if query_role == "tool":
-                    # the agent template pre-rendered this block (separator and query text in place)
+                    # the agent template pre-rendered this block (separator and query text in place),
+                    # so it is payload: no slot substitution runs over it, or a literal '{{QUERY}}'
+                    # or '{{ROUND0}}' inside a tool result or follow-up would be rewritten here.
                     context_list = query.copy() if isinstance(query, list) else [query]
-                    query = ""
+                    block_slots = dict(system=None, query=None, round0=None)
                 elif template_meta.is_post_system and system is not None and last_round and response_message is None:
                     # post-system families render the system block on the trailing generation prompt
                     # only, never on the rounds that carry a response (Mistral-Nemo)
                     context_list = template_meta.system_prompt.copy()
+                    block_slots = dict(system=system, query=query, round0=round_idx)
                 else:
                     context_list = template_meta.prompt.copy()
+                    block_slots = dict(system=system, query=query, round0=round_idx)
                 self._concat_context_list(
                     context_list,
                     res_context_list,
                     res_context_types,
-                    query=query,
-                    system=system,
-                    round0=round_idx,
+                    **block_slots,
                 )
             # An assistant turn continuing after tool outputs opens with the tool block's own
-            # closing markers in some families (DeepSeek V3.1): no turn opener there.
+            # closing markers in some families (DeepSeek V3.1): no turn opener there. A tool block
+            # that already carries trailing user content is not that case -- the official jinja
+            # resets its `is_tool` flag on the user message and re-opens the turn.
             opener_suppressed = template_meta.suppress_opener_after_tool and query_messages and all(
-                query_message["role"] == "tool" for query_message in query_messages
+                query_message["role"] == "tool" and not query_message.get("_tool_user_followup")
+                for query_message in query_messages
             )
             if template_meta.response_opener and not opener_suppressed:
                 opener = template_meta.response_opener.copy()
-                if response_message is None and not template_meta.opener_on_generation_prompt:
+                if response_message is None and template_meta.generation_opener is not None:
+                    # the jinja ends the prompt with a different opener than the one it puts
+                    # before a response
+                    opener = template_meta.generation_opener.copy()
+                elif response_message is None and not template_meta.opener_on_generation_prompt:
                     opener = []
-                elif response_message is None and template_meta.strip_opener_newline:
-                    # generation prompt: this family's jinja leaves the opener without the newline
+                elif response_message is None and template_meta.strip_opener_whitespace:
+                    # generation prompt: drop the single trailing whitespace character the opener keeps
+                    # before a response (GLM drops a newline, LLaVA-HF a space, LLaVA-NeXT one of two
+                    # newlines) -- only one, the rest belongs to the prompt
                     opener = [
-                        item[:-1] if isinstance(item, str) and item.endswith('\n') else item for item in opener
+                        item[:-1] if isinstance(item, str) and item[-1:].isspace() else item for item in opener
                     ]
                 self._concat_context_list(opener, res_context_list, res_context_types)
             response = None if response_message is None else response_message["content"]

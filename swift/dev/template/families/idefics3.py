@@ -27,13 +27,19 @@ class Idefics3Template(Template):
 
 
 register_template(
+    # Idefics3's oracle is the processor's own template (Idefics3Processor ships it as a class
+    # attribute), not the generic Llama-3 one in tokenizer_config: the processor is what the model
+    # card calls, and it is the only side that renders the '<image>' placeholder.
     TemplateMeta(
         MLLMTemplateType.idefics3,
         prefix=["<|begin_of_text|>"],
-        prompt=["User:{{QUERY}}<end_of_utterance>\nAssistant:"],
+        prompt=["User: {{QUERY}}<end_of_utterance>\n"],
+        response_opener=["Assistant: "],
         chat_sep=["<end_of_utterance>\n"],
-        suffix=["<end_of_utterance>"],
-        system_prefix=["System:{{SYSTEM}}<end_of_utterance>\n"],
+        suffix=["<end_of_utterance>\n"],
+        system_prefix=["<|begin_of_text|>System: {{SYSTEM}}<end_of_utterance>\n"],
+        # every message reads 'Assistant: {text}', the generation prompt just 'Assistant:'
+        strip_opener_whitespace=True,
         template_cls=Idefics3Template,
     )
 )

@@ -78,13 +78,18 @@ class LlavaHfTemplate(Template):
 
 
 register_template(
+    # The llava-hf processor template (the model card's own path) space-joins the turns: every
+    # message is '{ROLE}: {text} ' with no separator token and no newline, and the generation
+    # prompt ends at 'ASSISTANT:' without the trailing space.
     TemplateMeta(
         MLLMTemplateType.llava1_5_hf,
         prefix=["<s>"],
-        prompt=["USER: {{QUERY}}\nASSISTANT:"],
-        chat_sep=["</s>"],
-        suffix=["</s>"],
-        system_prefix=["<s>{{SYSTEM}}\n"],
+        prompt=["USER: {{QUERY}} "],
+        response_opener=["ASSISTANT: "],
+        chat_sep=[" "],
+        suffix=[" "],
+        system_prefix=["<s>{{SYSTEM}} "],
+        strip_opener_whitespace=True,
         template_cls=LlavaHfTemplate,
     )
 )
@@ -151,20 +156,38 @@ class LlavaMistralTemplateMeta(TemplateMeta):
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ["<<SYS>>\n{{system}}\n<</SYS>>\n\n"])
 
 
-register_template(LlavaMistralTemplateMeta(MLLMTemplateType.llava1_6_mistral_hf, template_cls=Llava1_6HfTemplate))
+@dataclass
+class LlavaMistralHfTemplateMeta(TemplateMeta):
+    # the llava-hf processor jinja writes every turn itself: '<s>' then the '<<SYS>>' block,
+    # '[INST] ... [/INST]' for a user and ' {response}</s> ' for an assistant. It has no
+    # add_generation_prompt branch, so a prompt-final user turn renders no assistant opener.
+    prefix: Prompt = field(default_factory=lambda: ["<s>"])
+    prompt: Prompt = field(default_factory=lambda: ["[INST] {{QUERY}} [/INST]"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: [" "])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ["</s> "])
+    suffix: Prompt = field(default_factory=lambda: ["</s> "])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ["<s><<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n"])
+    opener_on_generation_prompt: bool = False
+
+
+register_template(LlavaMistralHfTemplateMeta(MLLMTemplateType.llava1_6_mistral_hf, template_cls=Llava1_6HfTemplate))
 
 register_template(
+    # same jinja as llava1_5_hf: '{ROLE}: {text} ' turns, no separator token, prompt-final
+    # 'ASSISTANT:' without the trailing space. No '<s>' in the text: this tokenizer prepends its
+    # bos itself and, unlike llava1_5_hf's, only then does the first word get its dummy prefix
+    # (official ids read bos, '\u2581You' -- rendering the bos into the text loses that prefix).
     TemplateMeta(
         MLLMTemplateType.llava1_6_vicuna_hf,
-        prefix=["<s>"],
-        prompt=["USER: {{QUERY}} ASSISTANT:"],
-        chat_sep=["</s>"],
-        suffix=["</s>"],
-        default_system=(
-            "A chat between a curious human and an artificial intelligence assistant. "
-            "The assistant gives helpful, detailed, and polite answers to the human's questions."
-        ),
-        system_prefix=["<s>{{SYSTEM}} "],
+        prefix=[],
+        prompt=["USER: {{QUERY}} "],
+        response_opener=["ASSISTANT: "],
+        chat_sep=[" "],
+        suffix=[" "],
+        default_system=None,
+        system_prefix=["{{SYSTEM}} "],
+        auto_add_bos=True,
+        strip_opener_whitespace=True,
         template_cls=Llava1_6HfTemplate,
     )
 )
@@ -187,16 +210,46 @@ register_template(
     )
 )
 
+@dataclass
+class Llama3LlavaNextTemplateMeta(Llama3TemplateMeta):
+    # this jinja writes the header block as '<|end_header_id|>\n\n' and then '\n{text}', so every
+    # turn opens with three newlines; the turn terminator stays the bare '<|eot_id|>'.
+    prompt: Prompt = field(
+        default_factory=lambda: ["<|start_header_id|>user<|end_header_id|>\n\n\n{{QUERY}}<|eot_id|>"])
+    response_opener: Optional[Prompt] = field(
+        default_factory=lambda: ["<|start_header_id|>assistant<|end_header_id|>\n\n\n"])
+    system_prefix: Optional[Prompt] = field(
+        default_factory=lambda: [
+            "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\n{{SYSTEM}}<|eot_id|>"
+        ])
+    # the prompt-final opener is the jinja's own '<|end_header_id|>\n\n': one newline less
+    strip_opener_whitespace: bool = True
+
+
 register_template(
-    Llama3TemplateMeta(
+    Llama3LlavaNextTemplateMeta(
         MLLMTemplateType.llama3_llava_next_hf,
         template_cls=Llava1_6HfTemplate,
         agent_template=None,
     )
 )
 
+@dataclass
+class LlavaNextQwenTemplateMeta(QwenTemplateMeta):
+    # this jinja writes every block as '<|im_start|>{role}\n' + '\n{text}' + '<|im_end|>\n', so the
+    # block terminator is part of each turn (query blocks included, not only responses) and the
+    # prompt-final opener loses only the second of its two newlines. It adds no system of its own.
+    default_system: Optional[str] = None
+    prompt: Prompt = field(default_factory=lambda: ["<|im_start|>user\n\n{{QUERY}}<|im_end|>\n"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|im_start|>assistant\n\n"])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|im_end|>\n"])
+    suffix: Prompt = field(default_factory=lambda: ["<|im_end|>\n"])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ["<|im_start|>system\n\n{{SYSTEM}}<|im_end|>\n"])
+    strip_opener_whitespace: bool = True
+
+
 register_template(
-    QwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template_cls=Llava1_6HfTemplate, agent_template=None)
+    LlavaNextQwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template_cls=Llava1_6HfTemplate, agent_template=None)
 )
 
 
@@ -238,10 +291,23 @@ class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
         return encoded
 
 
+@dataclass
+class LlavaOneVisionTemplateMeta(QwenTemplateMeta):
+    # every block is '<|im_start|>{role} \n{text}<|im_end|>' with no separator between blocks, while
+    # the generation prompt ends at '<|im_start|>assistant\n' (no space) -- a different opener, not
+    # the response opener with one character stripped.
+    default_system: Optional[str] = None
+    prompt: Prompt = field(default_factory=lambda: ["<|im_start|>user \n{{QUERY}}<|im_end|>"])
+    response_opener: Optional[Prompt] = field(default_factory=lambda: ["<|im_start|>assistant \n"])
+    generation_opener: Optional[Prompt] = field(default_factory=lambda: ["<|im_start|>assistant\n"])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ["<|im_end|>"])
+    suffix: Prompt = field(default_factory=lambda: ["<|im_end|>"])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ["<|im_start|>system \n{{SYSTEM}}<|im_end|>"])
+
+
 register_template(
-    QwenTemplateMeta(
+    LlavaOneVisionTemplateMeta(
         MLLMTemplateType.llava_onevision_hf,
-        default_system=None,
         template_cls=LlavaOneVisionHfTemplate,
         agent_template=None,
     )

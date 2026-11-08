@@ -28,13 +28,15 @@ class DotsOCRTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         processor = self.processor
+        images = inputs.images
+        if not images:
+            return encoded
         input_ids = encoded["input_ids"]
         labels = encoded["labels"]
         loss_scale = encoded.get("loss_scale", None)
 
-        images = inputs.images
         media_token = self.image_token_id
-        media_inputs = processor.image_processor(images=images, videos=None, return_tensors="pt", do_resize=False)
+        media_inputs = processor.image_processor(images=images, return_tensors="pt", do_resize=False)
         media_grid_thw = media_inputs["image_grid_thw"]
         idx_list = findall(input_ids, media_token)
         merge_length = processor.image_processor.merge_size**2
@@ -56,9 +58,13 @@ register_template(
     TemplateMeta(
         MLLMTemplateType.dots_ocr,
         prefix=[""],
-        prompt=["<|user|>{{QUERY}}<|endofuser|><|assistant|>"],
+        # the user block closes with <|endofuser|> only: the jinja writes <|assistant|> once, right
+        # before the response, so consecutive user messages render back to back
+        prompt=["<|user|>{{QUERY}}<|endofuser|>"],
+        response_opener=["<|assistant|>"],
         chat_sep=["<|endofassistant|>"],
-        suffix=["<|endofassistant|>"],
+        # the jinja closes the conversation right after the final response: no trailing marker
+        suffix=[],
         system_prefix=["<|system|>{{SYSTEM}}<|endofsystem|>\n"],
         template_cls=DotsOCRTemplate,
     )

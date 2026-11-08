@@ -7,8 +7,13 @@ import pytest
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers
 from transformers import PreTrainedTokenizerFast
 
+from swift.dev.builders.template import build_template
+from swift.dev.config import TemplateConfig
+from swift.dev.template import TRAIN
 from swift.dev.template.agent import agent_template_map
 from swift.dev.template.register import get_template as _get_template
+from swift.dev.tests.component.processor.test_chat_template_parity import REPRESENTATIVES, _render_official
+from swift.dev.tests.tiny import TinyModel
 
 
 def get_template(processor, template_type, agent_template=None, **kwargs):
@@ -43,6 +48,38 @@ def _make_tokenizer(glm=False):
 
 def _supervised(tokenizer, encoded):
     return tokenizer.decode([token for token in encoded['labels'] if token != -100])
+
+
+def _shipped(template_type):
+    """The checkpoint's own processor: the jinja it ships is the oracle for the ids below."""
+    from swift.model import get_model_processor
+
+    model_id = REPRESENTATIVES.get(template_type)
+    if model_id is None:
+        pytest.skip(f'{template_type}: no tokenizer representative')
+    _, processor = get_model_processor(TinyModel.tokenizer_dir(model_id), load_model=False)
+    return processor
+
+
+def _dev_encode(processor, template_type, messages, **config):
+    config.setdefault('is_binary_loss_scale', False)
+    dev = build_template(TemplateConfig(template=template_type, max_length=4096, **config), processor)
+    return dev.encode({'messages': copy.deepcopy(messages)}, intent=TRAIN)
+
+
+def _official_ids(processor, messages):
+    ids, _ = _render_official(processor, messages, False, prefer_parts=False)
+    return list(ids)
+
+
+def _assert_labels_predict_the_next_token(encoded):
+    ids, labels = list(encoded['input_ids']), list(encoded['labels'])
+    assert len(ids) == len(labels) == len(encoded['loss_scale'])
+    assert labels[-1] == -100
+    for index, label in enumerate(labels[:-1]):
+        if label >= 0:
+            assert label == ids[index + 1]
+    assert any(label >= 0 for label in labels), 'no supervised position'
 
 
 def _qwen_data(n_tools=1, n_users=1):
@@ -115,6 +152,21 @@ def test_qwen_literal_placeholders_and_structured_calls():
     assert template.encode(structured) == template.encode(native)
 
 
+def test_placeholder_literals_in_a_user_turn_survive_verbatim():
+    """A user's text is payload: the engine may substitute slots in its prompt blocks, never inside it.
+
+    Substituting one slot at a time rescans what the previous slot injected, so a literal '{{RESPONSE}}'
+    would be rewritten by the response it just carried in -- data corruption the jinja never does.
+    """
+    tokenizer = _make_tokenizer()
+    template = get_template(tokenizer, template_type='qwen3_5')
+    template.set_mode('train')
+    literal = '{{QUERY}} {{RESPONSE}} {{SYSTEM}} {{ROUND0}} {{ROUND1}}'
+    data = {'messages': [{'role': 'user', 'content': literal}, {'role': 'assistant', 'content': 'answer'}]}
+    text = tokenizer.decode(template.encode(data)['input_ids'])
+    assert '<|im_start|>user\n' + literal + '<|im_end|>' in text
+
+
 def test_qwen_inference_after_user_followup():
     tokenizer = _make_tokenizer()
     template = get_template(tokenizer, template_type='qwen3_5', enable_thinking=True)
@@ -156,32 +208,68 @@ def test_hermes_followup_byte_match():
     assert _supervised(tokenizer, encoded) == call + '<|im_end|>\nfinal_answer<|im_end|>\n'
 
 
-@pytest.mark.parametrize('kind', ['glm4_5', 'glm4_7', 'glm5_1'])
-@pytest.mark.parametrize('strategy', ['default', 'last_round'])
-def test_glm_multiple_followups(kind, strategy):
-    tokenizer = _make_tokenizer(glm=True)
-    template = get_template(
-        tokenizer,
-        template_type=kind,
-        loss_scale=strategy,
-        preserve_thinking=True,
-        add_non_thinking_prefix=False,
-    )
-    template.set_mode('train')
-    call = '<tool_call>weather\n<arg_key>city</arg_key>\n<arg_value>BJ</arg_value>\n</tool_call><|observation|>'
-    messages = [{'role': 'user', 'content': 'question'}, {'role': 'assistant', 'content': call}]
-    messages += [{'role': 'tool', 'content': 'result_0'}]
-    messages += [{'role': 'user', 'content': f'followup_{i}'} for i in range(2)]
+GLM_TOOL_CALL = {
+    'id': 'call_1',
+    'type': 'function',
+    'function': {
+        'name': 'get_weather',
+        'arguments': {
+            'city': 'BJ'
+        }
+    },
+}
+
+
+def _glm_data(users=2):
+    """Structured tool calls: the shape both the shipped jinja and dev render as one tool turn."""
+    messages = [
+        {'role': 'user', 'content': 'question'},
+        {'role': 'assistant', 'content': '', 'tool_calls': [copy.deepcopy(GLM_TOOL_CALL)]},
+        {'role': 'tool', 'content': 'result_0', 'tool_call_id': 'call_1'},
+    ]
+    messages += [{'role': 'user', 'content': f'followup_{i}'} for i in range(users)]
     messages.append({'role': 'assistant', 'content': 'final_answer'})
-    encoded = template.encode({'messages': messages})
-    text = tokenizer.decode(encoded['input_ids'])
-    newline = '\n' if kind == 'glm4_5' else ''
-    user = '<|user|>' + newline
-    result = newline + '<tool_response>' + newline + 'result_0' + newline + '</tool_response>'
-    expected = ('[gMASK]<sop>' + user + 'question<|assistant|>' + call + result + user + 'followup_0' + user
-                + 'followup_1<|assistant|>' + newline + 'final_answer<|user|>')
-    assert text == expected
-    assert _supervised(tokenizer, encoded) == (call if strategy == 'default' else '') + 'final_answer<|user|>'
+    return messages
+
+
+@pytest.mark.parametrize('users', [1, 2])
+@pytest.mark.parametrize('strategy', ['default', 'last_round'])
+@pytest.mark.parametrize('kind', ['glm4_7', 'glm5_1'])
+def test_glm_tool_followup_matches_the_shipped_jinja(kind, strategy, users):
+    """The ids after a tool turn and its follow-ups come from the jinja the checkpoint ships."""
+    processor = _shipped(kind)
+    messages = _glm_data(users)
+    encoded = _dev_encode(processor, kind, messages, loss_scale=strategy)
+    assert list(encoded['input_ids']) == _official_ids(processor, messages)
+    _assert_labels_predict_the_next_token(encoded)
+    supervised = _supervised(getattr(processor, 'tokenizer', processor), encoded)
+    assert 'final_answer' in supervised
+    assert 'followup_' not in supervised and 'result_0' not in supervised
+    assert ('get_weather' in supervised) == (strategy == 'default')
+
+
+@pytest.mark.parametrize('users', [0, 2])
+def test_glm4_5_tool_followup_keeps_one_turn_opener(users):
+    """GLM-4.5 ships no chat template, so its own documented layout is what this pins.
+
+    The marker accounting is the failure surface: a doubled assistant opener is what a tool round
+    renders when the block carries its own opener and the turn adds another, and a tool response
+    without the observation marker is the other side of the same merge. With no follow-up the
+    response continues straight after the tool block, which is the other opener path.
+    """
+    processor = _shipped('glm4_5')
+    tokenizer = getattr(processor, 'tokenizer', processor)
+    encoded = _dev_encode(processor, 'glm4_5', _glm_data(users))
+    text = tokenizer.decode(list(encoded['input_ids']))
+    assert text.count('<|assistant|>') == 2
+    assert '<|assistant|><|assistant|>' not in text
+    assert text.count('<|observation|>') == 1
+    assert text.index('<|observation|>') < text.index('<tool_response>')
+    for expected in ('result_0', 'final_answer'):
+        assert text.count(expected) == 1
+    for index in range(users):
+        assert text.count(f'followup_{index}') == 1
+    _assert_labels_predict_the_next_token(encoded)
 
 
 def _hunyuan_data(count=2, users=2, style='serialized'):
@@ -207,31 +295,32 @@ def _hunyuan_data(count=2, users=2, style='serialized'):
     return {'messages': messages}, call
 
 
-@pytest.mark.parametrize('style', ['serialized', 'openai', 'native'])
+@pytest.mark.parametrize('users', [1, 2])
 @pytest.mark.parametrize('strategy', ['default', 'last_round'])
-def test_hunyuan_sequences_and_structured_calls(style, strategy):
-    tokenizer = _make_tokenizer()
-    template = get_template(
-        tokenizer,
-        template_type='hunyuan',
-        loss_scale=strategy,
-        preserve_thinking=True,
-        add_non_thinking_prefix=False,
-        enable_thinking=True,
-        response_prefix='',
-    )
-    template.set_mode('train')
-    data, call = _hunyuan_data(style=style)
-    encoded = template.encode(data)
-    eos, user, assistant = '<｜hy_place▁holder▁no▁2｜>', '<｜hy_User｜>', '<｜hy_Assistant｜>'
-    expected = '<｜hy_begin▁of▁sentence｜>' + user + 'question' + assistant + call + eos
-    expected += user + '<tool_responses>' + '\n'.join(
-        f'<tool_response>result{i}</tool_response>' for i in range(2)) + '</tool_responses>'
-    expected += user + 'followup0' + user + 'followup1' + assistant + 'answer' + eos
-    assert tokenizer.decode(encoded['input_ids']) == expected
-    supervised = _supervised(tokenizer, encoded)
-    assert ('answer' in supervised) and ('followup' not in supervised) and ('result' not in supervised)
-    assert (call in supervised) == (strategy == 'default')
+@pytest.mark.parametrize('style', ['serialized', 'openai'])
+def test_hunyuan_tool_followup_matches_the_shipped_jinja(style, strategy, users):
+    """Every user follow-up closes its own turn: the shipped jinja writes the assistant opener
+    after each user message, not once before the response."""
+    processor = _shipped('hunyuan')
+    data, _ = _hunyuan_data(users=users, style=style)
+    encoded = _dev_encode(processor, 'hunyuan', data['messages'], loss_scale=strategy)
+    assert list(encoded['input_ids']) == _official_ids(processor, data['messages'])
+    _assert_labels_predict_the_next_token(encoded)
+    supervised = _supervised(getattr(processor, 'tokenizer', processor), encoded)
+    assert 'answer' in supervised
+    assert 'followup' not in supervised and 'result' not in supervised
+    assert ('lookup' in supervised) == (strategy == 'default')
+
+
+@pytest.mark.parametrize('strategy', ['default', 'last_round'])
+def test_hunyuan_native_tool_call_messages_render_like_the_serialized_form(strategy):
+    """dev-only shorthand: the shipped jinja ignores role `tool_call`, so only dev normalizes it."""
+    processor = _shipped('hunyuan')
+    native, _ = _hunyuan_data(style='native')
+    serialized, _ = _hunyuan_data(style='serialized')
+    native_ids = list(_dev_encode(processor, 'hunyuan', native['messages'], loss_scale=strategy)['input_ids'])
+    serialized_ids = list(_dev_encode(processor, 'hunyuan', serialized['messages'], loss_scale=strategy)['input_ids'])
+    assert native_ids == serialized_ids
 
 
 @pytest.mark.parametrize('strategy', ['default', 'last_round'])

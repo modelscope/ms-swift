@@ -37,8 +37,8 @@ class TestAgentTemplateMap:
 
     EXPECTED = {
         'chatglm4', 'deepseek_v3_1', 'deepseek_v4', 'gemma4', 'glm4', 'glm4_5', 'glm4_7', 'glm5_1',
-        'hermes', 'hunyuan_hermes', 'hy_v3', 'hy_v3_preview', 'kimi_k25', 'kimi_k3', 'llama3',
-        'llama4', 'minicpm5', 'minimax_m2', 'minimax_m3', 'mistral', 'qwen3_5', 'qwen3_coder',
+        'glm_ocr', 'hermes', 'hunyuan_hermes', 'hy_v3', 'hy_v3_preview', 'kimi_k25', 'kimi_k3', 'llama3',
+        'llama4', 'minicpm5', 'minimax_m2', 'minimax_m3', 'mistral', 'qwen3', 'qwen3_5', 'qwen3_coder',
         'qwen_en', 'qwen_en_parallel', 'qwen_zh', 'qwen_zh_parallel', 'react_en', 'react_grpo',
         'react_zh', 'seed_oss', 'toolbench', 'youtu',
     }
