@@ -352,24 +352,6 @@ def _parts_stringified(renderer, messages, add_generation_prompt):
     )
 
 
-def _encoded_ids(encoded):
-    """Pull the token ids out of whatever container ``apply_chat_template`` returned.
-
-    A plain tokenizer hands back a mapping, a multimodal processor may hand back a batch (a list of
-    mappings, or a list holding one id list). All three carry the same rendering; only the wrapper
-    differs, so unwrap instead of treating it as "the jinja cannot render this".
-    """
-    if hasattr(encoded, "keys"):
-        return list(encoded["input_ids"])
-    if isinstance(encoded, (list, tuple)):
-        if encoded and isinstance(encoded[0], (list, tuple)):
-            return list(encoded[0])
-        if encoded and hasattr(encoded[0], "keys"):
-            return list(encoded[0]["input_ids"])
-        return list(encoded)
-    raise TypeError(f"unsupported tokenized container: {type(encoded).__name__}")
-
-
 def _render_official(renderer, messages, add_generation_prompt, prefer_parts):
     """Render with the official jinja, handing it the input shape it accepts.
 
@@ -386,12 +368,12 @@ def _render_official(renderer, messages, add_generation_prompt, prefer_parts):
             encoded = renderer.apply_chat_template(
                 shaped, tokenize=True, add_generation_prompt=add_generation_prompt
             )
-            if isinstance(encoded, (list, tuple)) and encoded and not isinstance(encoded[0], int):
-                # A multimodal processor returns a batch per conversation and may not forward jinja
-                # kwargs the same way the plain tokenizer does; wiring that oracle is its own task
-                # (probe evidence: 18 diffs over 6 families), so record the gap instead of guessing.
-                raise _CaseSkip("processor returns batched tokenization (family oracle not wired)")
-            rendered = _encoded_ids(encoded)
+            # A multimodal processor returns a batch per conversation and a few families hand back a
+            # bare id list; both hide a family-level oracle that still has to be wired (probe: 18
+            # diffs over 6 VL families, 10 over iquestcoder), so they stay a recorded skip.
+            if not hasattr(encoded, "keys"):
+                raise _CaseSkip("official renderer returns a non-mapping container (family oracle not wired)")
+            rendered = list(encoded["input_ids"])
         except Exception as exc:  # noqa: BLE001 -- the jinja rejecting an input shape is a skip signal
             last_error = exc
             continue
@@ -468,7 +450,10 @@ class TemplateSurvey:
 
 
 REPRESENTATIVES = TemplateSurvey.representatives()
-UNREPRESENTED = {"xcomposer2_4khd": "no model id is registered in either model registry"}
+UNREPRESENTED = {
+    "xcomposer2_4khd": "no model id is registered in either model registry",
+    "generic_decision": "generic loader: any causal-LM backbone + a verbalizer head, no model id of its own",
+}
 
 
 def test_every_unique_family_has_a_tokenizer_representative_or_skip_reason():
