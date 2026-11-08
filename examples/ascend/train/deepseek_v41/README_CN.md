@@ -2,11 +2,34 @@
 
 [English](README.md)
 
+## 软件版本与源码
+
+以下是单机 4 层、2K packing、10 步验证所用的软件栈。源码组件需要固定到下面的分支和提交；仅匹配包版本号不足以复现。
+
+| 组件 | 验证版本 / 源码 |
+| --- | --- |
+| Python | 3.12.15 |
+| CANN | 9.2.0 |
+| PyTorch / torch-npu | 2.10.0 / 2.10.0.post2 |
+| Transformers / PEFT | 5.12.1 / 0.20.0 |
+| datasets / accelerate | 4.8.4 / 1.15.0 |
+| safetensors / ModelScope | 0.8.0 / 1.40.2 |
+| NumPy | 1.26.4 |
+| Megatron-Core | [tastelikefeet/Megatron-LM](https://github.com/tastelikefeet/Megatron-LM/tree/827e940e602b8133eb8d5525d5ebfd59e6923ec5), `dsv41-pr7224-engram-local`, `827e940e602b8133eb8d5525d5ebfd59e6923ec5` (0.19.0+827e940) |
+| MegatronAdaptor | [Ascend/MegatronAdaptor](https://gitcode.com/Ascend/MegatronAdaptor), `core_r0.19.0`, `c7e52b2c8482105e6ec7fcd8cdef364e7c7b22c5` |
+| TransformerEngineNPU | [Ascend/TransformerEngineNPU](https://gitcode.com/Ascend/TransformerEngineNPU), `main`, `d5c6a4d38db1ebab909518f92457559ddd604c4e` |
+| ms-swift | [PR #10501](https://github.com/modelscope/ms-swift/pull/10501), `addsubmuldiv/ms-swift:dsv41`, `38aafdf94a73e6f453d5a8ea30f09be98df92659` (4.7.0.dev0) |
+| mcore-bridge | [PR #251](https://github.com/modelscope/mcore-bridge/pull/251), `addsubmuldiv/mcore-bridge:dsv41`, `7e6c6cf4485c1e72ab1454152976bb8538c8ea24` (1.7.0.dev0) |
+
+表中的 Swift 和 bridge 提交标识本次适配的源码快照；请使用本 PR 和配套 bridge PR 中的实现，不要用同版本号的 PyPI 包替代。MCore 必须使用上述包含 V4.1 / 原生 Engram 实现的 fork，普通 upstream `megatron-core==0.19.0` 不能替代。MegatronAdaptor 和 TransformerEngineNPU 也应切到表中的固定提交，不要直接跟随各自最新 `main`。按各项目的安装说明使用源码 editable 安装，并确认运行时导入的是这些 checkout。
+
+历史双机完整模型验证复用了上述 MCore、MegatronAdaptor、TransformerEngineNPU 和基础依赖，但使用的是 Swift `6ddd3c4973fa4c2af4da22c9047c9859fb4640e0`（[PR #10087](https://github.com/modelscope/ms-swift/pull/10087)）及 bridge `f79dff30145d10e070f5514770b60fe66dd6fee8`（[PR #189](https://github.com/modelscope/mcore-bridge/pull/189)）的本地修改快照，包含旧 offload 参数和 NPU 加载适配，不能仅 checkout 这两个提交来复现。当前 PR 使用统一环境变量的双机配置仍未重跑。
+
 ## 单机减层验证
 
 [示例脚本](megatron_lora.sh)使用 TP=1、PP=1、CP=1、EP=8，在 NPU 上训练注意力投影的 LoRA 参数。`NGRAM_EMBEDDING_CPU_OFFLOAD=1` 将 Engram 词表冻结并按 EP 分片保留在 CPU，其他计算仍在 NPU 上。默认开启 2K packing，保存 Megatron 格式的 adapter checkpoint（不合并完整模型）。
 
-先加载 CANN 环境，并准备与 DeepSeek-V4.1 适配匹配的 `torch_npu`、MegatronAdaptor、TransformerEngineNPU、包含原生 Engram 扩展的 Megatron-Core 和 mcore-bridge。已验证的软件组合为 torch 2.10.0、torch-npu 2.10.0.post2、CANN 9.2.0、本地 MCore 0.19.0 和 transformers 5.12.1；普通 GPU 环境的安装命令不能直接替代这些 NPU 组件。
+先加载 CANN 环境，并按上面的版本表准备 NPU 软件栈；普通 GPU 环境的安装命令不能直接替代这些 NPU 组件。
 
 ```bash
 MODEL=/path/to/deepseek-v41-checkpoint \

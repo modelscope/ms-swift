@@ -2,11 +2,34 @@
 
 [中文](README_CN.md)
 
+## Software versions and sources
+
+The following stack was used for the single-host, four-layer, 2K-packed, 10-step validation. Pin source components to the listed branches and commits; package version numbers alone do not identify the tested implementation.
+
+| Component | Validated version / source |
+| --- | --- |
+| Python | 3.12.15 |
+| CANN | 9.2.0 |
+| PyTorch / torch-npu | 2.10.0 / 2.10.0.post2 |
+| Transformers / PEFT | 5.12.1 / 0.20.0 |
+| datasets / accelerate | 4.8.4 / 1.15.0 |
+| safetensors / ModelScope | 0.8.0 / 1.40.2 |
+| NumPy | 1.26.4 |
+| Megatron-Core | [tastelikefeet/Megatron-LM](https://github.com/tastelikefeet/Megatron-LM/tree/827e940e602b8133eb8d5525d5ebfd59e6923ec5), `dsv41-pr7224-engram-local`, `827e940e602b8133eb8d5525d5ebfd59e6923ec5` (0.19.0+827e940) |
+| MegatronAdaptor | [Ascend/MegatronAdaptor](https://gitcode.com/Ascend/MegatronAdaptor), `core_r0.19.0`, `c7e52b2c8482105e6ec7fcd8cdef364e7c7b22c5` |
+| TransformerEngineNPU | [Ascend/TransformerEngineNPU](https://gitcode.com/Ascend/TransformerEngineNPU), `main`, `d5c6a4d38db1ebab909518f92457559ddd604c4e` |
+| ms-swift | [PR #10501](https://github.com/modelscope/ms-swift/pull/10501), `addsubmuldiv/ms-swift:dsv41`, `38aafdf94a73e6f453d5a8ea30f09be98df92659` (4.7.0.dev0) |
+| mcore-bridge | [PR #251](https://github.com/modelscope/mcore-bridge/pull/251), `addsubmuldiv/mcore-bridge:dsv41`, `7e6c6cf4485c1e72ab1454152976bb8538c8ea24` (1.7.0.dev0) |
+
+The Swift and bridge commits identify the source snapshots for this adaptation. Use the implementation in this PR and the companion bridge PR rather than PyPI packages with matching version numbers. MCore must come from the listed fork containing the V4.1 / native Engram implementation; upstream `megatron-core==0.19.0` is not a substitute. Pin MegatronAdaptor and TransformerEngineNPU to the listed commits rather than following their latest `main`. Follow each project's source installation instructions, use editable installs, and verify that runtime imports resolve to those checkouts.
+
+The historical two-host full-model run used the same MCore, MegatronAdaptor, TransformerEngineNPU and base dependencies, but locally modified snapshots of Swift `6ddd3c4973fa4c2af4da22c9047c9859fb4640e0` ([PR #10087](https://github.com/modelscope/ms-swift/pull/10087)) and bridge `f79dff30145d10e070f5514770b60fe66dd6fee8` ([PR #189](https://github.com/modelscope/mcore-bridge/pull/189)), including the earlier offload argument and NPU loading adaptations. Checking out those two commits alone does not reproduce that run. The current two-host configuration using the shared environment variable has not been rerun.
+
 ## Single-host reduced-model validation
 
 The [example script](megatron_lora.sh) uses TP=1, PP=1, CP=1 and EP=8 to train attention-projection LoRA parameters on NPU. `NGRAM_EMBEDDING_CPU_OFFLOAD=1` keeps frozen, EP-sharded Engram tables in CPU memory; other computation stays on NPU. The defaults enable 2K packing and save Megatron-format adapter checkpoints without merging the full model.
 
-Load the CANN environment first and prepare the matching DeepSeek-V4.1 NPU stack: `torch_npu`, MegatronAdaptor, TransformerEngineNPU, Megatron-Core with the native Engram extension, and mcore-bridge with this adaptation. The validated software combination is torch 2.10.0, torch-npu 2.10.0.post2, CANN 9.2.0, local MCore 0.19.0 and transformers 5.12.1. Standard GPU installation commands do not replace these NPU components.
+Load the CANN environment first and prepare the NPU stack listed above. Standard GPU installation commands do not replace these NPU components.
 
 ```bash
 MODEL=/path/to/deepseek-v41-checkpoint \
