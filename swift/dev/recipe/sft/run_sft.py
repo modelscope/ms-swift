@@ -247,6 +247,8 @@ def run_decision(
     logging_config: Optional["LoggingConfig"] = None,
     quantize_config: Optional["QuantizeConfig"] = None,
     *,
+    megatron_config=None,
+    moe_config=None,
     output_dir: str = "output",
     _save_final: bool = True,
 ) -> List[dict]:
@@ -255,17 +257,14 @@ def run_decision(
     The loss is chosen by ``TrainConfig.loss`` (default ``'scoring'`` -- plain
     masked soft-CE; ``'distill_rps'`` / ``'smooth_brier'`` / ``'ce_rps'`` add the model-family
     calibration terms) and set via :func:`configure_decision_loss`; the acc / record_acc / ece
-    metrics register via :func:`configure_decision_metric`; the head is re-activated for adapter
-    training (LoRA freezes the base; the scoring head must stay trainable in fp32). Every
-    checkpoint also persists the head beside the adapter/model weights
+    metrics register via :func:`configure_decision_metric`. Head re-activation after a peft
+    wrap is owned by the backends (``spec.reactivate`` in both ``_patch_adapter`` tails).
+    Every checkpoint also persists the head beside the adapter/model weights
     """
-    from twinkle.patch import apply_patch
-
     from swift.dev.loss import configure_decision_loss, configure_decision_metric
-    from swift.dev.model.decision_head import reactivate_scoring_head
-    from swift.dev.patch.twinkle_decision_task import TwinkleDecisionTaskPatch
 
-    apply_patch(None, TwinkleDecisionTaskPatch())
+    # No twinkle patching needed here: 'decision' is a first-class forward task in twinkle's
+    # task registry (twinkle.processor.tasks), so every worker process resolves it natively.
 
     # Legacy parity: task_type='decision' defaults the temperature-calibration and head-checkpoint
     # callbacks on (sft_args._init_decision_callbacks + ScoringTrainer._save). Both no-op unless
@@ -277,14 +276,9 @@ def run_decision(
     train_config.callbacks = callbacks
 
     def decision_loss(model) -> None:
+        # Head re-activation after a peft wrap is owned by the backends (spec.reactivate in
+        # both _patch_adapter tails); the recipe only configures the loss here.
         configure_decision_loss(model, loss_type=train_config.loss or "scoring")
-        inner = getattr(model, "model", None)
-        for candidate in (model, inner):
-            try:
-                reactivate_scoring_head(candidate)
-                break
-            except Exception:
-                continue
 
     cluster = build_supervised_objects(
         recipe="run_decision",
@@ -297,8 +291,8 @@ def run_decision(
         tuner_config=tuner_config,
         logging_config=logging_config,
         quantize_config=quantize_config,
-        megatron_config=None,
-        moe_config=None,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
         task=DECISION_TASK,
         loop_task=None,
         configure_loss=decision_loss,

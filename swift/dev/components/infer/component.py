@@ -1478,14 +1478,12 @@ def _decision_via_transformers(
       ``[{'index': argmax option, 'probs': masked softmax over real options}]`` -- rather than the
       one-tensor-per-row unpacking of the pooling heads.
     """
-    from twinkle.patch import apply_patch
-
     from swift.dev.builders import build_model, build_template, load_model_processor
     from swift.dev.config import DistributedConfig
-    from swift.dev.patch.twinkle_decision_task import TwinkleDecisionTaskPatch
     from swift.dev.processor import InputProcessor, processor_kwargs
 
-    apply_patch(None, TwinkleDecisionTaskPatch())
+    # 'decision' is a first-class forward task in twinkle's task registry
+    # (twinkle.processor.tasks); no runtime patching is needed.
 
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor, task_type="decision")

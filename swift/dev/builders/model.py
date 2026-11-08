@@ -1574,6 +1574,29 @@ def _build_megatron_model(
             if model_config.num_labels is None:
                 raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
             extra_kwargs["num_labels"] = model_config.num_labels
+    elif task_type == "decision":
+        # The dev family loader owns the readout head (mcore-bridge builds none); ship its
+        # (module, class) NAME -- a built nn.Module cannot cross the Ray boundary -- so the
+        # worker replays the build and attaches the head to the last-PP chunk
+        # (MegatronModel._attach_task_head). Branch-isolation / direct-backbone families raise
+        # here, at build time, before Ray starts.
+        from swift.dev.model.loader.decision import ScoringLoader
+
+        if not isinstance(model_loader, ScoringLoader):
+            raise ValueError(
+                f'--backend megatron with task_type="decision" needs a decision family loader; '
+                f"model_type={model_config.model_type!r} resolved {model_loader!r}."
+            )
+        if device_mesh is not None and (getattr(device_mesh, "vpp_size", 0) or 0) > 1:
+            # The readout head is attached to the chunk owning the output layer (the LAST virtual
+            # stage); with VPP>1 the other virtual stages on the same rank enter the readout
+            # branch too and would fail on a head they can never carry. Reject loudly here.
+            raise NotImplementedError(
+                'task_type="decision" does not support virtual pipeline stages (vpp>1) on the '
+                "megatron backend: the readout head lives on the last virtual chunk only. Drop "
+                "vpp (or wait for per-chunk readout routing) to train decision models."
+            )
+        extra_kwargs["task_head_loader"] = model_loader.task_head_loader()
 
     for name in ("vit_attn_impl", "language_model_only"):
         value = getattr(model_config, name)

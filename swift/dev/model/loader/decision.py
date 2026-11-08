@@ -4,7 +4,7 @@
 from __future__ import annotations
 import os
 from functools import wraps
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 import json
 import torch
@@ -105,61 +105,65 @@ class ScoringLoader(ModelLoader):
         maybe_load_trained_scoring_head(model, model_dir)
 
     def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
-        head = self._match_head_dtype_device(model, head)
-        model.scoring_head = head
-        if head.needs_output_embeddings:
-            head.set_output_embeddings(model.get_output_embeddings())
+        """Attach the head for the forward-layer readout dispatch -- no forward patching.
 
+        The placement rules (dtype/device alignment, the dual ``task_head`` / ``scoring_head``
+        names, output-embedding wiring) live on the decision task's spec
+        (``twinkle.model.tasks.Decision``); this loader only supplies the head object.
+        """
+        from twinkle.model.tasks import get_task_spec_obj
+
+        get_task_spec_obj("decision").attach_transformers(model, head)
+
+    def _attach_task_forward(self, model: PreTrainedModel, dispatcher, dispatch: Dict[str, Any]) -> None:
+        """Install a load-time custom task forward (the 'task_forward' readout kind).
+
+        The branch-isolation / direct-backbone families drive the backbone themselves
+        (multiple passes over a shared KV prefix, or reading past the top-level lm_head),
+        which the generic head readout cannot express. The custom forward replaces the
+        module forward and is marked ``task_forward`` so twinkle's dispatch takes the
+        plain call and lets it consume the batch's decision meta itself.
+        """
         origin_forward = get_original_forward(model)
-        dispatch = self._forward_dispatch_state(model, head, origin_forward)
-        dispatcher = self._scoring_dispatcher
 
         @wraps(origin_forward.__func__ if hasattr(origin_forward, "__func__") else origin_forward)
         def new_forward(self, *args, **kwargs):
             return dispatcher(self, *args, **dispatch, **kwargs)
 
         patch_module_forward(model, new_forward)
+        model.task_forward = new_forward
 
-    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
-        return {"head": head, "origin_forward": origin_forward}
+    def task_head_loader(self) -> Tuple[str, str]:
+        """The ``(module, class)`` name pair a twinkle worker replays ``build_task_head`` on.
 
-    @staticmethod
-    def _scoring_head_forward(self, *args, head: ScoringHead, origin_forward, **kwargs):
-        meta = kwargs.pop("decision_meta", None)
-        if meta is None:
-            raise ValueError(
-                "Decision forward requires decision_meta from the decision template's _encode "
-                "(kinds / n_options / model-specific positions); got none."
-            )
-        kwargs.pop("labels", None)
-        kwargs["return_dict"] = True
-        if head.encoder_backbone:
-            output = origin_forward(*args, **kwargs)
-            hidden_states = output.last_hidden_state
-        else:
-            kwargs["output_hidden_states"] = True
-            output = origin_forward(*args, **kwargs)
-            hidden_states = output.hidden_states[-1]
-        lm_logits = output.logits if head.needs_lm_logits else None
-        return head(hidden_states, lm_logits, meta)
+        A built head (an nn.Module with live tensors) cannot cross the Ray worker boundary, so
+        the backend builders ship this NAME instead; the worker rebuilds the head from the
+        local model path / config / tokenizer and attaches it (per-backend: to the HF model
+        or to the last-PP chunk / a head slot on multi-LoRA).
+        """
+        return type(self).__module__, type(self).__name__
 
-    # The default forward dispatcher; subclasses point this at their own (staticmethod) forward.
-    _scoring_dispatcher = staticmethod(_scoring_head_forward)
+    @classmethod
+    def build_task_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        """Worker-side head build (classmethod: no loader instance on the worker).
+
+        Backend-agnostic: called wherever the head must be built worker-side -- megatron's
+        ``_attach_task_head`` / head slots, or a transformers multi-adapter attach. The default
+        replays the family's ``head_cls.from_pretrained``; families whose head needs the
+        tokenizer override. The transformers-only ``task_forward`` families override with a
+        raise, and hidden-state heads fail at the megatron readout (``needs_lm_logits``).
+        """
+        if cls.head_cls is None:
+            raise NotImplementedError(f"{cls.__name__} must set `head_cls` or override `build_task_head`.")
+        return cls.head_cls.from_pretrained(model_dir, config=config)
 
     @staticmethod
     def _match_head_dtype_device(model: PreTrainedModel, head: ScoringHead) -> ScoringHead:
-        ref_weight = None
-        output_embeddings = model.get_output_embeddings()
-        if output_embeddings is not None and getattr(output_embeddings, "weight", None) is not None:
-            ref_weight = output_embeddings.weight
-        else:
-            ref_weight = next((p for p in model.parameters()), None)
-        if ref_weight is not None:
-            if head.keep_fp32:
-                head = head.to(device=ref_weight.device)
-            else:
-                head = head.to(device=ref_weight.device, dtype=ref_weight.dtype)
-        return head
+        # Thin alias: the alignment rule lives on the decision task's spec (single source);
+        # the task_forward families' attach overrides still need it locally.
+        from twinkle.model.tasks import get_task_spec_obj
+
+        return get_task_spec_obj("decision").align_head(model, head)
 
 
 @register_model
@@ -229,9 +233,13 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
         self._attach_and_load(model, head, model_dir)
         return model
 
-    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        # The branch forward trains the head jointly with the adapter, so it must stay trainable
+        # regardless of any later freeze sweep.
         for p in head.parameters():
             p.requires_grad_(True)
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
         open_ids = getattr(self, "_omnijev_open_ids", None)
         close_ids = getattr(self, "_omnijev_close_ids", None)
         tokenizer = getattr(self, "_omnijev_tokenizer", None)
@@ -240,14 +248,29 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
                 "OmniJevLoader.attach_scoring_head needs the option tokens registered first; go "
                 "through build_model (which runs add_option_tokens), not attach_scoring_head directly."
             )
-        return {
-            "head": head,
-            "origin_forward": origin_forward,
-            "backbone_model": model,
-            "tokenizer": tokenizer,
-            "open_ids": open_ids,
-            "close_ids": close_ids,
-        }
+        self._attach_task_forward(
+            model,
+            self._omnijev_branch_forward,
+            {
+                "head": head,
+                "origin_forward": get_original_forward(model),
+                "backbone_model": model,
+                "tokenizer": tokenizer,
+                "open_ids": open_ids,
+                "close_ids": close_ids,
+            },
+        )
+
+    @classmethod
+    def build_task_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        raise NotImplementedError(
+            f"{cls.__name__} runs a load-time custom forward (option branch isolation over a shared "
+            'HF KV cache) with no megatron equivalent; use the transformers backend for this family.'
+        )
+
+    def task_head_loader(self) -> Tuple[str, str]:
+        # Driver-side twin of build_task_head's raise: fail at build time, before Ray starts.
+        self.build_task_head("", None, None)
 
     @staticmethod
     def _omnijev_branch_forward(  # noqa: C901
@@ -337,8 +360,6 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
 
         return head.forward_features(per_question_features, meta)
 
-    _scoring_dispatcher = staticmethod(_omnijev_branch_forward)
-
 
 @register_model
 class KevLoader(ScoringLoader, Qwen3_5Loader):
@@ -377,8 +398,25 @@ class KevLoader(ScoringLoader, Qwen3_5Loader):
         self._attach_and_load(model, head, model_dir)
         return model
 
-    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
-        return {"head": head, "origin_forward": origin_forward, "backbone_model": model}
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
+        self._attach_task_forward(
+            model,
+            self._kev_forward,
+            {"head": head, "origin_forward": get_original_forward(model), "backbone_model": model},
+        )
+
+    @classmethod
+    def build_task_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        raise NotImplementedError(
+            f"{cls.__name__} runs a load-time custom forward (option branch isolation over a shared "
+            'HF KV cache) with no megatron equivalent; use the transformers backend for this family.'
+        )
+
+    def task_head_loader(self) -> Tuple[str, str]:
+        # Driver-side twin of build_task_head's raise: fail at build time, before Ray starts.
+        self.build_task_head("", None, None)
 
     @staticmethod
     def _kev_forward(self, *args, head: ScoringHead, origin_forward, backbone_model, **kwargs):
@@ -398,8 +436,6 @@ class KevLoader(ScoringLoader, Qwen3_5Loader):
         output = origin_forward(*args, **kwargs)
         hidden_states = output.hidden_states[-1]
         return head(hidden_states, None, meta)
-
-    _scoring_dispatcher = staticmethod(_kev_forward)
 
 
 def enable_thx02_noncausal_attention(language_model) -> None:
@@ -479,8 +515,24 @@ class Thx02Loader(ScoringLoader, Qwen3_5Loader):
         self._attach_and_load(model, head, model_dir)
         return model
 
-    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
-        return {"head": head}
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        # THX-02's dispatcher calls the backbone (self.model) directly -- past the top-level
+        # lm_head the base model never applies -- so it is a task_forward, not a task_head.
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
+        self._attach_task_forward(model, self._thx02_forward, {"head": head})
+
+    @classmethod
+    def build_task_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        raise NotImplementedError(
+            f"{cls.__name__} runs a load-time custom forward (direct backbone readout past the "
+            'top-level lm_head, plus noncausal attention pre-hooks) with no megatron equivalent; '
+            'use the transformers backend for this family.'
+        )
+
+    def task_head_loader(self) -> Tuple[str, str]:
+        # Driver-side twin of build_task_head's raise: fail at build time, before Ray starts.
+        self.build_task_head("", None, None)
 
     @staticmethod
     def _thx02_forward(self, *args, head: ScoringHead, **kwargs):
@@ -494,8 +546,6 @@ class Thx02Loader(ScoringLoader, Qwen3_5Loader):
         # never applied (THX-02 ships none), so call the Qwen3.5 backbone directly.
         output = self.model(*args, **kwargs)
         return head(output.last_hidden_state, None, meta)
-
-    _scoring_dispatcher = staticmethod(_thx02_forward)
 
 
 @register_model
@@ -517,6 +567,10 @@ class StartLuxLoader(ScoringLoader, Qwen3_5Loader):
     def build_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
         return self.head_cls.from_pretrained(model_dir, model=model, config=config, tokenizer=_tokenizer_of(processor))
 
+    @classmethod
+    def build_task_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        return cls.head_cls.from_pretrained(model_dir, config=config, tokenizer=_tokenizer_of(processor))
+
 
 @register_model
 class GenericDecisionLoader(ScoringLoader):
@@ -532,6 +586,10 @@ class GenericDecisionLoader(ScoringLoader):
 
     def build_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
         return self.head_cls.from_tokenizer(_tokenizer_of(processor), config=config)
+
+    @classmethod
+    def build_task_head(cls, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
+        return cls.head_cls.from_tokenizer(_tokenizer_of(processor), config=config)
 
 
 @register_model
