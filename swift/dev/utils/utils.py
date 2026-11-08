@@ -52,12 +52,27 @@ def add_version_to_work_dir(work_dir: str) -> str:
     """``work_dir/v{version}-{timestamp}`` so repeated runs nest instead of overwriting.
 
     The broadcast keeps every rank on the same sub-folder when a torchrun process group exists
-    (only the rank-0 listing decides); single-process callers fall straight through.
+    (only the rank-0 listing decides); single-process callers fall straight through. The dev
+    local mode initializes no world process group at config time (twinkle initializes none at
+    all, world size comes from the torchrun env), so under torchrun a transient gloo group
+    carries the broadcast and is torn down before megatron builds its own groups -- without
+    it every rank nests into its own version dir and the checkpoint write scatters its shards
+    across eight roots (rank-0 config here, tokenizer there, an empty dir where the task-head
+    writer then crashes).
     """
     version = _next_output_version(work_dir)
     timestamp = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
     sub_folder = f'v{version}-{timestamp}'
-    if dist.is_initialized() and dist.get_world_size() > 1:
+    world_size = int(os.environ.get('WORLD_SIZE', '1') or '1')
+    if world_size > 1 and not dist.is_initialized():
+        dist.init_process_group(backend='gloo')
+        try:
+            obj_list = [sub_folder]
+            dist.broadcast_object_list(obj_list, src=0)
+            sub_folder = obj_list[0]
+        finally:
+            dist.destroy_process_group()
+    elif dist.is_initialized() and dist.get_world_size() > 1:
         obj_list = [sub_folder]
         dist.broadcast_object_list(obj_list)
         sub_folder = obj_list[0]

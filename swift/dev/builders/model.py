@@ -468,6 +468,17 @@ def build_model(
     if model_config.model:
         from swift.dev.utils.hub import safe_snapshot_download
 
+        if model_config.model_type is None:
+            # Pin the family from the ORIGINAL id before it is lost to the snapshot dir: the CLI's
+            # _resolve_model already rewrote `model` to a hash-named snapshot path (which matches
+            # no registered id); the portable id rides on `_model_id_or_path`. Without pinning,
+            # downstream re-resolution (_resolve_model_loader in both backend builders) falls back
+            # to the generic family-less load -- which the decision task's head-attachment guard
+            # rejects.
+            from swift.dev.model.loader import match_model_type
+
+            model_ref = getattr(model_config, '_model_id_or_path', None) or model_config.model
+            model_config.model_type = match_model_type(model_ref)
         model_config.model = safe_snapshot_download(model_config.model, revision=model_config.model_revision)
     if is_megatron_backend(distributed_config):
         return _build_megatron_model(
@@ -1587,15 +1598,10 @@ def _build_megatron_model(
                 f'--backend megatron with task_type="decision" needs a decision family loader; '
                 f"model_type={model_config.model_type!r} resolved {model_loader!r}."
             )
-        if device_mesh is not None and (getattr(device_mesh, "vpp_size", 0) or 0) > 1:
-            # The readout head is attached to the chunk owning the output layer (the LAST virtual
-            # stage); with VPP>1 the other virtual stages on the same rank enter the readout
-            # branch too and would fail on a head they can never carry. Reject loudly here.
-            raise NotImplementedError(
-                'task_type="decision" does not support virtual pipeline stages (vpp>1) on the '
-                "megatron backend: the readout head lives on the last virtual chunk only. Drop "
-                "vpp (or wait for per-chunk readout routing) to train decision models."
-            )
+        # VPP is fine here: `is_last_pp` is judged per chunk (is_pipeline_last_stage(False,
+        # vp_stage) requires vp_stage == vpp-1 AND the last PP rank), and `carries_task_head`
+        # checks THIS chunk's task_head attribute -- the non-last virtual chunks fail both gates
+        # and fall through to the hidden-states pass-through the interleaving schedule expects.
         extra_kwargs["task_head_loader"] = model_loader.task_head_loader()
 
     for name in ("vit_attn_impl", "language_model_only"):

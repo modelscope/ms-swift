@@ -21,6 +21,8 @@ CONTROLLED_TAGS = frozenset({
     'agent', 'bench', 'classification', 'cot', 'decision', 'distill', 'dpo', 'em', 'grpo',
     'hfrl', 'kto', 'multi-agent', 'multi-domain', 'multi-round', 'multi-task', 'multilabel',
     'o1', 'orpo', 'pairwise', 'pretrain', 'qa', 'r1', 'rl', 'rlhf', 'rlvr', 'sft', 'thinking',
+    # typed-decision (System-1) model families -- datasets filter by the family they distil
+    'jev', 'clef', 'omnijev', 'kev', 'laya', 'startlux',
     # language / region
     'en', 'multilingual', 'zh', 'zhihu',
     # domain / topic

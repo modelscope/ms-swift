@@ -30,7 +30,22 @@ class DecisionScoringMetric(Metric):
 
     def accumulate(self, inputs: Union[InputFeature, List[InputFeature]], outputs: ModelOutput, **kwargs):
         logits = outputs.get("logits")
-        labels = inputs.get("labels")
+        # The twinkle Metric contract hands metrics either ONE merged feature dict (transformers
+        # backend) or a LIST of per-microbatch dicts (megatron backend: outputs are merged across
+        # micro-batches in forward order, so the labels must be merged the same way). Decision
+        # labels are per-question target distributions [total_q, max_opt]; the option width can
+        # differ per micro-batch, so pad-and-stack (pad 0 keeps argmax on the real positive-mass
+        # options; predictions are option_mask-restricted anyway).
+        if isinstance(inputs, list):
+            labels_list = [inp.get("labels") for inp in inputs]
+            labels_list = [l for l in labels_list if l is not None]
+            if not labels_list:
+                labels = None
+            else:
+                from twinkle.utils import pad_and_stack_tensors
+                labels = pad_and_stack_tensors(labels_list, pad_value=0)
+        else:
+            labels = inputs.get("labels")
         if logits is None or labels is None:
             return
         option_mask = outputs.get("option_mask")

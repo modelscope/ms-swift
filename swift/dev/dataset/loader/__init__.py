@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from . import decision  # noqa: F401  (import for its registration side effects)
 from . import llm  # noqa: F401  (import for its registration side effects)
 from . import mllm  # noqa: F401  (import for its registration side effects)
 from .base import (DATASET_MAPPING, DATASET_TYPE, DatasetInfo, DatasetLoader, SubsetMeta, get_dataset_loader,
