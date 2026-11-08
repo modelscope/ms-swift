@@ -87,8 +87,13 @@ def masked_argmax(logits: torch.Tensor, option_mask: torch.Tensor, dim: int = -1
 
 
 def get_scoring_head(model: nn.Module) -> Optional[nn.Module]:
+    # twinkle's attach registers one head under the dual names task_head / scoring_head; nn.Module
+    # deduplicates named_modules by object identity, so the head shows up under its FIRST name
+    # (task_head) only. Match either alias or the calibration / checkpoint callbacks silently
+    # find no head and skip.
     for name, module in model.named_modules():
-        if name == "scoring_head" or name.endswith(".scoring_head"):
+        if name == "scoring_head" or name.endswith(".scoring_head") or name == "task_head" or name.endswith(
+            ".task_head"):
             return module
     return None
 
