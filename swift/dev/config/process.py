@@ -661,14 +661,17 @@ def _derive_grpo_reward_defaults(rl_config: Optional['RLConfig']) -> None:
 def _derive_best_model_metric(train_config: 'TrainConfig', rl_config: Optional['RLConfig']) -> None:
     """Pick the metric that selects the best checkpoint, and which direction counts as better.
 
-    GRPO -> reward, generation -> ROUGE, else loss; PPO stays unset (loss not monotone in quality).
+    GRPO -> reward, generation -> ROUGE, else eval_loss; PPO stays unset (loss not monotone in
+    quality). The supervised eval loop publishes its metrics under ``eval_``-prefixed keys
+    (``utils.py::track_best`` reads this dict), so the val-loss default is ``eval_loss`` --
+    legacy's bare ``loss`` never matches a key there and silently disabled best-model tracking.
     """
     rl_type = getattr(rl_config, 'rl_type', None) if rl_config is not None else None
     if train_config.metric_for_best_model is None:
         if rl_type == 'grpo':
             train_config.metric_for_best_model = 'reward'
         elif rl_type != 'ppo':
-            train_config.metric_for_best_model = 'rouge-l' if train_config.predict_with_generate else 'loss'
+            train_config.metric_for_best_model = 'rouge-l' if train_config.predict_with_generate else 'eval_loss'
     if train_config.greater_is_better is None and train_config.metric_for_best_model is not None:
         train_config.greater_is_better = 'loss' not in train_config.metric_for_best_model
 

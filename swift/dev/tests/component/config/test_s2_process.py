@@ -452,12 +452,13 @@ def test_grpo_reward_defaults():
     ('grpo', False, 'reward'),
     ('ppo', False, None),  # ppo stays unset: loss is not monotone in quality
     (None, True, 'rouge-l'),
-    (None, False, 'loss'),
-    ('dpo', False, 'loss'),
+    (None, False, 'eval_loss'),
+    ('dpo', False, 'eval_loss'),
 ])
 def test_best_model_metric_derivation(rl_type, predict_with_generate, metric):
-    """S2-17: grpo selects reward, generation eval selects rouge-l, plain training selects loss,
-    ppo leaves it unset; greater_is_better flips for loss."""
+    """S2-17: grpo selects reward, generation eval selects rouge-l, plain training selects
+    eval_loss (the supervised eval dict publishes prefixed keys), ppo leaves it unset;
+    greater_is_better flips for loss."""
     train = TrainConfig(predict_with_generate=predict_with_generate)
     _derive_best_model_metric(train, RLConfig(rl_type=rl_type) if rl_type else None)
     assert train.metric_for_best_model == metric
