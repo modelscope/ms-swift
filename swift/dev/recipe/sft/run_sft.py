@@ -31,10 +31,16 @@ def _supervised_micro_kwargs(task: str) -> Callable[..., Dict[str, Any]]:
     The dataloader already yields ``list[InputFeature]``, so this passes through ``inputs``
     plus the forward ``task``. ``micro_batch_size`` counts original examples or packing units;
     the backend splits the submitted inputs internally, with no accumulation across calls.
+    ``micro_batch_size=None`` submits the whole unit as one forward -- the only supported mode
+    for readout tasks (decision), whose labels/decision_meta are organized per RECORD and
+    cannot be split at sample level by the forward-only micro-batcher.
     """
 
-    def micro_step_kwargs(unit, *, micro_batch_size: int):
-        return {'inputs': unit, 'task': task, "gradient_accumulation_steps": 1, "micro_batch_size": micro_batch_size}
+    def micro_step_kwargs(unit, *, micro_batch_size: Optional[int]):
+        kwargs = {'inputs': unit, 'task': task, "gradient_accumulation_steps": 1}
+        if micro_batch_size is not None:
+            kwargs["micro_batch_size"] = micro_batch_size
+        return kwargs
 
     return micro_step_kwargs
 
@@ -339,7 +345,9 @@ def _bind_temperature_calibration(handler, template, model, eval_dataloader, mic
             for index, batch in enumerate(eval_dataloader):
                 if eval_iters > 0 and index >= eval_iters:
                     break
-                outputs = model.forward_only(**micro_step_fn(batch, micro_batch_size=len(batch)), return_logits=True)
+                # Decision-only callback: whole-batch forward_only -- readout tasks cannot be
+                # split at sample level, so len(batch) micro-batching would trip the readout guard.
+                outputs = model.forward_only(**micro_step_fn(batch, micro_batch_size=None), return_logits=True)
                 rows = [{k: v for k, v in feat.items() if v is not None} for feat in batch]
                 inputs = template.finalize_batch(template.collate_media([template.pop_media(r) for r in rows]))
                 yield inputs, outputs

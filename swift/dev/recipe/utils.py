@@ -1580,7 +1580,7 @@ def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
 def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_gc: bool,
                   manual_gc_eval: bool, micro_step_kwargs: Callable[..., Dict[str, Any]],
                   global_step: int,
-                  micro_batch_size: int = 1,
+                  micro_batch_size: Optional[int] = 1,
                   eval_group_size: int = 1) -> Optional[dict]:
     """Val-loss eval: the normalized per-token loss over eval_dataloader (None if there is none).
 
@@ -1596,6 +1596,10 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
     proved schedulable. A trailing partial group cannot satisfy that floor and is dropped:
     eval is a sampled estimate, and padding would double-count the padded rows in the
     per-token loss.
+
+    ``micro_batch_size=None`` submits each eval batch as one whole forward -- the only
+    supported mode for readout tasks (decision), whose labels/decision_meta are organized
+    per RECORD and cannot be split at sample level by the forward-only micro-batcher.
     """
     if eval_dataloader is None:
         return None

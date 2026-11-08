@@ -45,6 +45,13 @@ def _is_vpp_megatron(distributed_config: "DistributedConfig") -> bool:
             and (distributed_config.virtual_pipeline_model_parallel_size or 1) > 1)
 
 
+#: Forward tasks whose eval must submit each dataloader batch as ONE whole forward: their
+#: labels live per record (decision) or one record expands into several sequences (embedding
+#: anchor+positives, reranker query+candidates), so the forward-only micro-batcher's
+#: sample-level split desynchronizes labels from logits.
+_WHOLE_BATCH_EVAL_TASKS = frozenset({'decision', 'embedding', 'reranker', 'generative_reranker'})
+
+
 class _Evaluation:
     def __init__(
         self,
@@ -68,7 +75,16 @@ class _Evaluation:
         self.eval_iters = train_config.eval_iters
         self.metric_for_best_model = train_config.metric_for_best_model
         self.greater_is_better = greater_is_better
-        self.micro_batch_size = train_config.per_device_eval_batch_size
+        # Tasks whose forward output is not one row per record: decision's labels/decision_meta
+        # are organized per RECORD (the forward-only readout guard raises on sample-level
+        # splits); embedding/reranker expand one record into anchor+candidate sequences, so the
+        # merged outputs' sample axis cannot match the micro-plan's record indices. Their
+        # val-loss eval must run each batch whole -- micro_batch_size=None disables
+        # micro-batching while per_device_eval_batch_size still governs the DataLoader.
+        if cluster.forward_task in _WHOLE_BATCH_EVAL_TASKS:
+            self.micro_batch_size = None
+        else:
+            self.micro_batch_size = train_config.per_device_eval_batch_size
         self.eval_group_size = eval_group_size
         self.history = []
         self.best_step, self.best_ckpt, self.warned_eval_dp = 0, None, False
