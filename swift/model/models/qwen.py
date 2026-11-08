@@ -11,6 +11,7 @@ from importlib import import_module
 from packaging import version
 from PIL import Image
 from threading import RLock
+from torch import nn
 from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -22,7 +23,7 @@ from typing import Optional, Tuple, Type, Union
 from swift.sequence_parallel import sequence_parallel
 from swift.template import TemplateType
 from swift.utils import (Processor, get_cu_seqlens_from_position_ids, get_device_count, get_dist_setting, get_env_args,
-                         get_logger, is_deepspeed_enabled, safe_snapshot_download, to_device)
+                         get_logger, is_deepspeed_enabled, is_dist, safe_snapshot_download, to_device)
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -1560,6 +1561,7 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
     class_specs = (
         ('transformers.models.qwen3_5.modeling_qwen3_5', 'Qwen3_5GatedDeltaNet'),
         ('transformers.models.qwen3_5_moe.modeling_qwen3_5_moe', 'Qwen3_5MoeGatedDeltaNet'),
+        ('transformers.models.qwen4_exp.modeling_qwen4_exp', 'Qwen4ExpTextGatedDeltaNet'),
     )
     for module_name, class_name in class_specs:
         try:
@@ -1734,12 +1736,235 @@ register_model(
         tags=['vision']))
 
 
+class _HostEmbeddingProxy(nn.Module):
+    """Look up a host-resident embedding table without registering it as an nn.Parameter.
+
+    Qwen4Exp's n-gram PLE table is ~96GiB and must stay on CPU. If it remains a child
+    Parameter of Qwen4ExpTextDecoderLayer, FSDP2 will shard it and all-gather onto the accelerator.
+    """
+
+    def __init__(self, host_embedding: nn.Embedding):
+        super().__init__()
+        object.__setattr__(self, '_host_embedding', host_embedding)
+
+    @property
+    def weight(self):
+        return self._host_embedding.weight
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        host = self._host_embedding
+        return host(input_ids.to(host.weight.device)).to(input_ids.device)
+
+
+def _qwen4_exp_ple_ngram_cache_path(model_dir: str) -> str:
+    import hashlib
+    from modelscope.hub.utils.utils import get_cache_dir
+
+    model_key = hashlib.sha256(os.path.realpath(model_dir).encode()).hexdigest()
+    return os.path.join(get_cache_dir(), 'ms_swift', 'ple', model_key, 'ple_ngram_embedding.safetensors')
+
+
+def _iter_qwen4_exp_ple_ngram_modules(model: PreTrainedModel):
+    language_model = getattr(getattr(model, 'model', None), 'language_model', None)
+    if language_model is None or not hasattr(language_model, 'layers'):
+        return
+    for layer in language_model.layers:
+        ple = getattr(layer, 'ple', None)
+        if ple is None:
+            continue
+        ngram_mod = getattr(getattr(ple, 'ple_embedding', None), 'ngram_embedding', None)
+        if isinstance(ngram_mod, nn.Embedding):
+            yield ple, ngram_mod
+
+
+def _qwen4_exp_ple_ngram_source_fingerprint(model_dir: str) -> str:
+    import hashlib
+    import json
+
+    # The cache is derived from this checkpoint; track source metadata without
+    # rereading the full (~96 GiB) PLE shards on every launch.
+    manifest = {}
+    index_path = os.path.join(model_dir, 'model.safetensors.index.json')
+    for name in ('config.json', 'model.safetensors.index.json'):
+        path = os.path.join(model_dir, name)
+        if os.path.isfile(path):
+            with open(path, 'rb') as f:
+                manifest[name] = hashlib.sha256(f.read()).hexdigest()
+    if os.path.isfile(index_path):
+        with open(index_path) as f:
+            weight_map = json.load(f)['weight_map']
+        shards = {filename for name, filename in weight_map.items() if '.ngram_embedding.' in name}
+    else:
+        shards = {'model.safetensors'}
+    for name in sorted(shards):
+        stat = os.stat(os.path.join(model_dir, name))
+        manifest[name] = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    return hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+
+
+def _qwen4_exp_single_ngram_module(model: PreTrainedModel):
+    pairs = list(_iter_qwen4_exp_ple_ngram_modules(model))
+    if len(pairs) > 1:
+        raise ValueError('Qwen4Exp FSDP2 currently supports at most one PLE n-gram embedding table.')
+    return pairs[0][1] if pairs else None
+
+
+def _read_qwen4_exp_ple_ngram_cache(cache_path: str, fingerprint: str, expected_weight: torch.Tensor) -> torch.Tensor:
+    from safetensors import safe_open
+
+    with safe_open(cache_path, framework='pt', device='cpu') as f:
+        metadata = f.metadata() or {}
+        if metadata.get('source_fingerprint') != fingerprint:
+            raise ValueError('Qwen4Exp PLE cache does not match the source checkpoint.')
+        weight = f.get_tensor('weight')
+    if weight.shape != expected_weight.shape or weight.dtype != expected_weight.dtype:
+        raise ValueError('Qwen4Exp PLE cache shape or dtype does not match the model.')
+    return weight
+
+
+def _export_qwen4_exp_ple_ngram_cache(model: PreTrainedModel, cache_path: str, model_dir: str) -> None:
+    import tempfile
+    from safetensors import SafetensorError
+    from safetensors.torch import save_file
+
+    module = _qwen4_exp_single_ngram_module(model)
+    if module is None:
+        return
+    weight = module.weight
+    if weight.is_meta:
+        raise ValueError('Cannot export a Qwen4Exp PLE cache from a meta tensor.')
+    fingerprint = _qwen4_exp_ple_ngram_source_fingerprint(model_dir)
+    if os.path.isfile(cache_path):
+        try:
+            _read_qwen4_exp_ple_ngram_cache(cache_path, fingerprint, weight)
+            return
+        except (OSError, ValueError, SafetensorError) as exc:
+            logger.warning(f'Rebuilding invalid Qwen4Exp PLE cache: {exc}')
+    cache_dir = os.path.dirname(os.path.abspath(cache_path))
+    os.makedirs(cache_dir, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix='.ple_ngram_', suffix='.safetensors', dir=cache_dir)
+    os.close(fd)
+    try:
+        save_file({'weight': weight.detach().cpu().contiguous()},
+                  tmp_path,
+                  metadata={'source_fingerprint': fingerprint})
+        _read_qwen4_exp_ple_ngram_cache(tmp_path, fingerprint, weight)
+        os.replace(tmp_path, cache_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+    logger.info(f'Exported Qwen4Exp PLE n-gram cache to {cache_path}')
+
+
+def _load_qwen4_exp_ple_ngram_from_cache(model: PreTrainedModel, cache_path: str, model_dir: str) -> None:
+    module = _qwen4_exp_single_ngram_module(model)
+    if module is None:
+        return
+    fingerprint = _qwen4_exp_ple_ngram_source_fingerprint(model_dir)
+    weight = _read_qwen4_exp_ple_ngram_cache(cache_path, fingerprint, module.weight)
+    module.weight = nn.Parameter(weight, requires_grad=module.weight.requires_grad)
+    logger.info(f'Loaded Qwen4Exp PLE n-gram embedding from cache: {cache_path}')
+
+
+def _pin_qwen4_exp_ple_ngram_on_host(model: PreTrainedModel) -> None:
+    pinned = 0
+    for ple, ngram_mod in _iter_qwen4_exp_ple_ngram_modules(model):
+        if ngram_mod.weight.requires_grad:
+            continue
+        ple.ple_embedding.ngram_embedding = _HostEmbeddingProxy(ngram_mod)
+        pinned += 1
+
+    if pinned:
+        logger.info('Pinned Qwen4Exp PLE n-gram embedding(s) on host CPU and excluded them from FSDP/LoRA.')
+
+
+def _patch_qwen4_exp_qsa_indexer_no_grad() -> None:
+    """QSA indexer is not trained by the causal-LM loss; avoid autograd on its Python-loop forward."""
+    try:
+        from transformers.models.qwen4_exp.modeling_qwen4_exp import Qwen4ExpTextQSAIndexer
+    except ImportError:
+        return
+    if getattr(Qwen4ExpTextQSAIndexer.forward, '_ms_swift_no_grad_patched', False):
+        return
+    forward = torch.no_grad()(Qwen4ExpTextQSAIndexer.forward)
+    forward._ms_swift_no_grad_patched = True
+    Qwen4ExpTextQSAIndexer.forward = forward
+
+
+def _patch_qwen4_exp_fsdp2_loading(model_cls) -> None:
+    """Keep non-main FSDP2 weights on meta until Accelerate distributes rank 0's state."""
+    from transformers.distributed.utils import is_local_dist_rank_0
+    from transformers.integrations import is_fsdp_enabled
+    from transformers.modeling_utils import _load_parameter_into_model
+
+    if getattr(model_cls, '_swift_fsdp2_loading_patched', False):
+        return
+    original_load = model_cls._load_pretrained_model
+    original_move = model_cls._move_missing_keys_from_meta_to_device
+
+    def defer_weights():
+        return os.environ.get('FSDP_VERSION') == '2' and is_fsdp_enabled() and not is_local_dist_rank_0()
+
+    @wraps(original_load)
+    def load(model, state_dict, checkpoint_files, load_config, *args, **kwargs):
+        if defer_weights() and not load_config.is_quantized:
+            # Reuse from_pretrained's construction and finalization; only defer
+            # checkpoint reads on peers, whose weights come from Accelerate.
+            info, offload_index = original_load(model, {}, None, load_config, *args, **kwargs)
+            info.missing_keys.clear()  # These weights are deferred, not missing from the checkpoint.
+            return info, offload_index
+        return original_load(model, state_dict, checkpoint_files, load_config, *args, **kwargs)
+
+    @wraps(original_move)
+    def move(model, missing_keys, device_map, device_mesh, hf_quantizer):
+        if defer_weights() and hf_quantizer is None:
+            # Transformers otherwise allocates a full CPU zero tensor for every
+            # parameter. Buffers still need real storage for normal initialization.
+            for name, buffer in model.named_buffers():
+                _load_parameter_into_model(model, name, torch.zeros_like(buffer, device='cpu'))
+            return
+        return original_move(model, missing_keys, device_map, device_mesh, hf_quantizer)
+
+    model_cls._load_pretrained_model = staticmethod(load)
+    model_cls._move_missing_keys_from_meta_to_device = move
+    model_cls._swift_fsdp2_loading_patched = True
+
+
 class Qwen4ExpLoader(Qwen3VLLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        import torch.distributed as dist
         from transformers.models.qwen4_exp.modeling_qwen4_exp import Qwen4ExpForConditionalGeneration
+
         self.auto_model_cls = self.auto_model_cls or Qwen4ExpForConditionalGeneration
-        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        fsdp2 = (os.environ.get('ACCELERATE_USE_FSDP', '').lower() == 'true' and os.environ.get('FSDP_VERSION') == '2')
+        if not fsdp2:
+            return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        from ..fsdp import apply_patch as apply_fsdp_patch
+
+        apply_fsdp_patch()
+        text_config = getattr(config, 'text_config', config)
+        if len(getattr(text_config, 'ple_layer_ids', [])) > 1:
+            raise ValueError('Qwen4Exp FSDP2 currently supports at most one PLE layer.')
+        _patch_qwen3_5_linear_attention_sequence_parallel()
+        _patch_qwen4_exp_qsa_indexer_no_grad()
+
+        _patch_qwen4_exp_fsdp2_loading(self.auto_model_cls)
+        # Keep the regular Transformers loading/initialization path on every rank.
+        model = Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        _, local_rank, world_size, _ = get_dist_setting()
+        if is_dist() and world_size > 1:
+            # Frozen PLE is later excluded from FSDP, so every rank must retain
+            # the real table rather than Transformers' non-main-rank placeholders.
+            cache_path = _qwen4_exp_ple_ngram_cache_path(model_dir)
+            if local_rank == 0:
+                _export_qwen4_exp_ple_ngram_cache(model, cache_path, model_dir)
+            dist.barrier()
+            _load_qwen4_exp_ple_ngram_from_cache(model, cache_path, model_dir)
+
+        # The tuner decides which parameters are trainable after loading. Only
+        # then can frozen PLE tables be excluded from FSDP without changing full FT.
+        return model
 
 
 register_model(

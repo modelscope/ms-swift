@@ -335,7 +335,7 @@ def get_modules_to_not_convert(model):
     suffix_list = []
     if model.model_info.is_moe_model:
         suffix_list += ['mlp.gate', 'mlp.shared_expert_gate']
-    if model_type in {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}:
+    if model_type in {'qwen3_next', 'qwen3_5', 'qwen3_5_moe', 'qwen4_exp'}:
         suffix_list += ['in_proj_a', 'in_proj_b']
     if model_arch is not None:
         for key in ['vision_tower', 'aligner']:
@@ -345,6 +345,10 @@ def get_modules_to_not_convert(model):
     suffix_list.append('lm_head')
     res = []
     for n, m in model.named_modules():
+        # QSA indexer uses a separate objective in Megatron; skip for standard LoRA SFT.
+        if model_type == 'qwen4_exp' and '.indexer.' in n:
+            res.append(n)
+            continue
         if 'linear' in m.__class__.__name__.lower() and (any(n.endswith(suffix) for suffix in suffix_list)
                                                          or any(n.startswith(prefix) for prefix in prefix_list)):
             res.append(n)

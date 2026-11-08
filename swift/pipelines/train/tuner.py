@@ -424,4 +424,8 @@ class TunerMixin:
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
         model = apply_model_prepare_hooks(args, model)
+        if (args.model_type == 'qwen4_exp' and args.fsdp and args.fsdp_config.get('fsdp_version', 2) == 2):
+            from swift.model.models.qwen import _pin_qwen4_exp_ple_ngram_on_host
+            from swift.template import Template
+            _pin_qwen4_exp_ple_ngram_on_host(Template.get_base_model(model))
         return model

@@ -46,11 +46,7 @@ _original_fsdp2_prepare_model = fsdp_utils.fsdp2_prepare_model
 
 
 @wraps(_original_fsdp2_prepare_model)
-def wrapped_fsdp2_prepare_model(
-    accelerator: Accelerator,
-    model: torch.nn.Module,
-):
-    # Public utility entry used by some code paths before Accelerator.prepare.
+def _patched_fsdp2_prepare_model(accelerator: Accelerator, model: torch.nn.Module) -> torch.nn.Module:
     model = _cast_module_to_fp32_for_npu_if_needed(model, accelerator)
     return _original_fsdp2_prepare_model(accelerator, model)
 
@@ -77,10 +73,20 @@ _APPLIED = False
 
 
 def apply_patch() -> None:
-    global _APPLIED
+    global _APPLIED, _original_fsdp2_prepare_model
     if _APPLIED:
         return
 
-    fsdp_utils.fsdp2_prepare_model = wrapped_fsdp2_prepare_model
+    import accelerate.accelerator as accelerate_accelerator
+
+    from ..fsdp import apply_patch as apply_fsdp_patch
+
+    apply_fsdp_patch()
+    _original_fsdp2_prepare_model = fsdp_utils.fsdp2_prepare_model
+
+    # accelerate/accelerator.py imports fsdp2_prepare_model at module load time;
+    # patching fsdp_utils alone does not affect Accelerator._prepare_fsdp2.
+    fsdp_utils.fsdp2_prepare_model = _patched_fsdp2_prepare_model
+    accelerate_accelerator.fsdp2_prepare_model = _patched_fsdp2_prepare_model
     Accelerator._prepare_fsdp2 = wrapped_prepare_fsdp2
     _APPLIED = True
