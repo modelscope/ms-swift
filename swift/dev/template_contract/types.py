@@ -36,6 +36,10 @@ class PreferenceSample:
 class KTOSample:
     conversation: ConversationSample
     label: bool
+    #: The optional rejected counterpart (``rejected_response`` column): the KTO recipe's KL-batch
+    #: rotation pairs each prompt with an unrelated completion and encodes both sides in one pass;
+    #: rows without a rejected side leave this None and encode the conversation only.
+    rejected: Optional[ConversationSample] = None
 
 
 InputOrderLabels = NewType("InputOrderLabels", List[int])

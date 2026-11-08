@@ -784,7 +784,7 @@ class Template(ProcessorMixin):
         elif isinstance(sample, KTOSample):
             conversation = deepcopy(sample.conversation)
             conversation["label"] = sample.label
-            sample = TemplateInputs(chosen=conversation)
+            sample = TemplateInputs(chosen=conversation, rejected=deepcopy(sample.rejected))
             preference_mode = "kto"
         explicit_intent = intent is not None or add_generation_prompt is not None
         intent = resolve_intent(intent, add_generation_prompt)

@@ -278,4 +278,5 @@ def kto_sample_from_row(row: Union[Dict[str, Any], TemplateInputs]) -> KTOSample
         raise ValueError("KTO data requires a boolean label.")
     conversation = asdict(inputs.chosen)
     label = bool(conversation.pop("label"))
-    return KTOSample(conversation=cast(ConversationSample, conversation), label=label)
+    rejected = asdict(inputs.rejected) if inputs.rejected is not None else None
+    return KTOSample(conversation=cast(ConversationSample, conversation), label=label, rejected=rejected)
