@@ -9,11 +9,16 @@ builders, keep it resident. Nothing native learns about the canvas.
 from __future__ import annotations
 
 import dataclasses
+import os
 from typing import Any, Dict, Optional
+
+from swift.dev.utils.logger import get_logger
 
 from ..component import (ComponentError, ResourceComponent, StageComponent,
                          load_code_component)
 from twinkle.loss import Loss
+
+logger = get_logger()
 
 
 def _fill(cls: Any, kv: Dict[str, str], node_id: str) -> Any:
@@ -98,15 +103,19 @@ def _reject_unknown_kwargs(cls: Any, kwargs: Dict[str, Any], node_id: str, label
     do not know (the GRPO loss family forwards nothing) -- a typo on the panel
     would then run on defaults without a trace. The guard collects the named
     parameters of every ``__init__`` in the class chain: a name absent
-    everywhere is refused here, before the silent drop can happen."""
+    everywhere is refused here, before the silent drop can happen. Catch-all
+    parameters (``*args`` / ``**kwargs``) do not count -- their names are
+    spelling artefacts, not settable fields."""
     import inspect
     named = set()
     for klass in cls.__mro__:
         init = klass.__dict__.get('__init__')
         if init is None:
             continue
-        named |= {name for name in inspect.signature(init).parameters
-                  if name not in ('self', 'args')}
+        named |= {param.name for param in inspect.signature(init).parameters.values()
+                  if param.name not in ('self', 'args')
+                  and param.kind not in (inspect.Parameter.VAR_POSITIONAL,
+                                         inspect.Parameter.VAR_KEYWORD)}
     unknown = set(kwargs) - named
     if unknown:
         raise ComponentError(
@@ -544,31 +553,62 @@ class ToolsetComponent(ResourceComponent):
 
 
 class SandboxEnvComponent(ResourceComponent):
-    """The tool-call sandbox; kind picks the native backend."""
+    """The tool-call sandbox; ``kind`` picks the native backend.
+
+    Every backend (LocalEnv / AgentEnv / OpenEnv / OpenEnvClient) implements
+    the standard Env interface, so the consumers -- the rollout env lease,
+    the challenger's envs -- are kind-agnostic. ``sandbox_config`` keys must
+    be the chosen backend's real constructor fields: unknown names are
+    refused before construction (these constructors take ``**kwargs`` and
+    would otherwise silently drop a typo and run on defaults). Credentials
+    never ride the graph: agentenv's api key is read at build time from the
+    environment variable named by ``api_key_env``.
+    """
 
     type = 'sandbox_env'
 
     IMPORTS = ('twinkle_agentic.envs',)
 
+    #: Constructor fields that take a Python callable. No canvas spelling can
+    #: author one, so setting them here is refused with a pointer at native
+    #: code rather than deferred to a confusing failure inside a rollout.
+    _CALLABLE_ONLY_FIELDS = ('pre_tool_call', 'action_mapper')
+
+    _BACKENDS = ('local', 'agentenv', 'openenv', 'openenv_client')
+
     def build(self, inputs: Dict[str, Any]) -> Any:
-        from twinkle_agentic.envs import LocalEnv
-        kind = self.params.get('kind', 'local')
-        if kind != 'local':
-            raise ComponentError(
-                f'{self.node_id}: sandbox kind {kind!r} arrives with its native '
-                'builder; only local is bound here')
+        from twinkle_agentic.envs import AgentEnv, LocalEnv, OpenEnv, OpenEnvClient
+        kind = str(self.params.get('kind', 'local') or 'local')
         kv = dict(self.params.get('sandbox_config') or {})
-        # LocalEnv's own constructor spellings; unknown keys fail loudly so a
-        # typo cannot silently run the sandbox on wrong defaults. A RELATIVE
-        # workspace resolves against the session cwd (the challenge workspace
-        # ships per session; the user seeds its files).
-        allowed = {'workspace', 'command_timeout', 'memory_limit_gb', 'envs'}
-        unknown = set(kv) - allowed
-        if unknown:
+        callables = [key for key in self._CALLABLE_ONLY_FIELDS if key in kv]
+        if callables:
             raise ComponentError(
-                f'{self.node_id}: sandbox_config keys {sorted(unknown)} are not '
-                f'LocalEnv fields; expected a subset of {sorted(allowed)}')
-        self.obj = LocalEnv(**kv)
+                f'{self.node_id}: sandbox_config keys {callables} take Python callables a '
+                'canvas cannot author; set them through a native plugin or code component')
+        cls = {'local': LocalEnv, 'agentenv': AgentEnv,
+               'openenv': OpenEnv, 'openenv_client': OpenEnvClient}.get(kind)
+        if cls is None:
+            raise ComponentError(
+                f'{self.node_id}: unknown sandbox kind {kind!r} '
+                f'(available kinds: {list(self._BACKENDS)})')
+        if kind == 'agentenv':
+            if 'api_key' in kv:
+                raise ComponentError(
+                    f'{self.node_id}: credentials never ride the graph -- name the '
+                    'environment variable in api_key_env instead of passing api_key')
+            api_key_env = str(self.params.get('api_key_env') or '')
+            if api_key_env:
+                api_key = os.environ.get(api_key_env)
+                if not api_key:
+                    raise ComponentError(
+                        f'{self.node_id}: api key env var {api_key_env!r} is unset; '
+                        'export it before building the sandbox')
+                kv['api_key'] = api_key
+        elif self.params.get('api_key_env'):
+            logger.warning('%s: api_key_env only applies to kind=agentenv; '
+                           'kind=%r ignores it', self.node_id, kind)
+        _reject_unknown_kwargs(cls, kv, self.node_id, f'sandbox {kind!r}')
+        self.obj = cls(**kv)
         return self.obj
 
 

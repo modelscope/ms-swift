@@ -97,8 +97,16 @@ SCORER_COMP = D('scorer', '评分函数', 'Resource', 'r(tau)：规则评分函�
 TOOLSET = D('toolset', '工具集', 'Resource', '实际插件来源；运行实现按环境 lease 绑定，声明即插件模块内的实例。',
     ports_out=(P('tools', 'TOOL', '工具插件'),),
     params=(Q('plugins', '插件来源', [], type='list', item_type='str'),))
-SANDBOX_ENV = D('sandbox_env', '沙箱环境', 'Resource', '原生环境池与 lease 生命周期。',
-    ports_out=(P('env', 'ENV', '环境池'),), params=(Q('sandbox_config', '环境配置', {}, type='dict'),), owner_kind='ENV')
+SANDBOX_ENV = D('sandbox_env', '沙箱环境', 'Resource', '原生环境池与 lease 生命周期；后端可换，消费面不变。',
+    ports_out=(P('env', 'ENV', '环境池'),),
+    params=(Q('kind', '沙箱后端', 'local', options=('local', 'agentenv', 'openenv', 'openenv_client'),
+              doc='local=本机 subprocess；agentenv=AgentENV microVM；'
+                  'openenv=进程内嵌 OpenEnv 环境；openenv_client=连运行中的 OpenEnv 服务'),
+            Q('sandbox_config', '环境配置', {}, type='dict',
+              doc='所选后端构造器的真实字段；未知名构造期拒绝'),
+            Q('api_key_env', '凭据环境变量名', '',
+              doc='仅 agentenv：构造期读取该环境变量作为 api_key；留空则由 SDK 读 E2B_API_KEY')),
+    owner_kind='ENV')
 POLICY_ENDPOINT = D('policy_endpoint', '本地推理服务', 'Resource', '复用常驻 sampler；只管理本会话拥有的应用。',
     ports_in=(P('sampler', 'SAMPLER', '服务引擎'),),
     ports_out=(P('endpoint', 'ENDPOINT', '就绪端点'),),
