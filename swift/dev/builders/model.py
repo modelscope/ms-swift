@@ -262,6 +262,13 @@ def _prepare_seq_cls_config(config, model_config: ModelConfig, info, pad_token_i
     config.tie_word_embeddings = False
     if getattr(config, "pad_token_id", None) is None:
         config.pad_token_id = pad_token_id
+        # HF's GenericForSequenceClassification reads get_text_config().pad_token_id, and a
+        # VL-style checkpoint (Qwen3.5 etc.) nests the text tower in text_config: setting only the
+        # top-level attribute leaves the nested one None and any batch_size > 1 forward raises
+        # "Cannot handle batch sizes > 1 if no padding token is defined".
+        text_config = getattr(config, "text_config", None)
+        if text_config is not None and getattr(text_config, "pad_token_id", None) is None:
+            text_config.pad_token_id = pad_token_id
 
 
 def _dtype_kwarg_name() -> str:
@@ -676,7 +683,12 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, config, model_l
                 model_config.model, revision=model_config.model_revision, trust_remote_code=True
             )
         tokenizer = processor if not hasattr(processor, "tokenizer") else processor.tokenizer
+        # Set on the text config too: HF's seq_cls forward reads get_text_config().pad_token_id,
+        # which is the nested text_config on VL-style checkpoints (see _prepare_seq_cls_config).
         config.pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+        text_config = getattr(config, "text_config", None)
+        if text_config is not None:
+            text_config.pad_token_id = config.pad_token_id
     kwargs["model_cls"] = "AutoModelForSequenceClassification"
     kwargs["config"] = config
 
