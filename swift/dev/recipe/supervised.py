@@ -66,6 +66,7 @@ class _Evaluation:
         manual_gc_eval,
         greater_is_better,
         eval_group_size: int = 1,
+        packed_eval: bool = False,
     ):
         self.cluster, self.state, self.model = cluster, state, cluster.model
         self.generative, self.micro_step_fn = generative, micro_step_fn
@@ -78,10 +79,13 @@ class _Evaluation:
         # Tasks whose forward output is not one row per record: decision's labels/decision_meta
         # are organized per RECORD (the forward-only readout guard raises on sample-level
         # splits); embedding/reranker expand one record into anchor+candidate sequences, so the
-        # merged outputs' sample axis cannot match the micro-plan's record indices. Their
-        # val-loss eval must run each batch whole -- micro_batch_size=None disables
-        # micro-batching while per_device_eval_batch_size still governs the DataLoader.
-        if cluster.forward_task in _WHOLE_BATCH_EVAL_TASKS:
+        # merged outputs' sample axis cannot match the micro-plan's record indices. A PACKED
+        # eval row is the same shape problem: one dataloader row is a group whose forward the
+        # processor unpacks into N per-sequence outputs, so any sample-level micro-plan
+        # desynchronizes from the merged logps' axis. All of these must run each batch whole --
+        # micro_batch_size=None disables micro-batching while per_device_eval_batch_size still
+        # governs the DataLoader.
+        if cluster.forward_task in _WHOLE_BATCH_EVAL_TASKS or packed_eval:
             self.micro_batch_size = None
         else:
             self.micro_batch_size = train_config.per_device_eval_batch_size
@@ -249,6 +253,7 @@ def run_supervised(
         greater_is_better=greater_is_better,
         eval_group_size=(max(1, train_config.gradient_accumulation_steps)
                          if _is_vpp_megatron(distributed_config) else 1),
+        packed_eval=bool(dataset_config.packing),
     )
     evaluate = evaluation.evaluate
 

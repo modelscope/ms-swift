@@ -129,7 +129,10 @@ TRAIN_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     # config, OOM batch halving, the ZeRO-3 gather, eval offload/precision. The last two are builtin now.
     'torch_compile', 'torch_compile_backend', 'torch_compile_mode', 'accelerator_config', 'auto_find_batch_size',
     'ds3_gather_for_generation', 'eval_accumulation_steps', 'bf16_full_eval', 'fp16_full_eval',
-    'average_tokens_across_devices', 'use_logits_to_keep') + DECISION_AUGMENT_FIELDS + ENTROPACK_FIELDS + ('min_p',)
+    'average_tokens_across_devices', 'use_logits_to_keep') + ENTROPACK_FIELDS + ('min_p',)
+# The decision augmentation knobs are LIVE DatasetConfig fields (builders.dataset._augment_configs
+# binds them into the preprocessor channel), and Decision.md documents them on `swift sft` -- they
+# stay unsupported only on the non-training commands, which never build a training dataset.
 # Training options retired because the current path already behaves that way or folds them into
 # another flag; each is refused with the migration note in REMOVED_OPTION_REPLACEMENTS.
 TRAIN_REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
