@@ -220,6 +220,18 @@ def _forward_kwargs(
     return kwargs
 
 
+def _force_collect(outputs: Any) -> None:
+    """Materialize a lazily collected forward handle: a worker-side failure must fail THIS step.
+
+    clip_grad_and_step is sync=True, but that only materializes the step's own worker errors -- a
+    failure inside forward_backward parks inside the discarded LazyCollect and resurfaces as a Ray
+    background error while the loop keeps recording losses (the fully-failed-run-reported-as-success
+    signature). Collecting the forward handle makes the failure raise at the call site.
+    """
+    if getattr(outputs, '_is_lazy_collect', False):
+        outputs()
+
+
 def _chord_forward_backward(
     model: Any,
     rl_config: 'RLConfig',
@@ -245,12 +257,13 @@ def _chord_forward_backward(
         mu = valley
     else:
         mu = valley + (peak - valley) * 0.5 * (1.0 + math.cos(math.pi * (step - warmup) / decay))
-    model.forward_backward(**forward_kwargs, loss_key='grpo', loss_weight=1.0 - mu, finalize_gradients=False)
+    _force_collect(model.forward_backward(**forward_kwargs, loss_key='grpo', loss_weight=1.0 - mu,
+                                          finalize_gradients=False))
     sft_inputs = chord_fn()
     sft_micro_batch_size = len(sft_inputs) // model.device_mesh.data_world_size
     for _ in range(num_micro_batches - 1):
         sft_inputs.extend(chord_fn())
-    model.forward_backward(
+    _force_collect(model.forward_backward(
         inputs=sft_inputs,
         gradient_accumulation_steps=1,
         kind='sft',
@@ -263,7 +276,7 @@ def _chord_forward_backward(
             for key in ("dynamic_batching", "max_tokens_per_micro_batch", "packing_algorithm")
             if key in forward_kwargs
         },
-    )
+    ))
 
 
 def _train_mini_batches(
@@ -316,7 +329,7 @@ def _train_mini_batches(
                 model, rl_config, kwargs, chord_fn, step=state.global_step, num_micro_batches=micro_batches
             )
         else:
-            model.forward_backward(**kwargs)
+            _force_collect(model.forward_backward(**kwargs))
         # clip_grad_and_step is declared sync=True on the model: worker exceptions surface here.
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.micro_step += micro_batches
