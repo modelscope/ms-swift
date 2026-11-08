@@ -64,6 +64,7 @@ from swift.dev.config.validate import (
     _check_streaming_publication,
     _check_tp_comm_overlap,
     _check_unsloth_strategy,
+    _check_unsloth_eval,
     _sync_only_feature,
     _streams_under_none,
     validate_infer_config,
@@ -451,6 +452,19 @@ def test_unsloth_strategy_refusals():
         _check_unsloth_strategy(DistributedConfig(backend='unsloth'),
                                 TemplateConfig(sequence_parallel_size=2))
     _check_unsloth_strategy(DistributedConfig(backend='unsloth'), TemplateConfig())
+
+
+def test_unsloth_eval_refusals():
+    """S2-63: backend=unsloth refuses in-training evaluation: an eval forward between training
+    steps breaks the non-reentrant checkpoint recompute (CheckpointError, then DDP "Expected to
+    have finished reduction" on every step); upstream unslothai/unsloth#14063 family."""
+    with pytest.raises(NotImplementedError, match='in-training evaluation'):
+        _check_unsloth_eval(TrainConfig(eval_strategy='steps'), DistributedConfig(backend='unsloth'))
+    with pytest.raises(NotImplementedError, match='in-training evaluation'):
+        _check_unsloth_eval(TrainConfig(eval_on_start=True), DistributedConfig(backend='unsloth'))
+    _check_unsloth_eval(TrainConfig(eval_strategy='no', eval_on_start=False), DistributedConfig(backend='unsloth'))
+    _check_unsloth_eval(TrainConfig(), DistributedConfig(backend='unsloth'))
+    _check_unsloth_eval(TrainConfig(eval_strategy='steps', eval_on_start=True), DistributedConfig())
 
 
 def test_deepspeed_autotp_refused():

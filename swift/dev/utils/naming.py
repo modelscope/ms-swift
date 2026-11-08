@@ -16,7 +16,9 @@ Why this layer exists (twinkle construct_class gotcha):
 
 Design (per-category target differs on purpose — do NOT pretend they were all broken):
   - loss:     swift name -> twinkle *type* (reuse twinkle ``torch_loss_mapping``,
-              never fork twinkle's loss roster). configure_loss instantiates it.
+              never fork twinkle's loss roster) or a dev-registered type
+              (``register_loss``, for classes that must live in swift.dev).
+              configure_loss instantiates it.
   - optim:    swift name -> twinkle-resolvable *name* string ('AdamW' etc.);
               twinkle set_optimizer does ``getattr(torch.optim, name)`` fine.
   - sched:    swift name -> twinkle-resolvable *name* string
@@ -27,10 +29,10 @@ Design (per-category target differs on purpose — do NOT pretend they were all 
               warmup and decay in ONE scheduler, so there is no None ("no scheduler") case.
   - strategy: swift name -> twinkle strategy string ('accelerate' etc.).
 """
+
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping, Optional, Type
-
+from typing import Any, Callable, Dict, Mapping, Optional, Type
 
 _FLASH_PIN_FLAGS = {2: 'is_installed', 3: 'v3_is_installed', 4: 'v4_is_installed'}
 FLASH_PIN_SUPPORTED_VERSIONS = frozenset(_FLASH_PIN_FLAGS)
@@ -191,14 +193,29 @@ _STRATEGY_NAME_MAP = {
 }
 
 
+_DEV_LOSS_MAPPING: Dict[str, Type] = {}
+
+
+def register_loss(*names: str) -> Callable[[Type], Type]:
+
+    def decorator(cls: Type) -> Type:
+        for name in names:
+            _DEV_LOSS_MAPPING[name.lower()] = cls
+        return cls
+
+    return decorator
+
+
 def resolve_loss(swift_name: str) -> Type:
-    """swift loss name -> twinkle Loss *type* (via twinkle torch_loss_mapping)."""
+    """swift loss name -> twinkle Loss *type*, or a dev-registered one (via ``register_loss``)."""
     from twinkle.loss import torch_loss_mapping
 
     key = swift_name.lower()
-    cls = torch_loss_mapping.get(key)
+    cls = torch_loss_mapping.get(key) or _DEV_LOSS_MAPPING.get(key)
     if cls is None:
-        raise NotImplementedError(f'Unknown loss {swift_name!r}. Known: {sorted(torch_loss_mapping)}')
+        raise NotImplementedError(
+            f"Unknown loss {swift_name!r}. Known: {sorted(torch_loss_mapping)} + dev {sorted(_DEV_LOSS_MAPPING)}"
+        )
     return cls
 
 

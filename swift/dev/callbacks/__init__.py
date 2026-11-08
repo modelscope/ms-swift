@@ -3,11 +3,14 @@ from swift.dev.utils.plugin import PluginRegistry
 
 from swift.dev.callbacks.base import CALLBACK, CallbackControl, CallbackState, TrainCallback
 from swift.dev.callbacks.builtins import EarlyStopCallback, GracefulExitCallback, PerfLogCallback
+from swift.dev.callbacks.decision_checkpoint import DecisionCheckpointCallback
 from swift.dev.callbacks.handler import CallbackHandler
+from swift.dev.callbacks.temperature_calibration import TemperatureCalibrationCallback
 
 __all__ = [
     'CALLBACK', 'TrainCallback', 'CallbackState', 'CallbackControl', 'CallbackHandler', 'EarlyStopCallback',
-    'PerfLogCallback', 'GracefulExitCallback', 'build_callbacks'
+    'PerfLogCallback', 'GracefulExitCallback', 'build_callbacks', 'TemperatureCalibrationCallback',
+    'DecisionCheckpointCallback'
 ]
 
 

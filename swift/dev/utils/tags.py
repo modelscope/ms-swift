@@ -18,9 +18,9 @@ CONTROLLED_TAGS = frozenset({
     'math', 'multi-modal', 'ner', 'nl2sql', 'ocr', 'ocr-vqa', 'omni', 'poetry', 'rerank',
     'reranker', 'science', 'similarity', 'sql', 'text-generation', 'tts', 'video', 'vision', 'vqa',
     # task / training paradigm
-    'agent', 'bench', 'classification', 'cot', 'distill', 'dpo', 'em', 'grpo', 'hfrl', 'kto',
-    'multi-agent', 'multi-domain', 'multi-round', 'multi-task', 'multilabel', 'o1', 'orpo',
-    'pairwise', 'pretrain', 'qa', 'r1', 'rl', 'rlhf', 'rlvr', 'sft', 'thinking',
+    'agent', 'bench', 'classification', 'cot', 'decision', 'distill', 'dpo', 'em', 'grpo',
+    'hfrl', 'kto', 'multi-agent', 'multi-domain', 'multi-round', 'multi-task', 'multilabel',
+    'o1', 'orpo', 'pairwise', 'pretrain', 'qa', 'r1', 'rl', 'rlhf', 'rlvr', 'sft', 'thinking',
     # language / region
     'en', 'multilingual', 'zh', 'zhihu',
     # domain / topic

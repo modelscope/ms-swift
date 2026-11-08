@@ -20,23 +20,16 @@ from swift.dev.recipe.grpo.assembly import (
 from twinkle.perf import span as perf_span
 
 from swift.dev.recipe.utils import (
-    StepState,
+    RolloutStepState,
     _log_line,
-    begin_rollout_iteration,
     build_save_knobs,
     collect,
-    finish_rollout_metrics,
-    init_rollout_metrics,
     initialize_rl_devices,
-    observe_rollout_samples,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
-    record_rollout_training,
     resolve_generation_batch_size,
     resolve_rollout_max_steps,
     resume_training,
-    rollout_iteration_metrics,
-    rollout_memory_metrics,
     rollout_step_budget,
     save_final_checkpoint,
     save_training_step,
@@ -274,7 +267,7 @@ def _chord_forward_backward(
 
 
 def _train_mini_batches(
-    state: StepState,
+    state: 'RolloutStepState',
     rl_config: "RLConfig",
     samples: List[Any],
     *,
@@ -328,10 +321,10 @@ def _train_mini_batches(
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.micro_step += micro_batches
         record_rollout_step(state, plan)
-        record_rollout_training(state, indices)
+        state.record_rollout_training(indices)
         # Sample worker memory for THIS iteration before step_tail can run a periodic
         # checkpoint (rows are cached on the state; later reads reuse them).
-        rollout_memory_metrics(state)
+        state.rollout_memory_metrics()
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
             ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
@@ -435,7 +428,7 @@ def _colocate_loop(
     rollout_config: 'RolloutConfig',
     reward_config: 'RewardConfig',
     dataloader: Any,
-    state: StepState,
+    state: 'RolloutStepState',
     *,
     train_batch_size: int,
     batching_kwargs: Optional[Dict[str, Any]] = None,
@@ -471,7 +464,7 @@ def _colocate_loop(
         for batch_rows in dataloader:
             if state.reached_max() or state.should_stop():
                 break
-            begin_rollout_iteration(state)
+            state.begin_rollout_iteration()
             # Weights were published at initialization or the preceding iteration end.
             # Phase timing is the dispatch layer's driver-side auto-spans (twinkle.perf).
             from swift.dev.recipe.offload import offload_for_rollout
@@ -502,7 +495,7 @@ def _colocate_loop(
                 if rl_config.advantage_estimator == 'remax':
                     _set_remax_baselines(cluster, samples, prompts, extras, num_generations, weights)
                 if rl_config.log_completions:
-                    # '_logging' is the excluded band in rollout_iteration_metrics' phase reduction.
+                    # '_logging' is the excluded band in fold_iteration_metrics' phase reduction.
                     with perf_span('_logging'):
                         cluster.worker.log_completions(
                             samples, [sample.orm_reward for sample in samples], state.global_step + 1,
@@ -517,7 +510,7 @@ def _colocate_loop(
                 sampler_awake = False
             cluster.model.reload_to_gpu()
             entered = False
-            observe_rollout_samples(state, samples)
+            state.observe_rollout_samples(samples)
             advantages, old_logps, ref_logps, teacher_logps = _advantage_pipeline(
                 cluster, rl_config, reward_config, samples, train_batch_size, state.global_step,
                 correction_out=correction_out, batching_kwargs=batching_kwargs,
@@ -543,9 +536,8 @@ def _colocate_loop(
                 wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ["weights"])
                 sampler_awake = True
                 cluster.engine.sync_weights(merge_and_sync=True)
-            rollout_iteration_metrics(
-                state, publications=1,
-                terminal=state.reached_max() or state.should_stop())
+            state.fold_iteration_metrics(
+                publications=1, terminal=state.reached_max() or state.should_stop())
             if state.reached_max() or state.should_stop():
                 break
     finally:
@@ -573,7 +565,7 @@ def _disaggregated_loop(
     reward_config: 'RewardConfig',
     tuner_config: Optional['TunerConfig'],
     dataloader: Any,
-    state: StepState,
+    state: 'RolloutStepState',
     *,
     train_batch_size: int,
     batching_kwargs: Dict[str, Any],
@@ -605,14 +597,14 @@ def _disaggregated_loop(
     if metrics_cells is not None:
         metrics_cells[0].append(driver)
     if hasattr(state, '_run_metric'):
-        driver.on_iteration_start = lambda: begin_rollout_iteration(state)
-        driver.on_iteration_end = lambda terminal: rollout_iteration_metrics(
-            state, **driver.performance_snapshot(), terminal=terminal)
+        driver.on_iteration_start = state.begin_rollout_iteration
+        driver.on_iteration_end = lambda terminal: state.fold_iteration_metrics(
+            **driver.performance_snapshot(), terminal=terminal)
     strategy = rollout_config.weight_sync_strategy
     steps_since_publish = 0
     try:
         for samples in driver:
-            observe_rollout_samples(state, samples)
+            state.observe_rollout_samples(samples)
             # The driver's built-in group-barrier scoring has already written orm_reward onto every
             # sample (the same contract the colocate loop's _score_group yields), so the reward
             # aggregate can be recorded from the pull itself -- same metric, same reset-per-batch
@@ -620,7 +612,7 @@ def _disaggregated_loop(
             _record_reward_metric(
                 samples, orm_scorers=cluster.orm_scorers, orm_weights=reward_config.orm_weights,
                 reward_metric=reward_metric)
-            # '_logging' is the excluded band in rollout_iteration_metrics' phase reduction.
+            # '_logging' is the excluded band in fold_iteration_metrics' phase reduction.
             with perf_span('_logging'):
                 _log_completions(cluster, rl_config, samples, state, output_dir)
                 state.tracker.log_prompts([sample.prompt for sample in samples], samples,
@@ -837,7 +829,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             line = f'{line}  reward={reward}'
         return line
 
-    state = StepState(
+    state = RolloutStepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
         balance_batch=rl_config.balance_batch,
@@ -851,8 +843,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         extra_metrics_fn=_extra_metrics,
         log_formatter=_grpo_log_line)
 
-    init_rollout_metrics(
-        state, template.performance_device_groups,
+    state.setup_rollout_metrics(
+        template.performance_device_groups,
         mode='colocate' if cluster.colocate else rollout_config.resource_mode,
         parameter_sync_step=1 if cluster.colocate else rollout_config.parameter_sync_step,
         num_generations=rl_config.num_generations,
@@ -960,8 +952,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     finally:
         try:
             snapshot = _driver_cell[0].performance_snapshot() if _driver_cell else {}
-            finish_rollout_metrics(
-                state, stream_stats=snapshot.get('stream_stats'),
+            state.finish_rollout_metrics(
+                stream_stats=snapshot.get('stream_stats'),
                 status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         finally:
             try:

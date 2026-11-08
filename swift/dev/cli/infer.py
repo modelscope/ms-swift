@@ -120,7 +120,7 @@ def _guard_interactive(distributed_config: Any, task_type: Optional[str]) -> Non
     pass, and dp>1 would open competing REPLs (torchrun) or shard the batch (DP>1 sampler)."""
     from swift.dev.builders import is_pooling_task
     task_type = task_type or 'causal_lm'
-    if is_pooling_task(task_type) or task_type == 'generative_reranker':
+    if is_pooling_task(task_type) or task_type in ("generative_reranker", "decision"):
         raise ValueError(
             f'task_type={task_type!r} scores a forward pass, which the interactive REPL cannot drive (it '
             'only generates text). Run over a dataset (--dataset / --val_dataset) to score it.')

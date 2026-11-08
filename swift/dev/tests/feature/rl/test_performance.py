@@ -11,6 +11,24 @@ from swift.dev.recipe.utils import RunTracker
 from swift.dev.tests.component.recipe.test_iteration_metrics import iteration_rows, perf_clock
 
 
+
+def attach_rollout_metrics(state):
+    """Bind RolloutStepState's statistics methods onto a SimpleNamespace test state."""
+    from swift.dev.recipe.utils import RolloutStepState
+
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
+                 'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
+                 'finish_rollout_metrics'):
+        setattr(state, name, getattr(RolloutStepState, name).__get__(state))
+    state._metric_context = {}
+    state._run_metric = None
+    state._completed_batches = state._batch_wall_ns = 0
+    state._rollout_groups = state._trained_samples = 0
+    state._stream_previous = {}
+    state._iteration_started_ns = None
+    state._iteration_facts = None
+    state._memory_rows = None
+
 def sample(prompt=3, response=2, *, tool=0):
     ids = list(range(prompt + response + tool))
     labels = [-100] * prompt + ids[prompt : prompt + response] + [-100] * tool
@@ -82,6 +100,11 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch, perf
         reload_to_gpu=lambda: None,
         memory_stats=lambda **kwargs: [{"max_memory_allocated_bytes": 2 * 1024**3}],
     )
+    def _generate(*a, **kw):
+        # generate's contract is (samples, encodings); the colocate loop re-attaches them.
+        one = sample()
+        return [one], [one.encoded]
+
     cluster = NS(
         model=model,
         sampler=NS(wake_up=wake, sleep=sleep),
@@ -89,11 +112,13 @@ def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch, perf
         sampling_params={},
         orm_scorers=[],
         prm_scorer=None,
-        rollout=NS(generate=lambda *a, **kw: [sample()]),
+        rollout=NS(generate=_generate),
+        worker=NS(),  # _prepare_routing_replay takes it (router_replay disabled here)
     )
     state = NS(model=model, global_step=0, reached_max=lambda: state.global_step >= 2, should_stop=lambda: False)
     state.tracker = RunTracker(None, str(tmp_path))
-    batch_metrics.init_rollout_metrics(state, [("trainer", [0])])
+    attach_rollout_metrics(state)
+    state.setup_rollout_metrics([("trainer", [0])])
     monkeypatch.setattr(mod, "_advantage_pipeline", lambda *a, **kw: (None,) * 4)
     monkeypatch.setattr(mod, "_prepare_routing_replay", lambda *a: None)
 
@@ -165,9 +190,10 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
     state.record = record
     state.step_tail = tail
     state.tracker = RunTracker(None, str(tmp_path))
-    batch_metrics.init_rollout_metrics(state, [("trainer", [0])])
-    batch_metrics.begin_rollout_iteration(state)
-    batch_metrics.observe_rollout_samples(state, [sample()])
+    attach_rollout_metrics(state)
+    state.setup_rollout_metrics([("trainer", [0])])
+    state.begin_rollout_iteration()
+    state.observe_rollout_samples([sample()])
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -180,7 +206,7 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
         teacher_logps=None,
         temperature=1,
     )
-    result = batch_metrics.rollout_memory_metrics(state)
+    result = state.rollout_memory_metrics()
     assert result["perf/max_memory_allocated_gb"] == 2
     assert events == ["memory", "checkpoint"]  # no post-checkpoint resampling
     state.tracker.close()
@@ -222,9 +248,10 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
 
     state.record = record
     state.tracker = RunTracker(None, str(tmp_path))
-    batch_metrics.init_rollout_metrics(state, [("trainer", [0])])
-    batch_metrics.begin_rollout_iteration(state)
-    batch_metrics.observe_rollout_samples(state, [sample()] * 3)
+    attach_rollout_metrics(state)
+    state.setup_rollout_metrics([("trainer", [0])])
+    state.begin_rollout_iteration()
+    state.observe_rollout_samples([sample()] * 3)
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -237,7 +264,7 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
         teacher_logps=None,
         temperature=1,
     )
-    assert batch_metrics.rollout_memory_metrics(state)["perf/max_memory_allocated_gb"] == 1
+    assert state.rollout_memory_metrics()["perf/max_memory_allocated_gb"] == 1
     assert snapshots == [1]
     assert state._iteration_facts["sample_visits"] == 2
     assert state._iteration_facts["trained_indices"] == {0, 1}

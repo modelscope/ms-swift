@@ -63,6 +63,7 @@ def validate_configs(
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
     _check_unsloth_strategy(distributed_config, template_config, tuner_config)
+    _check_unsloth_eval(train_config, distributed_config)
     _check_deepspeed_autotp(distributed_config)
     _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
@@ -1308,6 +1309,34 @@ def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
                 'the initial-adapter snapshot that the post-training conversion folds against is not '
                 'wired for unsloth-injected LoRA (no peft PeftModel to snapshot). Use the default backend '
                 'for this init strategy.')
+
+
+def _check_unsloth_eval(train_config: 'TrainConfig', distributed_config: 'DistributedConfig') -> None:
+    """Refuse in-training evaluation on backend='unsloth' until the upstream recompute bug is fixed.
+
+    Under a multi-rank run unsloth's gradient checkpointing uses torch's NON-reentrant checkpoint
+    (unsloth/models/vision.py: ``use_reentrant = not is_distributed()``), which requires the backward
+    recompute to save exactly the tensors the forward saved. An eval forward between training steps
+    leaves unsloth's patched decoder layers saving a different count on the recompute, so the first
+    post-eval backward aborts with ``torch.utils.checkpoint.CheckpointError`` and every later forward
+    fails with DDP "Expected to have finished reduction" -- with the loss silently degrading to 0
+    in between, because the worker-side exception never reaches the driver. Upstream bug family:
+    unslothai/unsloth#14063; reproduced on unsloth 2026.11.2 with Qwen3.5-4B, multi-rank DDP and
+    eval_on_start (single-rank runs take the reentrant path and are not verified either way).
+    """
+    if distributed_config.backend != 'unsloth':
+        return
+    if train_config.eval_strategy not in (None, 'no') or train_config.eval_on_start:
+        raise NotImplementedError(
+            'backend="unsloth" does not support in-training evaluation: under multi-rank runs an eval '
+            'forward between training steps breaks unsloth\'s non-reentrant checkpoint recompute '
+            '(CheckpointError in the first post-eval backward, then DDP "Expected to have finished '
+            'reduction" on every step while the loss silently drops to 0). This is an upstream unsloth '
+            'bug (unslothai/unsloth#14063 family, still present in 2026.11.2). Disable evaluation with '
+            '--eval_strategy no --eval_on_start false --split_dataset_ratio 0 --predict_with_generate false '
+            '(note eval_strategy is auto-derived from --save_strategy when a validation split exists, so '
+            'the explicit no is needed even without --eval_strategy on the command line), or use the '
+            'default backend for evaluation runs.')
 
 
 def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:

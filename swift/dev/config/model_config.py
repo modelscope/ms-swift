@@ -12,7 +12,7 @@ class ModelConfig:
     model: Optional[str] = None
     model_type: Optional[str] = None
     model_revision: Optional[str] = None
-    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker', None] = None
+    task_type: Literal["causal_lm", "seq_cls", "embedding", "reranker", "generative_reranker", "decision", None] = None
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     attn_impl: Optional[str] = None
     experts_impl: Optional[str] = None

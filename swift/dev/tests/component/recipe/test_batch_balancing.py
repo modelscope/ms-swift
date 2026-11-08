@@ -31,6 +31,22 @@ def progress(model):
         result.records.append(extra_metrics or {})
 
     result.record = record
+    # The rollout statistics methods _train_mini_batches calls; no metrics are set up here,
+    # so they only need to exist and be harmless.
+    from swift.dev.recipe.utils import RolloutStepState
+
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
+                 'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
+                 'finish_rollout_metrics'):
+        setattr(result, name, getattr(RolloutStepState, name).__get__(result))
+    result._metric_context = {}
+    result._run_metric = None
+    result._completed_batches = result._batch_wall_ns = 0
+    result._rollout_groups = result._trained_samples = 0
+    result._stream_previous = {}
+    result._iteration_started_ns = None
+    result._iteration_facts = None
+    result._memory_rows = None
     return result
 
 

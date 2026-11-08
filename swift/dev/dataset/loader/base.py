@@ -346,8 +346,19 @@ class DatasetLoader:
         elif isinstance(preprocessor, str):
             preprocessor = self.import_cls(preprocessor)
         if isinstance(preprocessor, type):
-            return preprocessor(columns=columns, seed=self._kwargs.get('seed', 42))
+            preprocessor = preprocessor(columns=columns, seed=self._kwargs.get("seed", 42))
+        self._bind_augment_configs(preprocessor)
         return preprocessor
+
+    def _bind_augment_configs(self, preprocessor: Any) -> None:
+        augment_configs = self._kwargs.get("augment_configs")
+        if not augment_configs:
+            return
+        channel = getattr(preprocessor, "augment_channel", None)
+        config = augment_configs.get(channel) if channel is not None else None
+        if config is None:
+            return
+        preprocessor.bind_augment(config, self._kwargs.get("seed", 42))
 
     def build_dataset(self, subset: SubsetMeta, split: str, **kwargs) -> DATASET_TYPE:
         """Fetch one (subset, split) as rows, before any preprocessing.
@@ -711,6 +722,7 @@ def load_dataset(
     subsets: Optional[Sequence[str]] = None,
     model_name: Optional[Union[str, Sequence[str]]] = None,
     model_author: Optional[Union[str, Sequence[str]]] = None,
+    augment_configs: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
     """Load and preprocess one or more datasets into standard ``(train, val)`` splits.
 
@@ -760,6 +772,7 @@ def load_dataset(
             hub_token=hub_token,
             model_name=model_name,
             model_author=model_author,
+            augment_configs=augment_configs,
             seed=seed)
         train, val = loader.post_process(
             loader.load(), split_dataset_ratio=split_dataset_ratio, shuffle=shuffle, seed=seed)

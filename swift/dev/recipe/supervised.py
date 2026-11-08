@@ -153,12 +153,15 @@ def run_supervised(
     output_dir: str = "output",
     _save_final: bool = True,
     log_formatter: Optional[Callable[[dict, float], str]] = None,
+    wire_callbacks: Optional[Callable[[Any], None]] = None,
 ) -> List[dict]:
     """The supervised family's training main: resume, run the epochs, then the final save.
 
     Each entry assembles its cluster (:func:`build_supervised_objects`) and hands it here with its
     loss closure as ``micro_step_fn`` -- how a batch becomes forward kwargs. The loop scaffolding
     (:class:`StepState` cadence, eval + best-model tracking, save/resume) is this function's.
+    ``wire_callbacks`` runs once with the assembled ``CallbackHandler``, for task-specific wiring
+    the generic loop must not know about (the decision recipe binds its calibration callback).
     """
     from twinkle.perf import Perf
 
@@ -215,6 +218,8 @@ def run_supervised(
         log_formatter=log_formatter,
     )
     handler = state.handler
+    if wire_callbacks is not None:
+        wire_callbacks(handler)
 
     evaluation = _Evaluation(
         cluster,

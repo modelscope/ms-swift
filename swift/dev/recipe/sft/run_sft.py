@@ -22,6 +22,7 @@ EMBEDDING_TASK = 'embedding'
 SEQ_CLS_TASK = 'seq_cls'
 #: task_types the reranker recipe accepts; each threads to twinkle's forward as-is.
 RERANKER_TASK_TYPES = ('reranker', 'generative_reranker')
+DECISION_TASK = "decision"
 
 
 def _supervised_micro_kwargs(task: str) -> Callable[..., Dict[str, Any]]:
@@ -165,8 +166,9 @@ def run_reranker(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     task_type = model_config.task_type or 'reranker'
     if task_type not in RERANKER_TASK_TYPES:
-        raise ValueError(f'run_reranker requires ModelConfig.task_type in {list(RERANKER_TASK_TYPES)} '
-                         f'(or None), got {task_type!r}.')
+        raise ValueError(
+            f"run_reranker requires ModelConfig.task_type in {list(RERANKER_TASK_TYPES)} (or None), got {task_type!r}."
+        )
 
     def reranker_loss(model) -> None:
         # Runs on Megatron too: under task='reranker' the Megatron scheduler reduces the per-token
@@ -230,3 +232,137 @@ def run_seq_cls(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         output_dir=output_dir,
         _save_final=_save_final,
     )
+
+
+#: task_types the decision recipe accepts: the typed-decision System-1 scoring task rides a
+#: ``scoring_head``-patched backbone; the per-family templates pick the exact layout.
+def run_decision(
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    dataset_config: "DatasetConfig",
+    train_config: "TrainConfig",
+    distributed_config: "DistributedConfig",
+    checkpoint_config: "CheckpointConfig",
+    tuner_config: Optional["TunerConfig"] = None,
+    logging_config: Optional["LoggingConfig"] = None,
+    quantize_config: Optional["QuantizeConfig"] = None,
+    *,
+    output_dir: str = "output",
+    _save_final: bool = True,
+) -> List[dict]:
+    """Assemble and run decision (System-1 scoring) training from atomic Configs.
+
+    The loss is chosen by ``TrainConfig.loss`` (default ``'scoring'`` -- plain
+    masked soft-CE; ``'distill_rps'`` / ``'smooth_brier'`` / ``'ce_rps'`` add the model-family
+    calibration terms) and set via :func:`configure_decision_loss`; the acc / record_acc / ece
+    metrics register via :func:`configure_decision_metric`; the head is re-activated for adapter
+    training (LoRA freezes the base; the scoring head must stay trainable in fp32). Every
+    checkpoint also persists the head beside the adapter/model weights
+    """
+    from twinkle.patch import apply_patch
+
+    from swift.dev.loss import configure_decision_loss, configure_decision_metric
+    from swift.dev.model.decision_head import reactivate_scoring_head
+    from swift.dev.patch.twinkle_decision_task import TwinkleDecisionTaskPatch
+
+    apply_patch(None, TwinkleDecisionTaskPatch())
+
+    # Legacy parity: task_type='decision' defaults the temperature-calibration and head-checkpoint
+    # callbacks on (sft_args._init_decision_callbacks + ScoringTrainer._save). Both no-op unless
+    # the recipe binds them after assembly.
+    callbacks = list(train_config.callbacks or [])
+    for name in ("temperature_calibration", "decision_checkpoint"):
+        if name not in callbacks:
+            callbacks.append(name)
+    train_config.callbacks = callbacks
+
+    def decision_loss(model) -> None:
+        configure_decision_loss(model, loss_type=train_config.loss or "scoring")
+        inner = getattr(model, "model", None)
+        for candidate in (model, inner):
+            try:
+                reactivate_scoring_head(candidate)
+                break
+            except Exception:
+                continue
+
+    cluster = build_supervised_objects(
+        recipe="run_decision",
+        model_config=model_config,
+        template_config=template_config,
+        dataset_config=dataset_config,
+        train_config=train_config,
+        distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config,
+        tuner_config=tuner_config,
+        logging_config=logging_config,
+        quantize_config=quantize_config,
+        megatron_config=None,
+        moe_config=None,
+        task=DECISION_TASK,
+        loop_task=None,
+        configure_loss=decision_loss,
+        configure_metric=configure_decision_metric,
+        output_dir=output_dir,
+    )
+    micro_step_fn = _supervised_micro_kwargs(cluster.forward_task)
+
+    def wire(handler) -> None:
+        _bind_temperature_calibration(
+            handler, cluster.template, cluster.model, cluster.eval_dataloader, micro_step_fn, train_config.eval_iters
+        )
+        _bind_decision_checkpoint(handler, cluster.model, tuner_config is not None)
+
+    return run_supervised(
+        cluster,
+        model_config,
+        template_config,
+        dataset_config,
+        train_config,
+        distributed_config,
+        checkpoint_config,
+        tuner_config,
+        logging_config,
+        quantize_config,
+        None,
+        micro_step_fn=micro_step_fn,
+        output_dir=output_dir,
+        _save_final=_save_final,
+        wire_callbacks=wire,
+    )
+
+
+def _bind_temperature_calibration(handler, template, model, eval_dataloader, micro_step_fn, eval_iters: int) -> None:
+    """Bind the decision temperature-calibration callbacks after the loop is assembled"""
+    from swift.dev.callbacks import TemperatureCalibrationCallback
+
+    targets = [cb for cb in handler.callbacks if isinstance(cb, TemperatureCalibrationCallback)]
+    if not targets or eval_dataloader is None:
+        return
+
+    def eval_batches():
+        try:
+            for index, batch in enumerate(eval_dataloader):
+                if eval_iters > 0 and index >= eval_iters:
+                    break
+                outputs = model.forward_only(**micro_step_fn(batch, micro_batch_size=len(batch)), return_logits=True)
+                rows = [{k: v for k, v in feat.items() if v is not None} for feat in batch]
+                inputs = template.finalize_batch(template.collate_media([template.pop_media(r) for r in rows]))
+                yield inputs, outputs
+        finally:
+            try:
+                model.calculate_metric(is_training=False)
+            except NotImplementedError:
+                pass
+
+    for callback in targets:
+        callback.bind(model, eval_batches)
+
+
+def _bind_decision_checkpoint(handler, model, save_weights: bool) -> None:
+    """Bind the decision head-checkpoint callback to the model, with the adapter/full choice fixed"""
+    from swift.dev.callbacks import DecisionCheckpointCallback
+
+    for callback in handler.callbacks:
+        if isinstance(callback, DecisionCheckpointCallback):
+            callback.bind(model, save_weights=save_weights)
