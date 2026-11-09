@@ -71,8 +71,7 @@ def multi_tensor_scale(chunk_size, is_infinite, tensor_lists, scale):
             for src, dst in zip(inputs, outputs):
                 # Check each input before writing, including overlapping views.
                 finite.append(torch.isfinite(src).all())
-                dst.copy_(src)
-                dst.mul_(scale)
+                dst.copy_(src.to(torch.promote_types(src.dtype, dst.dtype)) * scale)
             if finite:
                 _set_overflow(is_infinite, ~torch.stack(finite).all())
 
