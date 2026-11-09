@@ -38,6 +38,11 @@ if TYPE_CHECKING:
     from .version import __release_datetime__, __version__
 else:
     _import_structure = {
+        # 'cli' is imported at the top of this module (cli.utils' MUSA helpers) BEFORE the
+        # _LazyModule swap below, so the parent-attribute link importlib would set is lost with
+        # the original module object; declaring it here keeps ``swift.cli`` resolvable through
+        # the lazy module (the cached import then attaches on first attribute access).
+        'cli': [],
         'version': ['__release_datetime__', '__version__'],
         'tuners': ['Swift'],
         'tuner_plugin': ['Tuner', 'PeftTuner', 'tuners_map'],

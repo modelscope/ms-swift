@@ -142,7 +142,12 @@ if __name__ == '__main__':
         url='https://github.com/modelscope/ms-swift',
         packages=find_packages(exclude=('tests', 'tests.*')),
         include_package_data=True,
-        package_data={'': ['utils/*', 'dataset/data/*.*', 'config/*.json', 'loss_scale/config/*.json']},
+        # 'loader/dataset_info.json' also covers swift/dev/dataset/loader (the '' key applies the
+        # pattern to every package), so the dev tree's built-in dataset registry ships in the wheel.
+        package_data={
+            '': ['utils/*', 'dataset/data/*.*', 'config/*.json', 'loss_scale/config/*.json',
+                 'loader/dataset_info.json'],
+        },
         python_requires='>=3.9.0',
         classifiers=[
             'Development Status :: 4 - Beta',

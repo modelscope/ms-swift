@@ -22,6 +22,7 @@ The config rules are errors rather than warnings on purpose: a knob that reads a
 doing nothing is worse than a failed launch.
 """
 from __future__ import annotations
+import tempfile
 from types import SimpleNamespace
 
 import pytest
@@ -290,7 +291,6 @@ def test_gate_tolerates_a_config_without_the_field():
     """A twinkle model built against an older bridge config must read as "off", not raise."""
     pytest.importorskip('twinkle', reason='needs twinkle for MegatronModel')
     from twinkle.model.megatron.megatron import MegatronModel
-
     from twinkle.model.megatron.mtp.mtp import MtpTrainingState
     stub = SimpleNamespace(strategy=SimpleNamespace(config=SimpleNamespace()), _mtp=MtpTrainingState())
     assert MegatronModel._mtp_training_enabled(stub, forward_only=False, task='causal_lm', disable_lora=False) is False
@@ -337,6 +337,9 @@ def _recorder_with(model):
     recorder._logging_config = None
     recorder._extra_metrics_fn = None
     recorder._log_formatter = None
+    # record() writes metrics.jsonl into _output_dir on its fallback logging cadence (the helper
+    # bypasses __init__, which is what normally sets it).
+    recorder._output_dir = tempfile.mkdtemp(prefix='test_mtp_')
     recorder.tracker = SimpleNamespace(should_log=lambda step: False, log=lambda record, step: record)
     # record() publishes loop position onto handler.state and reads the one-shot should_log flag; a
     # bare namespace stands in for the real CallbackHandler (this test drives only the metric drain).
