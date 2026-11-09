@@ -110,6 +110,18 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
 
             processor = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
         pad_token_id = _normalize_pad_eos(processor)
+        # The encoding side must know the new tokens: the training constructors grow the model's
+        # own tokenizer on the worker, but the template/dataset tokenizer comes from HERE --
+        # without the addition, rows containing the new token text encode into subword ids and
+        # the new embedding rows never receive a real gradient (legacy added them to this same
+        # shared processor). The model-side resize stays with the constructors / the explicit
+        # ``apply_new_special_tokens`` twin.
+        new_special_tokens = resolve_new_special_tokens(model_config)
+        if new_special_tokens:
+            tokenizer = processor if not hasattr(processor, "tokenizer") else processor.tokenizer
+            num_new = tokenizer.add_special_tokens({"additional_special_tokens": new_special_tokens})
+            if num_new:
+                logger.info("Added %s new special tokens to the encoding processor.", num_new)
         processor.model_info = info
         candidate_templates = [template for template in (info.template,) if template]
         if not candidate_templates:
@@ -912,8 +924,10 @@ def apply_new_special_tokens(model, processor, config, new_special_tokens: List[
 
     The training side owns the canonical application (twinkle's TransformersModel / MegatronModel
     take ``new_special_tokens`` as a constructor argument); this is the twin for models loaded
-    outside those constructors (weight transforms), called explicitly by whoever needs it --
-    ``load_model_processor`` deliberately does not apply it on its own.
+    outside those constructors (weight transforms), called explicitly by whoever needs it.
+    ``load_model_processor`` already adds the tokens to its tokenizer (the encoding side);
+    the addition here is idempotent and the resize triggers whenever the embedding matrix
+    still trails the tokenizer, so call order between the two cannot drop the resize.
     """
     from swift.dev.utils import HfConfigFactory
 
@@ -921,9 +935,8 @@ def apply_new_special_tokens(model, processor, config, new_special_tokens: List[
         return
     tokenizer = processor if not hasattr(processor, "tokenizer") else processor.tokenizer
     num_new = tokenizer.add_special_tokens({"additional_special_tokens": list(new_special_tokens)})
-    if num_new <= 0:
-        return
-    logger.info("Added %s new special tokens.", num_new)
+    if num_new:
+        logger.info("Added %s new special tokens.", num_new)
     origin_vocab_size = HfConfigFactory.get_config_attr(config, "vocab_size")
     if origin_vocab_size is None or origin_vocab_size >= len(tokenizer):
         return
@@ -1021,6 +1034,13 @@ def _build_transformers_model(
         kwargs["deepspeed_config"] = config
     elif distributed_config.fsdp:
         strategy = "native_fsdp"
+        # --fsdp_config (plus the JSON a --fsdp preset/path names) reaches the FSDP strategies only
+        # through this ctor kwarg: the native strategy reads reshard_after_forward / mixed_precision
+        # / manual_prefetch / expert_parallel, the accelerate strategy the FullyShardedDataParallelPlugin
+        # fields. Without this forwarding the whole field is silently dead.
+        from swift.dev.utils import resolve_fsdp_config
+
+        kwargs["fsdp_config"] = resolve_fsdp_config(distributed_config.fsdp, distributed_config.fsdp_config)
     kwargs["strategy"] = resolve_strategy(strategy)
     # The transformers strategies read the process-group timeout from this env var (not a ctor arg),
     # so --ddp_timeout reaches them through it; None leaves twinkle's own default.
@@ -1129,15 +1149,10 @@ def _build_transformers_model(
             from twinkle.kernel import kernelize
             kernelize(model.model)
 
-    # twinkle's TransformersModel.__init__ calls gradient_checkpointing_enable() unconditionally
-    # (model/transformers/transformers.py), so the user's --gradient_checkpointing false was silently
-    # ignored -- and the find_unused_parameters derivation above already assumes the flag is honored,
-    # so the two disagreed. Turn it back off here when the config says so.
-    # NOTE: this is a post-hoc undo, not the right shape. The fix belongs upstream as a twinkle
-    # constructor argument (gradient_checkpointing=...); switch to passing it once that lands, so the
-    # model is never built in a state the caller did not ask for.
-    if train_config is not None and not train_config.gradient_checkpointing:
-        model.model.gradient_checkpointing_disable()
+    # gradient_checkpointing rides the TransformersModel ctor kwargs above (a kwarg twinkle gates
+    # worker-side, so --gradient_checkpointing false is honored under Ray too); the old post-hoc
+    # model.model.gradient_checkpointing_disable() undo is gone -- under Ray the driver-side proxy
+    # has no .model attribute, so it crashed exactly on the config it existed to honor.
 
     return model
 
@@ -1243,6 +1258,10 @@ def _build_sentence_transformer_model(
         "mixed_precision": kwargs["mixed_precision"],
         "ddp_config": kwargs.get("ddp_config"),
     }
+    # --fsdp selects the FSDP strategy on the ST path too (the deepspeed guard above points here),
+    # so its config rides the same shared-kwarg forwarding.
+    if kwargs.get("fsdp_config") is not None:
+        st_kwargs["fsdp_config"] = kwargs["fsdp_config"]
     # ST never sees the shared kwargs, so thread the gradient-checkpointing flag straight through.
     if train_config is not None:
         st_kwargs["gradient_checkpointing"] = train_config.gradient_checkpointing
@@ -1417,7 +1436,6 @@ def build_parallel_mesh(distributed_config: Optional[DistributedConfig], *, none
 
 _NON_MODEL_MEGATRON_FIELDS = {
     "data_parallel_random_init",
-    "skip_megatron_init",
     "manual_gc",
     "manual_gc_eval",
     "manual_gc_steps",

@@ -28,8 +28,8 @@ if TYPE_CHECKING:
     from .torch_utils import get_n_params_grads, to_device
     from .utils import (add_version_to_work_dir, append_to_jsonl, check_json_format, deep_getattr,
                         deepspeed_zero_stage, get_env_args, json_parse_to_dict, parse_args,
-                        resolve_deepspeed_config, seed_everything, split_list,
-                        split_str_parts_by)
+                        resolve_deepspeed_config, resolve_fsdp_config, seed_everything,
+                        split_list, split_str_parts_by)
 
 # Public name -> the submodule that defines it. Imports are deferred (PEP 562 ``__getattr__``) so
 # that importing this package -- e.g. via the stdlib-only leaf ``swift.dev.utils.logger`` -- never
@@ -58,6 +58,7 @@ _LAZY_ATTRS = {
     'json_parse_to_dict': 'utils',
     'parse_args': 'utils',
     'resolve_deepspeed_config': 'utils',
+    'resolve_fsdp_config': 'utils',
     'seed_everything': 'utils',
     'split_list': 'utils',
     'split_str_parts_by': 'utils',
@@ -76,6 +77,7 @@ __all__ = [
     'deep_getattr',
     'deepspeed_zero_stage',
     'resolve_deepspeed_config',
+    'resolve_fsdp_config',
     'get_env_args',
     'json_parse_to_dict',
     'parse_args',

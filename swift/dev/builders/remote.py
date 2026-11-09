@@ -70,7 +70,8 @@ class RemoteModel:
 
 
 def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
-                       gradient_accumulation_steps: int) -> None:
+                       gradient_accumulation_steps: int,
+                       task_type: Optional[str] = None) -> None:
     """Attach the tuner on the server: LoRA becomes a named adapter on the resident base model.
 
     trainable_tokens has no server-side counterpart yet, and 'full' needs no adapter call (the
@@ -87,13 +88,18 @@ def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
             f"--mode remote does not support tuner={tuner_config.tuner!r}: the server-side adapter "
             "mechanism is LoRA (a named adapter on the resident base). Use --tuner lora, or drop "
             "--tuner for full-parameter remote training.")
-    lora_config = LoraConfig(
-        r=tuner_config.lora_rank,
-        lora_alpha=tuner_config.lora_alpha,
-        lora_dropout=tuner_config.lora_dropout,
-        target_modules=list(tuner_config.target_modules),
-        use_rslora=tuner_config.use_rslora,
-    )
+    if tuner_config.target_parameters or tuner_config.trainable_token_indices:
+        raise ValueError(
+            '--mode remote does not support target_parameters / trainable_token_indices: they need '
+            'the in-process module graph (parameter objects / embedding tensors) that cannot cross '
+            'HTTP. Drop the knobs, or run with mode=local/ray.')
+    # The SAME LoraConfig construction the local path uses (all-linear expansion, DoRA/bias flags,
+    # modules_to_save incl. the seq_cls head injection, init resolution): a hand-rolled narrower
+    # config here silently dropped those knobs and left the default ['all-linear'] list unexpanded,
+    # which peft only expands for the bare string.
+    from swift.dev.builders.adapter import _lora_common_kwargs
+
+    lora_config = LoraConfig(**_lora_common_kwargs(tuner_config, task_type))
     # No save_dir: the server owns the checkpoint store (a client-side dir would have to exist
     # on the server already). GA rides the adapter because the server's grad-sync gate is
     # per-adapter state, not a forward kwarg.
@@ -110,6 +116,13 @@ def configure_remote_loss(model: Any, train_config: 'TrainConfig') -> None:
     """
     from swift.dev.utils.naming import resolve_loss
 
+    if _liger_fused_ce_enabled(train_config) and (train_config.enable_channel_loss
+                                                  or train_config.enable_dft_loss):
+        # Same refusal the local configure_loss makes: the fused kernel computes CE itself, so
+        # forwarding dft would be silently swallowed by the loss's **kwargs and the channel name
+        # dropped by the elif -- a remote run must not degrade silently where local fails loudly.
+        raise ValueError('fused_linear_cross_entropy replaces the standard CE path and cannot be combined '
+                         'with enable_channel_loss or enable_dft_loss.')
     name = 'cross_entropy'
     if _liger_fused_ce_enabled(train_config):
         name = 'liger_fused_linear_cross_entropy'

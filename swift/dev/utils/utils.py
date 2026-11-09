@@ -274,6 +274,40 @@ def deepspeed_zero_stage(spec: Union[str, Dict, None]) -> Optional[int]:
     return int(stage) if stage is not None else None
 
 
+# The FSDP2 preset maps to the bundled JSON (swift/config/fsdp2.json), exactly like the legacy CLI's
+# ``_init_fsdp``; any other existing path is read as a custom FSDP config file. Shared by the model
+# builder so the preset and the file semantics live in one place.
+_FSDP_PRESETS = ('fsdp2',)
+
+
+def resolve_fsdp_config(fsdp: Optional[str], fsdp_config: Optional[Dict]) -> Optional[Dict]:
+    """Resolve the FSDP config the strategies receive, from ``--fsdp`` and ``--fsdp_config``.
+
+    Returns None when FSDP is off. A preset name or a JSON file path in ``--fsdp`` contributes the
+    file's ``fsdp_config`` section (the legacy contract); an explicit ``--fsdp_config`` dict is
+    merged on top so a user override beats the file default. Any other ``--fsdp`` value is neither
+    a preset nor a file, so it is rejected instead of silently selecting no config at all.
+    """
+    if not fsdp:
+        return dict(fsdp_config) if fsdp_config else None
+    if fsdp in _FSDP_PRESETS:
+        import swift
+        path = os.path.join(os.path.dirname(swift.__file__), 'config', f'{fsdp}.json')
+    elif os.path.exists(fsdp):
+        path = fsdp
+    else:
+        raise ValueError(
+            f'DistributedConfig.fsdp={fsdp!r} names neither an FSDP preset ({list(_FSDP_PRESETS)}) nor an '
+            'existing JSON config file, so it selects no FSDP configuration at all. Pass --fsdp fsdp2, a '
+            'path to a custom FSDP config file, or drop --fsdp.')
+    config = json_parse_to_dict(path)
+    if not isinstance(config, dict) or not isinstance(config.get('fsdp_config', {}), dict):
+        raise ValueError(f'The FSDP config file {path!r} must be a JSON object with a fsdp_config section.')
+    resolved = dict(config.get('fsdp_config', {}))
+    resolved.update(fsdp_config or {})
+    return resolved
+
+
 def deep_getattr(obj, attr: str, default=None):
     attrs = attr.split('.')
     for a in attrs:
