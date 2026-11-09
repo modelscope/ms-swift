@@ -58,6 +58,8 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         grad_scaler_config: Optional[Dict[str, Any]] = None,
         memory_efficient_init: bool = False,
         sentence_transformer_kwargs: Optional[Dict[str, Any]] = None,
+        gradient_checkpointing: bool = True,
+        gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         # Mirror TwinkleTransformersModel.__init__ plumbing, but build a SentenceTransformer instead of
@@ -91,7 +93,11 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         self.model = self._build_sentence_transformer(model_id, sentence_transformer_kwargs or {})
         # hf_config is read by the processor/loss for e.g. pad-token / dtype; expose the backbone's.
         self.hf_config = getattr(config, "name_or_path", None) and config or self._backbone_config()
-        self._enable_gradient_checkpointing()
+        # The builder threads --gradient_checkpointing straight here; the old unconditional enable
+        # made "false" a silently dead flag on this path (the flag fell into **kwargs) while the
+        # multi-tenant subclass's positional call crashed against a no-arg method.
+        if gradient_checkpointing:
+            self._enable_gradient_checkpointing(gradient_checkpointing_kwargs)
 
         self.sp_strategy = None
         self._model_wrapped = False
@@ -125,11 +131,13 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         auto_model = getattr(self._first_module(), "auto_model", None)
         return getattr(auto_model, "config", None)
 
-    def _enable_gradient_checkpointing(self):
+    def _enable_gradient_checkpointing(self, gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None):
         # SentenceTransformer has no top-level gradient_checkpointing_enable; drive the backbone.
+        # Accepts the kwargs the multi-tenant subclass passes positionally, and forwards them the
+        # way TransformersModel does (e.g. use_reentrant).
         auto_model = getattr(self._first_module(), "auto_model", None)
         if auto_model is not None and hasattr(auto_model, "gradient_checkpointing_enable"):
-            auto_model.gradient_checkpointing_enable()
+            auto_model.gradient_checkpointing_enable(**(gradient_checkpointing_kwargs or {}))
 
     def gradient_checkpointing_disable(self):
         """Symmetric with :meth:`_enable_gradient_checkpointing` -- a ``SentenceTransformer`` has no
