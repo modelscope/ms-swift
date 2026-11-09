@@ -364,7 +364,7 @@ class RewardWorker(ScoreWorker):
         it stays a ref and is handed to ``forward_backward`` as the ``advantages`` kwarg.
         """
         fused: List[List[float]] = []
-        for per_token, orm in zip(process, orm_advantages):
+        for per_token, orm in zip(prm_process, orm_advantages):
             if per_token is None:
                 raise RuntimeError('PRM fusion requires a per-sample process reward; the '
                                    'score_group_prm call must run before fuse_prm.')
