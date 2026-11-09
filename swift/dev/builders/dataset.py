@@ -96,6 +96,7 @@ def _load_kwargs(dataset_config: DatasetConfig) -> dict:
         shuffle_buffer_size=dataset_config.shuffle_buffer_size,
         use_hf=dataset_config.use_hf,
         hub_token=dataset_config.hub_token,
+        trust_remote_code=dataset_config.trust_remote_code,
         download_mode=dataset_config.download_mode,
         columns=dataset_config.columns,
         strict=dataset_config.strict,
@@ -459,6 +460,12 @@ def build_prompt_dataloader(prompts: List[List[dict]],
     return DataLoader(
         dataset,
         batch_size=batch_size,
+        # The recipes consume a narrower epoch tail (a small dataset, or its last batch): the rollout
+        # budget counts it and the loop trains on it. min_batch_size=1 declares that here, because
+        # twinkle's driver-side ray-mode default (min_batch_size=batch_size) would silently drop every
+        # narrower batch -- a dataset smaller than one generation batch then yields ZERO batches and
+        # the run "completes" without a single optimizer step.
+        min_batch_size=1,
         data_seed=seed,
         num_workers=0,
         collate_fn=_identity_collate,
