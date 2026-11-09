@@ -50,8 +50,6 @@ class MegatronConfig:
     use_cpu_initialization: bool = False
     # Per-DP-rank init seed; only meaningful without a checkpoint, wrong with one.
     data_parallel_random_init: Optional[bool] = False
-    # Skip Megatron's global init entirely (e.g. a conversion that only needs the model built).
-    skip_megatron_init: bool = False
     # Track RNG through Transformer Engine so dropout stays reproducible when TE owns the layers.
     te_rng_tracker: bool = False
 

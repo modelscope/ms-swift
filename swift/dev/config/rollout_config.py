@@ -24,7 +24,6 @@ class RolloutConfig:
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Dict[str, int]] = None
     vllm_enable_prefix_caching: bool = True
-    vllm_use_async_engine: Optional[bool] = None
     vllm_quantization: Optional[str] = None
     vllm_reasoning_parser: Optional[str] = None
     vllm_disable_cascade_attn: bool = False
@@ -56,8 +55,9 @@ class RolloutConfig:
 
     # === Rollout Mode ===
     # Trainer/sampler GPU placement (renamed from v4 vllm_mode): 'colocate' shares one DeviceGroup
-    # (CUDA-IPC); 'disaggregated'/'server' use disjoint GPUs (NCCL). None disaggregates.
-    sampler_mode: Optional[Literal['disaggregated', 'server', 'colocate']] = None
+    # (CUDA-IPC); 'disaggregated' uses disjoint GPUs (NCCL). None disaggregates. (The v4 'server'
+    # spelling is retired: it had no distinct placement -- same disjoint-GPU plan.)
+    sampler_mode: Optional[Literal['disaggregated', 'colocate']] = None
     # Which engine backs the independent-process samplers; 'vllm' and 'sglang' are both wired
     # (weight-sync via CheckpointEngineManager). 'transformers' cannot be weight-synced.
     rollout_sampler: Literal['vllm', 'sglang'] = 'vllm'

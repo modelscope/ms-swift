@@ -27,7 +27,6 @@ __all__ = [
     "ModelArch",
     "LoaderModelInfo",
     "ModelLoader",
-    "MODEL_ALIASES",
     "MODEL_MAPPING",
     "get_model_loader",
     "match_model_type",
@@ -45,9 +44,6 @@ _PART_FIELDS = ("language_model", "vision_tower", "aligner", "generator")
 _LIST_FIELDS = _PART_FIELDS + ("moe_block",)
 
 MODEL_MAPPING: Dict[str, Type["ModelLoader"]] = {}
-# Alias -> registered model_type. Keeps `--model_type ovis_ocr2` and old `args.json` working after
-# two legacy model_types that differed only by template were merged into one family.
-MODEL_ALIASES: Dict[str, str] = {}
 # HuggingFace class name -> model_types, lazily built and invalidated on every registration.
 _ARCH_MAPPING: Dict[str, List[str]] = {}
 
@@ -269,10 +265,6 @@ def register_model(loader_cls: Type["ModelLoader"] = None, *, exist_ok: bool = F
                 f"model_type `{model_type}` is already registered by {MODEL_MAPPING[model_type].__name__}."
             )
         MODEL_MAPPING[model_type] = cls
-        for alias in cls.aliases:
-            if not exist_ok and alias in MODEL_ALIASES and MODEL_ALIASES[alias] != model_type:
-                raise ValueError(f"alias `{alias}` already points at `{MODEL_ALIASES[alias]}`.")
-            MODEL_ALIASES[alias] = model_type
         _ARCH_MAPPING.clear()  # invalidate the reverse-lookup cache
         return cls
 
@@ -280,8 +272,7 @@ def register_model(loader_cls: Type["ModelLoader"] = None, *, exist_ok: bool = F
 
 
 def get_model_loader(model_type: str) -> Type["ModelLoader"]:
-    """Look up a family, following aliases."""
-    model_type = MODEL_ALIASES.get(model_type, model_type)
+    """Look up a family."""
     if model_type not in MODEL_MAPPING:
         raise ValueError(f"model_type `{model_type}` is not registered. Available: {sorted(MODEL_MAPPING)}")
     return MODEL_MAPPING[model_type]
@@ -342,7 +333,7 @@ def resolve_loader_cls(model_type: Optional[str], model_id: str) -> Optional[Typ
     from swift.dev.utils.naming import resolve_plugin_class
 
     if model_type:
-        if model_type in MODEL_MAPPING or model_type in MODEL_ALIASES:
+        if model_type in MODEL_MAPPING:
             return get_model_loader(model_type)
         return resolve_plugin_class(model_type, ModelLoader, MODEL_MAPPING, kind="model")
     matched = match_model_type(model_id)
@@ -614,7 +605,6 @@ class ModelLoader:
     models: Sequence[Union[str, Tuple[str, str]]] = ()
     architectures: Sequence[str] = ()
     template: Optional[str] = None
-    aliases: Sequence[str] = ()
     requires: Sequence[str] = ()
     tags: Sequence[str] = ()
     # Glob patterns of files to skip at download. ``None`` lets the download layer apply its default

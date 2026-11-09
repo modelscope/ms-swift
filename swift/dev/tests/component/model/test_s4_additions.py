@@ -17,7 +17,6 @@ from types import SimpleNamespace
 import pytest
 
 from swift.dev.model.loader.base import (
-    MODEL_ALIASES,
     MODEL_MAPPING,
     get_model_loader,
     match_model_type,
@@ -30,13 +29,11 @@ from swift.dev.model.loader.base import (
 
 
 def test_every_registered_family_and_alias_resolves():
-    """Each of the loader files' families is live in MODEL_MAPPING and resolves; each alias lands
-    on the family it declares. A dead key here is a family silently unreachable from the CLI."""
+    """Each of the loader files' families is live in MODEL_MAPPING and resolves. A dead key here
+    is a family silently unreachable from the CLI."""
     assert len(MODEL_MAPPING) > 100, f'registry unexpectedly small: {len(MODEL_MAPPING)}'
     for model_type in MODEL_MAPPING:
         assert get_model_loader(model_type) is MODEL_MAPPING[model_type], model_type
-    for alias, target in MODEL_ALIASES.items():
-        assert get_model_loader(alias) is get_model_loader(target), alias
     with pytest.raises(ValueError, match='not registered'):
         get_model_loader('no_such_family_xyz')
 

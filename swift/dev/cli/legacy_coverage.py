@@ -30,13 +30,17 @@ REMOVED_OPTION_FIELDS: Tuple[str, ...] = (
     'adalora_beta1', 'adalora_beta2', 'adalora_orth_reg_weight',
     # The engine's LoRA machinery is owned by the adapters themselves: enable is automatic when
     # adapters are passed, and the rank budget is measured from each adapter_config.json.
-    'vllm_enable_lora', 'vllm_max_lora_rank', 'save_missing_weights')
+    'vllm_enable_lora', 'vllm_max_lora_rank', 'save_missing_weights',
+    # vllm_use_async_engine is retired: today's vLLM has no such engine arg (the async engine is
+    # chosen by the engine class), so the flag reached the engine as an unknown key and was dropped.
+    'vllm_use_async_engine')
 # Per-field replacement text where the migration path is specific enough to name.
 REMOVED_OPTION_REPLACEMENTS: Dict[str, str] = {
     'vllm_enable_lora': 'LoRA support is enabled automatically whenever adapters are passed (--adapters'
                         ' / --orm_adapters); drop this flag',
     'vllm_max_lora_rank': 'the rank budget is measured from each adapter\'s own adapter_config.json; '
                           'drop this flag',
+    'vllm_use_async_engine': 'the async engine is selected by the engine class itself; drop this flag',
     'orm_model': 'pass the reward-model id as an item of --orm instead',
     'prm_model': 'pass the reward-model id as an item of --prm instead',
     'reward_model': 'pass the reward-model id as an item of --orm instead',
@@ -321,7 +325,9 @@ CLI_LEGACY_ONLY: Dict[str, Mapping[str, Tuple[str, ...]]] = {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,
         'unsupported_command': SERVING_DISTRIBUTED_FIELDS + CHECKPOINT_NON_TRAINING_FIELDS
         + DECISION_AUGMENT_FIELDS + ENTROPACK_FIELDS + ('min_p',),
-        'removed_option': REMOVED_OPTION_FIELDS,
+        # The deploy server owns its request logging and level: neither flag reached ServerArgs
+        # when the fields existed, so they are retired with the dead fields.
+        'removed_option': REMOVED_OPTION_FIELDS + ('verbose', 'log_level'),
     },
     'eval': {
         'unsupported_sampler': UNSUPPORTED_SAMPLER_FIELDS,

@@ -12,7 +12,6 @@ import importlib
 import pkgutil
 
 from .base import (
-    MODEL_ALIASES,
     MODEL_MAPPING,
     LoaderModelInfo,
     ModelArch,
@@ -35,7 +34,6 @@ for _module in pkgutil.iter_modules(__path__):
 del _module
 
 __all__ = [
-    "MODEL_ALIASES",
     "MODEL_MAPPING",
     "ModelArch",
     "LoaderModelInfo",

@@ -63,12 +63,12 @@ def test_every_megatron_config_knob_reaches_the_bridge_under_its_own_name(field)
 
 
 def test_loop_side_knobs_stay_out_of_the_model_kwargs():
-    """manual_gc* / skip_megatron_init / data_parallel_random_init are consumed by the training
-    loop or the loader, not the TransformerConfig -- landing them in the model kwargs would be a
-    TypeError at bridge build time (no such ModelConfig field)."""
+    """manual_gc* / data_parallel_random_init are consumed by the training loop or the loader,
+    not the TransformerConfig -- landing them in the model kwargs would be a TypeError at bridge
+    build time (no such ModelConfig field)."""
     kwargs = _megatron_model_kwargs(
         MegatronConfig(manual_gc=True, manual_gc_eval=True, manual_gc_steps=5,
-                       skip_megatron_init=True, data_parallel_random_init=True), None)
+                       data_parallel_random_init=True), None)
     assert not (_NON_MODEL_MEGATRON_FIELDS & set(kwargs))
 
 

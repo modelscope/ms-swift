@@ -157,6 +157,9 @@ _RL_LOSS_NAME = {
     'gkd': 'gkd',
     'rm': 'reward',
     'kto': 'kto',
+    # The declared contract: a PPO policy trains with GRPOLoss (sequence-mean aggregation).
+    # twinkle's by-name PPOLoss registration serves the webui loss component only -- see its
+    # loss/__init__.
     'ppo': 'grpo',
     # Self-distillation: OPSD (single privileged teacher) and MOPD (K weighted teachers). RFT is absent
     # on purpose -- it does plain cross-entropy SFT on the filtered set (configure_loss), not an RL loss.
