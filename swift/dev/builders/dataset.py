@@ -405,8 +405,12 @@ def load_prompt_only_rows(dataset_config: DatasetConfig, max_rows: Optional[int]
     ``val_dataset`` wins outright; otherwise only the eval slice of ``dataset`` is used (ratio=0 runs
     all) -- legacy infer's ``_prepare_val_dataset`` semantics.
     """
-    from swift.dev.dataset import load_dataset
-
+    from swift.dev.dataset import load_dataset, register_dataset_info
+    # The custom registrations must land before the path/type resolution below, exactly as
+    # build_dataset does: a val/prompt path registered only in a --custom_dataset_info file
+    # otherwise falls back to plain rows (its family preprocessor never runs).
+    for info_path in dataset_config.custom_dataset_info:
+        register_dataset_info(info_path, exist_ok=True)
     kwargs = _load_kwargs(dataset_config)
     # legacy infer: val_dataset loads whole (its own shuffle flag; interleave_prob -- a train-mixing
     # knob -- popped); the eval slice of --dataset uses dataset_shuffle, before the max_rows cut
