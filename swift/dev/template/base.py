@@ -968,7 +968,10 @@ class Template(ProcessorMixin):
                 with_labels=False,
                 expand_media=not engine,
             )
-            if engine and not gen_prompt:
+            # The shared no-labels intent is not TRAIN, so the encoder's implicit eos check
+            # (which keys on is_training) never fires: both render paths must pin add_eos
+            # themselves, or the appended assistant turn loses its closing token (im_end).
+            if not gen_prompt:
                 sample["add_eos"] = True
             with _rendering(intent.render_mode(backend)):
                 encoded = renderer._encode_sample(sample)

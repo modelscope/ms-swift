@@ -163,7 +163,7 @@ def test_tool_observe_bridge_matches_the_shipped_jinja(family):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("enable_thinking", [False, True])
-def test_qwen3_user_followup_fails_on_history_rewrite(enable_thinking):
+def test_qwen3_user_followup_survives_the_official_history_rewrite(enable_thinking):
     processor = _processor("qwen3")
     dev = build_template(
         TemplateConfig(
@@ -174,14 +174,35 @@ def test_qwen3_user_followup_fails_on_history_rewrite(enable_thinking):
         ),
         processor,
     )
+    renderer = processor if hasattr(processor, "apply_chat_template") else processor.tokenizer
     history = [
         {"role": "user", "content": "What is 2+2?"},
         {"role": "assistant", "reasoning_content": "Compute it.", "content": "4"},
     ]
-    with pytest.raises(RuntimeError, match="non-monotonic"):
-        dev.render_delta(
-            history, [{"role": "user", "content": "Explain."}], gen_prompt_before=False, gen_prompt_after=True
+    appended = [{"role": "user", "content": "Explain."}]
+
+    def official(messages, gen_prompt):
+        encoded = renderer.apply_chat_template(
+            copy.deepcopy(messages),
+            tokenize=True,
+            add_generation_prompt=gen_prompt,
+            enable_thinking=enable_thinking,
         )
+        return list(_unwrap_official(encoded))
+
+    # The shipped jinja itself rewrites the closed turn -- it drops the non-trailing
+    # assistant's reasoning when a user follow-up arrives, so the official pair of renders
+    # is NOT prefix-extensional. The incremental protocol must not copy that rewrite
+    # (a GRPO coding rollout appends user turns all the time): it pins preserve_thinking
+    # and returns a stable delta anchored on the official render of the appended turn alone.
+    closed_ids = official(history, False)
+    reopened_ids = official([*history, *appended], True)
+    assert reopened_ids[: len(closed_ids)] != closed_ids
+
+    delta = dev.render_delta(
+        copy.deepcopy(history), copy.deepcopy(appended), gen_prompt_before=False, gen_prompt_after=True
+    )
+    assert list(delta) == official(appended, True)
 
 
 @pytest.mark.slow
