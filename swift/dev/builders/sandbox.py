@@ -36,17 +36,43 @@ def build_env_pool(rollout_config: 'RolloutConfig') -> Any:
     """RolloutConfig -> an ``EnvLeases`` pool of sandbox environments.
 
     ``sandbox_num_envs`` envs are built; one is leased per concurrent episode (a lease never blocks
-    when the pool has at least as many members as there are workers). With no ``sandbox_template``
-    the pool is local ``LocalEnv`` slots under ``sandbox_workspace_root`` (a fresh temp dir when
-    unset); naming a template builds ``AgentEnv`` microVMs instead, which boot on first use.
+    when the pool has at least as many members as there are workers). The family is picked by
+    ``sandbox_kind``: 'local' slots under ``sandbox_workspace_root`` (a fresh temp dir when unset);
+    'agentenv' microVMs (``sandbox_template``), which boot on first use; 'openenv' embeds an
+    OpenEnv environment package in-process; 'openenv_client' connects each slot to a running
+    OpenEnv server. Leaving the kind at 'local' while naming a template still infers agentenv
+    (back-compat).
     """
-    from twinkle_agentic.envs import AgentEnv, EnvLeases, LocalEnv
+    from twinkle_agentic.envs import AgentEnv, EnvLeases, LocalEnv, OpenEnv, OpenEnvClient
 
     num_envs = rollout_config.sandbox_num_envs
     if num_envs < 1:
         raise ValueError(f'RolloutConfig.sandbox_num_envs must be >= 1, got {num_envs}.')
     template = rollout_config.sandbox_template
-    if template:
+    kind = rollout_config.sandbox_kind
+    if kind in ('openenv', 'openenv_client'):
+        env_name = rollout_config.sandbox_env_name
+        if not env_name:
+            raise ValueError(
+                f"sandbox_kind='{kind}' needs sandbox_env_name (the OpenEnv environment package, "
+                "e.g. 'coding_env'; pip install openenv-<name>).")
+        if kind == 'openenv':
+            envs = [OpenEnv(env_name=env_name) for _ in range(num_envs)]
+        else:
+            base_url = rollout_config.sandbox_api_url
+            if not base_url and not os.environ.get('OPENENV_BASE_URL'):
+                raise ValueError(
+                    "sandbox_kind='openenv_client' needs sandbox_api_url (or the OPENENV_BASE_URL "
+                    'env var) pointing at a running OpenEnv server.')
+            envs = [
+                OpenEnvClient(env_name=env_name, base_url=base_url) for _ in range(num_envs)
+            ]
+        return EnvLeases(envs)
+    if kind == 'agentenv' or (kind == 'local' and template):
+        if template is None:
+            raise ValueError(
+                "sandbox_kind='agentenv' needs sandbox_template (the microVM template name/ID); "
+                'pick another sandbox_kind or name a template.')
         kwargs: dict = {}
         if rollout_config.sandbox_api_url:
             kwargs['api_url'] = rollout_config.sandbox_api_url

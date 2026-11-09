@@ -796,6 +796,19 @@ def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
         raise ValueError(
             'RolloutConfig.tools requires a multi-turn rollout: set max_turns (>= 1) so the engine has '
             'turns in which to call the tools. A single-turn rollout cannot invoke them.')
+    kind = rollout_config.sandbox_kind
+    if kind in ('openenv', 'openenv_client') and not rollout_config.sandbox_env_name:
+        raise ValueError(
+            f"sandbox_kind='{kind}' needs sandbox_env_name (the OpenEnv environment package, e.g. "
+            "'coding_env'; pip install openenv-<name>).")
+    if kind == 'agentenv' and not rollout_config.sandbox_template:
+        raise ValueError(
+            "sandbox_kind='agentenv' needs sandbox_template (the microVM template name/ID); pick "
+            'another sandbox_kind or name a template.')
+    if kind in ('openenv', 'openenv_client') and rollout_config.sandbox_template:
+        raise ValueError(
+            f"sandbox_kind='{kind}' ignores sandbox_template={rollout_config.sandbox_template!r}: the "
+            'OpenEnv families are driven by sandbox_env_name, not a microVM template.')
 
 
 def validate_infer_config(infer_config: Optional['InferConfig']) -> None:

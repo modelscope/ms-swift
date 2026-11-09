@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, List, Optional, Sequence, Tuple
 
 from swift.dev.utils import get_logger
+from twinkle.data_format import ground_truth, last_assistant_text
 from .reward import ORM
 
 logger = get_logger()
@@ -108,6 +109,32 @@ def _parse_test_cases(raw: Any) -> List[Tuple[str, str]]:
         logger.warning(f'code_execution reward: {len(inputs)} inputs vs {len(outputs)} outputs; '
                        'scoring the shorter prefix.')
     return [(str(i), str(o)) for i, o in zip(inputs, outputs)]
+
+
+def _parse_verification_info(raw: Any) -> List[Tuple[str, str]]:
+    """An OpenR1 ``verification_info`` cell -> ``[(stdin, expected_stdout), ...]``.
+
+    The verifiable-coding dataset family (``open-r1/verifiable-coding-problems-*``) ships its
+    cases this way -- a JSON string or decoded mapping holding ``language`` and
+    ``test_cases: [{"input": ..., "output": ...}]`` -- so the reward scores those datasets
+    directly instead of requiring a preprocessed ``test_cases`` column. A cell that cannot be
+    parsed yields ``[]`` (scored 0 with a warning), same policy as ``_parse_test_cases``.
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            logger.warning(f'code_execution reward: unparseable verification_info JSON, scoring 0: {raw[:120]!r}')
+            return []
+    cases = raw.get('test_cases') if isinstance(raw, dict) else None
+    if not isinstance(cases, list):
+        logger.warning(f'code_execution reward: verification_info.test_cases is not a list, scoring 0: '
+                       f'{type(raw).__name__}')
+        return []
+    parsed = [(str(c.get('input', '')), str(c.get('output', ''))) for c in cases if isinstance(c, dict)]
+    if len(parsed) != len(cases):
+        logger.warning('code_execution reward: some verification_info test cases were not mappings, dropped.')
+    return parsed
 
 
 def _normalize_output(text: str) -> List[str]:
@@ -261,27 +288,49 @@ class CodeExecutionReward(ORM):
         except Exception as exc:  # noqa: BLE001 -- teardown is best effort; the score is already computed
             logger.warning(f'code_execution reward: env close failed: {type(exc).__name__}: {exc}')
 
+    @staticmethod
+    def _row_spec(trajectory: Any) -> Tuple[List[Tuple[str, str]], Optional[str]]:
+        """One trajectory row -> ``(test cases, language)``, from whichever column carries them.
+
+        ``test_cases`` (the packed ``{"inputs": [...], "outputs": [...]}`` form) wins when present;
+        otherwise the row is read as an OpenR1 ``verification_info`` cell, which carries the
+        language alongside the cases. ``([], None)`` when neither column exists -- the caller
+        fails loudly if NO row carries cases at all.
+        """
+        cases_raw = ground_truth(trajectory, 'test_cases')
+        if cases_raw is not None:
+            return _parse_test_cases(cases_raw), ground_truth(trajectory, 'language')
+        info = ground_truth(trajectory, 'verification_info')
+        if info is not None:
+            if isinstance(info, str):
+                try:
+                    info = json.loads(info)
+                except (ValueError, TypeError):
+                    info = None
+            language = info.get('language') if isinstance(info, dict) else None
+            return _parse_verification_info(info), language
+        return [], None
+
     async def __call__(self, trajectories, **kwargs) -> List[float]:
         """One score per trajectory: the fraction of its test cases the program passes.
 
-        ``test_cases`` and ``language`` ride each trajectory row (the packed ``user_data`` label or
-        the flat column); ``language`` may be absent to take ``code_language`` from the config.
+        ``test_cases`` (packed ``{"inputs": [...], "outputs": [...]}``) or an OpenR1
+        ``verification_info`` cell rides each trajectory row (the packed ``user_data`` label or
+        the flat column); a ``language`` label may accompany either to override ``code_language``.
         """
-        from twinkle.data_format import ground_truth, last_assistant_text
-
         completions = [last_assistant_text(t) for t in trajectories]
-        cases_raw = [ground_truth(t, 'test_cases') for t in trajectories]
-        if not any(case is not None for case in cases_raw):
-            raise ValueError("the 'code_execution' reward scores code against test cases, but no "
-                             "'test_cases' column was provided. Add one to the dataset as JSON "
-                             '\'{"inputs": [...], "outputs": [...]}\' (stdin / expected stdout per case).')
+        specs = [self._row_spec(t) for t in trajectories]
+        if not any(cases for cases, _lang in specs):
+            raise ValueError("the 'code_execution' reward scores code against test cases, but neither a "
+                             "'test_cases' column (JSON '{\"inputs\": [...], \"outputs\": [...]}') nor an "
+                             "OpenR1 'verification_info' column was provided.")
         n = len(trajectories)
-        lang_col = [ground_truth(t, 'language') or self.language for t in trajectories]
+        lang_col = [lang or self.language for _cases, lang in specs]
         for lang in set(lang_col):
             _check_language(lang)
 
         codes = [_extract_code(completion, lang) for completion, lang in zip(completions, lang_col)]
-        parsed = [_parse_test_cases(raw) for raw in cases_raw]
+        parsed = [cases for cases, _lang in specs]
 
         env = None
         executor = None
