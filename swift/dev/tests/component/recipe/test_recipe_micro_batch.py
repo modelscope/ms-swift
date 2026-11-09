@@ -77,7 +77,9 @@ def test_offline_entry_submits_full_and_short_updates(tmp_path, preference, mode
     rows = [{"input_ids": [index], "labels": [index]} for index in range(update_batch_size + train_batch_size)]
     batches = [rows[index : index + train_batch_size] for index in range(0, len(rows), train_batch_size)]
     cluster = SimpleNamespace(
-        model=model, dataloader=batches, total_opt_steps=2, eval_dataloader=None, template=None, processor=None
+        model=model, dataloader=batches, total_opt_steps=2, eval_dataloader=None, template=None, processor=None,
+        # supervised's evaluation reads this (whole-batch eval task gate); None = a plain task.
+        forward_task=None
     )
     if preference:
         template = SimpleNamespace(
@@ -584,9 +586,19 @@ def test_distill_generates_only_four_rows_for_a_global_batch_of_four():
 
 
 @pytest.mark.parametrize(
-    "sampler_mode,lmbda,expected", [("colocate", 1.0, 6), ("disaggregated", 0.5, 6), ("disaggregated", 1.0, 7)]
+    "sampler_mode,lmbda,expected", [("colocate", 1.0, 4), ("disaggregated", 0.5, 4), ("disaggregated", 1.0, 7)]
 )
 def test_distill_entry_budgets_updates_across_prompt_loader_batches(monkeypatch, sampler_mode, lmbda, expected):
+    """The budget must match what the loops actually do, not a nicer arithmetic.
+
+    5 prompts, generation_batch_size=2, num_generations=3 -> per-epoch batches of [6, 6, 3]
+    samples; 2 epochs -> [6, 6, 3, 6, 6, 3]. Non-streaming (colocate, or disaggregated with
+    lmbda != 1) replays each batch and drops its tail, so each 6-sample batch is one update
+    (GBS = 2 * 2 = 4) and each 3-sample batch none: 4 updates. Streaming (disaggregated,
+    lmbda == 1) combines all 30 samples first: floor(30 / 4) = 7. lmbda itself does not enter
+    the budget -- the GKD replay fraction is a loop-side concern, so a sub-1 lmbda just leaves
+    the budget loose, never tight.
+    """
     recipe = import_module("swift.dev.recipe.distill.run_distill")
     prompts = [[{"role": "user", "content": str(i)}] for i in range(5)]
     monkeypatch.setattr(recipe, "prompt_rows_from_dataset", lambda config: ([], prompts, [{}] * 5))

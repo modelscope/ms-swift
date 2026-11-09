@@ -58,7 +58,10 @@ class TestPresetContracts:
         graph = built['grpo']
         assert graph.inputs_of('g_train')['loss'].source == 'g_loss'
         scorers = graph.inputs_of('g_score')['scorers']
-        assert isinstance(scorers, list) and scorers[0].slot == 'format'
+        # The grpo preset's single scorer occupies the 'math' slot (the accuracy scorer wired
+        # through g_scor); 'format' was an earlier preset revision's slot.
+        assert isinstance(scorers, list) and scorers[0].slot == 'math'
+        assert scorers[0].source == 'g_scor'
 
     @pytest.mark.parametrize('key,train_id', [
         ('grpo_full', 'g_train'), ('sft_full', 's_train'), ('opsd', 'o_train')])

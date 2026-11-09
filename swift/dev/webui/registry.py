@@ -7,7 +7,10 @@ from .descriptor import KIND_ALLOWS, KIND_CATEGORIES, ComponentDescriptor, Param
 REGISTRY_VERSION = 4
 ADVANTAGE_OPTIONS = ('grpo', 'grpo_passk', 'gae', 'rloo', 'remax', 'gpg', 'opo',
                      'reinforce_plus_plus', 'reinforce_pp_baseline')
-LOSS_OPTIONS = ('cross_entropy', 'channel', 'chunked_cross_entropy', 'mse', 'grpo', 'ppo',
+# Every name here must be resolvable by twinkle's torch_loss_mapping -- the loss component's
+# ``kind`` constructs straight out of that registry (the PPO preset ships kind='ppo'), so this
+# list is its webui-facing mirror, NOT the dev recipe's own loss mapping.
+LOSS_OPTIONS = ('cross_entropy', 'channel', 'mse', 'chunked_cross_entropy', 'grpo', 'ppo',
                 'ppo_value', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real', 'gpg',
                 'gkd', 'opsd', 'mopd', 'kl_cov', 'clip_cov', 'geo_mean', 'dpo', 'kto',
                 'cpo', 'orpo', 'simpo', 'dro', 'dppo_kl', 'dppo_tv', 'infonce',
@@ -231,10 +234,18 @@ ADVANTAGE = D('advantage', '优势估计', 'Stage', '仅消费奖励、分组身
             Q('profile', '结果 Profile', 'row', options=('row', 'token'), phase='call'),
             Q('gamma', '折扣', 1.0, type='float', minimum=0, maximum=1, phase='call'),
             Q('lam', 'GAE lambda', 1.0, type='float', minimum=0, maximum=1, phase='call'),
+            # Declared like select's: the estimator's grouping needs the run's real width, and the
+            # old read (kwargs.pop('num_generations', 8)) was an undeclared key pinned at 8 that
+            # silently mis-grouped any wider/narrower generate node. Must match it.
+            Q('num_generations', '分组宽度', 8, type='int', minimum=1, phase='call'),
             Q('kwargs', '估计参数', {}, type='dict', phase='call')),
     required_when=(('estimator', 'gae', ('values',)), ('estimator', 'remax', ('baseline',))),
     execution='remote')
-SIGNAL_COMBINE = D('signal_combine', '数值组合', 'Stage', '对齐通道的加权和或概率混合；logps 概率混合使用 logsumexp。',
+# 'weighted_sum' is a weighted MEAN -- the implementation divides by the total weight, so the
+# weights act as mixture coefficients (scale-invariant) the way the sibling probability_mixture
+# mode's are. The descriptor text says so; the option key keeps its name (it is the graph
+# parameter surface, and mixture semantics is what existing pinned behavior expects).
+SIGNAL_COMBINE = D('signal_combine', '数值组合', 'Stage', '对齐通道的加权平均（权重为混合系数，同比缩放结果不变）或概率混合；logps 概率混合使用 logsumexp。',
     ports_in=(P('signals', 'SIGNAL', '具名对齐数值', many=True, accepted_kinds=('ADV',)),),
     ports_out=(P('out', 'SIGNAL', '与输入数学类型一致', mirror_input='signals'),),
     params=(Q('mode', '运算', 'weighted_sum', options=('weighted_sum', 'probability_mixture'), phase='call'),
@@ -249,7 +260,12 @@ SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对
                P('signals', 'SIGNAL', '逐 slot 同步输出', optional=True, mirror_input='signals')),
     params=(Q('select', '选择规则', 'threshold', options=('threshold', 'top_k', 'best_of_n'), phase='call'),
             Q('threshold', '阈值', 0.0, type='float', phase='call'),
-            Q('top_k', '保留数', 1, type='int', minimum=1, phase='call')))
+            Q('top_k', '保留数', 1, type='int', minimum=1, phase='call'),
+            # Declared so best_of_n/top_k can actually group at the run's width: the component
+            # reads it, but an undeclared key is rejected by validate_params -- the grouping was
+            # pinned at the default 8 and silently mis-grouped any wider/narrower generate node.
+            # Must match the upstream generate/driver num_generations.
+            Q('num_generations', '分组宽度', 8, type='int', minimum=1, phase='call')))
 TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward 与 optimizer step；优化器与编码是参数，不负责保存和发布 cadence。',
     ports_in=(P('model', 'MODEL', '实际更新模型；未接线时沿连线共享的作用域唯一解析', access='write', scope=True),
               P('loss', 'LOSS', '损失对象'),

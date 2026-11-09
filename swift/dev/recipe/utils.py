@@ -1597,9 +1597,10 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
     eval is a sampled estimate, and padding would double-count the padded rows in the
     per-token loss.
 
-    ``micro_batch_size=None`` submits each eval batch as one whole forward -- the only
-    supported mode for readout tasks (decision), whose labels/decision_meta are organized
-    per RECORD and cannot be split at sample level by the forward-only micro-batcher.
+    ``micro_batch_size=None`` submits each eval batch as one whole forward -- required for
+    tasks the forward-only micro-batcher cannot split at sample level (record-level labels,
+    one-record-to-many-sequence expansions) and for packed eval rows (the task set lives in
+    ``supervised.py``'s ``_WHOLE_BATCH_EVAL_TASKS``).
     """
     if eval_dataloader is None:
         return None
@@ -1739,11 +1740,51 @@ def num_optimizer_steps(num_micro_batches: int, gradient_accumulation_steps: int
     so over N micro-batches the number of optimizer steps is floor((N-1)/ga) for ga>1,
     and N for ga==1. Used to size the LR scheduler's num_training_steps so it matches the
     actual number of steps taken.
+
+    No production caller today: every recipe runs ga=1 and sizes the scheduler horizon via
+    plan_supervised_steps / the rollout step budget instead. The contract only bites at
+    MODEL-LEVEL ga>1, and this function stays as that contract's oracle (the alignment tests
+    pin configure_optimizer's num_training_steps against it).
     """
     ga = max(1, gradient_accumulation_steps)
     if ga == 1:
         return num_micro_batches
     return max(0, (num_micro_batches - 1) // ga)
+
+
+def backend_owns_gradient_accumulation(model) -> bool:
+    """True when the backend's ``forward_backward`` internalizes gradient accumulation.
+
+    The webui train_step component forks on exactly this axis: most backends (transformers) leave
+    the micro-batch schedule to the caller -- one micro-batch per ``forward_backward``, the
+    optimizer stepped every ga-th call -- while a backend that owns its own schedule needs the
+    caller to instead group the ga batches and call ``forward_backward`` once per optimizer step;
+    in dev that is Megatron, whose 1F1B pipeline derives GA from the length of the micro-batch
+    LIST it is handed. A future such backend (e.g. torchtitan/veomni running pipeline parallelism)
+    is recognized HERE, so the dispatch stays a two-way fork on this capability rather than
+    growing a branch per backend name. (The recipe loops moved this fork down into twinkle with
+    the micro-batch rework; this copy serves the webui component, which still schedules
+    driver-side -- see webui/components/training.py.)
+    """
+    try:
+        from twinkle.model.megatron import MegatronModel
+    except Exception:
+        return False
+    return isinstance(model, MegatronModel)
+
+
+def is_grad_sync_boundary(micro_step: int, gradient_accumulation_steps: int) -> bool:
+    """Whether ``micro_step`` is an optimizer-update boundary, computed driver-side.
+
+    Replicates twinkle's ``OptimizerGroup.do_grad_sync`` (a pure function of ``cur_step`` and the
+    accumulation size: boundary when ga==1, else one micro-step late at cur_step = ga+1, 2ga+1,
+    ...) using the caller's own ``micro_step`` as ``cur_step``. Module-level because the
+    optimizer group lives on the WORKERS: under Ray the driver-side model is a proxy with no such
+    attribute, so the webui component's loop must derive the boundary here instead of reaching
+    into the proxy.
+    """
+    ga = gradient_accumulation_steps
+    return ga == 1 or ((micro_step - 1) % ga == 0 and micro_step > 1)
 
 
 def start_manual_gc(enabled: bool) -> Optional[bool]:
