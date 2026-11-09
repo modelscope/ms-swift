@@ -345,7 +345,7 @@ def get_modules_to_not_convert(model):
     suffix_list.append('lm_head')
     res = []
     for n, m in model.named_modules():
-        # QSA indexer uses a separate objective in Megatron; skip for standard LoRA SFT.
+        # Keep the QSA indexer out of quantization.
         if model_type == 'qwen4_exp' and '.indexer.' in n:
             res.append(n)
             continue

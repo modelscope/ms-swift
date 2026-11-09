@@ -96,12 +96,15 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
         if model.model_meta.is_multimodal:
-            return get_multimodal_target_regex(
+            target_regex = get_multimodal_target_regex(
                 model,
                 freeze_llm=args.freeze_llm,
                 freeze_vit=args.freeze_vit,
                 freeze_aligner=args.freeze_aligner,
                 include_embedding='all-embedding' in target_modules)
+            if args.model_type == 'qwen4_exp':
+                target_regex = r'^(?!.*\bindexer\.)' + target_regex
+            return target_regex
         else:
             target_modules.remove('all-linear')
             target_modules += find_all_linears(model)
@@ -109,6 +112,9 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
         target_modules.remove('all-embedding')
         target_modules += find_embedding(model)
     target_modules = _drop_mamba_incompatible_targets(target_modules, model)
+    if args.model_type == 'qwen4_exp' and 'all-linear' in args.target_modules:
+        targets = '|'.join(re.escape(name) for name in target_modules)
+        return rf'^(?!.*\bindexer\.)(?:.*\.)?(?:{targets})$'
     return target_modules
 
 

@@ -1755,6 +1755,25 @@ class _HostEmbeddingProxy(nn.Module):
         host = self._host_embedding
         return host(input_ids.to(host.weight.device)).to(input_ids.device)
 
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys,
+                              error_msgs):
+        # Full-model resume restores the unregistered table directly on CPU.
+        key = prefix + 'weight'
+        if key in state_dict:
+            self._host_embedding.load_state_dict({'weight': state_dict.pop(key)})
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys,
+                                      error_msgs)
+
+
+def _restore_qwen4_exp_ple_state_dict(model, state_dict):
+    """Include host tables only after FSDP gathering, when saving a full model."""
+    state_dict = dict(model.state_dict() if state_dict is None else state_dict)
+    for name, module in model.named_modules():
+        if isinstance(module, _HostEmbeddingProxy):
+            key = f'{name}.weight'.replace('_checkpoint_wrapped_module.', '')
+            state_dict[key] = module.weight.detach()
+    return state_dict
+
 
 def _qwen4_exp_ple_ngram_cache_path(model_dir: str) -> str:
     import hashlib
