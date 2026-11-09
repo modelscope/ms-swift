@@ -109,19 +109,21 @@ def _ensure_nltk_punkt():
 
 @contextmanager
 def _captured_evaluator():
-    """Capture every eval-pass result row run_sft produces, so a test can read them afterwards.
+    """Capture every eval-pass result row the supervised loop produces, so a test can read them.
 
-    ``run_sft`` returns only the training loss history; its ``evaluate()`` appends each pass to a local
-    ``eval_history``. Both module-level evaluators run_sft calls (``evaluate_loss`` / ``evaluate_generate``,
-    helpers of recipe.utils that run_sft binds by name) are wrapped instead -- observing the REAL return
-    values rather than stubbing ``evaluate``. Yields the list of result dicts.
+    ``run_sft`` returns only the training loss history; its loop appends each eval pass to a local
+    ``eval_history``. Both module-level evaluators the loop calls (``evaluate_loss`` /
+    ``evaluate_generate``, helpers of recipe.utils that ``supervised`` binds by name) are wrapped
+    instead -- observing the REAL return values rather than stubbing ``evaluate``. Yields the list
+    of result dicts.
     """
     import importlib
     # `import ... as` would bind the FUNCTION the package __init__ re-exports under the
     # same name, not the module; importlib is explicit about wanting the module object.
-    run_sft_mod = importlib.import_module('swift.dev.recipe.sft.run_sft')
+    # The supervised loop is the caller, so its module globals are the names to swap.
+    supervised_mod = importlib.import_module('swift.dev.recipe.supervised')
     captured = []
-    originals = (run_sft_mod.evaluate_loss, run_sft_mod.evaluate_generate)
+    originals = (supervised_mod.evaluate_loss, supervised_mod.evaluate_generate)
 
     def _wrap(orig):
 
@@ -133,11 +135,11 @@ def _captured_evaluator():
 
         return wrapped
 
-    run_sft_mod.evaluate_loss, run_sft_mod.evaluate_generate = _wrap(originals[0]), _wrap(originals[1])
+    supervised_mod.evaluate_loss, supervised_mod.evaluate_generate = _wrap(originals[0]), _wrap(originals[1])
     try:
         yield captured
     finally:
-        run_sft_mod.evaluate_loss, run_sft_mod.evaluate_generate = originals
+        supervised_mod.evaluate_loss, supervised_mod.evaluate_generate = originals
 
 
 def _evalscope_reports(out_dir):
