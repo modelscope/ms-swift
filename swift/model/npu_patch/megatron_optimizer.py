@@ -6,6 +6,7 @@
 
 import importlib
 import inspect
+import sys
 import torch
 
 
@@ -145,6 +146,9 @@ def patch_megatron_optimizer():
     _ORIGINAL_GET_NORM = clip_grads.get_grad_norm_fp32
     clip_grads.get_grad_norm_fp32 = get_grad_norm_fp32
     core_optimizer.get_grad_norm_fp32 = get_grad_norm_fp32
+    layer_wise_optimizer = sys.modules.get('megatron.core.optimizer.layer_wise_optimizer')
+    if layer_wise_optimizer is not None:
+        layer_wise_optimizer.get_grad_norm_fp32 = get_grad_norm_fp32
     for name, fn in functions.items():
         setattr(modules['l2norm' if 'l2norm' in name else 'scale'], name, fn)
         setattr(optimizers, name, fn)
