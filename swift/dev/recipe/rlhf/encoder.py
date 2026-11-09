@@ -105,10 +105,11 @@ class PreferenceBatchEncoder:
                     break
             else:
                 raise ValueError(
-                    f'KTO KL batch degenerated: all {n} completions in this update are identical, so '
-                    'no unrelated completion exists to pair the prompts with for the z_KL estimate. '
-                    'Use a larger batch (per_device_train_batch_size x gradient_accumulation_steps) '
-                    'or shuffle the data.')
+                    f'KTO cannot build its mismatched KL batch from {n} row(s): z_KL pairs each prompt '
+                    'with a completion from a DIFFERENT row, but this update has no two distinct '
+                    'completions to pair. Batch >= 2 with non-identical completions is intrinsic to the '
+                    'unpaired KTO objective -- raise per_device_train_batch_size x '
+                    'gradient_accumulation_steps (or shuffle the data) so the KL batch can be formed.')
         completion_features: List[dict] = []
         kl_features: List[dict] = []
         labels: List[bool] = []

@@ -256,7 +256,12 @@ def test_preference_auxiliary_forwards_use_per_call_micro_batch_size(rl_type, sh
         }
     )
     encoder = PreferenceBatchEncoder(model, template, rl_type=rl_type, reference=reference)
-    for batch_size in (4, 1, 4):  # Training -> evaluation -> training on the same encoder.
+    # KTO cannot form its mismatched KL point from a single row -- batch >= 2 is intrinsic to the
+    # unpaired objective (see test_algorithms_e2e::test_offline_preference_family_e2e), and the encoder
+    # fails loudly on a degenerate one-row batch rather than silently self-pairing. dpo pairs chosen and
+    # rejected within a row, so it still exercises the true single-row evaluation step.
+    eval_batch_size = 2 if rl_type == "kto" else 1
+    for batch_size in (4, eval_batch_size, 4):  # Training -> evaluation -> training on the same encoder.
         calls.clear()
         rows = [{"messages": [{"role": "assistant", "content": str(i + 1)}]} for i in range(batch_size)]
         kwargs = encoder(rows, micro_batch_size=batch_size)
