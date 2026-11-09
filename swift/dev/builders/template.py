@@ -40,7 +40,17 @@ def _build_meta_model(config, model_type: Optional[str], model_dir: str):
             model_type = config.model_type
     model_cls = get_model_loader(model_type).resolve_model_cls() if model_type else AutoModelForCausalLM
     config = deepcopy(config)  # HF construction may mutate attention/dtype fields.
-    with torch.device("meta"):
+    # set_quantized_state: under DeepSpeed ZeRO-3 transformers' ``_from_config`` runs
+    # ``initialize_weights_zero3``, which gathers-and-copies into parameters -- on this meta model
+    # that is ``copy_`` onto meta tensors and raises NotImplementedError. The meta model never
+    # holds weights (its only job is borrowing config-driven methods like ``get_rope_index``), so
+    # skipping weight init is semantically correct. transformers itself uses this exact
+    # combination (torch.device("meta") + set_quantized_state) for the same purpose in
+    # modeling_utils' own init_contexts -- the public "weights do not come from random init"
+    # switch, not a quantization-only knob.
+    from transformers.modeling_utils import set_quantized_state
+
+    with torch.device("meta"), set_quantized_state():
         if hasattr(model_cls, "from_config"):  # HF Auto* classes (e.g. GLM text models).
             model = model_cls.from_config(config, trust_remote_code=False, attn_implementation="eager")
         else:
@@ -194,14 +204,21 @@ def build_template_from_spec(spec: TemplateSpec, processor=None):
         add_non_thinking_prefix=spec.add_non_thinking_prefix,
         disable_ignore_empty_think=spec.disable_ignore_empty_think,
     )
-    return build_template(config, processor, task_type=spec.model_info.task_type)
+    # The spec's own media_types is authoritative on rebuild (round-trip idempotence): an empty
+    # tuple is a real value (text-only template), so it passes through rather than re-deriving.
+    return build_template(config, processor, task_type=spec.model_info.task_type,
+                          media_types=frozenset(spec.media_types))
 
 
-def build_template(template_config: TemplateConfig, processor: Any, *, task_type: Optional[str] = None) -> Template:
+def build_template(template_config: TemplateConfig, processor: Any, *, task_type: Optional[str] = None,
+                   media_types: Optional[FrozenSet[str]] = None) -> Template:
     """TemplateConfig + processor -> :class:`swift.dev.template.Template`.
 
     Family resolution and implementation both live under ``swift.dev.template``. ``task_type`` stays
     explicit because a processor loaded without model weights may not carry the requested training task.
+    ``media_types`` overrides the processor-derived set -- the spec round-trip passes the spec's own
+    value so a rebuilt template is what the spec says (an empty set is a valid value: a text-only
+    template), instead of silently re-deriving from the worker-side processor.
     """
     from swift.dev.template.register import get_template, get_template_meta
 
@@ -252,7 +269,7 @@ def build_template(template_config: TemplateConfig, processor: Any, *, task_type
         enable_thinking=template_config.enable_thinking,
         preserve_thinking=template_config.preserve_thinking,
         add_non_thinking_prefix=template_config.add_non_thinking_prefix,
-        media_types=_media_types(processor),
+        media_types=media_types if media_types is not None else _media_types(processor),
         task_type=task_type,
         model_factory=model_factory,
         multimodal_graph_adapter=_multimodal_graph_adapter(processor),

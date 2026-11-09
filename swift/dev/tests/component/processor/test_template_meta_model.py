@@ -420,6 +420,37 @@ print(json.dumps(positions.tolist()))
     assert json.loads(child.stdout.decode().strip().splitlines()[-1]) == expected.tolist()
 
 
+def test_meta_model_survives_zero3_flag():
+    """A ZeRO-3 actor builds its meta helper while the process-wide flag is already set.
+
+    transformers' ``_from_config`` answers that flag with ``initialize_weights_zero3``, whose
+    gathered init copies into parameters -- ``copy_`` onto meta tensors raises. The builder must
+    skip weight init (``set_quantized_state``: weights never come from random init here) without
+    breaking the flag for the real models built afterwards.
+    """
+    pytest.importorskip("deepspeed")
+    from transformers.integrations.deepspeed import (
+        HfDeepSpeedConfig,
+        is_deepspeed_zero3_enabled,
+        unset_hf_deepspeed_config,
+    )
+
+    try:
+        # The process-wide registry is a weakref: hold the strong reference for the whole test,
+        # the way a live DeepSpeed engine would.
+        ds_config = HfDeepSpeedConfig({"zero_optimization": {"stage": 3}})
+        assert is_deepspeed_zero3_enabled()
+
+        template = build_template(
+            TemplateConfig(template="qwen2_5_vl"), _processor(_tiny_vl_config(), multimodal=True)
+        )
+        _prepare(template, with_image=True)  # builds the meta model and borrows get_rope_index
+        assert all(parameter.is_meta for parameter in template.dummy_model.parameters())
+        assert is_deepspeed_zero3_enabled()  # the skip must not break the process-wide flag
+    finally:
+        unset_hf_deepspeed_config()
+
+
 def test_forward_hook_uses_its_real_model_not_the_meta_factory():
     template = build_template(TemplateConfig(template="qwen2_5"), _processor())
     real_model = torch.nn.Linear(2, 2)
