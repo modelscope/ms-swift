@@ -122,12 +122,22 @@ class RolloutConfig:
     generation_batch_size: Optional[int] = None
 
     # === Tools & sandbox (multi-turn rollout) ===
-    # Tools opt-in from 'tool' plugins; LocalEnv by default, AgentEnv microVM when template set.
+    # Tools opt-in from 'tool' plugins; the env pool family is picked by sandbox_kind.
     tools: List[str] = field(default_factory=list)
     # Multi-turn is on iff max_turns is set; per-turn length is sampling max_tokens, and
     # max_trajectory_tokens caps the whole trajectory (independent knobs, either may be None).
     max_turns: Optional[int] = None
     max_trajectory_tokens: Optional[int] = None
+    # Which sandbox family the pool builds. 'local' (in-process workspaces, default) and
+    # 'agentenv' (microVM, needs sandbox_template) are the legacy pair -- leaving the kind at
+    # 'local' while naming a sandbox_template still infers agentenv (back-compat). 'openenv'
+    # embeds an OpenEnv environment package in-process (needs sandbox_env_name); 'openenv_client'
+    # connects to a running OpenEnv server (needs sandbox_env_name and sandbox_api_url or
+    # OPENENV_BASE_URL). Same four names the webui resource panel exposes.
+    sandbox_kind: Literal['local', 'agentenv', 'openenv', 'openenv_client'] = 'local'
+    # OpenEnv environment package name for sandbox_kind='openenv'/'openenv_client'
+    # (e.g. 'coding_env' for OpenEnv's code environments: pip install openenv-<name>).
+    sandbox_env_name: Optional[str] = None
     # AgentENV template name/ID; None builds a local LocalEnv.
     sandbox_template: Optional[str] = None
     # Root directory for the per-slot LocalEnv workspaces; None uses a temp dir.
