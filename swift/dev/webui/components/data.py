@@ -430,6 +430,14 @@ class SelectStage(StageComponent):
         values = reward.get('values') if isinstance(reward, dict) else None
         mode = self.params.get('select', 'best_of_n')
         num_generations = int(self.params.get('num_generations', '8') or 8)
+        # One criterion column only: a multi-scorer reward is [N][n_scorers] and the old code
+        # silently ranked/thresholded on column 0, ignoring every other scorer. That is a wrong
+        # answer dressed as a selection -- reduce to one column (signal_combine / a single scorer)
+        # before selecting.
+        if values and any(isinstance(row, list) and len(row) > 1 for row in values):
+            raise ComponentError(
+                f'{self.node_id}: select received a multi-column reward ({len(values[0])} scorers); '
+                'it selects on ONE criterion. Combine the columns into a single score first.')
         keep: List[int] = []
         if values is not None and mode in ('best_of_n', 'top_k'):
             top_k = 1 if mode == 'best_of_n' else int(self.params.get('top_k', '1') or 1)

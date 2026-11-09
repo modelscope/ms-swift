@@ -241,6 +241,8 @@ LEGACY_ALIASES: Dict[str, str] = {
     'bf16': 'torch_dtype',
     'fp16': 'torch_dtype',
     'response_length': 'max_completion_length',
+    # v4 sampling spelling of the infer reward knob; a same-owner rename, folded at argv level.
+    'prm_threshold': 'reward_threshold',
     'use_ray': 'mode',
     'sampler_engine': 'sampler',
     'infer_backend': 'sampler',

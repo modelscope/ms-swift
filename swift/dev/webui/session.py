@@ -532,7 +532,11 @@ def _optional_int(value: Any, name: str) -> Optional[int]:
         result = int(value)
     except (TypeError, ValueError):
         raise GraphValidationError(f'{name}: 需要整数，得到 {value!r}') from None
-    return result if result >= 0 else None
+    if result < 0:
+        # A negative steps used to fall through as None = run unbounded: a typo the user cannot
+        # see, since the run just never stops. Reject it the same way a non-integer is rejected.
+        raise GraphValidationError(f'{name}: 需要非负整数，得到 {value!r}')
+    return result
 
 
 def _bootstrap(declaration: Dict[str, Any]) -> None:

@@ -378,11 +378,13 @@ class InferComponent(RecipeComponent):
                 "no tool trajectory to score against the candidates'. Turn off score_ground_truth, or "
                 'run single-turn.')
         if infer_config.generation_strict is False:
-            # The engine's generation path has no template-encode strictness knob to thread, so an
-            # explicit opt-out is honoured nowhere; say so instead of failing silently.
+            # Honoured nowhere, and the old message claimed the engine has no strictness knob --
+            # it does (TransformersSampler.sample's per-row strict tolerance); what is missing is
+            # the MultiTurnRollout.generate pass-through, so the knob is unreachable from config.
             logger.warning('generation_strict=False has no effect on this path: the rollout engine '
-                           'owns template encoding and has no strictness knob. The flag is accepted '
-                           'only for CLI compatibility.')
+                           'does not thread the sampler-side per-row strictness through generate, '
+                           'so it cannot be reached from config. The flag is accepted only for CLI '
+                           'compatibility.')
 
     def _drive_per_sample(self, *, rows: List[Dict[str, Any]], rollout: Any,
                           cache: '_CandidateCache', writer: Any, recorder: Any, emit: Any,

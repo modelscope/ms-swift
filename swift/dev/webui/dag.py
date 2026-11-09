@@ -588,8 +588,16 @@ class DAGController:
                         self._mark_running(node_id, running=False)
                         error = future.exception()
                         if error is not None:
-                            for other in futures:
+                            # Cancel the un-started rest, then DRAIN: cancel() cannot stop a future
+                            # already executing, and the nodes they map to were marked running at
+                            # submit time. Leaving them in _running here made a failed run report
+                            # ghost "running" nodes to get_running_nodes() forever after.
+                            remaining = list(futures)
+                            for other in remaining:
                                 other.cancel()
+                            wait(remaining, return_when=ALL_COMPLETED)
+                            for other in remaining:
+                                self._mark_running(futures.pop(other), running=False)
                             raise error
                         with self._lock:
                             self._outputs[node_id] = future.result()

@@ -253,9 +253,14 @@ class HubPushTask(TaskComponent):
             raise ComponentError(f'{self.node_id}: hub {hub_name!r} is neither ModelScope nor HuggingFace')
         token_env = str(self.params.get('token_env') or '')
         token = os.environ.get(token_env) if token_env else None
-        if token_env and not token:
+        # Credentials never ride the graph, and an unset token_env used to fall through as
+        # token=None, which the legacy hub layer answers with its login-state/anonymous fallback
+        # -- the exact accident the docstring promises cannot happen. Refuse in BOTH cases: the
+        # token_env not named at all, and named-but-unset.
+        if not token:
             raise ComponentError(
-                f'{self.node_id}: token env var {token_env!r} is unset; export it before pushing')
+                f'{self.node_id}: no push credential: token_env {token_env or "(unset)"} resolves to no token; '
+                'export the named environment variable before pushing')
         get_hub(use_hf).push_to_hub(
             repo_id, folder,
             commit_message=str(self.params.get('commit_message') or '') or None,

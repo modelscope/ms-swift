@@ -172,7 +172,10 @@ class AdvantageStage(StageComponent):
         if not isinstance(samples, list):
             samples = []
         kwargs = dict(self.params.get('kwargs') or {})
-        num_generations = int(kwargs.pop('num_generations', 8))
+        # Declared param (registry), matching generate/select -- the estimator's grouping width.
+        # kwargs keeps its old pop so a stray num_generations there never leaks into the estimator.
+        kwargs.pop('num_generations', None)
+        num_generations = int(self.params.get('num_generations', 8) or 8)
         worker = get_numeric_worker()
         result = worker.advantage(
             samples, reward, inputs.get('values'), num_generations, estimator,

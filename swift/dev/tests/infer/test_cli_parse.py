@@ -52,11 +52,22 @@ def test_legacy_pt_backend_alias(fake_model):
 
 
 def test_legacy_prm_threshold_folds_into_reward_threshold(fake_model):
+    """v4's --prm_threshold is a LEGACY_ALIASES rename of --reward_threshold: normalize_argv
+    rewrites it before argparse, so the CLI spelling lands on the canonical field. Two spellings
+    with DIFFERENT values are a rejected double write (the alias machinery's own rule), and the
+    field itself is gone -- an API caller using the old name fails loudly instead of setting a
+    silently dead knob."""
+    from swift.dev.config import InferConfig
+
     r = parse_infer_configs(['--model', fake_model, '--prm_threshold', '0.3'])
     assert r['infer_config'].reward_threshold == 0.3
-    # an explicit reward_threshold wins over the legacy spelling
-    r2 = parse_infer_configs(['--model', fake_model, '--prm_threshold', '0.3', '--reward_threshold', '0.7'])
-    assert r2['infer_config'].reward_threshold == 0.7
+    # equal values on both spellings pass; different values are a rejected double write
+    parse_infer_configs(['--model', fake_model, '--prm_threshold', '0.3', '--reward_threshold', '0.3'])
+    with pytest.raises(ValueError, match='Conflicting values for --reward_threshold'):
+        parse_infer_configs(['--model', fake_model, '--prm_threshold', '0.3', '--reward_threshold', '0.7'])
+    # the field is gone: the old name is not a silently-dead API knob
+    with pytest.raises(TypeError):
+        InferConfig(prm_threshold=0.3)
 
 
 def test_legacy_sampling_batch_spellings(fake_model):

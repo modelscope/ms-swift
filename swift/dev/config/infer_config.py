@@ -55,8 +55,9 @@ class InferConfig:
 
     # === Synthesis: reward knobs ===
     reward_threshold: Optional[float] = None  # candidates scoring at/below this are dropped
-    # Legacy sampling spelling of reward_threshold, folded into it when not given explicitly.
-    prm_threshold: Optional[float] = None
+    # (prm_threshold is gone as a field: v4's spelling is a LEGACY_ALIASES rename of
+    # reward_threshold, rewritten at argv level -- an API caller using the old name now gets an
+    # explicit TypeError instead of a silently dead knob.)
     # Drop the whole prompt when this fraction of its candidates already score above threshold.
     easy_query_threshold: Optional[float] = None
     # Min-max normalise each prompt's scores before ranking/thresholding (relative, not absolute).
