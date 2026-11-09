@@ -21,7 +21,11 @@ class PrecisionAndShuffleTests(unittest.TestCase):
                     config = ModelConfig(model='/unused', torch_dtype=dtype)
                     stack.enter_context(patch('swift.dev.utils.hub.safe_snapshot_download', side_effect=lambda x, **kw: x))
                     stack.enter_context(patch.object(builder, '_resolve_model_loader', return_value=None))
-                    stack.enter_context(patch.object(builder, '_build_hf_config', return_value=SimpleNamespace()))
+                    # A real HF config always carries model_type; build_model's no-loader fallback
+                    # re-resolves from it, so the mock must supply it (the value is irrelevant here --
+                    # _resolve_model_loader is patched to None regardless -- it only has to exist).
+                    stack.enter_context(
+                        patch.object(builder, '_build_hf_config', return_value=SimpleNamespace(model_type='qwen2')))
                     stack.enter_context(patch.object(builder, '_apply_ray_placement'))
                     stack.enter_context(patch('swift.dev.model.TransformersModel', side_effect=lambda **kw: kw))
                     result = builder.build_model(config, DistributedConfig(fsdp='fsdp2', mode='ray'),
