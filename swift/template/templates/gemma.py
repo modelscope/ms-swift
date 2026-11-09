@@ -105,12 +105,12 @@ class Gemma3VisionTemplate(Gemma3Template):
         return ['<start_of_image>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.models.gemma3.processing_gemma3 import Gemma3ProcessorKwargs
-
         encoded = super()._encode(inputs)
         # Keep text-only rows aligned with multimodal rows in mixed batches.
         encoded['token_type_ids'] = [0] * len(encoded['input_ids'])
         if inputs.images:
+            from transformers.models.gemma3.processing_gemma3 import Gemma3ProcessorKwargs
+
             input_ids = encoded['input_ids']
             labels = encoded['labels']
             loss_scale = encoded.get('loss_scale', None)

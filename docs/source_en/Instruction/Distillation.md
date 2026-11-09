@@ -108,7 +108,7 @@ swift provides three distillation training methods. They share the same teacher 
 
 - `--teacher_model`: Load a separate frozen teacher model in the training process.
 - `--teacher_model_server`: Connect to an external teacher service (vLLM service started via `swift deploy`) without loading the teacher on training GPUs. When using the API with GKD, also set `--gkd_logits_topk`. Supports single URL and multi-teacher JSON config.
-- **Self-distillation**: Teacher and student share the same source. For LoRA training when `--teacher_model` equals `--model`, the base model is used as a fixed teacher via `disable_adapter()` without extra loading; without `--teacher_model` or `teacher_model_server`, the student's current weights serve as a dynamic teacher (all batches in GKD; in GRPO only when data includes `teacher_prompt`—see [3.3](#33-opsd-on-policy-self-distillation)).
+- **Self-distillation**: Teacher and student share the same source. For LoRA training when `--teacher_model` equals `--model` and no `--teacher_adapters` are specified, the base model is used as a fixed teacher via `disable_adapter()` without extra loading. Explicit `--teacher_model` together with `--teacher_adapters` instead loads a separate frozen teacher with those adapters, adding another copy of the base weights in memory. Without `--teacher_model` or `teacher_model_server`, the student's current weights serve as a dynamic teacher (all batches in GKD; in GRPO only when data includes `teacher_prompt`—see [3.3](#33-opsd-on-policy-self-distillation)).
 
 | Parameter | Default | Description |
 |------|--------|------|

@@ -49,7 +49,7 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
                     get_gather_if_zero3_context, parse_prompt_logprobs, patch_lora_merge, patch_lora_unmerge,
                     patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, prepare_deepspeed, prepare_fsdp,
                     profiling_context, profiling_decorator, revert_runtime_names_to_checkpoint, set_expandable_segments,
-                    sleep_vllm_engine, vllm_supports_lora_load_inplace)
+                    sleep_vllm_engine, vllm_sleep, vllm_supports_lora_load_inplace)
 from .vllm_client import VLLMInferClient
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
@@ -58,8 +58,9 @@ logger = get_logger()
 
 @dataclass
 class DataCache:
-    """Cache container for rollout results"""
-    results: List['OnPolicySample']
+    """A terminal rollout result, including failures raised by the worker."""
+    results: Optional[List['OnPolicySample']] = None
+    error: Optional[BaseException] = None
 
 
 class AsyncGenerateCallback(TrainerCallback):
@@ -454,7 +455,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 self.engine = self._prepare_vllm_engine()
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
-                    self.engine.engine.sleep(args.sleep_level)
+                    vllm_sleep(self.engine.engine, args.sleep_level)
 
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode"""
@@ -485,7 +486,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                     'as vLLM currently does not support LoRA in MoE configurations. If you encounter errors, '
                     'please set vllm_enable_lora to False.')
 
-            if self.is_multimodal:
+            if model.model_meta.is_multimodal:
                 logger.warning('vLLM LoRA is enabled for a multimodal model. This may lead to unexpected issues '
                                'when applying LoRA to the ViT component, as vLLM does not yet support this setup. '
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
@@ -1183,32 +1184,43 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         args = self.args
         assert isinstance(args, RolloutTrainerArgumentsMixin)
 
-        if self.vllm_mode == 'colocate' and args.sleep_level > 0:
-            if self.engine.inner_model_executor.is_sleeping:
-                wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
-                kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
-                aggressive_empty_cache()
-                self.engine.engine.wake_up(**kwargs)
+        if args.async_generate:
+            # Check every rank before updating weights or starting another rollout.
+            self._wait_queue()
 
-        if self.state.global_step != self._last_loaded_step or args.sleep_level == 2:
-            self._move_model_to_vllm()
+        needs_weight_sync = self.state.global_step != self._last_loaded_step or args.sleep_level == 2
+        colocate_sleeping = (
+            self.vllm_mode == 'colocate' and args.sleep_level > 0 and self.engine.inner_model_executor.is_sleeping)
+        wake_up_supports_tags = (
+            colocate_sleeping and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters)
+
+        if colocate_sleeping and needs_weight_sync:
+            kwargs = {'tags': ['weights']} if wake_up_supports_tags else {}
+            aggressive_empty_cache()
+            self.engine.engine.wake_up(**kwargs)
+
+        if needs_weight_sync:
+            self._move_model_to_vllm(skip_async_check=True)
             self._last_loaded_step = self.state.global_step
 
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
             rollout_failed = False
             try:
-                if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
-                        and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+                if colocate_sleeping and self.engine.inner_model_executor.is_sleeping:
                     aggressive_empty_cache()
                     set_expandable_segments(False)
-                    self.engine.engine.wake_up(tags=['kv_cache'])
+                    tags = ['kv_cache']
+                    if wake_up_supports_tags and not needs_weight_sync:
+                        tags.insert(0, 'weights')
+                    kwargs = {'tags': tags} if wake_up_supports_tags else {}
+                    self.engine.engine.wake_up(**kwargs)
 
-                if hasattr(self, 'async_generate') and self.async_generate:
+                if args.async_generate:
+                    data_cache = self._queue.get_nowait()
                     all_inputs = gather_object(samples)
                     self.async_generate_rollout(all_inputs)
 
-                    data_cache = self._queue.get()
                     all_outputs = gather_object(data_cache.results)
 
                     per_device_datasize = len(all_outputs) // self.accelerator.num_processes
@@ -1350,13 +1362,14 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         use_tqdm: Optional[bool] = False,
     ) -> List[RolloutOutput]:
         """Perform inference using configured engine"""
-        with profiling_context(self, 'generate'), self._disable_sp_context():
+        with profiling_context(self, 'generate'):
             if self.vllm_mode == 'server':
                 res = self.vllm_client.infer([asdict(req) for req in infer_requests],
                                              asdict(request_config),
                                              use_tqdm=use_tqdm)
             else:
-                res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
+                with self._disable_sp_context():
+                    res = self.engine.infer(infer_requests, request_config, use_tqdm=use_tqdm)
             if all(isinstance(r, RolloutOutput) for r in res):
                 return res
             else:
@@ -1415,25 +1428,37 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         return results
 
     @torch.no_grad()
-    def offload_model(self, model):
+    def offload_model(self, model) -> bool:
+        """Offload model tensors to CPU and report whether anything moved."""
         # FSDP2: simple .cpu() is sufficient
         if self._is_fsdp2:
-            model.cpu()
-            torch.cuda.empty_cache()
-            return
+            moved = any(param.device.type != 'cpu' for param in model.parameters())
+            if not moved:
+                moved = any(buf is not None and buf.device.type != 'cpu' for buf in model.buffers())
+            if moved:
+                model.cpu()
+                torch.cuda.empty_cache()
+            return moved
 
         # Default: iterate over parameters AND buffers.
+        moved = False
         for param in model.parameters():
             # After DeepSpeed distributed loading: param.data is empty and weights cannot be off-loaded.
             # The real weights are stored in ds_tensor.
             if is_deepspeed_enabled() and hasattr(param, 'ds_tensor'):
-                param.ds_tensor.data = param.ds_tensor.data.to('cpu', non_blocking=True)
+                tensor = param.ds_tensor
             else:
-                param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+                tensor = param
+            if tensor.device.type != 'cpu':
+                tensor.data = tensor.data.to(torch.device('cpu'), non_blocking=True)
+                moved = True
         for buf in model.buffers():
             if buf is not None and buf.device.type != 'cpu':
                 buf.data = buf.data.to(torch.device('cpu'), non_blocking=True)
-        torch.cuda.empty_cache()
+                moved = True
+        if moved:
+            torch.cuda.empty_cache()
+        return moved
 
     @torch.no_grad()
     def load_model(self, model):
@@ -1627,21 +1652,29 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 logger.error('Inference task failed: %s', str(e))
                 raise
 
-        future: Future = self.executor.submit(infer_task)
-
         def done(future):
             try:
-                result = future.result()
-                current_queue.put(DataCache(result))
-            except Exception as e:
-                logger.error('Error in async_generate_rollout callback: %s', str(e))
+                data_cache = DataCache(results=future.result())
+            except BaseException as e:
+                data_cache = DataCache(error=e)
+            current_queue.put(data_cache)
 
+        try:
+            future: Future = self.executor.submit(infer_task)
+        except BaseException as e:
+            # Submission failures must obey the same protocol on every rank.
+            future = Future()
+            future.set_exception(e)
+        # Keep the latest Future for each mode, including its exception, until replaced.
+        self._async_futures[current_queue] = future
         future.add_done_callback(done)
+        return future
 
     def _prepare_async_generate(self):
         """Initialize async generation queues and callback"""
         self.train_queue = Queue()
         self.eval_queue = Queue()
+        self._async_futures = {}
         args = self.args
 
         if args.async_generate:
@@ -1655,9 +1688,25 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         else:
             return self.train_queue
 
-    def _wait_queue(self):
-        """Wait for queue to have items"""
-        while self._queue.empty():
+    def _wait_queue(self, current_queue=None):
+        """Wait for results on every rank, propagating failures before further collectives."""
+        if current_queue is None:
+            current_queue = self._queue
+        while True:
+            # Peek without consuming: weight updates and train/eval transitions also wait here.
+            with current_queue.mutex:
+                data_cache = current_queue.queue[0] if current_queue.queue else None
+            error = data_cache.error if data_cache is not None else None
+            error_message = f'{type(error).__name__}: {error}' if error is not None else None
+            # Exchange only serializable status; the original exception stays on its owning rank.
+            statuses = gather_object([(data_cache is not None, error_message)])
+            for rank, (_, message) in enumerate(statuses):
+                if message is not None:
+                    if error is not None:
+                        raise error
+                    raise RuntimeError(f'Async rollout failed on rank {rank}: {message}')
+            if all(ready for ready, _ in statuses):
+                return
             time.sleep(0.01)
 
     def _sort_by_request_id(self, all_outputs: List[RolloutOutput]) -> List[RolloutOutput]:

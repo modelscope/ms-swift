@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
-import datasets
 import json
 import numpy as np
 import os
@@ -9,15 +8,14 @@ from contextlib import contextmanager
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Sequence, Value
+from datasets import Value
 from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
-from packaging import version
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from swift.template import history_to_messages
 from swift.template.template_inputs import normalize_openai_tool_calls
-from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
+from swift.utils import TOOL_KEYS, get_logger, is_dist, is_master, remove_arrow_padding, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -40,7 +38,24 @@ class RowPreprocessor:
                                 # Qwen3-TTS
                                 'ref_audios',
                                 'audio_codes',
+                                # `decision` task_type (typed-decision System-1 scoring).
+                                'questions',
+                                'kinds',
+                                'options',
+                                'target_probs',
+                                'state',
+                                'question_ids',
+                                'criteria',
+                                'omnijev_column_keys',
+                                'omnijev_video',
                             ]
+    # Bump whenever the preprocessed-cache schema or semantics change (e.g. #9214 changed
+    # messages[].loss from float64 to bool and added loss_scale). map_cache files are named
+    # after the *input* fingerprint only, and datasets reuses an existing cache file without
+    # validating it when `cache_file_name` is passed explicitly, so without this tag a newer
+    # ms-swift silently loads caches written by an older, schema-incompatible release.
+    # Same cache-busting approach as Template._version.
+    cache_format_version = 'v2'
 
     def __init__(self,
                  *,
@@ -61,7 +76,6 @@ class RowPreprocessor:
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
-        self.datasets_4 = version.parse(datasets.__version__) >= version.parse('4.0')
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
         self.random_state = random_state
@@ -75,6 +89,9 @@ class RowPreprocessor:
         # fix swift/SlimOrca (concat)
         for message in messages:
             keys = set(message.keys()) - {'role', 'content', 'loss', 'loss_scale'}
+            if message.get('role') in {'tool', 'tool_response'}:
+                # Native agent templates (e.g. Gemma4) use the tool response name.
+                keys.discard('name')
             for key in keys:
                 message.pop(key)
 
@@ -106,6 +123,33 @@ class RowPreprocessor:
                 continue
             elif isinstance(mm_data, str):
                 row[key] = [mm_data]
+
+    @staticmethod
+    def _normalize_tools(row: Dict[str, Any]) -> None:
+        """Normalize the `tools` columns and drop the ``null`` fields added by Arrow.
+
+        Tool schemas are heterogeneous nested dicts, but an Arrow column holds a single
+        struct type: the fields a tool never defined are read back as ``null``. Datasets
+        published as Parquet/Arrow already carry that padding, `Dataset.from_list` adds it
+        while inferring the features, and casting a batch to the features inferred from
+        another one may even drop fields silently. The padding is removed here and
+        `_patch_arrow_writer` stores the columns as `List(Json())`, so that every schema
+        survives the Arrow cache and the concatenation verbatim.
+        """
+        for key in TOOL_KEYS:
+            tools = row.get(key)
+            if tools is None:
+                continue
+            if isinstance(tools, str):
+                try:
+                    tools = json.loads(tools)
+                except json.JSONDecodeError:
+                    pass  # not a JSON document: a single plain text tool
+            if not isinstance(tools, (list, tuple)):
+                # A single tool, or the scalar a JSON string decoded to. Left bare, either
+                # would be split into its characters by the `List(Json())` feature.
+                tools = [tools]
+            row[key] = [remove_arrow_padding(tool) for tool in tools]
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
@@ -195,6 +239,7 @@ class RowPreprocessor:
                     self._check_rejected_response(r)
                     self._check_messages(r)
                     self._cast_mm_data(r)
+                    self._normalize_tools(r)
             except Exception as e:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -221,6 +266,10 @@ class RowPreprocessor:
             assert isinstance(dataset, HfIterableDataset)
             dataset = dataset._resolve_features()
         return dataset
+
+    def _map_cache_file(self, fingerprint: str) -> str:
+        return os.path.join(get_cache_dir(), 'datasets', 'map_cache',
+                            f'{fingerprint}_{self.cache_format_version}.arrow')
 
     @staticmethod
     def safe_rename_columns(dataset, columns):
@@ -259,43 +308,24 @@ class RowPreprocessor:
         def _new_init(_self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-
-                if self.datasets_4:
-                    from datasets.features import Json, List
-                    messages_feature = List(Json())
-                    for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
-                        features[key] = messages_feature
-                    image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
-                    features['images'] = image_feature
-                    if 'teacher_images' in features:
-                        features['teacher_images'] = image_feature
-                    features['objects'] = Json()
-                    features['chat_template_kwargs'] = Json()
-                else:
-                    messages_feature = [{
-                        'role': Value(dtype='string'),
-                        'content': Value(dtype='string'),
-                    }]
-                    messages_feature_with_loss = [{
-                        'role': Value(dtype='string'),
-                        'content': Value(dtype='string'),
-                        'loss': Value(dtype='bool'),
-                        'loss_scale': Value(dtype='float64'),
-                    }]
-                    features['messages'] = messages_feature_with_loss
-                    features['rejected_messages'] = messages_feature_with_loss
-                    features['positive_messages'] = messages_feature
-                    features['negative_messages'] = messages_feature
-                    image_feature = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
-                    features['images'] = image_feature
-                    if 'teacher_images' in features:
-                        features['teacher_images'] = image_feature
-                    features['objects'] = {
-                        'ref': Sequence(feature=Value(dtype='string'), length=-1),
-                        'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
-                        'bbox_type': Value(dtype='string'),
-                        'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
-                    }
+                from datasets.features import Json, List
+                messages_feature = List(Json())
+                for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
+                    features[key] = messages_feature
+                # Tool schemas are heterogeneous as well; `Json` keeps every schema verbatim
+                # instead of aligning them into one struct type (see `_normalize_tools`).
+                # Guarded, unlike the message keys above: only agent datasets carry tools and
+                # adding the column would give every other dataset a null one.
+                tools_feature = List(Json())
+                for key in TOOL_KEYS:
+                    if key in features:
+                        features[key] = tools_feature
+                image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                features['images'] = image_feature
+                if 'teacher_images' in features:
+                    features['teacher_images'] = image_feature
+                features['objects'] = Json()
+                features['chat_template_kwargs'] = Json()
             ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
@@ -342,8 +372,7 @@ class RowPreprocessor:
         if 'solution' in dataset.features:
             with safe_ddp_context(None, True):
                 if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                    map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                                 f'{dataset._fingerprint}.arrow')
+                    map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
                 map_kwargs.pop('cache_file_name', None)
         dataset = self.safe_rename_columns(dataset, self.origin_columns)
@@ -360,8 +389,7 @@ class RowPreprocessor:
         ignore_max_length_error = True
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
-                map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                             f'{dataset._fingerprint}.arrow')
+                map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
             dataset_mapped = dataset.map(
                 self.batched_preprocess,
                 fn_kwargs={
@@ -438,7 +466,10 @@ class AlpacaPreprocessor(ResponsePreprocessor):
 
 def default_repair_messages(s: Union[str, Any]) -> Any:
     if isinstance(s, str):
-        return ast.literal_eval(s)
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError:
+            return ast.literal_eval(s)
     return s
 
 
@@ -556,6 +587,22 @@ class MessagesPreprocessor(RowPreprocessor):
                 raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
         return ''.join(parts)
 
+    @staticmethod
+    def _align_anthropic_tool_results(tool_uses: List[Dict[str, Any]],
+                                      content: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # Canonical tool responses are positional, so align a complete result batch
+        # before the tool_use IDs are discarded. Keep incomplete or ID-less batches as-is.
+        call_order = {block.get('id'): i for i, block in enumerate(tool_uses)}
+        end = 0
+        while end < len(content) and content[end].get('type') == 'tool_result':
+            end += 1
+        results = content[:end]
+        if (None not in call_order and len(call_order) == len(tool_uses) == len(results)
+                and set(call_order) == {result.get('tool_use_id')
+                                        for result in results}):
+            content = sorted(results, key=lambda result: call_order[result['tool_use_id']]) + content[end:]
+        return content
+
     @classmethod
     def anthropic_to_messages(cls,
                               messages: List[Dict[str, Any]],
@@ -563,11 +610,16 @@ class MessagesPreprocessor(RowPreprocessor):
         """Convert Anthropic content blocks to the SWIFT canonical roles."""
         media = media if media is not None else {'images': []}
         new_messages = []
+        tool_uses = []
         for message in messages:
             content = message.get('content')
             if not isinstance(content, list):
                 new_messages.append(message)
+                tool_uses = []
                 continue
+            if tool_uses:
+                content = cls._align_anthropic_tool_results(tool_uses, content)
+            tool_uses = [block for block in content if block.get('type') == 'tool_use']
 
             pending_content = []
             message_metadata = {key: message[key] for key in ['loss', 'loss_scale'] if key in message}

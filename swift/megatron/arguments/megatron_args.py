@@ -7,7 +7,6 @@ from dataclasses import dataclass, field, fields
 from mcore_bridge.model import get_mcore_model_type, get_model_meta
 from megatron.core import mpu
 from megatron.core.transformer.enums import AttnBackend
-from packaging import version
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -17,7 +16,6 @@ from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
-mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
 logger = get_logger()
 
 
@@ -149,11 +147,11 @@ class RLHFMegatronArgumentsMixin:
 
     # Dr. GRPO, https://arxiv.org/abs/2503.20783
     # GDPO: normalize each reward function separately
-    scale_rewards: Literal['none', 'group', 'batch', 'gdpo'] = 'group'
+    scale_rewards: Optional[Literal['none', 'group', 'batch', 'gdpo']] = None
 
     # RLOO / REINFORCE++
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
-    kl_in_reward: bool = False
+    kl_in_reward: Optional[bool] = None
 
     wandb_log_unique_prompts: Optional[bool] = None
     log_completions: bool = False
@@ -423,6 +421,26 @@ class RLHFMegatronArgumentsMixin:
                 f"[REAL] scale_rewards='{self.scale_rewards}' is ignored. "
                 "It will be forced to 'none' because 'loss_type = real' does not support reward normalization.")
 
+        # `kl_in_reward` / `scale_rewards` default to the value tied to `advantage_estimator`.
+        # Mirrors `RLHFArguments._init_grpo` and the Megatron command-line documentation.
+        if self.kl_in_reward is None:
+            if self.advantage_estimator == 'grpo':
+                self.kl_in_reward = False
+            elif self.advantage_estimator in ['rloo', 'reinforce_plus_plus']:
+                self.kl_in_reward = True
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
+        if self.scale_rewards is None:
+            if self.advantage_estimator == 'grpo':
+                self.scale_rewards = 'group'
+            elif self.advantage_estimator == 'rloo':
+                self.scale_rewards = 'none'
+            elif self.advantage_estimator == 'reinforce_plus_plus':
+                self.scale_rewards = 'batch'
+            else:
+                raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
@@ -463,7 +481,7 @@ class MegatronTunerMixin:
 
     # lora
     lora_rank: int = 8
-    lora_alpha: int = 32
+    lora_alpha: float = 32.0
     lora_dropout: float = 0.05
     lora_bias: Literal['none', 'all'] = 'none'
     lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
@@ -474,6 +492,21 @@ class MegatronTunerMixin:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
         if self.target_regex:
             self.target_modules = self.target_regex
+
+
+def _normalize_mtp_num_layers(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if value == 'auto':
+            return 'auto'
+        try:
+            value = int(value)
+        except ValueError:
+            raise ValueError("`mtp_num_layers` must be an integer or 'auto'.")
+    else:
+        value = int(value)
+    return value
 
 
 @dataclass
@@ -515,7 +548,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     train_dataloader_shuffle: bool = True
     dataloader_num_workers: int = 4
     dataloader_pin_memory: bool = True
-    dataloader_persistent_workers: bool = False
+    dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 2
     dataloader_multiprocessing_context: Optional[Literal['fork', 'spawn', 'forkserver']] = None
     data_sharding: bool = False
@@ -667,16 +700,23 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     moe_aux_loss_coeff: List[float] = 0.
     moe_z_loss_coeff: Optional[float] = None
     moe_shared_expert_overlap: bool = False
-    moe_layer_recompute: bool = False  # compat mcore 0.12
     moe_expert_capacity_factor: Optional[float] = None
     moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
 
+    # engram
+    engram_tokenizer_map: Optional[str] = None
+
     # mtp
-    mtp_num_layers: Optional[int] = None
+    # int, 'auto' (default), or None (disabled).
+    mtp_num_layers: Optional[Union[int, str]] = 'auto'
     mtp_loss_scaling_factor: float = 0.1
     mtp_decoder_input_detach: bool = False
-    mtp_shared_weights: bool = False
+    # None = auto: reuse one physical set when the requested depth exceeds the checkpoint's sets.
+    mtp_shared_weights: Optional[bool] = None
+
+    # Full-finetune checkpoints without MTP keys fail loud unless this is set.
+    mtp_allow_random_init: bool = False
 
     # mcore-bridge / megatron-bridge
     bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
@@ -761,7 +801,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.lr = 1e-4
         if self.task_type is None:
             self.task_type = 'causal_lm'
-        if self.calculate_per_token_loss is None:
+        if self.rlhf_type == 'gkd':
+            if self.calculate_per_token_loss is False:
+                logger.warning("calculate_per_token_loss=False is incompatible with rlhf_type='gkd'; forcing True.")
+            self.calculate_per_token_loss = True
+        elif self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = (self.task_type == 'causal_lm' and self.rlhf_type is None)
 
     def _init_mixed_precision(self):
@@ -794,13 +838,34 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             _patch_mcore_bridge()
             self._check_mcore_bridge()
 
+    def _check_recompute(self):
+        """Reject the LoRA + selective-recomputation combination for deepseek_v41."""
+        # For deepseek_v41 selective recomputation drives the per-module
+        # CheckpointWithoutOutput path, which discards a submodule output and registers a
+        # recompute backward hook on a downstream tensor (e.g. the attention output). LoRA
+        # inserts adapter autograd nodes that reorder the backward pass so the checkpoint's
+        # own backward frees its saved inputs before that hook fires; recomputation then
+        # crashes reading the freed ctx.saved_tensors. Full-parameter tuning keeps the
+        # expected ordering, so selective is only safe there.
+        if (self.model_type == 'deepseek_v41' and self.tuner_type in ('lora', 'lora_llm')
+                and self.recompute_granularity == 'selective'):
+            raise ValueError('recompute_granularity="selective" is not supported with LoRA for deepseek_v41: '
+                             'the recompute backward hook crashes on the freed activation graph. Use '
+                             '--recompute_granularity full (recommended, largest memory saving) or none, or '
+                             'switch to tuner_type="full" to keep selective recomputation.')
+
     def __post_init__(self):
+        self.mtp_num_layers = _normalize_mtp_num_layers(self.mtp_num_layers)
         if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         self._check_bridge_backend()
+        if self.bridge_backend == 'megatron-bridge' and self.mtp_num_layers == 'auto':
+            logger.warning("`mtp_num_layers='auto'` is not supported with bridge_backend='megatron-bridge'; "
+                           'MTP is disabled.')
+            self.mtp_num_layers = None
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
         if self.recompute_granularity == 'selective' and self.recompute_method is not None:
@@ -821,6 +886,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.model_type = self.model_info.model_type
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
+        self._check_recompute()
         if self.bridge_backend == 'megatron-bridge':
             self.megatron_model_meta = None
             if self.is_multimodal:
@@ -913,6 +979,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     def _check_megatron_fsdp(self):
         if not self.use_megatron_fsdp:
             return
+        if is_torch_npu_available() and self.virtual_pipeline_model_parallel_size is not None:
+            raise ValueError('NPU Megatron-FSDP does not support virtual pipeline parallelism yet. '
+                             'Its DCP preprocessing currently handles one model chunk per pipeline rank; '
+                             'set virtual_pipeline_model_parallel_size=None and use ordinary PP instead.')
         # Megatron-FSDP is only compatible with the distributed optimizer.
         if not self.use_distributed_optimizer:
             logger.info('Megatron-FSDP is only compatible with use_distributed_optimizer=True; setting it to True.')
@@ -976,9 +1046,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     def _check_muon(self):
         # Code borrowed from NVIDIA/Megatron-LM
         if 'muon' in self.optimizer:
-            if not mcore_016:
-                raise ValueError('Muon optimizer requires "megatron-core>=0.16".')
-
             if self.optimizer == 'muon':
                 assert not self.overlap_grad_reduce, (
                     'Muon optimizer does not support overlap grad reduce. Use dist_muon instead.')
@@ -986,54 +1053,20 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                     'Muon optimizer does not support overlap param gather. Use dist_muon instead.')
             # Muon optimizer does not support distributed optimizer for now.
             self.use_distributed_optimizer = False
-            # compat mcore 0.17
+            # mcore 0.18 renamed the field to `muon_nesterov`; swift keeps the
+            # historical `--muon_use_nesterov` CLI name and forwards it here.
             self.muon_nesterov = self.muon_use_nesterov
 
             # `vit_lr`/`aligner_lr` replace mcore's `_get_param_groups`. Where Muon splits the parameters
             # through `config_overrides`, that replacement drops the split and every parameter, biases
-            # included, ends up in Muon; failing here beats training that silently. The older Muon does the
-            # split by freezing parameters around the call instead, so the replacement is harmless there.
+            # included, ends up in Muon; failing here beats training that silently.
             incompatible_args = [name for name in ['vit_lr', 'aligner_lr'] if getattr(self, name) is not None]
-            if incompatible_args and self._muon_routes_through_param_overrides():
+            if incompatible_args:
                 raise ValueError(f'Muon optimizer does not support: {", ".join(incompatible_args)} with '
                                  f'megatron-core {megatron.core.__version__}. '
                                  'Use `--muon_lr` to give the Muon-managed matrices their own learning rate.')
-            self._check_muon_mcore_support()
         elif self.muon_lr is not None or self.muon_min_lr is not None:
             raise ValueError('`muon_lr`/`muon_min_lr` require `--optimizer muon` or `--optimizer dist_muon`.')
-
-    @staticmethod
-    def _muon_routes_through_param_overrides() -> bool:
-        """Whether the installed mcore splits the parameters between Muon and its scalar optimizer through
-        `config_overrides` rather than by freezing them around `_get_param_groups`.
-
-        `is_managed_by_layer_wise_optimizer` is the predicate that split was expressed as, and it is declared
-        unconditionally, so unlike the override registry it tells the two designs apart without also depending
-        on which `emerging-optimizers` happens to be installed. `BaseMegatronTrainer` resolves the same symbol
-        to key the `muon_lr` override on, falling back to the older inline rule, so the two move together.
-        """
-        try:
-            from megatron.core.optimizer.layer_wise_optimizer import is_managed_by_layer_wise_optimizer  # noqa: F401
-        except ImportError:
-            return False
-        return True
-
-    def _check_muon_mcore_support(self):
-        """Fail on Muon settings the installed megatron-core would drop without a word.
-
-        mcore fills its `OptimizerConfig` from the fields it declares, so a setting it does not know about
-        vanishes silently: on the versions predating `muon_scalar_optimizer`, Muon hardcodes Adam for the
-        parameters it does not manage, and `--muon_scalar_optimizer sgd` would quietly train with Adam.
-        """
-        from megatron.core.optimizer import OptimizerConfig
-        config_fields = {f.name for f in fields(OptimizerConfig)}
-        unsupported = [
-            name for name in ['muon_scalar_optimizer', 'muon_coefficient_type']
-            if name not in config_fields and getattr(self, name) != self.__dataclass_fields__[name].default
-        ]
-        if unsupported:
-            raise ValueError(f'megatron-core {megatron.core.__version__} does not support: '
-                             f'{", ".join(unsupported)}. Leave them at their default or upgrade megatron-core.')
 
     def _init_teacher_model(self):
         if self.teacher_model is None:

@@ -30,6 +30,11 @@ class TestIOUtils(unittest.TestCase):
         new_obj_list = read_from_jsonl(fpath)
         self.assertTrue(new_obj_list == obj_list)
 
+    def test_empty_jsonl(self):
+        fpath = os.path.join(self.tmp_dir, 'empty.jsonl')
+        write_to_jsonl(fpath, [])
+        self.assertEqual(read_from_jsonl(fpath), [])
+
     def test_jsonl2(self):
         fpath = os.path.join(self.tmp_dir, '1.jsonl')
         obj_list = [{'aaa': 'bbb'}, 111, [1.1]]

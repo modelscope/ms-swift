@@ -62,6 +62,8 @@ class LLMModelType:
 
     telechat = 'telechat'
     telechat2 = 'telechat2'
+    xing4_0 = 'xing4_0'
+    flint = 'flint'
 
     mistral = 'mistral'
     devstral = 'devstral'
@@ -112,6 +114,7 @@ class LLMModelType:
     ernie4_5 = 'ernie4_5'
     ernie4_5_moe = 'ernie4_5_moe'
     gemma_emb = 'gemma_emb'
+    gemma2_emb = 'gemma2_emb'
     longchat = 'longchat'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'
@@ -121,6 +124,10 @@ class LLMModelType:
     bge_reranker = 'bge_reranker'
 
     olmoe = 'olmoe'
+    olmo3 = 'olmo3'
+
+    generic_decision = 'generic_decision'
+    laya = 'laya'
 
 
 class BertModelType:
@@ -158,6 +165,14 @@ class MLLMModelType:
     wemm_embedding = 'wemm_embedding'
     qwen4_exp = 'qwen4_exp'
 
+    # typed-decision (System-1 scoring) task_type models
+    jev = 'jev'
+    clef = 'clef'
+    omnijev = 'omnijev'
+    kev = 'kev'
+    thx02 = 'thx02'
+    startlux = 'startlux'
+
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
     ovis2 = 'ovis2'
@@ -168,6 +183,7 @@ class MLLMModelType:
     chatglm4v = 'chatglm4v'
     glm4v = 'glm4v'
     glm4v_moe = 'glm4v_moe'
+    glm5_next = 'glm5_next'
     glm_edge_v = 'glm_edge_v'
     glm_ocr = 'glm_ocr'
     cogvlm = 'cogvlm'
@@ -210,6 +226,7 @@ class MLLMModelType:
     llava_onevision1_5 = 'llava_onevision1_5'
     llava_onevision2 = 'llava_onevision2'
 
+    deepseek_v41 = 'deepseek_v41'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
@@ -217,6 +234,8 @@ class MLLMModelType:
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
     unlimited_ocr = 'unlimited_ocr'
+    # NOTE: `unlimited-ocr` is not a typo: it is the model_type declared by v2's `config.json`.
+    unlimited_ocr2 = 'unlimited-ocr'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
@@ -224,6 +243,8 @@ class MLLMModelType:
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
     minicpmv4_6 = 'minicpmv4_6'
+    minicpmv4_7 = 'minicpmv4_7'
+    minicpm_ocr = 'minicpm_ocr'
     minicpmo = 'minicpmo'
 
     minimax_vl = 'minimax_vl'
@@ -275,6 +296,10 @@ class MLLMModelType:
     muse_glimmer = 'muse_glimmer'
 
     jina_reranker_m0 = 'jina_reranker_m0'
+    monkeyocrv2 = 'monkeyocrv2'
+
+    nemotron_h_omni = 'nemotron_h_omni'
+    nemo_speechlm = 'nemo_speechlm'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):

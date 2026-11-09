@@ -35,6 +35,7 @@ class LLMTemplateType:
     sus = 'sus'
     gpt_oss = 'gpt_oss'
     seed_oss = 'seed_oss'
+    flint = 'flint'
 
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
@@ -58,6 +59,7 @@ class LLMTemplateType:
     glm4_7 = 'glm4_7'
     glm5_1 = 'glm5_1'
     glm5_2 = 'glm5_2'
+    glm5_3 = 'glm5_3'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 
@@ -79,8 +81,10 @@ class LLMTemplateType:
     baichuan_m1 = 'baichuan_m1'
     minicpm = 'minicpm'
     minicpm5 = 'minicpm5'
+    minicpm5_2b = 'minicpm5_2b'
     telechat = 'telechat'
     telechat2 = 'telechat2'
+    xing4_0 = 'xing4_0'
 
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'
@@ -131,7 +135,11 @@ class LLMTemplateType:
     youtu_llm = 'youtu_llm'
     olmoe = 'olmoe'
     olmoe_0924 = 'olmoe_0924'
+    olmo3 = 'olmo3'
     spark2_5 = 'spark2_5'
+
+    generic_decision = 'generic_decision'
+    laya = 'laya'
 
 
 class RMTemplateType:
@@ -156,6 +164,13 @@ class MLLMTemplateType:
     qwen3_8 = 'qwen3_8'
     qwen3_5_emb = 'qwen3_5_emb'
     wemm_embedding = 'wemm_embedding'
+
+    jev = 'jev'
+    clef = 'clef'
+    omnijev = 'omnijev'
+    kev = 'kev'
+    thx02 = 'thx02'
+    startlux = 'startlux'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
@@ -220,6 +235,7 @@ class MLLMTemplateType:
     glm_edge_v = 'glm_edge_v'
     glm4v = 'glm4v'
     glm4_5v = 'glm4_5v'
+    glm5_next = 'glm5_next'
     glm_ocr = 'glm_ocr'
 
     minicpmv = 'minicpmv'
@@ -228,9 +244,12 @@ class MLLMTemplateType:
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
     minicpmv4_6 = 'minicpmv4_6'
+    minicpmv4_7 = 'minicpmv4_7'
+    minicpm_ocr = 'minicpm_ocr'
     minicpmo = 'minicpmo'
     minicpmo4_5 = 'minicpmo4_5'
 
+    deepseek_v41 = 'deepseek_v41'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
@@ -284,6 +303,10 @@ class MLLMTemplateType:
     step3_vl = 'step3_vl'
     minimax_m3_vl = 'minimax_m3_vl'
     muse_glimmer = 'muse_glimmer'
+    monkeyocrv2 = 'monkeyocrv2'
+
+    nemotron_h_omni = 'nemotron_h_omni'
+    nemo_speechlm = 'nemo_speechlm'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

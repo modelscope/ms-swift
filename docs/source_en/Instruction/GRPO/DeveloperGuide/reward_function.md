@@ -3,14 +3,14 @@
 The reward function takes as arguments (via kwargs) the model-generated completions, other columns from the dataset, and the training state, and calculates a reward score. The [trainer state](https://huggingface.co/docs/transformers/main/main_classes/callback#transformers.TrainerState) includes information such as the current training step.
 
 Note: The columns related to model input (such as query and response) are converted to the messages key. The original assistant response in the dataset will be discarded, so please use extra columns if you wish to retain it.
-The relevant column names for processing can be found in the [document](../../../Customization/Custom-dataset.md#Query-Response)
+The relevant column names for processing can be found in the [document](../../../Customization/Custom-dataset.md)
 
 Below is an example illustrating how to implement a simple length-based reward function. This function assigns a reward of 1.0 if the length of the generated completion exceeds 1024, and 0.0 otherwise.
 
 ```python
 from swift.rewards import ORM, orms
-class DummyLengthRewardFunction(ORM)
-    def __call__(completions, **kwargs):
+class DummyLengthRewardFunction(ORM):
+    def __call__(self, completions, **kwargs):
         return [1.0 if len(completion) > 1024 else 0.0 for completion in completions]
 
 orms['dummy']= DummyLengthRewardFunction
@@ -22,7 +22,7 @@ For example, if the reward function needs to access the solution column from the
 
 Explicitly define the column name in the __call__ parameters:
 ```python
-    def __call__(completions, solution, trainer_state, **kwargs):
+    def __call__(self, completions, solution, trainer_state, **kwargs):
         print(solution)
         global_step = trainer_state.global_step
         max_steps = trainer_state.max_steps
@@ -31,7 +31,7 @@ Explicitly define the column name in the __call__ parameters:
 
 Retrieve it from kwargs:
 ```python
-    def __call__(completions, **kwargs):
+    def __call__(self, completions, **kwargs):
         solution = kwargs.get('solution')
         trainer_state = kwargs.get('trainer_state')
         global_step = trainer_state.global_step
@@ -115,6 +115,8 @@ The paper found that using only the accuracy reward function for training could 
 
 A cosine function is used to smoothly adjust the reward value, ensuring the changes remain within a reasonable range. The parameters of the cosine function include the length of the generated text, the maximum length limit, and the minimum and maximum reward values.
 
+Length is counted in generated tokens across all rollout turns. When the total exceeds `cosine_max_len`, the reward stays at the configured maximum-length value for the answer's correctness.
+
 Parameters:
 - cosine_min_len_value_wrong (default: -0.5): The reward value for the minimum length when the answer is incorrect.
 - cosine_max_len_value_wrong (default: 0.0): The reward value for the maximum length when the answer is incorrect.
@@ -134,6 +136,8 @@ Parameters:
 
 ### 5. **soft overlong punishment**
 Defines a length penalty interval. Within this interval, a linear penalty in the range [-1, 0] is applied.
+
+Length is counted in generated tokens across all rollout turns. When the total exceeds `soft_max_length`, the penalty stays at -1.
 
 Parameters:
 - soft_max_length: L_max in the paper, the model's maximum generation length, defaulting to max_completion_length.

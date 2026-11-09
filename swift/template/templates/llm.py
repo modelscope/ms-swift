@@ -197,6 +197,36 @@ register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
 telechat_system = '你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。'
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2, default_system=telechat_system))
 
+
+class Xing4_0Template(Template):
+    """ref: https://modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B (chat_template.jinja)"""
+
+    def __init__(self, *args, **kwargs):
+        # The jinja template turns thinking on unless `enable_thinking` is explicitly false, while the
+        # base class derives `is_thinking and not non_thinking_prefix` (i.e. False) for hybrid models.
+        if kwargs.get('enable_thinking') is None:
+            kwargs['enable_thinking'] = True
+        super().__init__(*args, **kwargs)
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.xing4_0,
+        prefix=['<_system>'],
+        system_prefix=['<_system>{{SYSTEM}}'],
+        prompt=['<_user>{{QUERY}}<_bot>'],
+        chat_sep=['<_end>\n'],
+        suffix=['<_end>\n'],
+        template_cls=Xing4_0Template,
+        agent_template='xing4_0',
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>',
+        # The official jinja template drops the reasoning of historical turns; match it so the
+        # rendered prompt is byte-for-byte identical to chat_template.jinja in every mode.
+        preserve_thinking=False))
+
 DBRX_SYSTEM = (
     'You are DBRX, created by Databricks. You were last updated in December 2023. '
     'You answer questions based on information available up to that point.\n'
@@ -598,6 +628,47 @@ register_template(
         chat_sep=['<|endoftext|>\n'],
         suffix=['<|endoftext|>'],
         stop_words=['<|endoftext|>'],
+    ))
+
+
+class Olmo3Template(Template):
+
+    # Packed/padding-free paths do not preserve Olmo3's separate
+    # sliding-window and full-attention masks.
+    support_padding_free = False
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        # The official Think template uses its own function_calls/environment
+        # protocol. Do not silently apply another model's agent format to it.
+        if inputs.is_multimodal:
+            raise ValueError('olmo3 only supports text conversations; '
+                             'images, videos and audio are not supported.')
+        if inputs.tools or inputs.extra_kwargs.get('functions') is not None or any(
+                message['role'] not in {'user', 'assistant'} or any(
+                    message.get(key) is not None for key in ['functions', 'function_calls', 'tool_calls'])
+                for message in inputs.messages):
+            raise ValueError('olmo3 currently supports text-only user/assistant conversations without tools.')
+        super()._preprocess_inputs(inputs)
+
+
+# https://huggingface.co/allenai/Olmo-3-7B-Think/blob/main/chat_template.jinja
+_OLMO3_NO_TOOLS = ' You do not currently have access to any functions. <functions></functions>'
+register_template(
+    ChatmlTemplateMeta(
+        LLMTemplateType.olmo3,
+        template_cls=Olmo3Template,
+        # An explicitly empty system still receives the official function notice.
+        prefix=['<|im_start|>system\n' + _OLMO3_NO_TOOLS + '<|im_end|>\n'],
+        system_prefix=['<|im_start|>system\n{{SYSTEM}}' + _OLMO3_NO_TOOLS + '<|im_end|>\n'],
+        default_system=('You are OLMo, a helpful function-calling AI assistant built by Ai2. '
+                        'Your date cutoff is November 2024, and your model weights are available at '
+                        'https://huggingface.co/allenai.'),
+        # Historical assistant turns end in im_end; the final response ends in EOS.
+        suffix=[['eos_token_id']],
+        auto_add_bos=False,
+        is_thinking=True,
+        thinking_prefix='<think>',
+        preserve_thinking=True,
     ))
 
 register_template(

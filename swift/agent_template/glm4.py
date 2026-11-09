@@ -83,8 +83,10 @@ class GLM4AgentTemplate(ChatGLM4AgentTemplate):
 class GLM4_5AgentTemplate(BaseAgentTemplate):
     model_type = 'glm4_5'
 
+    supports_tool_schema = True
+
     @staticmethod
-    def _find_function_call(single_content: str) -> Optional[Function]:
+    def _find_function_call(single_content: str, tool_schemas: Optional[dict] = None) -> Optional[Function]:
         single_content = single_content.strip()
         func_name_match = re.match(r'^([^\n<]+)', single_content)
         if not func_name_match:
@@ -94,14 +96,15 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         values = re.findall(r'<arg_value>(.*?)</arg_value>', single_content, re.DOTALL)
         if len(keys) != len(values):
             return None
-        args = {k.strip(): v.strip() for k, v in zip(keys, values)}
+        args = BaseAgentTemplate._decode_schema_args(zip(keys, values), tool_schemas, func_name)
         return Function(name=func_name, arguments=json.dumps(args, ensure_ascii=False))
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._get_tool_schemas(tools)
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []
         for toolcall in toolcall_list:
-            function = self._find_function_call(toolcall)
+            function = self._find_function_call(toolcall, tool_schemas)
             if function:
                 functions.append(function)
         if len(functions) == 0:
@@ -160,6 +163,12 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             res.append('<|assistant|>')
         return assistant_content, res
 
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
+        # Keep the native tool turns and replace only their trailing assistant transition.
+        _, tool_content = self._format_tool_responses('', tool_messages)
+        prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
+        return tool_content[:-1] + [prefix + message['content'] for message in user_messages] + [suffix]
+
     def _format_standalone_tool_responses(self, tool_messages) -> 'Prompt':
         res = ['<|observation|>']
         for tool_message in tool_messages:
@@ -176,6 +185,9 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             tool_call = self._parse_tool_call(message['content'])
             tool_calls.append(f"<tool_call>{tool_call['name']}")
             for arg_key, arg_value in tool_call['arguments'].items():
+                if not isinstance(arg_value, str):
+                    # `{{ v | tojson(ensure_ascii=False) if v is not string else v }}`
+                    arg_value = json.dumps(arg_value, ensure_ascii=False)
                 tool_calls.append(f'<arg_key>{arg_key}</arg_key>')
                 tool_calls.append(f'<arg_value>{arg_value}</arg_value>')
             tool_calls.append('</tool_call>')
@@ -184,6 +196,22 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         elif self.model_type in {'glm4_7', 'glm5_1'}:
             sep = ''
         return sep.join(tool_calls) + '<|observation|>'
+
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        """GLM-4.5/4.6 chat_template renders ``{{ '\\n<tool_call>' + tc.name }}`` for
+        every tool call, so a newline separates the assistant's non-empty content from
+        ``<tool_call>``. GLM-5 style templates (glm4_7/glm5_1) have no separator."""
+        if self.model_type != 'glm4_5':
+            return tool_content
+        if not pre_message or pre_message.get('role') != 'assistant':
+            return tool_content
+        content = pre_message.get('content', '')
+        if not isinstance(content, str) or not content.strip():
+            return tool_content
+        # The official template strips content before adding the separator. This
+        # message is merged with tool_content later, so normalize it here too.
+        pre_message['content'] = content.strip()
+        return '\n' + tool_content
 
 
 class GLM4_7AgentTemplate(GLM4_5AgentTemplate):

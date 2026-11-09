@@ -6,6 +6,8 @@ from .base import BaseAgentTemplate
 
 class ReactEnAgentTemplate(BaseAgentTemplate):
 
+    uses_react_tool_responses = True
+
     def _format_standalone_tool_responses(self, tool_messages):
         return self._format_react_standalone_tool_responses(tool_messages)
 
@@ -40,6 +42,8 @@ Begin!
 
 
 class ReactZnAgentTemplate(BaseAgentTemplate):
+
+    uses_react_tool_responses = True
 
     def _format_standalone_tool_responses(self, tool_messages):
         return self._format_react_standalone_tool_responses(tool_messages)

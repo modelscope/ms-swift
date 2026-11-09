@@ -1,7 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .deepseek_v3_1 import DeepSeekV31AgentTemplate
 from .deepseek_v4 import DeepSeekV4AgentTemplate
+from .deepseek_v41 import DeepSeekV41AgentTemplate
 from .extra import ReactGRPOAgentTemplate
+from .flint import FlintAgentTemplate
 from .gemma4 import Gemma4AgentTemplate
 from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate,
                    GLM5_1AgentTemplate)
@@ -21,6 +23,7 @@ from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 from .seed_oss import SeedAgentTemplate
 from .spark import Spark2_5AgentTemplate
 from .toolbench import ToolBenchAgentTemplate
+from .xing4_0 import Xing4_0AgentTemplate
 from .youtu import YoutuAgentTemplate
 
 agent_template_map = {
@@ -50,13 +53,18 @@ agent_template_map = {
     'deepseek_v3_1': DeepSeekV31AgentTemplate,
     # ref: https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Flash
     'deepseek_v4': DeepSeekV4AgentTemplate,
+    'deepseek_v41': DeepSeekV41AgentTemplate,
     'minimax_m2': MinimaxM2AgentTemplate,
     'minimax_m3': MinimaxM3AgentTemplate,
     'seed_oss': SeedAgentTemplate,
     # ref: https://modelscope.cn/models/XHToken/Spark-X2.5-4B
     'spark2_5': Spark2_5AgentTemplate,
+    # ref: https://modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B
+    'xing4_0': Xing4_0AgentTemplate,
     # ref: https://modelscope.cn/models/google/gemma-4-12B-it
     'gemma4': Gemma4AgentTemplate,
+    # ref: https://modelscope.cn/models/RecursiveSI/flint
+    'flint': FlintAgentTemplate,
     # extra
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate,

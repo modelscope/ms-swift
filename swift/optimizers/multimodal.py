@@ -51,7 +51,10 @@ class MultimodalOptimizerCallback(OptimizerCallback):
         model_arch = model.model_meta.model_arch
         vit_parameters = get_param_startswith(model, model_arch.vision_tower, model_arch.aligner)
         aligner_parameters = get_param_startswith(model, model_arch.aligner)
-        llm_parameters = get_param_startswith(model, model_arch.language_model)
+        vision_param_ids = {id(p) for _, p in vit_parameters + aligner_parameters}
+        # Include trainable heads and other parameters outside the architecture's LLM prefixes.
+        llm_parameters = [(n, p) for n, p in model.named_parameters()
+                          if p.requires_grad and id(p) not in vision_param_ids]
         optimizer_grouped_parameters = []
         vit_lr = args.vit_lr if args.vit_lr is not None else args.learning_rate
         aligner_lr = args.aligner_lr if args.aligner_lr is not None else args.learning_rate

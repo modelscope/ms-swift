@@ -3,14 +3,14 @@
 奖励函数接受模型生成的文本 completions 其他数据集中的列以及训练器状态作为参数(kwargs)进行打分, 其中[训练器状态](https://huggingface.co/docs/transformers/main/main_classes/callback#transformers.TrainerState)包含训练的步数等信息。
 
 注意：模型输入相关的列（比如query，response）会被处理为 messages 键，原数据集中的 assistant response 会被舍弃，请使用额外的列进行保留。
-相关处理的列名参考[文档](../../../Customization/Custom-dataset.md#query-response格式)
+相关处理的列名参考[文档](../../../Customization/Custom-dataset.md)
 
 以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
 
 ```python
 from swift.rewards import ORM, orms
-class DummyLengthRewardFunction(ORM)
-    def __call__(completions, **kwargs):
+class DummyLengthRewardFunction(ORM):
+    def __call__(self, completions, **kwargs):
         return [1.0 if len(completion) > 1024 else 0.0 for completion in completions]
 
 orms['dummy']= DummyLengthRewardFunction
@@ -22,7 +22,7 @@ orms['dummy']= DummyLengthRewardFunction
 
 第一种：在__call__入参中显式定义列名
 ```python
-    def __call__(completions, solution, trainer_state, **kwargs):
+    def __call__(self, completions, solution, trainer_state, **kwargs):
         print(solution)
         global_step = trainer_state.global_step
         max_steps = trainer_state.max_steps
@@ -31,7 +31,7 @@ orms['dummy']= DummyLengthRewardFunction
 
 第二种：在kwargs中获取
 ```python
-    def __call__(completions, **kwargs):
+    def __call__(self, completions, **kwargs):
         solution = kwargs.get('solution')
         trainer_state = kwargs.get('trainer_state')
         global_step = trainer_state.global_step
@@ -116,6 +116,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 使用余弦函数平滑地调整奖励值，确保奖励变化在合理范围内。余弦函数的参数包括生成文本的长度、最大长度限制以及奖励的最小值和最大值。
 
+长度按所有 rollout 轮次生成的 token 总数计算。总长度超过 `cosine_max_len` 时，奖励保持为根据答案正确性配置的最大长度奖励值。
+
 参数
 - cosine_min_len_value_wrong（默认值：-0.5）：生成错误答案时，最小长度对应的奖励值。
 - cosine_max_len_value_wrong（默认值：0.0）：生成错误答案时，最大长度对应的奖励值。
@@ -136,6 +138,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 ### 5. **soft overlong punishment**
 定义长度惩罚区间。在这个区间内，给予[-1,0]的线性惩罚。
+
+长度按所有 rollout 轮次生成的 token 总数计算。总长度超过 `soft_max_length` 时，惩罚保持为 -1。
 
 参数
 - soft_max_length: 论文中的L_max，模型的最大生成长度，默认等于max_completion_length

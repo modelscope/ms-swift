@@ -28,7 +28,9 @@ def write_to_jsonl(fpath: str, obj_list: List[Any], encoding: str = 'utf-8') -> 
         res.append(json.dumps(obj, ensure_ascii=False))
     with open(fpath, 'w', encoding=encoding) as f:
         text = '\n'.join(res)
-        f.write(f'{text}\n')
+        if text:
+            text += '\n'
+        f.write(text)
 
 
 class JsonlWriter:

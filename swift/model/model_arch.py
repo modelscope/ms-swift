@@ -66,6 +66,7 @@ class MLLMModelArch:
     deepseek_janus = 'deepseek_janus'
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
+    deepseek_v41 = 'deepseek_v41'
     unlimited_ocr = 'unlimited_ocr'
     kimi_k25 = 'kimi_k25'
 
@@ -102,6 +103,10 @@ class MLLMModelArch:
     paddleocr_vl = 'paddleocr_vl'
     minimax_m3_vl = 'minimax_m3_vl'
     muse_glimmer = 'muse_glimmer'
+    monkeyocrv2 = 'monkeyocrv2'
+
+    nemotron_h_omni = 'nemotron_h_omni'
+    nemo_speechlm = 'nemo_speechlm'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -499,6 +504,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.deepseek_v41,
+        language_model='model',
+        vision_tower='vision',
+        aligner='aligner',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.minicpmv,
         language_model='llm',
         aligner='resampler',
@@ -595,6 +608,22 @@ else:
             vision_tower='visual',
             mlp='model.layers.{}.mlp',
         ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.nemotron_h_omni,
+        language_model='language_model',
+        aligner='vision_projector',
+        vision_tower='vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.nemo_speechlm,
+        language_model=['model.language_model', 'lm_head'],
+        vision_tower='model.audio_tower',
+        aligner='model.multi_modal_projector',
+    ))
 
 register_model_arch(
     MultiModelKeys(
@@ -878,10 +907,10 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.qwen3_5,
-        language_model=['language_model'],
-        aligner='visual.merger',
-        vision_tower='visual',
-        mlp='language_model.layers.{}.mlp',
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.visual.merger',
+        vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
     ))
 
 register_model_arch(
@@ -891,6 +920,14 @@ register_model_arch(
         aligner='model.visual.merger',
         vision_tower='model.visual',
         mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.monkeyocrv2,
+        language_model=[],
+        aligner=[],
+        vision_tower=['', 'head'],
     ))
 
 

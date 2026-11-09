@@ -13,13 +13,11 @@ logger = get_logger()
 
 def get_dataset_list():
     datasets = []
-    for key in DATASET_MAPPING:
-        if use_hf_hub():
-            if key[1]:
-                datasets.append(key[1])
-        else:
-            if key[0]:
-                datasets.append(key[0])
+    use_hf = use_hf_hub()
+    for dataset_meta in DATASET_MAPPING.values():
+        dataset_id = dataset_meta.hf_dataset_id if use_hf else dataset_meta.ms_dataset_id
+        if dataset_id:
+            datasets.append(dataset_id)
     return datasets
 
 
@@ -38,6 +36,9 @@ def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> No
         raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
 
     DATASET_MAPPING[dataset_name] = dataset_meta
+    # Later registrations (including exist_ok replacements) must refresh cached ID/path lookups.
+    from . import dataset_syntax
+    dataset_syntax._dataset_meta_mapping = None
 
 
 def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> Dict[str, Any]:

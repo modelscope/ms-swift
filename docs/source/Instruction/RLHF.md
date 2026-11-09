@@ -21,6 +21,8 @@ RM和DPO类算法如ORPO，CPO，SimPO，则需要 $(x,y_w,y_l)$ 格式的数据
 ## DPO
 [论文arvix](https://arxiv.org/abs/2305.18290)
 
+Swift 的 `DPOTrainer` 暂不支持预计算参考模型的 log probabilities。使用 Python API 时，请将继承的 `DPOConfig.precompute_ref_log_probs` 选项保持为默认值 `False`；设为 `True` 会在创建 trainer 时抛出 `ValueError`。参考模型的 log probabilities 会在训练过程中计算。Swift CLI 未提供此选项。
+
 超参
 
 - beta：KL正则系数，值越大表示对偏离参考模型的惩罚越强。默认为0.1。

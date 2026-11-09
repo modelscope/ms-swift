@@ -2,6 +2,18 @@
 
 ## Megatron参数
 
+### 基础并行参数预检查
+
+Megatron 训练（`megatron sft/pt/rlhf`）在 Swift 参数入口前置 Megatron 已有的两项整除检查，早于输出目录流程中的进程组初始化；默认 Transformers 后端和 Megatron 导出入口不变。
+
+- 用户省略参数时，沿用现有参数类默认值：TP、PP、CP、EP、ETP 均为 1。显式 `ETP=None` 时按 Megatron Core 的规则使用 TP 参与检查，不改写参数对象中的 None。
+- World Size 可靠时，执行 `WORLD_SIZE % (TP * PP * CP) == 0` 和 `WORLD_SIZE % (ETP * EP * PP) == 0`。报错给出参数值、乘积、余数，以及无法将进程等分为普通/专家并行组的原因。
+- 不新增独立的 Python 类型、正负值、DP/Expert DP 或 VPP 限制。计算本身发生类型错误或除零时，在保留原异常原因的基础上补充说明；其余类型、取值和布局约束继续由现有参数解析及后端处理。不能据此认为某个未经前置拒绝的输入可以完成训练。
+- DP/Expert DP 仍由后端推导。VPP 保留既有流水线布局规范化流程，不在此处提前检查，也不乘入物理 World Size。
+- World Size 优先读取已初始化的默认进程组，否则读取 `WORLD_SIZE`、`_PATCH_WORLD_SIZE`，空字符串按未设置处理。无启动线索时按 1 处理；Ray 驱动 `skip_megatron_init=True`，或仅有本机/启动线索而全局规模未知时，暂缓预检查。
+
+本次只改善现有检查的报错时机和原因，不替代 Megatron/MindSpeed 的完整验证，不新增 batch size、模型结构或拓扑限制。当前 Swift 初始化入口未启用的上游额外维度不擅自乘入公式。
+
 **训练参数**:
 - 🔥micro_batch_size: 每个DP组的批次大小，默认为1。
 - 🔥global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
@@ -34,12 +46,11 @@
   - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4、GPT-OSS。
 - optimizer: 优化器类型，可选为'adam'、'sgd'、'muon'和'dist_muon'。默认为adam。
   - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
-  - 其中'muon'和'dist_muon'需要"megatron-core>=0.16"。
-  - 注意：在 "megatron-core>=0.18" 上，'muon'和'dist_muon'不兼容`vit_lr`/`aligner_lr`，使用时会报错：这些参数会接管参数分组，而该版本的 Muon 正是靠参数分组将非矩阵参数路由给`muon_scalar_optimizer`的。较早的版本通过冻结参数完成该划分，不受影响。
+  - 其中'muon'和'dist_muon'不兼容`vit_lr`/`aligner_lr`，使用时会报错：这些参数会接管参数分组，而 Muon 正是靠参数分组将非矩阵参数路由给`muon_scalar_optimizer`的。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
   - 该参数可以显著降低显存占用（但增加内存占用）。若global_batch_size较大，则对训练速度的影响不大。
 - 🔥optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
-- optimizer_cuda_graph: 是否为优化器步骤启用 CUDA 计算图，传递给 Megatron 的 `--optimizer-cuda-graph`。默认为False。该参数需要"megatron-core>=0.17"。
+- optimizer_cuda_graph: 是否为优化器步骤启用 CUDA 计算图，传递给 Megatron 的 `--optimizer-cuda-graph`。默认为False。
 - use_precision_aware_optimizer: 使用 TransformerEngine 中的精度感知优化器，该优化器允许将主参数和优化器状态设置为较低精度，例如 fp16 和 fp8。
 - main_grads_dtype: 启用 use_precision_aware_optimizer 时主梯度的 dtype。可选为'fp32', 'bf16'。默认为'fp32'。
 - main_params_dtype: 启用 use_precision_aware_optimizer 时主参数的 dtype。可选为'fp32', 'fp16'。默认为'fp32'。
@@ -226,7 +237,7 @@
 **DSA参数**
 - dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为`0.`。
 - dsa_indexer_use_sparse_loss: 是否使用稀疏 DSA 索引器损失。如果为 True，索引器损失将使用 top-k 索引进行计算。默认为False。
-- apply_dsa_kernel_fusion: 是否启用融合 DSA 稀疏注意力内核（FlashMLA + cuDNN DSA）。设为 False 将回退到未融合的 PyTorch 实现。需要安装 flash_mla 和 nvidia-cudnn-frontend >= 1.24.0。默认为False。（需使用Megatron-LM dev分支）
+- apply_dsa_kernel_fusion: 是否启用融合 DSA 稀疏注意力内核（FlashMLA + cuDNN DSA）。设为 False 将回退到未融合的 PyTorch 实现。需要安装 flash_mla 和 nvidia-cudnn-frontend >= 1.24.0。默认为False。（需要 megatron-core >= 0.20 或 dev 分支）
 
 **Deepseek-V4**
 - csa_dense_mode: 是否对压缩稀疏注意力使用密集模式。若为 `True`，CSA 索引器将被禁用。默认为False。
@@ -235,11 +246,12 @@ mHC 模块以在支持的 GPU 上获得更好的性能。需要安装 cuTile；�
 - mhc_recompute_layer_num: 每个 MHC 重计算块的层数。设置后，每 `mhc_recompute_layer_num` 层构成一个重计算块。若为 None，Transformer 块中的所有层共享单个重计算块。默认为None。
 
 **MTP参数**
-- mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。
-  - 注意：mtp_num_layers的值，将不自动从config.json获取，需手动设置。你可以参考config.json中的`num_nextn_predict_layers`, `mtp_num_hidden_layers`字段填写该值。使用mcore-bridge时，将优先从safetensors文件中加载MTP权重，若无法找到，则进行随机初始化。
-- mtp_loss_scaling_factor: 多token预测（MTP）损失的缩放因子。我们计算所有深度上MTP损失的平均值，然后乘以该缩放因子得到总体MTP损失，它将作为一个额外的训练目标。默认为0.1。
-- mtp_decoder_input_detach: 用来控制 MTP 分支里的 decoder_input 是否停止梯度。默认为False。开启后，MTP loss 不会直接通过 decoder_input 回传到 embedding/vit，但仍会通过 hidden_states 路径更新主干。
-- mtp_shared_weights: MTP层之间共享权重，采用GLM-5使用的mtp方案。默认为False。例如你可以设置`--mtp_num_layers 3 --mtp_shared_weights true`。
+- mtp_num_layers: 每一步要预测的 draft token 数 D（MTP 深度）。默认为 `auto`，自动跟随模型 checkpoint；设为 `None` 时不加载 MTP 权重。
+  - 版本说明：4.6.0 及更早版本默认为 `None`。
+- mtp_loss_scaling_factor: MTP 损失缩放因子。默认为 0.1。
+- mtp_decoder_input_detach: MTP 分支的 decoder_input 是否停止梯度。默认为 False。
+- mtp_shared_weights: MTP 层之间共享权重。默认为 None，进行自动解析：当 checkpoint mtp 层数小于 mtp_num_layers 时开启。显式设为 true/false 可覆盖。通常无需手动设置。
+- mtp_allow_random_init: checkpoint 缺少 MTP 权重时，是否允许随机初始化来新增MTP层。默认为 False。
 
 **Tuner参数**:
 - tuner_type: 可选为'lora', 'full'和'lora_llm'。默认为'full'。
@@ -295,7 +307,7 @@ lora训练：
 
 **其他参数**:
 - megatron_extra_kwargs: 透传入Megatron的其他参数（透传入[mcore-bridge](https://github.com/modelscope/mcore-bridge/blob/78cb9be33ebad69a0d940a2bc4e198f866084b70/src/mcore_bridge/config/model_config.py#L116)的 `ModelConfig` 类，继承自 megatron-core 的 TransformerConfig），也可用于覆盖自动读取的`config.json`参数。传入json字符串。默认为None。
-- language_model_only: 只训练多模态模型的语言模型部分，并且只会加载和保存语言模型部分。默认为False。（需"mcore-bridge>=1.4.3"）
+- language_model_only: 只训练多模态模型的语言模型部分，并且只会加载和保存语言模型部分。默认为False。
 - check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 - rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
   - **目前rope_scaling模块使用transformers实现，支持transformers支持的所有rope_scaling。**
@@ -381,7 +393,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - vllm_server_pass_dataset: 透传额外的数据集信息到vLLM server，用于多轮训练。
   - async_generate: 异步rollout以提高训练速度，注意开启时采样会使用上一轮更新的模型进行采样，不支持多轮场景。默认`false`.
   - SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE: 环境变量，用于控制权重同步时的传输桶大小（bucket size），适用于 Server Mode 下的全参数训练，单位为 MB，默认值为 512 MB。
-- vllm_mode colocate 参数（更多参数支持参考[vLLM参数](#vLLM参数)。）
+- vllm_mode colocate 参数（更多参数支持参考[vLLM参数](../Instruction/Command-line-parameters.md#vllm参数)。）
   - vllm_gpu_memory_utilization: vllm透传参数，默认为0.9。
   - vllm_max_model_len: vllm透传参数，默认为None。
   - vllm_enforce_eager: vllm透传参数，默认为False。

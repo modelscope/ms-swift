@@ -20,7 +20,10 @@ class MiniCPM5AgentTemplate(BaseAgentTemplate):
         </tool_response>
     """
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    supports_tool_schema = True
+
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._get_tool_schemas(tools)
         # Match <function name="...">...</function> blocks
         func_pattern = re.compile(r'<function\s+name="([^"]+)">(.*?)</function>', re.DOTALL)
         param_pattern = re.compile(r'<param\s+name="([^"]+)">'
@@ -31,17 +34,12 @@ class MiniCPM5AgentTemplate(BaseAgentTemplate):
         for func_match in func_pattern.finditer(response):
             func_name = func_match.group(1)
             func_body = func_match.group(2)
-            arguments = {}
+            pairs = []
             for param_match in param_pattern.finditer(func_body):
-                param_name = param_match.group(1)
                 # CDATA value or plain value
-                param_value = param_match.group(2) if param_match.group(2) is not None else param_match.group(3)
-                # Try to parse as JSON value (number, bool, etc.)
-                try:
-                    param_value = json.loads(param_value)
-                except (json.JSONDecodeError, ValueError):
-                    pass
-                arguments[param_name] = param_value
+                pairs.append((param_match.group(1),
+                              param_match.group(2) if param_match.group(2) is not None else param_match.group(3)))
+            arguments = BaseAgentTemplate._decode_schema_args(pairs, tool_schemas, func_name)
             functions.append(Function(name=func_name, arguments=arguments))
 
         if len(functions) == 0:

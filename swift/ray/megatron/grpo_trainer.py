@@ -388,7 +388,7 @@ class GRPOTrainer(BaseRayTrainer):
         if getattr(self, '_last_teacher_kl', None) is not None:
             metrics['teacher_kl'] = self._last_teacher_kl
         # Flatten per-function metrics into scalar values the worker can inject.
-        for name in self.reward_func_names:
+        for name in reward_metrics.per_func_mean:
             metrics[name] = reward_metrics.per_func_mean[name]
             metrics[f'rewards/{name}/std'] = reward_metrics.per_func_std[name]
         return metrics

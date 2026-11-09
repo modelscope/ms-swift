@@ -135,13 +135,15 @@ class MinimaxM3AgentTemplate(BaseAgentTemplate):
     ``]~b]tool`` slot.
     """
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    supports_tool_schema = True
+
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._get_tool_schemas(tools)
         functions: List[Function] = []
         for tc_block in _TOOLCALL_RE.findall(response):
             for tool_name, params_block in _INVOKE_RE.findall(tc_block):
-                arguments = {}
-                for key, inner in _iter_keyed(params_block):
-                    arguments[key] = _parse_xml_value(inner)
+                arguments = BaseAgentTemplate._decode_schema_args(
+                    _iter_keyed(params_block), tool_schemas, tool_name, decode=_parse_xml_value)
                 functions.append(Function(name=tool_name, arguments=arguments))
 
         if not functions:

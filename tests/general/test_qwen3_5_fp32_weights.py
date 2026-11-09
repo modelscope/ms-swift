@@ -317,7 +317,9 @@ class TestQwen3_5Fp32Weights(unittest.TestCase):
                 )
                 with patch.object(pretrained_cls, _POLICY_ATTR, existing_policy), detector_patch:
                     for _ in range(2):
-                        sentinel = object()
+                        sentinel = torch.nn.Module()
+                        if loader_cls is not Qwen3_5EmbLoader:
+                            sentinel.visual = torch.nn.Identity()
                         result, policies = _apply_loader_policy(loader_cls, pretrained_cls, lambda: sentinel)
                         self.assertIs(result, sentinel)
                         self.assertEqual(policies, [['existing', *_QWEN3_5_KEEP_IN_FP32_MODULES]])

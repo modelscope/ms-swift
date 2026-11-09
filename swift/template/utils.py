@@ -178,10 +178,10 @@ def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = Fals
     return res
 
 
-def get_last_user_round(messages):
-    """Get the index of the last user or tool message."""
+def get_last_user_round(messages, *, include_tool: bool = True):
+    """Get the index of the last user message, optionally including tool messages."""
     for i in range(len(messages) - 1, -1, -1):
-        if messages[i]['role'] in ('user', 'tool'):
+        if messages[i]['role'] == 'user' or (include_tool and messages[i]['role'] == 'tool'):
             return i
     return -1
 

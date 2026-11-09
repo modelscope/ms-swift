@@ -325,6 +325,7 @@ class GKDTrainer(BaseRayTrainer):
                 teacher_encodeds.append(teacher_encoded)
             else:
                 teacher_encodeds.append(None)
+            req.add_eos = 'auto' if s.add_eos is None else s.add_eos
             requests.append(req)
 
         request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)

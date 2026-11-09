@@ -43,7 +43,7 @@ pip install -U "vllm>=0.17.0"
 
 Using ms-swift's `TransformersEngine` for inference:
 
-- The meaning of model-specific parameters such as `VIDEO_MAX_TOKEN_NUM` environment variables is the same as Qwen3-VL, refer to [Command-line Parameters Documentation](../Instruction/Command-line-parameters.md#qwen3_vl,qwen3_5).
+- The meaning of model-specific parameters such as `VIDEO_MAX_TOKEN_NUM` environment variables is the same as Qwen3-VL, refer to [Command-line Parameters Documentation](../Instruction/Command-line-parameters.md#qwen3_vl-qwen3_5).
 
 ```python
 import os
@@ -315,15 +315,12 @@ swift infer \
 
 Tips for training Qwen3.5 with Megatron-SWIFT:
 - Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/packing.sh).
-- TP Limitation Removed: Using `megatron-core>=0.16` removes the `num_query_groups` limitation on TP.
-- Regarding MTP training: `mcore-bridge>=1.1.0` supports multimodal MTP training. Please install the corresponding version.
-- CP support: "mcore-bridge>=1.1.0" supports CP training for GDN. Additionally, the megatron-core [main branch](https://github.com/NVIDIA/Megatron-LM) needs to be installed.
+- CP support: CP training for GDN is supported. Additionally, the megatron-core [dev branch](https://github.com/NVIDIA/Megatron-LM/tree/dev) needs to be installed (mcore-bridge does not track `main`).
 - Transformers/FSDP packing validation: Qwen3.5-4B has completed 300 training steps on 8 Atlas 900 A2 cards with LoRA, BF16, `alpaca-gpt4-data-zh`, `packing=true`, `max_length=512`, per-device batch size 1, and gradient accumulation 1. Loss and grad norm remained finite throughout, and a checkpoint was saved successfully. Under the same configuration, the NPU loss trend aligned with the GPU reference.
-- By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set `USE_MCORE_GDN=0` to switch to the transformers model path; on Ascend NPU, this path can use FLA's native Triton-Ascend GDN.
 - Support for padding_free/packing: Packing can improve training speed. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
-  - Qwen3-Next Megatron GatedDeltaNet support refers to [this PR](https://github.com/modelscope/mcore-bridge/pull/76), requiring `mcore-bridge>=1.4.0`.
+  - Qwen3-Next Megatron GatedDeltaNet support originates from [this PR](https://github.com/modelscope/mcore-bridge/pull/76).
 - apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
-- Regarding FP8 training: refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh). You need to install "mcore-bridge>=1.2.0", and set the parameter `--linear_decoupled_in_proj true` to decouple `in_proj` into `in_proj_qkvz` and `in_proj_ba`, where `in_proj_ba` is still trained in original precision.
+- Regarding FP8 training: refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh), and set the parameter `--linear_decoupled_in_proj true` to decouple `in_proj` into `in_proj_qkvz` and `in_proj_ba`, where `in_proj_ba` is still trained in original precision.
 
 
 ## Reinforcement Learning (RL)

@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
+import gc
 import math
 import os
 import shutil
@@ -56,6 +57,10 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     logger.info('Successfully transferred HF model weights to MG model.')
     _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
     if not _test_convert_precision:
+        if not args.test_convert_precision:
+            del hf_model
+            template.model = None
+            gc.collect()
         args.save_args()
         logger.info('Saving the model...')
         save_mcore_checkpoint(megatron_args, [mg_model])

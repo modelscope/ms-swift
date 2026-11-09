@@ -467,6 +467,130 @@ class TestProviderMessagesPreprocess(unittest.TestCase):
         self.assertEqual(template_inputs.images, result['images'])
         self.assertEqual(template_inputs.messages[-1]['content'], '<image>A sunny beach.')
 
+    def test_anthropic_parallel_tool_results_out_of_order(self):
+        # Anthropic pairs `tool_result` blocks with `tool_use` blocks by `tool_use_id`, not by
+        # position, so results may arrive in a different order from the calls. Canonical
+        # `tool_response` messages are positional (the IDs are discarded), so the results must
+        # be aligned to the call order first, as `normalize_openai_tool_calls` does for OpenAI
+        # `tool_calls` (#10174).
+        tool_uses = [{
+            'type': 'tool_use',
+            'id': 'toolu_beijing',
+            'name': 'get_weather',
+            'input': {
+                'city': 'Beijing'
+            },
+        }, {
+            'type': 'tool_use',
+            'id': 'toolu_shanghai',
+            'name': 'get_weather',
+            'input': {
+                'city': 'Shanghai'
+            },
+        }]
+        results = {
+            'toolu_beijing': {
+                'type': 'tool_result',
+                'tool_use_id': 'toolu_beijing',
+                'content': 'sunny'
+            },
+            'toolu_shanghai': {
+                'type': 'tool_result',
+                'tool_use_id': 'toolu_shanghai',
+                'content': 'rainy'
+            },
+        }
+        expected = [{
+            'role': 'tool_call',
+            'content': {
+                'name': 'get_weather',
+                'arguments': {
+                    'city': 'Beijing'
+                }
+            },
+        }, {
+            'role': 'tool_call',
+            'content': {
+                'name': 'get_weather',
+                'arguments': {
+                    'city': 'Shanghai'
+                }
+            },
+        }, {
+            'role': 'tool_response',
+            'content': 'sunny'
+        }, {
+            'role': 'tool_response',
+            'content': 'rainy'
+        }]
+        for order in (['toolu_beijing', 'toolu_shanghai'], ['toolu_shanghai', 'toolu_beijing']):
+            with self.subTest(result_order=order):
+                row = {
+                    'messages': [{
+                        'role': 'assistant',
+                        'content': tool_uses,
+                    }, {
+                        'role': 'user',
+                        'content': [results[tool_use_id] for tool_use_id in order],
+                    }]
+                }
+                result = AnthropicMessagesPreprocessor().preprocess(row)
+                self.assertEqual(result['messages'], expected)
+
+    def test_anthropic_out_of_order_tool_results_keep_images_aligned(self):
+        # Reordering the result blocks (not the emitted messages) keeps `images` consistent
+        # with the `<image>` placeholders, and a trailing user text block stays after the results.
+        def image_result(name):
+            return {
+                'type':
+                'tool_result',
+                'tool_use_id':
+                f'toolu_{name}',
+                'content': [{
+                    'type': 'image',
+                    'source': {
+                        'type': 'url',
+                        'url': f'https://example.com/{name}.png'
+                    }
+                }, {
+                    'type': 'text',
+                    'text': name
+                }],
+            }
+
+        row = {
+            'messages': [{
+                'role':
+                'assistant',
+                'content': [{
+                    'type': 'tool_use',
+                    'id': f'toolu_{name}',
+                    'name': 'inspect_image',
+                    'input': {}
+                } for name in ['first', 'second']],
+            }, {
+                'role':
+                'user',
+                'content': [image_result('second'),
+                            image_result('first'), {
+                                'type': 'text',
+                                'text': 'Thanks.'
+                            }],
+            }]
+        }
+        result = AnthropicMessagesPreprocessor().preprocess(row)
+        self.assertEqual(result['messages'][2:], [{
+            'role': 'tool_response',
+            'content': '<image>first',
+        }, {
+            'role': 'tool_response',
+            'content': '<image>second',
+        }, {
+            'role': 'user',
+            'content': 'Thanks.',
+        }])
+        self.assertEqual(result['images'], ['https://example.com/first.png', 'https://example.com/second.png'])
+
 
 if __name__ == '__main__':
     unittest.main()

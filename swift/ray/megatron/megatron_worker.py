@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import inspect
 import os
 import torch
 from contextlib import nullcontext
@@ -223,18 +224,14 @@ class MegatronWorker(CheckpointEngineMixin):
             f'{args.num_microbatches}; check per_device_generation_batch_size / micro_batch_size config.')
         router_replay_mode = getattr(args, 'router_replay_mode', 'disabled')
         need_routing_replay = router_replay_mode != 'disabled'
-        RouterReplay = None
         if need_routing_replay:
-            try:
-                from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-                RouterReplay.set_global_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
-            except ImportError:
-                need_routing_replay = False
+            from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+            RouterReplay.set_global_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
 
         try:
             megatron.run_train_step(data_iterator, None)
         finally:
-            if need_routing_replay and RouterReplay is not None:
+            if need_routing_replay:
                 RouterReplay.clear_global_indices()
                 RouterReplay.clear_global_router_replay_action()
         del data_iterator
@@ -397,15 +394,8 @@ class MegatronWorker(CheckpointEngineMixin):
         enable_routing_replay = bool(getattr(megatron, 'enable_routing_replay', False))
         router_mode = getattr(args, 'router_replay_mode', 'disabled')
 
-        RouterReplay = None
-        RouterReplayAction = None
         if enable_routing_replay:
-            try:
-                from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-            except ImportError:
-                enable_routing_replay = False
-
-        if enable_routing_replay and RouterReplay is not None:
+            from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
             if router_mode == 'R2':
                 RouterReplay.set_global_router_replay_action(RouterReplayAction.RECORD)
             elif router_mode == 'R3':
@@ -416,7 +406,7 @@ class MegatronWorker(CheckpointEngineMixin):
             logps_packed, routing_topk_idx = megatron.compute_per_token_logps(
                 model, iter([model_inputs]), temperature=temperature)
         finally:
-            if enable_routing_replay and RouterReplay is not None:
+            if enable_routing_replay:
                 RouterReplay.clear_global_indices()
                 RouterReplay.clear_global_router_replay_action()
 
@@ -505,13 +495,15 @@ class MegatronWorker(CheckpointEngineMixin):
         megatron = self._megatron
         target_device = 'cpu' if megatron.args.offload_bridge else None
 
+        skip_kwargs = self._skip_unsupported_export_kwargs(megatron.bridge)
         if adapter_only:
             weight_iter = megatron.bridge.export_weights(
-                megatron.unwrapped_models, target_device=target_device, peft_format=True)
+                megatron.unwrapped_models, target_device=target_device, peft_format=True, **skip_kwargs)
             peft_config = self.get_peft_config_dict()
             lora_names = None
         else:
-            weight_iter = megatron.bridge.export_weights(megatron.unwrapped_models, target_device=target_device)
+            weight_iter = megatron.bridge.export_weights(
+                megatron.unwrapped_models, target_device=target_device, **skip_kwargs)
             peft_config = None
             lora_names = self._resolve_lora_param_names()
 
@@ -529,6 +521,18 @@ class MegatronWorker(CheckpointEngineMixin):
             base_sync_done=adapter_only,
         )
         self.rollout.reset_prefix_cache()
+
+    def _skip_unsupported_export_kwargs(self, bridge) -> Dict[str, Any]:
+        """Build the skip_unsupported_export kwarg for export_weights, guarded by signature.
+
+        RL weight sync skips weights whose Megatron->HF export is not implemented and that stay
+        fixed in the rollout engine (e.g. frozen DeepSeek-V4.1 Engram tables, already resident from
+        the base checkpoint). No-op for models without such weights. Signature inspection keeps an
+        older bridge whose export_weights predates this kwarg from raising TypeError.
+        """
+        if 'skip_unsupported_export' in inspect.signature(bridge.export_weights).parameters:
+            return {'skip_unsupported_export': True}
+        return {}
 
     def _resolve_lora_param_names(self) -> Optional[set]:
         """Get vLLM param names for LoRA mapping, if applicable."""
@@ -621,7 +625,10 @@ class MegatronWorker(CheckpointEngineMixin):
         engine = self._get_or_create_checkpoint_engine()
         target_device = 'cpu' if megatron.args.offload_bridge else None
         weight_iter = megatron.bridge.export_weights(
-            megatron.unwrapped_models, target_device=target_device, peft_format=adapter_only)
+            megatron.unwrapped_models,
+            target_device=target_device,
+            peft_format=adapter_only,
+            **self._skip_unsupported_export_kwargs(megatron.bridge))
         asyncio.run(engine.send_weights(weight_iter))
 
     def get_peft_config_dict(self) -> dict:
