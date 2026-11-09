@@ -92,7 +92,23 @@ class PreferenceBatchEncoder:
         reuses the template's kto encode (``chosen_*`` / ``rejected_*`` / ``label`` in one pass).
         """
         completions = [self._last_assistant_content(row) for row in rows]
-        rotated = [completions[-1]] + completions[:-1]
+        # Pair each prompt with a completion from a DIFFERENT row (the "mismatched" KL batch).
+        # A plain rotate-by-one still hands a row its own text whenever adjacent rows share a
+        # completion, which the template's user-input guard (rejected == response) then rejects.
+        n = len(completions)
+        rotated: List[str] = []
+        for i, completion in enumerate(completions):
+            for offset in range(1, n):
+                candidate = completions[(i + offset) % n]
+                if candidate != completion:
+                    rotated.append(candidate)
+                    break
+            else:
+                raise ValueError(
+                    f'KTO KL batch degenerated: all {n} completions in this update are identical, so '
+                    'no unrelated completion exists to pair the prompts with for the z_KL estimate. '
+                    'Use a larger batch (per_device_train_batch_size x gradient_accumulation_steps) '
+                    'or shuffle the data.')
         completion_features: List[dict] = []
         kl_features: List[dict] = []
         labels: List[bool] = []
