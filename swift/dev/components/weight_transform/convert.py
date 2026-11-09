@@ -450,31 +450,32 @@ class ConvertComponent(BaseWeightTransform):
         import torch.distributed as dist
         from swift.dev.utils import HfConfigFactory, is_master
 
-        if not is_master():
-            return
-        from swift.dev.model import save_checkpoint
+        if is_master():
+            from swift.dev.model import save_checkpoint
 
-        hf_config = deepcopy(processor.model_info.config)
-        config = strategy.config
-        if getattr(config, 'mtp_num_layers', None):
-            llm_config = HfConfigFactory.get_text_config(hf_config)
-            for key in ('num_nextn_predict_layers', 'mtp_num_hidden_layers'):
-                if hasattr(llm_config, key):
-                    setattr(llm_config, key, config.mtp_num_layers)
-                    break
-            else:
-                llm_config.num_nextn_predict_layers = config.mtp_num_layers
-        HfConfigFactory.del_config_attr(hf_config, 'quantization_config')
-        hf_config.save_pretrained(output_dir)
-        save_checkpoint(
-            None,
-            processor,
-            output_dir,
-            model_dirs=[processor.model_info.model_dir],
-            additional_saved_files=processor.model_info.additional_saved_files)
+            hf_config = deepcopy(processor.model_info.config)
+            config = strategy.config
+            if getattr(config, 'mtp_num_layers', None):
+                llm_config = HfConfigFactory.get_text_config(hf_config)
+                for key in ('num_nextn_predict_layers', 'mtp_num_hidden_layers'):
+                    if hasattr(llm_config, key):
+                        setattr(llm_config, key, config.mtp_num_layers)
+                        break
+                else:
+                    llm_config.num_nextn_predict_layers = config.mtp_num_layers
+            HfConfigFactory.del_config_attr(hf_config, 'quantization_config')
+            hf_config.save_pretrained(output_dir)
+            save_checkpoint(
+                None,
+                processor,
+                output_dir,
+                model_dirs=[processor.model_info.model_dir],
+                additional_saved_files=processor.model_info.additional_saved_files)
         if dist.is_initialized():
             # The precision test re-loads this directory on every rank; the config/processor
             # files must be visible before any non-master rank reads them (legacy barrier order).
+            # Every rank must reach this barrier -- an early master-only return leaves it
+            # waiting forever on ranks that already exited.
             dist.barrier()
 
     # -- precision test ---------------------------------------------------------------------
