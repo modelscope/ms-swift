@@ -106,13 +106,18 @@ def deploy_main(argv: Optional[List[str]] = None) -> None:
     tuner_config = configs['tuner_config']
     adapters = tuner_config.adapters if tuner_config is not None else []
     deploy = configs['deploy_config']
+    engine_args = build_engine_args(configs['infer_config'].sampler, configs['infer_config'],
+                                    configs['rollout_config'])
+    # engine_kwargs is the generic escape hatch into the engine args, merged exactly like the infer
+    # and eval commands: without it the field is silently dead under deploy.
+    if configs['infer_config'].engine_kwargs:
+        engine_args.update(configs['infer_config'].engine_kwargs)
     run_deploy(
         configs['model_config'],
         configs['template_config'],
         configs['generation_config'],
         backend=configs['infer_config'].sampler,
-        engine_args=build_engine_args(configs['infer_config'].sampler, configs['infer_config'],
-                                      configs['rollout_config']),
+        engine_args=engine_args,
         adapter_mapping=_adapter_mapping(adapters),
         quantize_config=configs['quantize_config'],
         distributed_config=configs['distributed_config'],

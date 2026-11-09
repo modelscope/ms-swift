@@ -357,6 +357,12 @@ class DatasetLoader:
         channel = getattr(preprocessor, "augment_channel", None)
         config = augment_configs.get(channel) if channel is not None else None
         if config is None:
+            # The decision_* knobs were set, but this family's preprocessor declares no augment
+            # channel: say so instead of silently dropping the whole augmentation.
+            logger.warning(
+                'the decision_* augment knobs are set, but dataset %s resolves to a %s preprocessor '
+                'with no decision channel, so the augmentation is skipped. Use a decision dataset.',
+                self._dataset_info.dataset, type(preprocessor).__name__)
             return
         preprocessor.bind_augment(config, self._kwargs.get("seed", 42))
 
@@ -445,9 +451,21 @@ class DatasetLoader:
         # A token is only sent when there is one: passing `token=None` explicitly would override
         # credentials the hub client has already cached for the user.
         hub_kwargs = {'token': kwargs['hub_token']} if kwargs.get('hub_token') else {}
+        # trust_remote_code is NOT forwarded: HF's datasets library removed the argument (a
+        # script-based repo now fails on its own), and ModelScope's loader gates itself on its own
+        # version check inside the hub class. The config field's real consumer is the model /
+        # processor load path (transformers Auto*), which DatasetConfig already feeds.
         parts: List[DATASET_TYPE] = []
         for subset in self.resolve_subsets(info.subsets):
             preprocessor = self.build_preprocessor(subset)
+            # model_name / model_author feed the self-cognition placeholder replacement; any other
+            # family ignores them, so say so instead of dropping the request silently.
+            if (kwargs.get('model_name') or kwargs.get('model_author')) \
+                    and not hasattr(preprocessor, 'set_name_author'):
+                logger.warning(
+                    'model_name/model_author only act on the self-cognition dataset family; dataset %s '
+                    'resolves to %s, so the settings are ignored.', info.dataset,
+                    type(preprocessor).__name__)
             for split in subset.split:
                 raw = self.build_dataset(
                     subset,
@@ -622,6 +640,12 @@ class DatasetLoader:
             use_hf = {'hf': True, 'ms': False}.get(hub.lower())
             if use_hf is not None:
                 entry = rest
+            else:
+                # Any other 'x://' prefix is not a hub selector; silently carrying it on would
+                # mis-split on the ':' and ship a garbage id/subset to the hub downloader.
+                raise ValueError(
+                    f"Unknown hub prefix {hub!r} in dataset entry {entry!r}: only 'hf://' and 'ms://' "
+                    'are understood (or a bare dataset id / an existing path).')
 
         entry, sample_count = DatasetLoader.split_sample_count(entry)
         if os.path.exists(entry):
@@ -716,6 +740,7 @@ def load_dataset(
     shuffle_buffer_size: int = 1000,
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
+    trust_remote_code: bool = True,
     strict: bool = False,
     download_mode: str = 'reuse_dataset_if_exists',
     columns: Optional[Dict[str, str]] = None,
@@ -770,6 +795,7 @@ def load_dataset(
             columns=columns,
             streaming=streaming,
             hub_token=hub_token,
+            trust_remote_code=trust_remote_code,
             model_name=model_name,
             model_author=model_author,
             augment_configs=augment_configs,

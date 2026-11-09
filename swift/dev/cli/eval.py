@@ -55,6 +55,10 @@ def eval_main(argv: Optional[List[str]] = None):
     adapters = configs['tuner_config'].adapters if configs['tuner_config'] is not None else None
     backend = configs['infer_config'].sampler
     engine_args = build_engine_args(backend, configs['infer_config'], configs['rollout_config'])
+    # engine_kwargs is the generic escape hatch into the engine args, merged exactly like the infer
+    # command: without it the field is silently dead under eval.
+    if configs['infer_config'].engine_kwargs:
+        engine_args.update(configs['infer_config'].engine_kwargs)
     return run_eval(
         configs['model_config'],
         configs['template_config'],

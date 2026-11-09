@@ -180,7 +180,12 @@ def test_to_peft_format_rejects_non_lora_and_extra_states(tmp_path):
 
 
 def test_push_to_hub_requires_hub_model_id_and_forwards_knobs(monkeypatch, tmp_path):
-    """--hub_model_id is required; folder_path / commit_message / token reach the hub layer."""
+    """--hub_model_id is required; folder_path / commit_message / token reach the hub layer.
+
+    The upload goes through twinkle's HubOperation (the training-side channel); use_hf selects
+    the hf:// repo prefix it dispatches ModelScope vs HF off, and an unset revision defaults to
+    'master'.
+    """
     from swift.dev.config import CheckpointConfig, DatasetConfig
     from swift.dev.recipe.export import run_push_to_hub
 
@@ -189,25 +194,32 @@ def test_push_to_hub_requires_hub_model_id_and_forwards_knobs(monkeypatch, tmp_p
     with pytest.raises(ValueError, match='hub_model_id'):
         run_push_to_hub(str(src), CheckpointConfig(), DatasetConfig(), 'msg')
 
-    captured = {}
+    captured = []
 
-    class _FakeHub:
-        def push_to_hub(self, repo_id, folder_path, token=None, private=None, revision=None,
-                        commit_message=None):
-            captured.update(repo_id=repo_id, folder_path=folder_path, token=token,
-                            private=private, revision=revision, commit_message=commit_message)
+    def _fake_push(repo_id, folder_path, *, token=None, private=None, revision=None, commit_message=None):
+        captured.append(dict(repo_id=repo_id, folder_path=folder_path, token=token, private=private,
+                             revision=revision, commit_message=commit_message))
 
-    # hub.py imports get_hub inside the function body, so the patch point is its home module.
-    monkeypatch.setattr('swift.dev.utils.hub.get_hub', lambda use_hf: _FakeHub())
+    # hub.py imports HubOperation inside the function body, so the patch point is its home module.
+    monkeypatch.setattr('twinkle.hub.HubOperation.push_to_hub', _fake_push)
 
     ckpt = CheckpointConfig(hub_model_id='user/model', hub_revision='v2')
     out = run_push_to_hub(str(src), ckpt, DatasetConfig(hub_token='secret'), 'release-1')
     assert out == str(src)
-    assert captured['repo_id'] == 'user/model'
-    assert captured['folder_path'] == str(src)
-    assert captured['commit_message'] == 'release-1'
-    assert captured['token'] == 'secret'
-    assert captured['revision'] == 'v2'
+    assert captured[0]['repo_id'] == 'user/model'
+    assert captured[0]['folder_path'] == str(src)
+    assert captured[0]['commit_message'] == 'release-1'
+    assert captured[0]['token'] == 'secret'
+    assert captured[0]['revision'] == 'v2'
+
+    # use_hf routes through the hf:// prefix; an unset revision defaults to 'master'.
+    hf = run_push_to_hub(str(src), CheckpointConfig(hub_model_id='user/model'), DatasetConfig(use_hf=True), 'm2')
+    assert hf == str(src)
+    assert captured[1]['repo_id'] == 'hf://user/model'
+    assert captured[1]['revision'] == 'master'
+    # An explicit prefix is never doubled.
+    run_push_to_hub(str(src), CheckpointConfig(hub_model_id='hf://user/model'), DatasetConfig(use_hf=True), 'm3')
+    assert captured[2]['repo_id'] == 'hf://user/model'
 
 
 # --- S12-20: _validate_export rejection matrix ----------------------------------------------

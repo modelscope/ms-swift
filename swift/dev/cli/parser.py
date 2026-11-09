@@ -427,6 +427,12 @@ def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool)
         return
     args_path = _resolve_checkpoint_args_source(mapped)
     if args_path is None:
+        if 'load_args' in explicit:
+            # The user asked for the restore explicitly; staying silent here looks like the
+            # restore happened. Name what was searched instead (legacy asserted the path).
+            logger.warning('--load_args true was requested, but none of the checkpoint candidates '
+                           '(adapters, resume_from_checkpoint, model, mcore_model/adapter) carries '
+                           'an args.json: nothing was restored.')
         return
     with open(args_path, encoding='utf-8') as file:
         old_args = json.load(file)
@@ -437,8 +443,25 @@ def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool)
     from packaging import version
     # model_type was reshaped after v4, so only trust an args.json written by 4.0.0.dev or newer.
     swift_version = old_args.get('swift_version')
-    if swift_version is None or version.parse(swift_version) < version.parse('4.0.0.dev'):
+    if swift_version is None:
         load_fields['model_config'].remove('model_type')
+    else:
+        try:
+            reshaped = version.parse(swift_version) >= version.parse('4.0.0.dev')
+        except version.InvalidVersion as exc:
+            # A hand-edited/old args.json with a non-PEP440 version string (e.g. 'v4.0') would
+            # otherwise crash the parse with a bare InvalidVersion traceback.
+            raise ValueError(f'{args_path} carries swift_version {swift_version!r}, which is not a '
+                             'valid version string; the restore cannot tell which field layout the '
+                             'checkpoint used. Fix or drop the swift_version key in that file.') from exc
+        if not reshaped:
+            load_fields['model_config'].remove('model_type')
+    # A pre-v4 full-tuning checkpoint has no tuner_type key; the reader then defaults to LoRA and
+    # assembles the pure weights as an adapter -- confirm that is what the user wanted.
+    if old_args.get('tuner_type') is None and mapped.get('tuner_config') is not None \
+            and getattr(mapped['tuner_config'], 'tuner', None) == 'lora':
+        logger.warning(f'{args_path} has no tuner_type key: defaulting to LoRA assembly. If this '
+                       'checkpoint was full-parameter trained, pass --tuner full explicitly.')
     # `external_plugins` is never restored silently: a checkpoint declares code to import, so a malicious
     # one published on a hub would otherwise execute arbitrary code through `swift infer --adapters <repo>`.
     declared_plugins = old_args.get('external_plugins')
@@ -477,6 +500,21 @@ def _restore_checkpoint_args(configs: Sequence[Any], *, default_load_args: bool)
             value = getattr(config, name, None)
             if old_value is not None and (value is None or isinstance(value, (list, tuple)) and not value):
                 setattr(config, name, old_value)
+    # A restored model_type only wins over an empty CLI value, but an explicitly given --model that
+    # resolves to a DIFFERENT family is a mixed identity (one family's weights driven by another
+    # family's loader/template). Warn when the model id can be matched locally -- unmatched ids
+    # (hub ids not yet downloaded, custom names) stay silent rather than guessing.
+    model_config = mapped.get('model_config')
+    if model_config is not None and model_config.model_type is not None and model_config.model:
+        from swift.dev.model.loader import match_model_type
+
+        model_family = match_model_type(model_config.model)
+        if model_family is not None and model_family != model_config.model_type:
+            logger.warning(
+                f'--model {model_config.model!r} resolves to family {model_family!r}, but the '
+                f'restored checkpoint declares model_type {model_config.model_type!r}: this mixed '
+                'identity loads the weights with the checkpoint family\'s loader. Pass '
+                '--model_type explicitly if this is intended.')
     if checkpoint_config.load_data_args:
         dataset = mapped.get('dataset_config')
         if dataset is not None:

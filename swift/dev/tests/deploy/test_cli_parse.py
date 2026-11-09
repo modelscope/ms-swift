@@ -143,11 +143,14 @@ def test_deploy_persistence_knobs_are_gone(fake_model):
 
 
 def test_deploy_merge_lora_and_logging(fake_model):
-    d = parse_deploy_configs([
-        '--model', fake_model, '--merge_lora', 'true', '--verbose', 'false', '--log_level', 'debug'
-    ])['deploy_config']
-    assert d.merge_lora is True and d.verbose is False
-    assert d.log_level == 'debug'
+    d = parse_deploy_configs(['--model', fake_model, '--merge_lora', 'true'])['deploy_config']
+    assert d.merge_lora is True
+    # --verbose / --log_level are retired with the fields they fed: the server owns its own
+    # request logging and level, so the flags reached nothing (a REMOVED_OPTION now).
+    with pytest.raises(ValueError, match='verbose is unsupported'):
+        parse_deploy_configs(['--model', fake_model, '--verbose', 'false'])
+    with pytest.raises(ValueError, match='log_level is unsupported'):
+        parse_deploy_configs(['--model', fake_model, '--log_level', 'debug'])
     # --log_interval is a REMOVED_OPTION: server throughput summaries have a builtin cadence
     with pytest.raises(ValueError, match='log_interval is unsupported'):
         parse_deploy_configs(['--model', fake_model, '--log_interval', '5'])

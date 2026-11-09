@@ -30,6 +30,18 @@ def store_writer_kind(output_path: Optional[str], store_format: str, *, checkpoi
     return 'checkpoint' if checkpoint else 'incremental'
 
 
+def _filter_fields(rows: List[Dict[str, Any]], fields: Optional[Sequence[str]]) -> List[Dict[str, Any]]:
+    """Apply the ``store_fields`` whitelist -- the batch write's contract, on every writer mode.
+
+    Without this the default jsonl (incremental / checkpoint) modes wrote every column, so
+    ``--store_fields`` was silently dead unless a non-incremental format forced the batch path.
+    """
+    if not fields:
+        return rows
+    keep = set(fields)
+    return [{key: value for key, value in row.items() if key in keep} for row in rows]
+
+
 def _gather_rows(rows: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
     """All ranks' rows on the writing rank, None elsewhere. A no-op without torch.distributed."""
     import torch.distributed as dist
@@ -144,10 +156,10 @@ class StoreWriter:
                 return  # not the writing rank
             # Always append: the file's existence at run start already meant "continue it", and on a
             # fresh path 'a' and 'w' create identically -- so no first-write mode juggling is needed.
-            self._storage.append(rows, self._output_path)
+            self._storage.append(_filter_fields(rows, self._fields), self._output_path)
             logger.info(f'flushed {len(rows)} rows to {self._output_path}')
         elif self._kind == 'checkpoint':
-            for row in rows:
+            for row in _filter_fields(rows, self._fields):
                 self._f.write(json.dumps(row, ensure_ascii=False, default=str) + '\n')
             self._f.flush()
 

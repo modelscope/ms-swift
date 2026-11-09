@@ -68,7 +68,7 @@ def run_deploy(
     # the data-plane is left untouched -- re-running it would drop in-flight DataRefs.
     gateway_models, skip_apps = [public_name], set()
     if existing:
-        gateway_models = sorted(set(_deployed_model_names(existing)) | {public_name})
+        gateway_models = sorted(set(_deployed_model_names()) | {public_name})
         if 'data-plane' in existing:
             skip_apps.add('data-plane')
 
@@ -264,11 +264,13 @@ def _serve_details() -> Dict[str, Any]:
         return {}
 
 
-def _deployed_model_names(apps: Dict[str, Any]) -> List[str]:
+def _deployed_model_names() -> List[str]:
     """Model names behind the running sampler apps.
 
     App names alone are lossy (``/`` became ``_``); the route prefix keeps the original name
-    verbatim in its ``.../sampler/{name}`` tail, so the names are read off the routes.
+    verbatim in its ``.../sampler/{name}`` tail, so the names are read off the controller's
+    live route table -- ``serve.status()`` entries carry no route prefix, hence the internal
+    ``_serve_details()`` poll rather than any caller-side snapshot.
     """
     names = []
     for name, details in _serve_details().items():
@@ -357,7 +359,7 @@ def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelCon
 
     # serve.delete blocks until the app (and its replicas) are gone.
     serve.delete(sampler_app)
-    remaining = [name for name in _deployed_model_names(apps) if name != public_name]
+    remaining = [name for name in _deployed_model_names() if name != public_name]
     if 'server' in apps:
         if remaining:
             logger.info(f're-registering gateway without {public_name!r}: {remaining}')
@@ -440,6 +442,19 @@ def _warn_unapplied_generation_defaults(generation_config: Optional[GenerationCo
         logger.warning(f'swift deploy serves through twinkle-server, which applies sampling per request: the '
                        f'GenerationConfig default(s) {set_fields} are NOT injected server-side. Send them in '
                        'each request body (temperature/top_p/max_tokens/...) instead.')
+    # Knobs the per-request translation has no field for at all (the infer entry point rejects these
+    # by name); naming them here keeps a deploy run from silently dropping them.
+    unsupported = []
+    if generation_config.logprobs or generation_config.top_logprobs is not None:
+        unsupported.append('logprobs/top_logprobs')
+    if generation_config.num_beams and generation_config.num_beams > 1:
+        unsupported.append(f'num_beams={generation_config.num_beams}')
+    if generation_config.structured_outputs_regex:
+        unsupported.append('structured_outputs_regex')
+    if unsupported:
+        logger.warning(f'swift deploy serves through twinkle-server, which has no server-side counterpart '
+                       f'for {unsupported}: the settings are dropped. Drop them from the deploy config, or '
+                       'run swift infer if you need them.')
 
 
 def _local_head_running() -> bool:
