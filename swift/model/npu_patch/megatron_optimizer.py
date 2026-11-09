@@ -143,7 +143,8 @@ def patch_megatron_optimizer():
             inspect.signature(get_grad_norm_fp32).parameters):
         raise RuntimeError('Unsupported MCore gradient norm signature for the Swift NPU performance patch.')
     _ORIGINAL_GET_NORM = clip_grads.get_grad_norm_fp32
-    clip_grads.get_grad_norm_fp32 = core_optimizer.get_grad_norm_fp32 = get_grad_norm_fp32
+    clip_grads.get_grad_norm_fp32 = get_grad_norm_fp32
+    core_optimizer.get_grad_norm_fp32 = get_grad_norm_fp32
     for name, fn in functions.items():
         setattr(modules['l2norm' if 'l2norm' in name else 'scale'], name, fn)
         setattr(optimizers, name, fn)
