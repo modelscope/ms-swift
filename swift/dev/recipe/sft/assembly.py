@@ -116,7 +116,7 @@ def build_supervised_objects(
     # instances. The dataset and template stay local (rows are encoded here and shipped as forward
     # inputs), so build_dataset/plan_supervised_steps are shared by both modes.
     from swift.dev.builders.remote import (
-        REMOTE_UNSUPPORTED_TASKS, apply_remote_tuner, build_remote_model, configure_remote_loss,
+        apply_remote_tuner, build_remote_model, configure_remote_loss, configure_remote_metric,
         configure_remote_processor,
     )
     process_and_validate(
@@ -137,11 +137,6 @@ def build_supervised_objects(
     task_type = model_config.task_type
     if task is not None:
         task_type = _require_task_type(recipe, model_config, task)
-    if remote and (task_type or 'causal_lm') in REMOTE_UNSUPPORTED_TASKS:
-        raise ValueError(
-            f"--mode remote does not support task_type={(task_type or 'causal_lm')!r}: the "
-            'embedding/seq_cls/reranker loss families pass loss instances that cannot cross HTTP '
-            'and are untested remotely. Run them with mode=local/ray.')
     _, processor = load_model_processor(model_config)
     kwargs = {"task_type": task_type} if task_type else {}
     template = build_template(template_config, processor, **kwargs)
@@ -168,14 +163,23 @@ def build_supervised_objects(
     if remote:
         model = build_remote_model(model_config, distributed_config)
         if tuner_config is not None:
-            apply_remote_tuner(model, tuner_config, 1, task_type=task_type)
+            apply_remote_tuner(model, tuner_config, 1, task_type=task_type, model_config=model_config)
+        elif task_type in ('seq_cls', 'reranker', 'decision'):
+            # The readout head reaches the server ONLY through the adapter channel
+            # (add_adapter_to_model(task=...)); a local full-param build resolves a
+            # head-carrying model_cls instead. Refuse here with the workaround, loudly,
+            # rather than training a headless model.
+            raise ValueError(
+                f'--mode remote with task_type={task_type!r} and no tuner cannot attach the task '
+                'readout head: the server-side head rides the adapter channel. Use --tuner lora, '
+                'or run mode=local/ray for full-parameter task heads.')
         # Full-param remote: the server model trains all parameters by default. The local
         # freeze/trainable knobs read requires_grad in-process, which cannot cross HTTP; a
         # non-default freeze is refused by validate rather than silently ignored.
         # The processor is swift's own dev one, registered server-side at startup; the Template
         # is rebuilt in the worker from the serialized spec, so rows ship unfinished.
         configure_remote_processor(model, template_config, model_config, distributed_config)
-        configure_remote_loss(model, train_config)
+        configure_remote_loss(model, train_config, task_type=task_type, model_config=model_config)
     else:
         model = build_model(
             build_config,
@@ -221,7 +225,9 @@ def build_supervised_objects(
         tuner_config=tuner_config,
         plugin_config=None,
     )
-    if configure_metric is not None:
+    if remote:
+        configure_remote_metric(model, task_type)
+    elif configure_metric is not None:
         configure_metric(model)
     return SupervisedCluster(
         model=model,

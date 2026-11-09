@@ -17,7 +17,7 @@ ships a serialized ``TemplateSpec`` so the server rebuilds the dev Template itse
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from swift.dev.utils.logger import get_logger
 
@@ -71,11 +71,16 @@ class RemoteModel:
 
 def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
                        gradient_accumulation_steps: int,
-                       task_type: Optional[str] = None) -> None:
+                       task_type: Optional[str] = None,
+                       model_config: Optional['ModelConfig'] = None) -> None:
     """Attach the tuner on the server: LoRA becomes a named adapter on the resident base model.
 
     trainable_tokens has no server-side counterpart yet, and 'full' needs no adapter call (the
     server model trains all parameters by default) -- both fail loudly rather than degrade.
+    For a task with a readout head (seq_cls / reranker / decision) the adapter call also builds
+    the head server-side: the server model is a plain causal-lm host, and
+    ``add_adapter_to_model(task=...)`` is the channel that attaches heads to it (the local path
+    instead resolves a head-carrying model_cls or a family loader at build time).
     """
     from peft import LoraConfig
 
@@ -102,18 +107,60 @@ def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
     lora_config = LoraConfig(**_lora_common_kwargs(tuner_config, task_type))
     # No save_dir: the server owns the checkpoint store (a client-side dir would have to exist
     # on the server already). GA rides the adapter because the server's grad-sync gate is
-    # per-adapter state, not a forward kwarg.
-    model.add_adapter_to_model('default', lora_config, gradient_accumulation_steps=gradient_accumulation_steps)
+    # per-adapter state, not a forward kwarg. The head kwargs are plain names/ints, so they
+    # cross HTTP with the rest of the call.
+    model.add_adapter_to_model('default', lora_config, gradient_accumulation_steps=gradient_accumulation_steps,
+                               **_remote_task_head_kwargs(task_type, model_config))
 
 
-def configure_remote_loss(model: Any, train_config: 'TrainConfig') -> None:
-    """Set the SFT/PT loss on the server model by NAME (the instance the local path passes
+def _remote_task_head_kwargs(task_type: Optional[str], model_config: Optional['ModelConfig']) -> Dict[str, Any]:
+    """The ``add_adapter_to_model`` kwargs that build the task's readout head server-side.
+
+    No head at all for causal_lm / embedding / generative_reranker (pooling or the vocab head
+    already serve the task). seq_cls and reranker build the standard Linear head (reranker is a
+    single-score one); decision replays the family loader's build through its (module, class)
+    NAME -- the same names the local Megatron path ships across the Ray boundary.
+    """
+    if task_type in (None, 'causal_lm', 'embedding', 'generative_reranker'):
+        return {}
+    if task_type == 'seq_cls':
+        if model_config is None or model_config.num_labels is None:
+            raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
+        return {'task': 'seq_cls', 'num_labels': model_config.num_labels}
+    if task_type == 'reranker':
+        num_labels = getattr(model_config, 'num_labels', None) if model_config is not None else None
+        return {'task': 'reranker', 'num_labels': num_labels or 1}
+    if task_type == 'decision':
+        if model_config is None:
+            raise ValueError('task_type="decision" needs the ModelConfig to resolve its family loader.')
+        from swift.dev.builders.model import _resolve_model_loader
+        from swift.dev.model.loader.decision import ScoringLoader
+
+        model_loader = _resolve_model_loader(model_config)
+        if not isinstance(model_loader, ScoringLoader):
+            raise ValueError(
+                f'task_type="decision" needs a decision family loader; model_type='
+                f'{model_config.model_type!r} resolved {model_loader!r}.')
+        return {'task': 'decision', 'task_head_loader': model_loader.task_head_loader()}
+    raise ValueError(f'--mode remote has no readout-head configuration for task_type={task_type!r}.')
+
+
+def configure_remote_loss(model: Any, train_config: 'TrainConfig',
+                           task_type: Optional[str] = None,
+                           model_config: Optional['ModelConfig'] = None) -> None:
+    """Set the run's loss on the server model by NAME (the instance the local path passes
     cannot cross HTTP).
 
-    Covers the supervised causal_lm main line (cross entropy, channel-grouped, DFT-weighted,
-    liger fused). The channel/DFT/fused knobs forward verbatim; a server without the class
-    registered (e.g. liger not installed there) fails at set_loss time, loudly.
+    causal_lm keeps the supervised main line (cross entropy, channel-grouped, DFT-weighted,
+    liger fused). The task heads route by the same swift loss names the local
+    ``configure_*_loss`` family resolves -- embedding (infonce & friends), reranker /
+    generative_reranker (pointwise / listwise), seq_cls (problem_type x num_labels), decision
+    (scoring / distill_rps / smooth_brier / ce_rps) -- and the resolved CLASS name is what
+    crosses the wire; a dev-registered loss class is exported into ``twinkle.loss`` by
+    ``register_loss``, so the server resolves it the same way this process does. A server
+    without the class (e.g. liger not installed there) fails at set_loss time, loudly.
     """
+    from swift.dev.loss.configure import DECISION_LOSS_TYPES, EMBEDDING_LOSS_TYPES, PROBLEM_TYPES, RERANKER_LOSS_TYPES
     from swift.dev.utils.naming import resolve_loss
 
     if _liger_fused_ce_enabled(train_config) and (train_config.enable_channel_loss
@@ -123,18 +170,59 @@ def configure_remote_loss(model: Any, train_config: 'TrainConfig') -> None:
         # dropped by the elif -- a remote run must not degrade silently where local fails loudly.
         raise ValueError('fused_linear_cross_entropy replaces the standard CE path and cannot be combined '
                          'with enable_channel_loss or enable_dft_loss.')
-    name = 'cross_entropy'
-    if _liger_fused_ce_enabled(train_config):
-        name = 'liger_fused_linear_cross_entropy'
-    elif train_config.enable_channel_loss:
-        name = 'channel'
+
+    task_type = task_type or 'causal_lm'
+    kwargs: Dict[str, Any] = {}
+    if task_type == 'causal_lm':
+        name = 'cross_entropy'
+        if _liger_fused_ce_enabled(train_config):
+            name = 'liger_fused_linear_cross_entropy'
+        elif train_config.enable_channel_loss:
+            name = 'channel'
+        kwargs = {'reduction': 'sum', 'dft': bool(train_config.enable_dft_loss),
+                  'label_smoothing': train_config.label_smoothing_factor or 0.0}
+    elif task_type == 'embedding':
+        name = train_config.loss or 'infonce'
+        if name not in EMBEDDING_LOSS_TYPES:
+            raise NotImplementedError(f'configure_embedding_loss supports {list(EMBEDDING_LOSS_TYPES)}, '
+                                      f'got {name!r}.')
+        if train_config.mrl_dims is not None:
+            kwargs['mrl_dims'] = train_config.mrl_dims
+    elif task_type in ('reranker', 'generative_reranker'):
+        name = train_config.loss or 'pointwise_reranker'
+        if name not in RERANKER_LOSS_TYPES:
+            raise NotImplementedError(f'configure_reranker_loss supports {list(RERANKER_LOSS_TYPES)}, '
+                                      f'got {name!r}.')
+    elif task_type == 'seq_cls':
+        problem_type = getattr(model_config, 'problem_type', None) if model_config is not None else None
+        num_labels = getattr(model_config, 'num_labels', None) if model_config is not None else None
+        if problem_type not in PROBLEM_TYPES:
+            raise ValueError(f'problem_type must be one of {list(PROBLEM_TYPES)}, got {problem_type!r}. '
+                             'It is required (not inferred) so the training objective is explicit.')
+        if num_labels is None:
+            raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
+        name = 'seq_cls'
+        kwargs = {'problem_type': problem_type, 'num_labels': num_labels}
+    elif task_type == 'decision':
+        name = train_config.loss or 'scoring'
+        if name not in DECISION_LOSS_TYPES:
+            raise ValueError(f'configure_decision_loss supports {list(DECISION_LOSS_TYPES)}, got {name!r}.')
+    else:
+        raise ValueError(f'--mode remote has no loss configuration for task_type={task_type!r}.')
     loss_cls = resolve_loss(name)
-    model.set_loss(
-        loss_cls.__name__,
-        reduction='sum',
-        dft=bool(train_config.enable_dft_loss),
-        label_smoothing=train_config.label_smoothing_factor or 0.0,
-    )
+    model.set_loss(loss_cls.__name__, **kwargs)
+
+
+def configure_remote_metric(model: Any, task_type: Optional[str] = None) -> None:
+    """Register the run's metric on the server model by NAME (classes cannot cross HTTP).
+
+    embedding gets twinkle's own ``EmbeddingMetric`` (the local ``configure_embedding_metric``
+    passes the class). seq_cls / reranker / decision have no remote metric registration yet:
+    training and the loss/grad numerics are unaffected, only their eval-side readouts are
+    absent -- the decision metric family is a swift.dev class pending the same namespace export.
+    """
+    if task_type == 'embedding':
+        model.add_metric('EmbeddingMetric', is_training=True)
 
 
 def _liger_fused_ce_enabled(train_config: 'TrainConfig') -> bool:
@@ -142,13 +230,6 @@ def _liger_fused_ce_enabled(train_config: 'TrainConfig') -> bool:
     from swift.dev.loss import liger_fused_ce_enabled
 
     return liger_fused_ce_enabled(train_config)
-
-
-#: The loss families the remote path does not configure: embedding/seq_cls/reranker route
-#: through configure_embedding_loss / configure_seq_cls_loss / configure_reranker_loss, which
-#: pass loss instances; their remote story is untested. Refused here so the failure happens
-#: at assembly time, not deep inside a server request.
-REMOTE_UNSUPPORTED_TASKS = ('embedding', 'seq_cls', 'reranker', 'generative_reranker')
 
 
 #: The server-side processor class the remote path asks for by NAME. The server must have imported

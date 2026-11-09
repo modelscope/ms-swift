@@ -201,6 +201,11 @@ def register_loss(*names: str) -> Callable[[Type], Type]:
     def decorator(cls: Type) -> Type:
         for name in names:
             _DEV_LOSS_MAPPING[name.lower()] = cls
+        # Export the class into twinkle.loss under its own name: set_loss resolves a class NAME
+        # through that namespace (construct_class), local and remote alike, so a dev-registered
+        # loss must be reachable there once this module has been imported in the process.
+        import twinkle.loss
+        setattr(twinkle.loss, cls.__name__, cls)
         return cls
 
     return decorator

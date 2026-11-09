@@ -24,7 +24,14 @@ class DevInputProcessor(InputProcessor):
 
 
 def register() -> None:
-    """Export :class:`DevInputProcessor` into ``twinkle.processor`` so ``set_processor`` resolves it by name."""
+    """Export dev classes into the twinkle namespaces the server resolves names through.
+
+    ``DevInputProcessor`` goes into ``twinkle.processor`` (set_processor by name). The decision
+    loss family goes into ``twinkle.loss`` via ``register_loss``'s export: the remote training
+    path sets a task's loss by CLASS NAME, and the decision losses live in swift.dev -- importing
+    the module here runs the registration that makes those names resolvable server-side.
+    """
+    import swift.dev.loss.decision  # noqa: F401 -- register_loss exports the classes into twinkle.loss
     import twinkle.processor
 
     twinkle.processor.DevInputProcessor = DevInputProcessor
