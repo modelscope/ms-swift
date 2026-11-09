@@ -294,6 +294,8 @@ def initialize_cluster(
             adapters=tuple(rl_config.ref_adapters or ()),
             policy_model=model,
             disable_adapter=(tuner_config is not None and not rl_config.ref_adapters and not rl_config.sync_ref_model),
+            model_type=rl_config.ref_model_type,
+            model_revision=rl_config.ref_model_revision,
         )
     # create the teacher here (the RLSD/SDAR reweighting channel), same bare-model shape
     teacher = build_ref_model(
@@ -307,6 +309,9 @@ def initialize_cluster(
         adapters=tuple(rl_config.teacher_adapters or ()),
         policy_model=model,
         disable_adapter=rl_config._teacher_use_disable_adapter,
+        model_type=rl_config.teacher_model_type,
+        model_revision=rl_config.teacher_model_revision,
+        deepspeed=rl_config.teacher_deepspeed,
     )
 
     # create prm & orm here -- the shared channel resolver: rules local, each MODEL on its group
