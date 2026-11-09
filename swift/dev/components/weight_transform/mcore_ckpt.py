@@ -242,10 +242,16 @@ def load_mcore_dist_checkpoint(models: List[Any],
     checkpoint_dir = os.path.join(load_dir, f'iter_{iteration:07d}')
     state_dict = dist_checkpointing.load_common_state_dict(checkpoint_dir)
 
-    ckpt_tp_pp = (
-        state_dict['args'].tensor_model_parallel_size,
-        state_dict['args'].pipeline_model_parallel_size,
-    )
+    ckpt_args = state_dict.get('args')
+    if ckpt_args is None:
+        # Twinkle-saved megatron checkpoints carry no 'args' in the common state: the layout the
+        # sharded load needs lives in content_metadata, and there is nothing to compare here.
+        ckpt_tp_pp = None
+    else:
+        ckpt_tp_pp = (
+            ckpt_args.tensor_model_parallel_size,
+            ckpt_args.pipeline_model_parallel_size,
+        )
     run_tp_pp = (
         parallel_meta['tensor_model_parallel_size'],
         parallel_meta['pipeline_model_parallel_size'],
