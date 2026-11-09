@@ -161,8 +161,16 @@ def test_no_name_string_is_handed_to_twinkles_loader():
     """
     offenders = []
     for path in dev_sources():
+        rel = path.relative_to(DEV)
+        # builders/remote.py drives a twinkle_client HTTP handle (MultiLoraTransformersModel), whose
+        # setters are name-typed by design: a class cannot cross HTTP, so the server resolves the name
+        # in its own registry (e.g. 'EmbeddingMetric' -> twinkle.metric.EmbeddingMetric). Nothing there
+        # reaches twinkle's local construct_class/load_plugin, which is the misroute this test guards.
+        # The local counterpart (configure_embedding_metric) passes the CLASS object and is still scanned.
+        if rel.as_posix() == 'builders/remote.py':
+            continue
         for lineno, line in enumerate(path.read_text(encoding='utf-8').splitlines(), start=1):
             if _TWINKLE_SETTERS.search(line):
-                offenders.append(f'{path.relative_to(DEV)}:{lineno}: {line.strip()}')
+                offenders.append(f'{rel}:{lineno}: {line.strip()}')
     assert not offenders, ('these call sites hand twinkle a name string; resolve it to a class or instance '
                            'first (PluginRegistry.get / .resolve):\n' + '\n'.join(offenders))
