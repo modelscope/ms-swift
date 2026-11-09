@@ -42,8 +42,8 @@ _mcore_017: Optional[bool] = None
 
 
 def _unwrap_models(models: List[Any]) -> List[Any]:
-    """Strip DDP/Float16Module wrappers (mcore-bridge's ``unwrap_model``), never the model itself."""
-    from mcore_bridge import unwrap_model
+    """Strip DDP/Float16Module wrappers (megatron core's ``unwrap_model``), never the model itself."""
+    from megatron.core.utils import unwrap_model
 
     return unwrap_model(models)
 
