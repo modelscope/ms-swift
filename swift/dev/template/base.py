@@ -646,6 +646,10 @@ class Template(ProcessorMixin):
                 _encoded[f"anchor_{key}"] = anchor_encoded[key]
             positive = inputs.positive
             if isinstance(positive, list):
+                if not positive:
+                    raise ValueError('An embedding row has an empty `positive` list: the positive leg '
+                                     'is required (labels default to 1.0 off it), so encoding cannot '
+                                     'proceed. Provide at least one positive message pair.')
                 positive = positive[0]
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
@@ -743,8 +747,15 @@ class Template(ProcessorMixin):
         encoded = self._encode_truncated(chosen)
         if self.is_training:
             target_probs = chosen.extra_kwargs.get("target_probs")
-            if target_probs is not None:
-                encoded["target_probs"] = target_probs
+            if target_probs is None:
+                # A training row without target_probs used to encode silently; the collator then
+                # omitted the whole labels tensor for an all-unlabeled batch and the failure only
+                # surfaced at loss construction with no pointer back to the data. Reject at encode
+                # time, where the offending row is still identifiable.
+                raise ValueError(
+                    'decision training rows need `target_probs` (the per-question gold '
+                    'distributions); this row carries none. Label the row, or run it as inference.')
+            encoded["target_probs"] = target_probs
         return encoded
 
     def encode(

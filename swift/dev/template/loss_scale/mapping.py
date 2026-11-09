@@ -48,6 +48,12 @@ def get_loss_scale(loss_scale: str) -> LossScale:
     else:
         base_strategy = "default"
         ls_names = parts
+    unknown = [name for name in ls_names if name not in loss_scale_map]
+    if unknown:
+        # Unknown segments (a typo, or a trailing '+' naming an empty segment) name themselves
+        # instead of surfacing as a bare KeyError from the map lookup.
+        raise ValueError(f"Unknown loss_scale segment(s) {unknown} in {loss_scale!r}; "
+                         f"available: {sorted(loss_scale_map)} (base strategies: {sorted(ALL_BASE_STRATEGY)})")
     if len(ls_names) == 1:
         return loss_scale_map[ls_names[0]](base_strategy)
     # The base_strategy is owned by the outer ConcatLossScale; sub loss scales only

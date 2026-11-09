@@ -98,6 +98,11 @@ class TestFamilyStrategies:
         assert get_loss_scale('qwen').is_binary is not True
 
     def test_unknown_strategy_name_rejected(self):
-        """An unknown name fails loudly at resolution, never silently falls back to default."""
-        with pytest.raises(KeyError):
+        """An unknown name fails loudly at resolution, never silently falls back to default.
+
+        A named ValueError (not a bare KeyError): the message lists the unknown segment and the
+        available ones, matching the template registry's contract for the same failure."""
+        with pytest.raises(ValueError, match="Unknown loss_scale segment"):
             get_loss_scale('bogus')
+        with pytest.raises(ValueError, match="Unknown loss_scale segment"):
+            get_loss_scale('default+')  # trailing '+': an empty segment is unknown too

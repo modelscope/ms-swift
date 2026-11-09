@@ -44,8 +44,12 @@ def _read_args_json_template_type(model_dir):
     path = os.path.join(model_dir, "args.json")
     if not os.path.exists(path):
         return None
-    with open(path, encoding="utf-8") as file:
-        return json.load(file).get("template")
+    try:
+        with open(path, encoding="utf-8") as file:
+            return json.load(file).get("template")
+    except json.JSONDecodeError as exc:
+        # A corrupt args.json names the file rather than surfacing as a raw parser traceback.
+        raise ValueError(f"Failed to parse {path} while resolving the template type: {exc}") from exc
 
 
 def get_template_meta(model_info: Any, model_meta: Any, template_type: Optional[str] = None) -> TemplateMeta:
@@ -66,7 +70,9 @@ def get_template_meta(model_info: Any, model_meta: Any, template_type: Optional[
             )
         elif len(candidates) == 1:
             template_type = candidates[0]
-    elif template_type not in TEMPLATE_MAPPING:
+    if template_type not in TEMPLATE_MAPPING:
+        # Covers the single-candidate path too: a candidate that is not registered must fail with
+        # the same named error as an explicitly requested unknown template, not a bare KeyError.
         raise ValueError(f"template_type: '{template_type}' not in {list(TEMPLATE_MAPPING.keys())}")
     template_meta = TEMPLATE_MAPPING[template_type]
     return template_meta

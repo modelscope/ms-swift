@@ -796,7 +796,7 @@ class KevPreprocessor(ScoringPreprocessor):
         for qid, q in items:
             if not isinstance(q, dict):
                 raise ValueError(
-                    f"{self.MODEL_NAME} question {qid!r} must be an object with kind/instructions/options, got {{q!r}}."
+                    f"{self.MODEL_NAME} question {qid!r} must be an object with kind/instructions/options, got {q!r}."
                 )
             options = self._first(q, self.OPTIONS_KEYS, default=None)
             kind = self._first(q, self.KIND_KEYS, default=None)

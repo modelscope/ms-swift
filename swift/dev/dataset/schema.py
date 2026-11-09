@@ -136,7 +136,13 @@ def validate_standard_row(row: Dict[str, Any], task_type: Optional[str] = None, 
 
     Read-only and open to ``extra_kwargs``: only ``messages`` and the keys this task's
     :class:`TaskKeySpec` declares are inspected; an undeclared row-level key passes through
-    unjudged. Called from the dev template's ``encode`` seam, the funnel every task's rows cross.
+    unjudged.
+
+    NOT wired into the load/encode seam yet: the objective-level required keys this declares
+    (rlhf any_of, kto label type, embedding positive_messages, reranker any_of, seq_cls label
+    presence) are today enforced at preprocessor check_messages plus the encode-time rlhf/kto
+    checks in template/inputs -- this validator is the intended single gate once that seam
+    adopts it, and its tests pin the contract it will answer.
     """
     task_type = task_type or 'causal_lm'
     objective = resolve_objective(task_type, mode)

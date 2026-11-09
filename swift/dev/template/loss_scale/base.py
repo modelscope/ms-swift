@@ -50,7 +50,13 @@ class LossScale:
                 # Currently, we only support applying loss/mask to the response part.
                 loss = messages[2 * i + 1].get("loss")
                 loss_scale = messages[2 * i + 1].get("loss_scale")
-                assert context == messages[2 * i + 1]["content"]
+                if context != messages[2 * i + 1]["content"]:
+                    # An assert here would silently vanish under `python -O`, letting a mispaired
+                    # context/weight through unweighed; the weights this class emits are only
+                    # correct when the pairing holds.
+                    raise ValueError(
+                        f'Loss-scale context pairing broke at turn {i}: rendered {context!r} does not '
+                        f'match the message it was weighed against ({messages[2 * i + 1]["content"]!r}).')
                 i += 1
             if not isinstance(context, list) or (len(context) > 0 and isinstance(context[0], int)):
                 context = [context]
