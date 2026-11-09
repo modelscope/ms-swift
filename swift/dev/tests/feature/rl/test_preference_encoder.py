@@ -94,3 +94,59 @@ def test_update_uses_backend_micro_batches_without_cross_call_accumulation(rl_ty
     assert kwargs['gradient_accumulation_steps'] == 1
     assert kwargs["micro_batch_size"] == 2 * micro_batch_size
     assert [feature["input_ids"] for feature in kwargs["inputs"]] == [[i] for i in range(8 * micro_batch_size)]
+
+
+class _KtoTemplate:
+    """KTO-shaped stub. Records each row's own completion next to the synthesized KL-batch partner
+    (``rejected_response``) so the test can assert no prompt is paired with its OWN text -- exactly the
+    ``rejected_response != response`` guard the real template enforces on the encoder's synthesis."""
+
+    def __init__(self):
+        self.pairs = []  # (own_completion, kl_partner)
+
+    def encode(self, row):
+        own = row['messages'][-1]['content']
+        partner = row['rejected_response']
+        self.pairs.append((own, partner))
+        cid, rid = [ord(own[-1])], [ord(partner[-1])]
+        return {
+            'chosen_input_ids': cid, 'chosen_labels': list(cid),
+            'rejected_input_ids': rid, 'rejected_labels': list(rid),
+            'label': True,
+        }
+
+
+def _kto_encoder():
+    from swift.dev.recipe.rlhf.encoder import PreferenceBatchEncoder
+
+    template = _KtoTemplate()
+    # calculate_kl=False + reference=None: the rotation (and its guard) runs in _encode_kto_batch before
+    # any forward, so the degenerate-batch behaviour is observable without a model.
+    return PreferenceBatchEncoder(model=None, template=template, rl_type='kto', calculate_kl=False), template
+
+
+def _kto_rows(completions):
+    return [{'messages': [{'role': 'assistant', 'content': c}]} for c in completions]
+
+
+@pytest.mark.parametrize('completions', [['a'], ['a', 'a', 'a']])
+def test_kto_degenerate_batch_fails_loudly(completions):
+    """A one-row batch -- or one where every completion is identical -- cannot form the mismatched KL
+    pair z_KL needs. Batch >= 2 with distinct completions is intrinsic to the unpaired objective, so the
+    encoder fails loudly here instead of self-pairing, which the real template's ``rejected != response``
+    guard would otherwise reject mid-encode (the silent crash this replaces)."""
+    encoder, _ = _kto_encoder()
+    with pytest.raises(ValueError, match='distinct completions'):
+        encoder(_kto_rows(completions), micro_batch_size=len(completions))
+
+
+@pytest.mark.parametrize('completions', [['a', 'b'], ['a', 'a', 'b'], ['a', 'b', 'a']])
+def test_kto_kl_batch_pairs_every_prompt_with_a_distinct_completion(completions):
+    """The collision-free rotation gives EVERY row a partner differing from its own completion -- including
+    the adjacent-duplicate (['a','a','b']) and wrap-duplicate (['a','b','a']) layouts where a plain
+    rotate-by-one (``[last] + rest``) hands a row its own text and trips the template guard."""
+    encoder, template = _kto_encoder()
+    encoder(_kto_rows(completions), micro_batch_size=len(completions))
+    assert len(template.pairs) == len(completions)
+    for own, partner in template.pairs:
+        assert partner != own, f'KL batch paired {own!r} with its own completion'
