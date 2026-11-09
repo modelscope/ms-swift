@@ -73,7 +73,7 @@ def test_sft_main_rejects_megatron_with_non_causal_task(monkeypatch):
     monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_a, **_k: None)
     configs = _training_configs(task_type='seq_cls', backend='megatron')
     monkeypatch.setattr('swift.dev.cli.sft.parse_sft_configs', lambda _argv: configs)
-    with pytest.raises(ValueError, match='supports only causal_lm SFT'):
+    with pytest.raises(ValueError, match='supports only causal_lm / decision SFT'):
         sft_main([])
 
 

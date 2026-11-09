@@ -166,9 +166,12 @@ def test_grpo_loss_type_gspo_is_sequence_level():
 def test_grpo_cached_dataset_and_truncation_refusals():
     """S2-31: GRPO rolls out from raw messages (cached_dataset would be ignored) and truncates
     prompts from the left only ('right' cuts what the completion conditions on)."""
-    with pytest.raises(ValueError, match='cached_dataset is not supported for GRPO'):
+    with pytest.raises(ValueError, match='cached_dataset is not supported for grpo'):
         _check_grpo_cached_dataset(DatasetConfig(cached_dataset=['c']), RLConfig(rl_type='grpo'))
     _check_grpo_cached_dataset(DatasetConfig(cached_dataset=['c']), RLConfig(rl_type='dpo'))
+    for rl_type in ('ppo', 'gkd', 'rft'):
+        with pytest.raises(ValueError, match=f'cached_dataset is not supported for {rl_type}'):
+            _check_grpo_cached_dataset(DatasetConfig(cached_dataset=['c']), RLConfig(rl_type=rl_type))
 
     with pytest.raises(ValueError, match="truncation_strategy 'left' or 'delete'"):
         _check_grpo_truncation_strategy(TemplateConfig(truncation_strategy='right'), RLConfig(rl_type='grpo'))
@@ -253,14 +256,20 @@ def test_prm_channel_and_scorer_knobs():
     with pytest.raises(ValueError, match='prm_orm_mix'):
         _check_prm(RLConfig(rl_type='grpo'), reward)
 
-    reward = RewardConfig(prm=['Qwen/PRM-7B'])
+    # prm-only with a blended mix folds NaN into every advantage: refuse it, and only the
+    # pure-process mix=1 stays valid without an --orm channel.
+    with pytest.raises(ValueError, match='blends an --orm half'):
+        _check_prm(RLConfig(rl_type='grpo'), RewardConfig(prm=['Qwen/PRM-7B'], prm_orm_mix=0.5))
+    _check_prm(RLConfig(rl_type='grpo'), RewardConfig(prm=['Qwen/PRM-7B'], prm_orm_mix=1.0))
+
+    reward = RewardConfig(prm=['Qwen/PRM-7B'], orm=['accuracy'])
     with pytest.raises(ValueError, match='RLSD/SDAR'):
         _check_prm(RLConfig(rl_type='grpo', advantage_reweight='rlsd'), reward)
-    reward = RewardConfig(prm=['Qwen/PRM-7B'])
+    reward = RewardConfig(prm=['Qwen/PRM-7B'], orm=['accuracy'])
     with pytest.raises(ValueError, match='RLSD/SDAR'):
         _check_prm(RLConfig(rl_type='grpo', sdar_loss_coef=0.1), reward)
 
-    _check_prm(RLConfig(rl_type='grpo'), RewardConfig(prm=['Qwen/PRM-7B'], prm_orm_mix=0.5))
+    _check_prm(RLConfig(rl_type='grpo'), RewardConfig(prm=['Qwen/PRM-7B'], orm=['accuracy'], prm_orm_mix=0.5))
 
 
 def test_distillation_family_and_self_distill():
@@ -277,6 +286,19 @@ def test_distillation_family_and_self_distill():
         _check_distillation(RLConfig(rl_type='gkd', sft_alpha=-1))
     _check_distillation(RLConfig(rl_type='gkd', lmbda=1.0, sft_alpha=0.1, distill_temperature=1.0))
 
+    # MOPD's teacher contradictions fire at validate time (not after the actors are built):
+    # a single teacher equal to the policy is the self-distillation derivation MOPD rejects, and an
+    # explicitly different teacher family is the unsupported heterogeneous forward (F-31/F-32).
+    policy = ModelConfig(model='student', model_type='qwen2_5_vl')
+    with pytest.raises(ValueError, match='does not apply here'):
+        _check_distillation(RLConfig(rl_type='mopd', teacher_model=['student']), policy)
+    with pytest.raises(ValueError, match='does not apply here'):
+        _check_distillation(RLConfig(rl_type='mopd', _teacher_use_disable_adapter=True), policy)
+    with pytest.raises(ValueError, match='heterogeneous teachers'):
+        _check_distillation(RLConfig(rl_type='mopd', teacher_model=['t'], teacher_model_type='qwen3'), policy)
+    # K distinct same-family teachers stay valid (teacher_model_type unset inherits the policy family).
+    _check_distillation(RLConfig(rl_type='mopd', teacher_model=['a', 'b'], lmbda=1.0), policy)
+
     from swift.dev.config.validate import _check_rlsd, _check_sdar, _check_self_distillation
     with pytest.raises(ValueError, match='orm channel'):
         _check_rlsd(RLConfig(rl_type='grpo', advantage_reweight='rlsd'))
@@ -285,6 +307,20 @@ def test_distillation_family_and_self_distill():
     with pytest.raises(ValueError, match='liger'):
         _check_self_distillation(RLConfig(rl_type='grpo', advantage_reweight='rlsd'),
                                  TrainConfig(use_liger_kernel=True), RewardConfig(orm=['accuracy']))
+
+
+def test_fsdp_dead_combinations_are_refused():
+    """S2-4x: --fsdp_config without --fsdp selects no strategy so the config is silently dead, and
+    --fsdp under --deepspeed loses the builder's if/elif resolution race; both are refused here."""
+    from swift.dev.config.validate import _check_fsdp_config
+
+    with pytest.raises(ValueError, match='only consumed together with --fsdp'):
+        _check_fsdp_config(DistributedConfig(fsdp_config={'reshard_after_forward': False}))
+    with pytest.raises(ValueError, match='not compatible with --deepspeed'):
+        _check_fsdp_config(DistributedConfig(fsdp='fsdp2', deepspeed='zero2'))
+    # The live combinations pass: fsdp alone, and both off.
+    _check_fsdp_config(DistributedConfig(fsdp='fsdp2', fsdp_config={'reshard_after_forward': False}))
+    _check_fsdp_config(DistributedConfig())
 
 
 def test_auxiliary_adapters_and_channel_companions():

@@ -27,6 +27,9 @@ class CheckpointConfig:
     push_to_hub: bool = False
     hub_model_id: Optional[str] = None
     hub_private_repo: bool = False
+    # Only 'end' changes behaviour (upload once, after the final checkpoint): the save loop pushes
+    # after every checkpoint otherwise, and 'every_save'/'checkpoint'/'all_checkpoints' are accepted
+    # legacy spellings of that same per-save cadence.
     hub_strategy: Literal['end', 'every_save', 'checkpoint', 'all_checkpoints'] = 'every_save'
     hub_revision: Optional[str] = None
     # Off by default so uploading does not stall training; on to notice a dropped push.

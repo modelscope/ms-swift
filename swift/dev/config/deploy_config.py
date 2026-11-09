@@ -31,15 +31,14 @@ class DeployConfig:
     max_logprobs: int = 20  # ceiling on a request's top_logprobs
     max_concurrency: int = 64
 
-    # === Logging ===
-    verbose: bool = True  # log every request, including prompt and completion
-    log_level: Literal['critical', 'error', 'warning', 'info', 'debug', 'trace'] = 'info'
-
     # === Ray Serve runtime ===
     # None/'local' starts an in-process local Ray head; 'auto' attaches to a reachable cluster.
     ray_address: Optional[str] = None
     ray_namespace: str = 'swift'
     # '/v1' reproduces the legacy OpenAI paths (/v1/chat/completions, /v1/completions, ...).
+    # A gateway consumed through twinkle_client (--mode remote / sampler='twinkle') needs
+    # '/api/v1' instead: the client appends '/api/v1' to the base URL, so any other prefix
+    # answers with 404 (train-side validate refuses such a server_base_url path).
     route_prefix: str = '/v1'
     # None derives from backend + enable_data_plane; only the *_async kinds can hand a rollout a
     # DataRef, so an explicit non-async sampler_type with enable_data_plane is rejected.

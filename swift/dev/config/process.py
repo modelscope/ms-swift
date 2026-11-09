@@ -38,6 +38,7 @@ def process_configs(
     megatron_config: Optional['MegatronConfig'] = None,
     quantize_config: Optional['QuantizeConfig'] = None,
     plugin_config: Optional['PluginConfig'] = None,
+    reward_config: Optional['RewardConfig'] = None,
 ) -> None:
     """Load configured plugins and resolve every cross-Config derived value in place.
 
@@ -49,7 +50,17 @@ def process_configs(
     # torch_npu unconditionally, so a torch_npu-less host (GPU/MPS/CPU) must keep it OFF while
     # NPU keeps it ON. Legacy v4 still accepts the argv flag; the env var set here wins there.
     from twinkle.utils import Platform
-    os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = str(Platform.get_platform().__name__ == 'NPU')
+    _npu_patch = str(Platform.get_platform().__name__ == 'NPU')
+    # An externally set value that disagrees with the platform verdict is being overridden here;
+    # say so rather than silently swallowing it (the env is v5's authority, but the clobber should
+    # be visible to whoever set it).
+    _external = os.environ.get('SWIFT_ENABLE_NPU_MODEL_PATCH')
+    if _external is not None and _external != _npu_patch:
+        logger.warning(
+            f'SWIFT_ENABLE_NPU_MODEL_PATCH={_external} was set externally but the platform is '
+            f'{Platform.get_platform().__name__}; overriding to {_npu_patch} (the model patch '
+            'imports torch_npu unconditionally, so the switch follows the platform).')
+    os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = _npu_patch
 
     from swift.dev.builders import is_megatron_backend
     from swift.dev.utils.plugin import PluginRegistry
@@ -73,6 +84,7 @@ def process_configs(
     _derive_rl_ref_model(model_config, tuner_config, rl_config)
     _derive_rl_teacher(model_config, tuner_config, rl_config)
     _derive_grpo_reward_defaults(rl_config)
+    _derive_reward_rule_defaults(reward_config, rl_config)
     _derive_best_model_metric(train_config, rl_config)
     _normalize_recompute_granularity(distributed_config)
     _derive_lr_decay_style(train_config, is_megatron)
@@ -108,6 +120,7 @@ def process_and_validate_configs(
         megatron_config=configs.get('megatron_config'),
         quantize_config=configs.get('quantize_config'),
         plugin_config=configs.get('plugin_config'),
+        reward_config=configs.get('reward_config'),
     )
     validate_configs(
         configs['model_config'],
@@ -143,6 +156,8 @@ def process_and_validate_configs(
         validate_rollout_config(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
     infer_config = configs.get('infer_config')
     if infer_config is not None:
+        # NOTE: the legacy prm_threshold -> reward_threshold fold lives in run_infer, not here --
+        # the infer chain never calls process_configs with an infer_config.
         from .validate import validate_infer_config
         validate_infer_config(infer_config)
     convert_config = configs.get('convert_config')
@@ -656,6 +671,24 @@ def _derive_grpo_reward_defaults(rl_config: Optional['RLConfig']) -> None:
             'gpg': 'none',
             'grpo_passk': 'group',
         }.get(estimator)
+
+
+def _derive_reward_rule_defaults(reward_config: Optional['RewardConfig'], rl_config: Optional['RLConfig']) -> None:
+    """Port legacy's rule-reward backfills (rlhf_args.py / rlhf_trainers arguments).
+
+    ``cosine_max_len`` and ``soft_max_length`` default to ``max_completion_length``; the soft
+    overlong reward still requires an explicit ``soft_cache_length`` (legacy asserts the same
+    instead of inventing one).
+    """
+    if reward_config is None or rl_config is None:
+        return
+    if 'cosine' in reward_config.orm and reward_config.cosine_max_len is None:
+        reward_config.cosine_max_len = rl_config.max_completion_length
+    if 'soft_overlong' in reward_config.orm:
+        if reward_config.soft_cache_length is None:
+            raise ValueError('The soft_cache_length must be set when using the soft_overlong reward.')
+        if reward_config.soft_max_length is None:
+            reward_config.soft_max_length = rl_config.max_completion_length
 
 
 def _derive_best_model_metric(train_config: 'TrainConfig', rl_config: Optional['RLConfig']) -> None:

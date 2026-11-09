@@ -184,10 +184,12 @@ def test_grad_clipping_threshold_is_one_knob_on_both_backends():
 def test_megatron_recompute_flag_mismatch_warns_but_contradiction_fails(monkeypatch):
     """gradient_checkpointing is unread on Megatron, so the two directions are handled differently.
 
-    (Lives here with the other backend-surface validate_configs tests.) The default True + no
-    granularity is every current Megatron run, so it can only warn -- but it must warn, because the
-    config claims recompute is on while the run does not recompute. An explicit False alongside a
-    configured granularity is a contradiction the user typed, so it is fatal.
+    (Lives here with the other backend-surface validate_configs tests.) recompute_granularity now
+    defaults to 'selective' (legacy megatron_args parity, daf3f91cc), so a default config has gc on
+    AND a real granularity -- consistent, silent. The warn case needs the user to turn recompute
+    explicitly off ('none' normalizes to None) while leaving the gc flag on: the config claims
+    recompute is on while the run does not recompute. An explicit False alongside a configured
+    granularity is a contradiction the user typed, so it is fatal.
 
     Records are collected off the module logger rather than via caplog: swift's logging setup turns
     propagation off, so nothing reaches pytest's root handler once any test has imported it.
@@ -210,13 +212,12 @@ def test_megatron_recompute_flag_mismatch_warns_but_contradiction_fails(monkeypa
             ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(**train_kwargs),
             DistributedConfig(backend='megatron', mode='local', nproc_per_node=1, **dist_kwargs))
 
-    check({}, {})  # default: flag on, nothing configured
-    assert len(warnings) == 1 and 'will NOT' in warnings[0]
-
-    warnings.clear()
-    check({'gradient_checkpointing': False}, {})  # both off: consistent, silent
-    check({}, {'recompute_granularity': 'selective'})  # both on: consistent, silent
+    check({}, {})  # default: gc on, granularity 'selective' -- consistent, silent
     assert warnings == []
+
+    check({'gradient_checkpointing': False}, {'recompute_granularity': None})  # both off: silent
+    check({}, {'recompute_granularity': None})  # gc on, recompute explicitly off: warn
+    assert len(warnings) == 1 and 'will NOT' in warnings[0]
 
     with pytest.raises(ValueError, match='contradicts'):
         check({'gradient_checkpointing': False}, {'recompute_granularity': 'selective'})
