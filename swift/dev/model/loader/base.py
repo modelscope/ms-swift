@@ -232,8 +232,23 @@ class LoaderModelInfo:
 
 
 def _basename(model_id: str) -> str:
-    """The trailing path component, lower-cased -- how ids and local dirs are compared."""
-    return model_id.rstrip("/").rsplit("/", 1)[-1].lower()
+    """The trailing path component, lower-cased -- how ids and local dirs are compared.
+
+    A hub cache buries the real name inside ``.../models--org--name/snapshots/<sha>``, so a plain
+    ``rsplit`` would return the commit sha and the id match would fall through to the
+    architecture reverse-lookup -- which is ambiguous whenever a task variant (e.g. qwen2_gte)
+    declares the same architecture. Mirror DatasetLoader.dataset_name's cache-path handling.
+    """
+    model_id = model_id.rstrip('/')
+    # ModelScope lays the cache out as ``.../models/org--name/snapshots/<sha>``; HuggingFace as
+    # ``.../models--org--name/snapshots/<sha>``. Both bury the name, and the ``org--`` part is
+    # optional on either side.
+    match = re.search(r'/(?:models--(?:.+?--)?|models/(?:.+?--)?)(.+?)/snapshots/', model_id)
+    if match is not None:
+        return match.group(1).lower()
+    if platform.system().lower() == 'windows':
+        model_id = model_id.replace('\\', '/')
+    return model_id.rsplit('/', 1)[-1].lower()
 
 
 def _iter_ids(models: Sequence[Union[str, Tuple[str, str]]]) -> Iterator[Tuple[str, str]]:
