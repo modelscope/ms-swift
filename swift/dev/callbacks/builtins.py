@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import os
 import signal
 import time
 from typing import Optional
@@ -34,6 +35,11 @@ class EarlyStopCallback(TrainCallback):
         self.patience = int(getattr(args, 'early_stop_interval', 0) or 0)
         self.metric_name = getattr(args, 'metric_for_best_model', None) or 'eval_loss'
         self.greater_is_better = _greater_is_better(self.metric_name, getattr(args, 'greater_is_better', None))
+        # Explicitly registered (the auto-append path only fires with a truthy interval), so a
+        # zero patience here means the callback was asked for and then does nothing -- silently.
+        if self.patience <= 0:
+            logger.warning("callbacks include 'early_stop' but early_stop_interval is unset; "
+                           'early stopping will never trigger. Pass --early_stop_interval N.')
         self._best: Optional[float] = None
         self._stale_evals = 0
 
@@ -98,7 +104,17 @@ class GracefulExitCallback(TrainCallback):
         if not self._requested:
             logger.warning(f'Received signal {signum}; finishing the current step and saving before exit. '
                            'Send it again to abort immediately.')
-        self._requested = True
+            self._requested = True
+            return
+        # The promised abort: restore the original disposition and re-raise, so the default
+        # handler terminates now (or a pre-existing custom handler finally gets its call). The
+        # old code only re-set the flag -- the docstring's "abort immediately" was a lie.
+        original = self._saved_handlers.get(signum, signal.SIG_DFL)
+        try:
+            signal.signal(signum, original)
+        except (ValueError, OSError):
+            pass
+        os.kill(os.getpid(), signum)
 
     def on_train_begin(self, state: CallbackState, control: CallbackControl) -> None:
         for sig in (signal.SIGTERM, signal.SIGINT):

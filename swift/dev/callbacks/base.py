@@ -59,8 +59,9 @@ class TrainCallback(SwiftPlugin):
     def on_step_end(self, state: CallbackState, control: CallbackControl) -> None:
         """After an optimizer step is recorded (loss/metrics published on ``state``)."""
 
-    def on_substep_end(self, state: CallbackState, control: CallbackControl) -> None:
-        """After each micro-batch's backward."""
+    # No on_substep_end: it was declared with zero trigger points anywhere (grep 全仓仅定义),
+    # a dead hook. If per-micro-batch notification is ever needed, add it WITH a trigger in
+    # recipe/utils.py's GA loop -- not a promise that never fires.
 
     def on_pre_optimizer_step(self, state: CallbackState, control: CallbackControl) -> None:
         """After grad clipping is about to run, before the optimizer steps."""

@@ -42,9 +42,6 @@ class CallbackHandler:
     def on_step_end(self) -> None:
         self._fan('on_step_end')
 
-    def on_substep_end(self) -> None:
-        self._fan('on_substep_end')
-
     def on_pre_optimizer_step(self) -> None:
         self._fan('on_pre_optimizer_step')
 
