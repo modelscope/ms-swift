@@ -153,7 +153,7 @@ class ConvertComponent(BaseWeightTransform):
 
             bridge = strategy.bridge
             logger.info('Converting weights and saving the model...')
-            self._save_hf_weights(bridge, models, output_dir)
+            self._save_hf_weights(bridge, models, output_dir, source_model_dir=processor.model_info.model_dir)
             self._write_hf_export_metadata(strategy, processor, output_dir)
             if is_master():
                 # Prefer the source checkpoint's args.json so the HF export records how the weights
@@ -418,17 +418,21 @@ class ConvertComponent(BaseWeightTransform):
 
     # -- HF export --------------------------------------------------------------------------
 
-    def _save_hf_weights(self, bridge, models: List[Any], output_dir: str) -> None:
+    def _save_hf_weights(self, bridge, models: List[Any], output_dir: str,
+                         source_model_dir: Optional[str] = None) -> None:
         """Full HF weights via the bridge backend, mirroring the training path's save call."""
         import inspect
 
         max_shard_size = self.checkpoint_config.max_shard_size if self.checkpoint_config else '5GB'
         save_kwargs: Dict[str, Any] = {'max_shard_size': max_shard_size}
         # Capability probe, not a version pin: only newer mcore-bridge builds accept the flag.
-        # In this direction it is a no-op anyway (no HF load happened, so no source dir was
-        # recorded to restore from) -- kept so the call shape matches the training path.
+        # mcore materializes only the modules it knows; tensors it never exports (e.g. the MTP
+        # head under ``mtp.*``) would silently vanish from the HF output. Passing the resolved
+        # source model dir makes the bridge restore them verbatim, exactly like the training
+        # path does (its dir comes from load_weights; this direction loaded no HF weights, so
+        # it is passed explicitly).
         if 'save_missing_weights' in inspect.signature(bridge.save_weights).parameters:
-            save_kwargs['save_missing_weights'] = True
+            save_kwargs['save_missing_weights'] = source_model_dir or True
         bridge.save_weights(models, output_dir, **save_kwargs)
 
     def _write_hf_export_metadata(self, strategy: 'MegatronStrategy', processor, output_dir: str) -> None:
