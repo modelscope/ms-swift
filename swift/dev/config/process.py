@@ -156,8 +156,6 @@ def process_and_validate_configs(
         validate_rollout_config(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
     infer_config = configs.get('infer_config')
     if infer_config is not None:
-        # NOTE: the legacy prm_threshold -> reward_threshold fold lives in run_infer, not here --
-        # the infer chain never calls process_configs with an infer_config.
         from .validate import validate_infer_config
         validate_infer_config(infer_config)
     convert_config = configs.get('convert_config')
