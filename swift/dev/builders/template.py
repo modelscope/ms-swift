@@ -258,7 +258,12 @@ def build_template(template_config: TemplateConfig, processor: Any, *, task_type
         multimodal_graph_adapter=_multimodal_graph_adapter(processor),
         **kwargs,
     )
-    template._append_truncation_strategy = template_config.truncation_strategy or "raise"
+    # The append path is the rollout's incremental encoding, where a row that no longer fits
+    # must surface as observe()/extend() returning False (the episode ends early with what it
+    # has), not raise: a mid-rollout overflow is one truncated episode, not a broken run. The
+    # encoder-side strategy above deliberately stays "raise" -- a too-long TRAINING row is a
+    # dataset problem worth failing on (dataset-side "delete" drops such rows before encode).
+    template._append_truncation_strategy = template_config.truncation_strategy or "delete"
 
     model_type = getattr(model_info, "model_type", None) or getattr(processor.model_meta, "model_type", None)
     dtype_name = getattr(model_info, "torch_dtype", None)

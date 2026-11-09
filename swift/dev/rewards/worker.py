@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import torch
 from twinkle import remote_class, remote_function
 from twinkle.perf import timed
-from twinkle_agentic.async_rl.score_worker import ScoreWorker, _resolve
+from twinkle_agentic.async_rl.score_worker import ScoreWorker
 
 
 def _prm_plugin(plugin: Any):
@@ -119,11 +119,11 @@ class RewardWorker(ScoreWorker):
         from swift.dev.utils.scoring import response_positions, response_token_scores
 
         features = [sample.encoded for sample in samples]
-        kept = [i for i, sample in enumerate(samples) if response_positions(sample.encoded)]
+        kept = [i for i, feature in enumerate(features) if response_positions(feature)]
         if not kept:
             raise RuntimeError('the pulled batch has no response tokens to train on.')
-        values_all = response_token_scores(_resolve(scored['values']), features, output_key='logits')
-        ref_all = response_token_scores(_resolve(scored['ref']), features, output_key='logps',
+        values_all = response_token_scores(scored['values'], features, output_key='logits')
+        ref_all = response_token_scores(scored['ref'], features, output_key='logps',
                                         allow_missing=True)
         kept_samples = [samples[i] for i in kept]
         matrix = torch.tensor([list(sample.orm_reward) for sample in kept_samples], dtype=torch.float32)
@@ -160,8 +160,8 @@ class RewardWorker(ScoreWorker):
         from swift.dev.utils.scoring import response_positions, response_token_scores
 
         features = [sample.encoded for sample in samples]
-        kept = [i for i, sample in enumerate(samples) if response_positions(sample.encoded)]
-        ref_all = response_token_scores(_resolve(scored['ref']), features, output_key='logps',
+        kept = [i for i, feature in enumerate(features) if response_positions(feature)]
+        ref_all = response_token_scores(scored['ref'], features, output_key='logps',
                                         allow_missing=True)
         kept_samples = [samples[i] for i in kept]
         matrix = torch.tensor([list(sample.orm_reward) for sample in kept_samples], dtype=torch.float32)
@@ -206,12 +206,12 @@ class RewardWorker(ScoreWorker):
                        if any(sample.prm_process is not None for sample in samples) else None)
         old_logps: List[Any] = [list(sample.rollout_logps) for sample in samples]
         preserve = bool(rl_config.rollout_importance_sampling_mode or rl_config.log_rollout_offpolicy_metrics)
-        ref_logps = (response_token_scores(_resolve(scored['ref']), features)
+        ref_logps = (response_token_scores(scored['ref'], features)
                      if scored.get('ref') is not None else None)
-        teacher_logps = (response_token_scores(_resolve(scored['teacher']), features)
+        teacher_logps = (response_token_scores(scored['teacher'], features)
                          if scored.get('teacher') is not None else None)
         if preserve:
-            old_logps = response_token_scores(_resolve(scored['old']), features)
+            old_logps = response_token_scores(scored['old'], features)
         kl_in_reward = bool(rl_config.kl_in_reward and rl_config.beta)
         if kl_in_reward and ref_logps is None:
             raise ValueError('kl_in_reward=True requires an active reference model.')
@@ -280,7 +280,7 @@ class RewardWorker(ScoreWorker):
         from swift.dev.utils.scoring import response_token_scores
 
         features = [sample.encoded for sample in samples]
-        training_logps = response_token_scores(_resolve(scored['old']), features)
+        training_logps = response_token_scores(scored['old'], features)
         rollout_logps = [sample.rollout_logps for sample in samples]
         train_rows: List[Any] = []
         rollout_rows: List[Any] = []
@@ -331,7 +331,7 @@ class RewardWorker(ScoreWorker):
         references; the caller re-attaches them positionally (``sample.encoded = ref``), so the
         heavy columns never pass through the driver.
         """
-        frame = _resolve(recorded)
+        frame = recorded
         routed_rows = frame.get('routed_experts') if isinstance(frame, dict) else None
         if routed_rows is None:
             raise RuntimeError(
@@ -345,7 +345,7 @@ class RewardWorker(ScoreWorker):
                                'per-row routing alignment is impossible.')
         payloads = []
         for sample, routed in zip(samples, rows):
-            encoded = dict(_resolve(sample).encoded)
+            encoded = dict(sample.encoded)
             length = len(encoded['input_ids'])
             if routed.shape[0] < length:
                 raise RuntimeError(f'R2 recorded routing covers {routed.shape[0]} tokens for a {length}-token '
@@ -363,7 +363,6 @@ class RewardWorker(ScoreWorker):
         ``mix=0`` is standard GRPO byte-for-byte, ``mix=1`` pure PRM. The output is token-scale, so
         it stays a ref and is handed to ``forward_backward`` as the ``advantages`` kwarg.
         """
-        process = _resolve(prm_process)
         fused: List[List[float]] = []
         for per_token, orm in zip(process, orm_advantages):
             if per_token is None:
@@ -384,7 +383,6 @@ class RewardWorker(ScoreWorker):
 
         features = []
         for sample in samples:
-            sample = _resolve(sample)
             teacher_prompt = (getattr(sample, 'extra', None) or {}).get('teacher_prompt')
             if not teacher_prompt:
                 features.append(sample.input_feature)
@@ -436,8 +434,8 @@ class RewardWorker(ScoreWorker):
         """
         from twinkle.advantage.teacher_signal import apply_rlsd_reweight, expand_advantage_to_per_token
 
-        old = _resolve(old_logps)
-        teacher = _resolve(teacher_logps)
+        old = old_logps
+        teacher = teacher_logps
         mask = torch.zeros((len(advantages), max((len(row) for row in old), default=1)), dtype=torch.bool)
         for index, row in enumerate(old):
             mask[index, :len(row)] = True
@@ -458,8 +456,8 @@ class RewardWorker(ScoreWorker):
     @remote_function(dispatch='all', collect='first', lazy_collect=False)
     def sequence_kl(self, old_logps: Any, ref_logps: Any) -> List[float]:
         """Per-sample sequence KL ``mean(exp(d) - d - 1)`` over resolved logp lists -> ``[N]`` floats."""
-        old = _resolve(old_logps)
-        ref = _resolve(ref_logps)
+        old = old_logps
+        ref = ref_logps
         values = []
         for prev, reference in zip(old, ref):
             if len(prev) != len(reference):

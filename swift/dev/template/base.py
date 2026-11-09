@@ -934,15 +934,19 @@ class Template(ProcessorMixin):
         renderer = self.replace(max_length=None)
 
         def render(messages: List[Dict[str, Any]], gen_prompt: bool) -> List[int]:
+            messages = [dict(message) for message in messages]
             sample = {"messages": messages, "tools": tools} if tools else {"messages": messages}
-            intent = (
-                EncodeIntent(
-                    add_generation_prompt=gen_prompt,
-                    with_labels=False,
-                    expand_media=False,
-                )
-                if engine
-                else (INFER if gen_prompt else TRAIN)
+            # The two renders must differ ONLY in add_generation_prompt, or the appended turns are
+            # not a prefix-extension of the history. A shared no-labels intent (SCORE -> INFER)
+            # keeps the render mode constant; TRAIN would not, because the thinking policy keys on
+            # is_training and would strip the history's reasoning in one render and keep it in the
+            # other. preserve_thinking is pinned for the same reason: the banked ids carry the
+            # sampled thinking tokens verbatim, so the renders must keep them.
+            sample["chat_template_kwargs"] = {"preserve_thinking": True}
+            intent = EncodeIntent(
+                add_generation_prompt=gen_prompt,
+                with_labels=False,
+                expand_media=not engine,
             )
             if engine and not gen_prompt:
                 sample["add_eos"] = True
