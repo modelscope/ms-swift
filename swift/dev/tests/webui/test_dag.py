@@ -163,3 +163,21 @@ class TestCrossFrameDependency:
         # The producer turned once per consuming round -- no stale reads.
         assert fakes['driver'].takes == 5 and fakes['chall'].takes == 5
         assert fakes['driver'].commits == [1] * 5
+
+
+class TestStageNote:
+    """The node-event note that makes a cadence skip observable: a stage that
+    no-op'd marks its receipt {'state': 'skipped'}, and the completed event
+    carries it so the stream distinguishes a real firing from a skip."""
+
+    def test_skip_receipt_yields_a_note(self):
+        from swift.dev.webui.dag import _stage_note
+        assert _stage_note({'sync': {'state': 'skipped', 'reason': 'cadence'}}) == 'skipped:cadence'
+        assert _stage_note({'artifact': {'state': 'skipped'}}) == 'skipped'
+
+    def test_real_receipt_yields_no_note(self):
+        from swift.dev.webui.dag import _stage_note
+        assert _stage_note({'sync': {'state': 'completed', 'targets': ['smp']}}) is None
+        assert _stage_note({'step': {'optimizer_steps': 1}}) is None
+        assert _stage_note({'artifact': {'path': '/tmp/ck', 'format': 'native'}}) is None
+        assert _stage_note(None) is None

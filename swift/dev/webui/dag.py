@@ -79,6 +79,20 @@ def _collect_refs(value: Any, depth: int = 0) -> List[Any]:
     return refs
 
 
+def _stage_note(outputs: Any) -> Optional[str]:
+    """A stage that no-op'd this circle marks its receipt ``{'state': 'skipped',
+    'reason': ...}``; surface it on the node event so the stream distinguishes a
+    real firing from a skip -- a cadence-gated weight_sync / checkpoint still
+    'completes' every circle, but only publishes / saves on the cadence."""
+    if not isinstance(outputs, dict):
+        return None
+    for value in outputs.values():
+        if isinstance(value, dict) and value.get('state') == 'skipped':
+            reason = value.get('reason')
+            return f'skipped:{reason}' if reason else 'skipped'
+    return None
+
+
 class SourceHandle:
     """Batch handover around one resident iterator component.
 
@@ -661,7 +675,9 @@ class DAGController:
         except Exception as exc:
             self._event('node', node_id=node_id, state='failed', error=str(exc))
             raise
-        self._event('node', node_id=node_id, state='completed')
+        note = _stage_note(outputs)
+        self._event('node', node_id=node_id, state='completed',
+                    **({'note': note} if note else {}))
         return outputs
 
     def _invoke_task(self, node_id: str, component: Any,
