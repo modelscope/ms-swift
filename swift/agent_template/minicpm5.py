@@ -34,27 +34,12 @@ class MiniCPM5AgentTemplate(BaseAgentTemplate):
         for func_match in func_pattern.finditer(response):
             func_name = func_match.group(1)
             func_body = func_match.group(2)
-            properties = tool_schemas.get(func_name, {}).get('properties', {})
-            if not isinstance(properties, dict):
-                properties = {}
-            arguments = {}
+            pairs = []
             for param_match in param_pattern.finditer(func_body):
-                param_name = param_match.group(1)
                 # CDATA value or plain value
-                param_value = param_match.group(2) if param_match.group(2) is not None else param_match.group(3)
-                param_schema = properties.get(param_name, {})
-                param_type = param_schema.get('type') if isinstance(param_schema, dict) else None
-                type_list = param_type if isinstance(param_type, list) else [param_type]
-                is_string = 'string' in type_list
-                if is_string and 'null' in type_list:
-                    # Bare null is ambiguous; keep decoding it as JSON null.
-                    is_string = param_value.strip() != 'null'
-                if not is_string:
-                    try:
-                        param_value = json.loads(param_value)
-                    except (json.JSONDecodeError, ValueError):
-                        pass
-                arguments[param_name] = param_value
+                pairs.append((param_match.group(1),
+                              param_match.group(2) if param_match.group(2) is not None else param_match.group(3)))
+            arguments = BaseAgentTemplate._decode_schema_args(pairs, tool_schemas, func_name)
             functions.append(Function(name=func_name, arguments=arguments))
 
         if len(functions) == 0:

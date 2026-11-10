@@ -17,7 +17,8 @@ import pytest
 
 from swift.model import MODEL_MAPPING, get_processor
 from swift.template import TemplateInputs, get_template
-from swift.template.templates.glm import GLM5_2Template, GLM5_3Template
+from swift.template.register import TEMPLATE_MAPPING
+from swift.template.templates.glm import GLM5_2Template, GLM5_3Template, GLM5NextTemplate
 
 GLM5_3_ID = 'ZhipuAI/GLM-5.3'
 GLM5_2_ID = 'ZhipuAI/GLM-5.2'
@@ -174,6 +175,55 @@ def test_glm5_2_still_matches_its_own_chat_template(glm5_2_processor):
     # GLM-5.2 gates the prefix on enable_thinking, and ms-swift defaults that to off.
     assert 'Reasoning Effort' not in text
     assert text.endswith('<|assistant|><think></think>')
+
+
+# GLM-5.3-Flash's jinja differs from GLM-5.3 only in vision/tool plumbing, so GLM-5.3's
+# processor is the text-side reference for `glm5_next`.
+
+
+def test_glm5_next_shares_the_glm5_3_chat_template(glm5_3_processor):
+    text = _assert_backends_agree(glm5_3_processor, [{'role': 'user', 'content': 'hi'}], 'glm5_next')
+    assert text.startswith('[gMASK]<sop><|system|>Reasoning Effort: Max')
+    assert text.endswith('<|assistant|><think>')
+
+
+@pytest.mark.parametrize('enable_thinking', [True, False])
+def test_glm5_next_reasoning_effort_is_not_gated_on_thinking(glm5_3_processor, enable_thinking):
+    """`enable_thinking=False` must neither drop the effort line nor close the think block."""
+    text = _assert_backends_agree(
+        glm5_3_processor, [{
+            'role': 'user',
+            'content': 'hi'
+        }], 'glm5_next', enable_thinking=enable_thinking)
+    assert '<|system|>Reasoning Effort: Max' in text
+    assert text.endswith('<|assistant|><think>')
+
+
+def test_glm5_next_preserves_history_thinking(glm5_3_processor):
+    messages = [
+        {
+            'role': 'user',
+            'content': 'q1'
+        },
+        {
+            'role': 'assistant',
+            'content': '<think>r1</think>a1'
+        },
+        {
+            'role': 'user',
+            'content': 'q2'
+        },
+    ]
+    text = _assert_backends_agree(glm5_3_processor, messages, 'glm5_next')
+    assert '<|assistant|><think>r1</think>a1' in text
+    assert text.endswith('<|assistant|><think>')
+
+
+def test_glm5_next_inherits_the_glm5_3_semantics():
+    """Pin the inheritance: GLM-5.3-Flash has no non-thinking mode either."""
+    assert issubclass(GLM5NextTemplate, GLM5_3Template)
+    assert GLM5NextTemplate.reasoning_effort_needs_thinking is False
+    assert TEMPLATE_MAPPING['glm5_next'].preserve_thinking is True
 
 
 if __name__ == '__main__':
