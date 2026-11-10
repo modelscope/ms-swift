@@ -4,12 +4,14 @@
 Real bindings over the real twinkle registries -- no fakes. The oracle for
 each case is the registry itself (type identity, callable protocol) or a
 hand-computed value (a two-scorer column matrix)."""
+import os
+
 import pytest
 
 from swift.dev.webui.component import ComponentError
 from swift.dev.webui.components.data import ScoreStage, StreamingDriverComponent
 from swift.dev.webui.components.resources import LossComponent, ScorerComponent
-from swift.dev.webui.components.training import TrainStepStage
+from swift.dev.webui.components.training import CheckpointStage, TrainStepStage, WeightSyncStage
 from swift.dev.webui.registry import REGISTRY, LOSS_OPTIONS
 
 from ._fakes import MODEL_ID
@@ -114,3 +116,68 @@ class TestRegistrySurface:
     def test_scorer_kind_is_an_open_name(self):
         params = {p.name: p for p in REGISTRY['scorer'].params}
         assert params['kind'].options == ()
+
+
+class _RecordingSaveModel:
+    """A model whose ``save`` writes a real file and records each call.
+
+    ``CheckpointStage`` checks ``os.path.exists`` on the path ``save`` returns,
+    so the fake must actually create it; the call list is the firing oracle."""
+
+    def __init__(self):
+        self.calls = []
+
+    def save(self, name, output_dir=None):
+        self.calls.append(name)
+        path = os.path.join(output_dir or '.', name)
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        with open(path, 'w') as handle:
+            handle.write('ckpt')
+        return path
+
+
+class TestCadenceGate:
+    """weight_sync / checkpoint fire on the cadence, counted in OPTIMIZER steps
+    from the wired step receipt -- not every circle. The oracle is the
+    hand-computed firing pattern over a 9-step loop (cadence=3 -> 3/6/9).
+
+    The gate is one shared helper, so the firing pattern is proven through the
+    real CheckpointStage (its save surface is the only fake); WeightSyncStage
+    runs the identical helper first in invoke, asserted here by its fail-loudly
+    branch and end to end by the N09 graph session."""
+
+    def _fired_circles(self, stage, model, circles, *, with_step=True):
+        fired = []
+        for circle in range(1, circles + 1):
+            before = len(model.calls)
+            inputs = {'model': model}
+            if with_step:
+                inputs['step'] = {'optimizer_steps': 1}
+            stage.invoke(inputs, [])
+            if len(model.calls) > before:
+                fired.append(circle)
+        return fired
+
+    def test_checkpoint_cadence_gates_saves(self, tmp_path):  # cadence=3 -> 3/6/9
+        stage = CheckpointStage('ck', {'cadence': 3, 'name': 'ck', 'output_dir': str(tmp_path)})
+        model = _RecordingSaveModel()
+        assert self._fired_circles(stage, model, 9) == [3, 6, 9]
+
+    def test_checkpoint_default_cadence_saves_every_circle(self, tmp_path):
+        stage = CheckpointStage('ck', {'name': 'ck', 'output_dir': str(tmp_path)})
+        model = _RecordingSaveModel()
+        assert self._fired_circles(stage, model, 4) == [1, 2, 3, 4]
+
+    def test_checkpoint_cadence_without_step_fails_loudly(self, tmp_path):
+        stage = CheckpointStage('ck', {'cadence': 3, 'name': 'ck', 'output_dir': str(tmp_path)})
+        with pytest.raises(ComponentError) as excinfo:
+            stage.invoke({'model': _RecordingSaveModel()}, [])
+        assert 'step' in str(excinfo.value)
+
+    def test_weight_sync_cadence_without_step_fails_loudly(self):
+        # The gate runs FIRST in invoke -- it raises before the model/targets
+        # check, proving weight_sync is cadence-gated through the same helper.
+        stage = WeightSyncStage('sy', {'cadence': 3})
+        with pytest.raises(ComponentError) as excinfo:
+            stage.invoke({}, [])
+        assert 'step' in str(excinfo.value)

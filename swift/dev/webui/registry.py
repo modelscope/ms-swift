@@ -315,6 +315,7 @@ CHECKPOINT = D('checkpoint', '保存检查点', 'Stage', '实际模型导出与�
     ports_out=(P('artifact', 'ARTIFACT', '实际写出产物', profile_param='profile'),),
     params=(Q('name', '保存名', 'checkpoint', phase='call'),
             Q('profile', '保存内容', 'model', options=('model', 'training'), phase='call'),
+            Q('output_dir', '输出目录', 'output/checkpoints', phase='call'),
             Q('cadence', '保存间隔', 1, type='int', minimum=1, phase='call')),
     required_when=(('profile', 'training', ('step', 'source')),), effects=('save',))
 

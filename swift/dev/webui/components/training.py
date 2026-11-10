@@ -63,6 +63,39 @@ def _float_value(raw: Any, default: float) -> float:
         raise ValueError(f'expected a number, got {raw!r}') from None
 
 
+def _cadence_gate(stage: Any, inputs: Dict[str, Any]) -> bool:
+    """Whether a cadence-gated stage (weight_sync / checkpoint) fires this circle.
+
+    ``cadence`` is declared in optimizer STEPS, so the stage accumulates the
+    ``optimizer_steps`` of each wired ``step`` receipt and fires only when the
+    cumulative count crosses a new multiple of cadence: a 9-step loop with
+    cadence=3 publishes / saves at steps 3, 6 and 9, not every circle. A
+    cadence of 1 (the default) always fires, which keeps a graph that never set
+    the knob -- and the GRPO circle's every-round weight push -- unchanged.
+
+    cadence>1 with no step receipt wired fails loudly: the gate would have no
+    step count to divide, and silently firing every circle is exactly the
+    dead-parameter behaviour the cadence knob must not have.
+    """
+    cadence = _int_value(stage.params.get('cadence'), 1)
+    if cadence <= 1:
+        return True
+    receipt = inputs.get('step')
+    if not isinstance(receipt, dict):
+        raise ComponentError(
+            f'{stage.node_id}: cadence={cadence} counts optimizer steps from the wired '
+            f'step receipt; wire train_step.step -> {stage.node_id}.step')
+    # Lazy per-instance state (survives the per-round receipt replacement):
+    # cumulative optimizer steps seen, and the last boundary fired at.
+    state = stage.__dict__.setdefault('_cadence_state', {'cumulative': 0, 'fired': 0})
+    state['cumulative'] += _int_value(receipt.get('optimizer_steps'), 0)
+    boundary = (state['cumulative'] // cadence) * cadence
+    if boundary > state['fired']:
+        state['fired'] = boundary
+        return True
+    return False
+
+
 def _aligned_slice(value: Any, start: int, stop: int) -> Any:
     """Slice one sample-aligned loss kwarg alongside a micro batch.
 
@@ -289,6 +322,8 @@ class WeightSyncStage(StageComponent):
     type = 'weight_sync'
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
+        if not _cadence_gate(self, inputs):
+            return {'sync': {'state': 'skipped', 'reason': 'cadence'}}
         model = inputs.get('model')
         targets = slot_values(inputs.get('targets'))
         if model is None or not targets:
@@ -372,6 +407,8 @@ class CheckpointStage(StageComponent):
     type = 'checkpoint'
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
+        if not _cadence_gate(self, inputs):
+            return {'artifact': {'state': 'skipped', 'reason': 'cadence'}}
         model = inputs.get('model')
         if model is None:
             raise ComponentError(f'{self.node_id}: checkpoint needs a wired model')
