@@ -129,3 +129,45 @@ class TestNonPacked:
         assert out_lp[1, 0, 0].item() == pytest.approx(lps1[0][0])
         assert out_lp[1, 4, 0].item() == pytest.approx(lps1[4][0])
         assert torch.isinf(out_lp[1, 5, 0])
+
+
+@pytest.mark.parametrize('packed', [False, True])
+def test_matches_tensor_reference(packed):
+    parsed = [
+        (
+            [[0.25, -0.5], [1.75, -2.0], [3.5, 4.25]],
+            [[11, 12], [21, 22], [31, 32]],
+        ),
+        (
+            [[-5.5, 6.0], [7.25, -8.75]],
+            [[41, 42], [51, 52]],
+        ),
+    ]
+    if packed:
+        cu_seqlens, seq_len, offsets = [0, 4, 7], 7, None
+        expected_lp = torch.full((1, seq_len, 2), float('-inf'))
+        expected_ix = torch.zeros((1, seq_len, 2), dtype=torch.long)
+        expected_lp[0, 0:3] = torch.tensor(parsed[0][0])
+        expected_ix[0, 0:3] = torch.tensor(parsed[0][1])
+        expected_lp[0, 4:6] = torch.tensor(parsed[1][0])
+        expected_ix[0, 4:6] = torch.tensor(parsed[1][1])
+    else:
+        cu_seqlens, seq_len, offsets = None, 6, [1, 3]
+        expected_lp = torch.full((2, seq_len, 2), float('-inf'))
+        expected_ix = torch.zeros((2, seq_len, 2), dtype=torch.long)
+        expected_lp[0, 1:4] = torch.tensor(parsed[0][0])
+        expected_ix[0, 1:4] = torch.tensor(parsed[0][1])
+        expected_lp[1, 3:5] = torch.tensor(parsed[1][0])
+        expected_ix[1, 3:5] = torch.tensor(parsed[1][1])
+
+    out_lp, out_ix = assemble_teacher_topk_logprobs(
+        parsed,
+        batch_size=2,
+        seq_len=seq_len,
+        cu_seqlens=cu_seqlens,
+        topk=2,
+        device=torch.device('cpu'),
+        offsets=offsets)
+
+    assert torch.equal(out_lp, expected_lp)
+    assert torch.equal(out_ix, expected_ix)

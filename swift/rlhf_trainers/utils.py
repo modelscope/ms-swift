@@ -4,6 +4,7 @@ import functools
 import inspect
 import ipaddress
 import math
+import numpy as np
 import os
 import re
 import socket
@@ -929,11 +930,11 @@ def assemble_teacher_topk_logprobs(
     offsets: Optional[List[int]] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     is_packed = cu_seqlens is not None
+    shape = (seq_len, topk) if is_packed else (batch_size, seq_len, topk)
+    out_lp = np.full(shape, -np.inf, dtype=np.float32)
+    out_ix = np.zeros(shape, dtype=np.int64)
 
     if is_packed:
-        total_len = seq_len
-        out_lp = torch.full((total_len, topk), float('-inf'), dtype=torch.float32)
-        out_ix = torch.zeros(total_len, topk, dtype=torch.long)
         num_seqs = len(cu_seqlens) - 1
         assert len(parsed) == num_seqs, f'parsed length {len(parsed)} != num_seqs {num_seqs}'
         for i in range(num_seqs):
@@ -942,23 +943,23 @@ def assemble_teacher_topk_logprobs(
             length = min(len(lps), end - start)
             if length <= 0:
                 continue
-            out_lp[start:start + length] = torch.tensor(lps[:length], dtype=torch.float32)
-            out_ix[start:start + length] = torch.tensor(ixs[:length], dtype=torch.long)
-        return out_lp.unsqueeze(0).to(device), out_ix.unsqueeze(0).to(device)
+            out_lp[start:start + length] = np.asarray(lps[:length], dtype=np.float32)
+            out_ix[start:start + length] = np.asarray(ixs[:length], dtype=np.int64)
+        out_lp = out_lp[None]
+        out_ix = out_ix[None]
 
-    out_lp = torch.full((batch_size, seq_len, topk), float('-inf'), dtype=torch.float32)
-    out_ix = torch.zeros(batch_size, seq_len, topk, dtype=torch.long)
-    assert len(parsed) == batch_size, f'parsed length {len(parsed)} != batch_size {batch_size}'
-    for idx in range(batch_size):
-        lps, ixs = parsed[idx]
-        P = len(lps)
-        start = offsets[idx] if offsets is not None else 0
-        length = min(P, seq_len - start)
-        if length <= 0:
-            continue
-        out_lp[idx, start:start + length] = torch.tensor(lps[:length], dtype=torch.float32)
-        out_ix[idx, start:start + length] = torch.tensor(ixs[:length], dtype=torch.long)
-    return out_lp.to(device), out_ix.to(device)
+    else:
+        assert len(parsed) == batch_size, f'parsed length {len(parsed)} != batch_size {batch_size}'
+        for idx in range(batch_size):
+            lps, ixs = parsed[idx]
+            start = offsets[idx] if offsets is not None else 0
+            length = min(len(lps), seq_len - start)
+            if length <= 0:
+                continue
+            out_lp[idx, start:start + length] = np.asarray(lps[:length], dtype=np.float32)
+            out_ix[idx, start:start + length] = np.asarray(ixs[:length], dtype=np.int64)
+
+    return torch.from_numpy(out_lp).to(device), torch.from_numpy(out_ix).to(device)
 
 
 def patch_save_last_checkpoint():
