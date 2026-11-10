@@ -9,8 +9,9 @@ recovered from the label vector. ``InfonceLoss`` is then driven through its conf
 masking), each against a probed value, because what a switch *means* is exactly what the number
 encodes: masking a fake negative lowers the loss, a negative outscoring the positive raises it.
 
-The distributed in-batch path is recorded as xfail: it crashes for world_size > 1 on the plain
-(non-Megatron, non-sequence-parallel) route.
+The distributed in-batch path is driven through a fake all-gather that mirrors accelerate's
+``gather_object``: it flattens one level, so the loss on a rank's own data can be compared against
+the same batch scored on a single process.
 """
 import math
 
@@ -304,10 +305,6 @@ def test_uneven_queries_with_every_component_on(monkeypatch):
 # InfonceLoss: the distributed in-batch path
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason='the plain (non-Megatron, non-sequence-parallel) in-batch path stores the local 2-D '
-    '`sentences` into a list of 3-D per-rank tensors, so torch.cat raises for world_size > 1',
-    strict=False)
 def test_in_batch_negatives_gather_across_ranks(monkeypatch):
     """In-batch negatives are supposed to come from every rank: the local loss must equal the loss on
     the gathered batch."""
@@ -315,16 +312,20 @@ def test_in_batch_negatives_gather_across_ranks(monkeypatch):
 
     local = {'last_hidden_state': torch.tensor([[1., 0], [0.8, 0.6], [0, 1]])}
     other = torch.tensor([[1., 0], [0.6, 0.8], [0, 1]])
-    local_labels = torch.tensor([1, 0, 0])
-    other_labels = torch.tensor([1, 0, 0])
+    # one query per rank: the anchor's 1 followed by one 0 per document
+    local_labels = torch.tensor([1, 0])
+    other_labels = torch.tensor([1, 0])
 
     monkeypatch.setattr(embedding, 'get_dist_setting', lambda: (0, 0, 2, 2))
     monkeypatch.setattr(
         embedding, 'gather_object',
-        lambda obj: ([local['last_hidden_state'].unsqueeze(0), other.unsqueeze(0)]
-                     if obj.dim() == 3 else [local_labels, other_labels]))
+        lambda obj: [*obj, *other.unsqueeze(0)] if obj.dim() == 3 else [*obj, *other_labels])
 
+    local_loss = float(_loss(InfonceLoss)(local, local_labels))
+
+    # the reference is the same batch on a single process, so that no gather happens
+    monkeypatch.setattr(embedding, 'get_dist_setting', lambda: (0, 0, 1, 1))
     gathered = _loss(InfonceLoss)(
         {'last_hidden_state': torch.cat([local['last_hidden_state'], other])},
         torch.cat([local_labels, other_labels]))
-    assert float(_loss(InfonceLoss)(local, local_labels)) == pytest.approx(float(gathered), rel=1e-4)
+    assert local_loss == pytest.approx(float(gathered), rel=1e-4)
