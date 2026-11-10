@@ -54,6 +54,59 @@ def test_disabled_does_not_inspect_unencoded_rows_or_model():
     assert plan_rollout_batch(SimpleNamespace(), [{}]) is None
 
 
+def test_streaming_grpo_balances_refs_without_fetching_features(monkeypatch):
+    import ray
+
+    recipe = import_module("swift.dev.recipe.grpo.run_grpo")
+    monkeypatch.setattr("swift.dev.utils.scoring.should_copy_inputs", lambda: False)
+    monkeypatch.setattr(ray, "get", lambda *args, **kwargs: pytest.fail("Balancing must not fetch Ray features"))
+    refs = [ray.ObjectRef.from_random() for _ in LENGTHS16]
+    samples = [
+        SimpleNamespace(encoded=ref, token_lengths=(length - 1, 1), rollout_logps=[index])
+        for index, (ref, length) in enumerate(zip(refs, LENGTHS16))
+    ]
+    model = Model(2)
+    p = progress(model)
+    assert (
+        recipe._train_mini_batches(
+            p,
+            RLConfig(rl_type="grpo"),
+            samples,
+            train_batch_size=4,
+            advantages=list(range(16)),
+            old_logps=list(range(16)),
+            ref_logps=None,
+            teacher_logps=None,
+            temperature=1.0,
+        )
+        == 1
+    )
+    batch = model.calls[0]
+    order = [refs.index(ref) for ref in batch["inputs"]]
+    assert sorted(order) == list(range(16)) and order != list(range(16))
+    assert batch["advantages"] == batch["old_logps"] == order
+    assert batch["rollout_logps"] == [[index] for index in order]
+    assert all(ref is refs[index] for ref, index in zip(batch["inputs"], order))
+    assert p.records[0]["dp_balance/workload_imbalance_after"] < p.records[0]["dp_balance/workload_imbalance_before"]
+    assert model.steps == p.global_step == 1
+
+def test_balancing_combines_cached_lengths_and_local_feature_fallback():
+    rows = features()
+    samples = [
+        SimpleNamespace(token_lengths=(length - 1, 1)) if index % 2 else SimpleNamespace()
+        for index, length in enumerate(LENGTHS)
+    ]
+    p = progress(Model(2))
+    expected = plan_rollout_batch(p, rows, micro_batch_kwargs={"micro_batch_size": 1})
+    actual = plan_rollout_batch(p, rows, samples=samples, micro_batch_kwargs={"micro_batch_size": 1})
+    assert actual.order == expected.order
+    assert actual.metrics == expected.metrics
+
+def test_balancing_rejects_misaligned_sample_metadata():
+    with pytest.raises(ValueError, match="same length"):
+        plan_rollout_batch(progress(Model(2)), features(), samples=[])
+
+
 @pytest.mark.parametrize("algorithm", ONLINE_TYPES)
 def test_online_recipes_accept_balancing(algorithm):
     _check_batch_balancing(RLConfig(rl_type=algorithm, balance_batch=True), DistributedConfig(mode="ray"))
