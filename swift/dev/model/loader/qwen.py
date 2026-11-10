@@ -961,7 +961,16 @@ class Qwen2GteLoader(Qwen2Loader):
 
     Architecture stays declared (a task variant, like ``Qwen3EmbLoader``, not a template variant): a
     gte checkpoint is always embedding, so reverse-lookup returns qwen2 / qwen2_gte together and the
-    caller disambiguates by id. ``trust_remote_code`` mirrors legacy passing it into SentenceTransformer.
+    caller disambiguates by id.
+
+    ``trust_remote_code`` is False, NOT legacy's True. gte-Qwen2 is a standard ``Qwen2ForCausalLM``
+    arch natively in transformers 5.x, but its bundled ``modeling_qwen.py`` is a stale 4.41-era
+    vendored copy that reads ``config.rope_theta`` -- an attribute transformers 5.x migrated into
+    ``config.rope_parameters`` and dropped, so the remote code crashes at load with ``AttributeError:
+    'Qwen2Config' object has no attribute 'rope_theta'``. The native ``Qwen2Model`` loads the same
+    weights, honors the migrated rope theta and produces the identical L2-normalized embeddings
+    (probe-verified), so remote code must stay OFF here. Contrast ``MidashengLMLoader`` /
+    ``Qwen2RewardLoader``, whose model classes are genuinely absent from transformers and DO require it.
     """
 
     model_type = "qwen2_gte"
@@ -969,7 +978,7 @@ class Qwen2GteLoader(Qwen2Loader):
     template = "dummy"
     task_type = "embedding"
     model_framework = "sentence_transformers"
-    trust_remote_code = True
+    trust_remote_code = False
     models = [
         ("iic/gte_Qwen2-1.5B-instruct", "Alibaba-NLP/gte-Qwen2-1.5B-instruct"),
         ("iic/gte_Qwen2-7B-instruct", "Alibaba-NLP/gte-Qwen2-7B-instruct"),

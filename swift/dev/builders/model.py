@@ -1094,7 +1094,7 @@ def _build_transformers_model(
     model_framework = _resolve_model_framework(model_config, model_loader)
     if model_framework == "sentence_transformers":
         model = _build_sentence_transformer_model(
-            kwargs, model_config, distributed_config, tuner_config, quantize_config, train_config
+            kwargs, model_config, distributed_config, tuner_config, quantize_config, train_config, model_loader
         )
     elif model_framework is not None:
         # A declared framework with no builder here must fail loudly, not fall through as plain HF.
@@ -1207,6 +1207,7 @@ def _build_sentence_transformer_model(
     tuner_config: Optional[TunerConfig],
     quantize_config: Optional[QuantizeConfig],
     train_config: Optional[TrainConfig],
+    model_loader=None,
 ) -> TrainableModel:
     """Construct a SentenceTransformerModel from the shared transformers-build kwargs.
 
@@ -1258,6 +1259,17 @@ def _build_sentence_transformer_model(
         "mixed_precision": kwargs["mixed_precision"],
         "ddp_config": kwargs.get("ddp_config"),
     }
+    # The loader is the authority on trust_remote_code for the ST backbone build: the base
+    # SentenceTransformerModel takes no model_loader, so thread the resolved flag through
+    # sentence_transformer_kwargs. gte-Qwen2's loader declares False -- its bundled modeling_qwen.py is a
+    # stale 4.41-era copy reading config.rope_theta (migrated into rope_parameters and dropped in
+    # transformers 5.x), so the native Qwen2Model must build the backbone. With no loader (an on-disk ST
+    # checkpoint of an unregistered family) the flag is left unset and _build_sentence_transformer's True
+    # default stands, since such a checkpoint may still ship remote code it needs.
+    if model_loader is not None:
+        st_kwargs["sentence_transformer_kwargs"] = {
+            "trust_remote_code": getattr(model_loader, "trust_remote_code", True)
+        }
     # --fsdp selects the FSDP strategy on the ST path too (the deepspeed guard above points here),
     # so its config rides the same shared-kwarg forwarding.
     if kwargs.get("fsdp_config") is not None:

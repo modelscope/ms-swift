@@ -84,8 +84,17 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
             model_id = HubOperation.download_model(model_id)
         self.model_id = model_id
         # The ST pipeline owns construction, so ``model_loader.build_model`` is skipped; its config and
-        # processor hooks stay wired the same way MultiLoraTransformersModel uses them.
-        self.model = self._build_sentence_transformer(model_id, sentence_transformer_kwargs or {})
+        # processor hooks stay wired the same way MultiLoraTransformersModel uses them. The loader is also
+        # the authority on ``trust_remote_code`` for building the backbone: a family whose checkpoint ships
+        # stale remote code the installed transformers cannot load (e.g. gte-Qwen2's 4.41-era
+        # ``modeling_qwen.py`` reading ``config.rope_theta``, which transformers 5.x migrated into
+        # ``rope_parameters`` and dropped) declares ``trust_remote_code=False`` so ``SentenceTransformer``
+        # builds from the native class. ``_build_sentence_transformer`` only defaults it to True when
+        # neither the caller nor a loader pinned it.
+        st_kwargs = dict(sentence_transformer_kwargs or {})
+        if model_loader is not None:
+            st_kwargs.setdefault('trust_remote_code', getattr(model_loader, 'trust_remote_code', True))
+        self.model = self._build_sentence_transformer(model_id, st_kwargs)
         if config is not None:
             self.hf_config = config
         elif model_loader is not None and model_id is not None:
