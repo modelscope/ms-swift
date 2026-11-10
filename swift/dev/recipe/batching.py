@@ -17,6 +17,7 @@ def plan_rollout_batch(
     """
     if not getattr(state, "balance_batch", False) or not inputs:
         return None
+    from ray import ObjectRef
     from twinkle.model import MicroBatchConfig
     from twinkle.model.dp_balance import DPBalancePlan, plan_dp_balance_for_lengths
     from twinkle.model.micro_batch import sequence_length
@@ -28,6 +29,11 @@ def plan_rollout_batch(
     lengths = []
     for index, feature in enumerate(inputs):
         counts = getattr(samples[index], "token_lengths", None) if samples is not None else None
+        if counts is None and isinstance(feature, ObjectRef):
+            raise ValueError(
+                "balance_batch needs token_lengths on streaming samples with Ray ObjectRef features "
+                f"(missing metadata at batch index {index})."
+            )
         lengths.append(sum(counts) if counts is not None else sequence_length(feature))
     plan = plan_dp_balance_for_lengths(
         lengths, model.device_mesh.data_world_size, padding_free=state.padding_free, micro_batch_config=config

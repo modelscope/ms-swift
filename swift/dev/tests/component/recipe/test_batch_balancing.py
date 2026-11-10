@@ -35,9 +35,15 @@ def progress(model):
     # so they only need to exist and be harmless.
     from swift.dev.recipe.utils import RolloutStepState
 
-    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
-                 'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
-                 'finish_rollout_metrics'):
+    for name in (
+        "setup_rollout_metrics",
+        "begin_rollout_iteration",
+        "observe_rollout_samples",
+        "record_rollout_training",
+        "rollout_memory_metrics",
+        "fold_iteration_metrics",
+        "finish_rollout_metrics",
+    ):
         setattr(result, name, getattr(RolloutStepState, name).__get__(result))
     result._metric_context = {}
     result._run_metric = None
@@ -90,6 +96,7 @@ def test_streaming_grpo_balances_refs_without_fetching_features(monkeypatch):
     assert p.records[0]["dp_balance/workload_imbalance_after"] < p.records[0]["dp_balance/workload_imbalance_before"]
     assert model.steps == p.global_step == 1
 
+
 def test_balancing_combines_cached_lengths_and_local_feature_fallback():
     rows = features()
     samples = [
@@ -102,9 +109,158 @@ def test_balancing_combines_cached_lengths_and_local_feature_fallback():
     assert actual.order == expected.order
     assert actual.metrics == expected.metrics
 
+
 def test_balancing_rejects_misaligned_sample_metadata():
     with pytest.raises(ValueError, match="same length"):
         plan_rollout_batch(progress(Model(2)), features(), samples=[])
+
+
+@pytest.mark.parametrize("metadata", ["omitted", "missing", "none"])
+def test_streaming_refs_require_length_metadata(monkeypatch, metadata):
+    import ray
+
+    monkeypatch.setattr(ray, "get", lambda *args, **kwargs: pytest.fail("Must not fetch Ray features"))
+    refs = [ray.ObjectRef.from_random()]
+    samples = {"omitted": None, "missing": [SimpleNamespace()], "none": [SimpleNamespace(token_lengths=None)]}
+    with pytest.raises(ValueError, match="balance_batch needs token_lengths on streaming samples"):
+        plan_rollout_batch(progress(Model(2)), refs, samples=samples[metadata])
+    assert plan_rollout_batch(SimpleNamespace(balance_batch=False), refs) is None
+
+
+@pytest.fixture
+def streaming_batch(monkeypatch):
+    import ray
+
+    monkeypatch.setattr(ray, "get", lambda *args, **kwargs: pytest.fail("Must not fetch Ray features"))
+    return [
+        SimpleNamespace(
+            encoded=ray.ObjectRef.from_random(),
+            token_lengths=(length - 1, 1),
+            messages=[{"id": index}],
+            extra={"teacher_prompt": index},
+            version_span=index,
+        )
+        for index, length in enumerate(LENGTHS16)
+    ]
+
+
+class StreamingDriverStub:
+    def __init__(self, samples):
+        self.samples = samples
+        self.events = []
+
+    def __iter__(self):
+        yield self.samples
+
+    def request_publish(self):
+        self.events.append("publish")
+
+    def commit(self, steps):
+        self.events.append(("commit", steps))
+
+    def abort(self):
+        self.events.append("abort")
+
+
+def test_ppo_streaming_loop_balances_refs_for_both_models(monkeypatch, streaming_batch):
+    recipe = import_module("swift.dev.recipe.ppo.run_ppo")
+    policy, critic = Model(2), Model(4)
+    p = progress(policy)
+    refs = [sample.encoded for sample in streaming_batch]
+    driver = StreamingDriverStub(streaming_batch)
+    monkeypatch.setattr(recipe, "build_ppo_driver", lambda **kwargs: driver)
+    # The remote worker returns a filtered/reordered set; keep the real GAE pipeline and loop.
+    indices = list(reversed(range(16)))
+    advantages, returns, values, old = [[[i + offset] for i in indices] for offset in (100, 200, 300, 400)]
+
+    def forward(**kwargs):
+        assert all(actual is expected for actual, expected in zip(kwargs["inputs"], refs))
+        return {}
+
+    policy.forward_only = critic.forward_only = forward
+    cluster = SimpleNamespace(
+        model=policy,
+        value_model=critic,
+        reference=policy,
+        sampling_params={},
+        worker=SimpleNamespace(
+            gae=lambda *args: (indices, advantages, returns, values, old),
+            reward_metrics=lambda *args: {"total": [0.0] * 16, "completion_lengths": [1] * 16},
+        ),
+    )
+    versions = []
+    recipe._streaming_loop(
+        cluster,
+        RLConfig(rl_type="ppo", num_ppo_epochs=1),
+        SimpleNamespace(),
+        SimpleNamespace(weight_sync_strategy="adapter_snapshot", parameter_sync_step=1),
+        None,
+        None,
+        p,
+        SimpleNamespace(reset=lambda: None, accumulate=lambda **kwargs: None),
+        train_batch_size=4,
+        num_train_epochs=1,
+        output_dir="unused",
+        ema_manager=None,
+        save=None,
+        versions_cell=versions,
+    )
+    for model, offsets in [
+        (policy, {"advantages": 100, "old_logps": 400}),
+        (critic, {"returns": 200, "old_values": 300}),
+    ]:
+        call = model.calls[0]
+        order = [refs.index(ref) for ref in call["inputs"]]
+        assert sorted(order) == list(range(16)) and order != indices
+        assert all(ref is refs[index] for ref, index in zip(call["inputs"], order))
+        for key, offset in offsets.items():
+            assert call[key] == [[index + offset] for index in order]
+        assert model.steps == 1
+    assert p.records[0]["dp_balance/rank_tokens_mean"] == sum(LENGTHS16) / 2
+    assert p.records[0]["dp_balance/value/rank_tokens_mean"] == sum(LENGTHS16) / 4
+    assert versions == list(range(16))
+    assert driver.events == ["publish", ("commit", 1), "abort"]
+
+
+@pytest.mark.parametrize(
+    "algorithm, signal", [("gkd", "teacher_logits"), ("opsd", "teacher_logps"), ("mopd", "teacher_logps")]
+)
+def test_distill_streaming_loop_balances_refs_before_teacher_scoring(monkeypatch, streaming_batch, algorithm, signal):
+    recipe = import_module("swift.dev.recipe.distill.run_distill")
+    model = Model(2)
+    p = progress(model)
+    driver = StreamingDriverStub(streaming_batch)
+    monkeypatch.setattr(recipe, "build_distill_driver", lambda **kwargs: driver)
+    received, heavy = [], object()
+
+    def forward(rows, use_student):
+        assert use_student is True
+        received.extend(rows)
+        return {"inputs": [row.feature for row in rows], signal: heavy}
+
+    recipe._distill_streaming_loop(
+        SimpleNamespace(model=model, worker=SimpleNamespace(forward_kwargs=forward)),
+        RLConfig(rl_type=algorithm, lmbda=1, balance_batch=True),
+        SimpleNamespace(weight_sync_strategy="adapter_snapshot", parameter_sync_step=1),
+        None,
+        None,
+        p,
+        train_batch_size=4,
+        num_train_epochs=1,
+        output_dir="unused",
+        save=None,
+    )
+    order = [row.messages[0]["id"] for row in received]
+    assert sorted(order) == list(range(16)) and order != list(range(16))
+    for row, index in zip(received, order):
+        sample = streaming_batch[index]
+        assert row.feature is sample.encoded
+        assert row.extra == sample.extra and row.token_lengths == sample.token_lengths
+    assert all(ref is streaming_batch[index].encoded for ref, index in zip(model.calls[0]["inputs"], order))
+    assert model.calls[0][signal] is heavy
+    assert p.records[0]["dp_balance/workload_imbalance_after"] < p.records[0]["dp_balance/workload_imbalance_before"]
+    assert model.steps == p.global_step == 1
+    assert driver.events == ["publish", ("commit", 1), "abort"]
 
 
 @pytest.mark.parametrize("algorithm", ONLINE_TYPES)
