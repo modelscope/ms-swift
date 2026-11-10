@@ -631,10 +631,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         except ValueError:
             reply = {'event': 'reply', 'ok': False, 'error': 'malformed command line'}
         else:
-            op = str(cmd.get('op', cmd.get('command', '')))
-            reply = session.command(cmd)
-            reply = {'event': 'reply', 'op': op,
-                     'request_id': str(cmd.get('request_id', '')), **reply}
+            if not isinstance(cmd, dict):
+                # A legal JSON non-object ([] / null / 123 / "str") has no .get; reject it
+                # cleanly instead of an uncaught AttributeError killing the resident session
+                # mid-protocol (the frontend would see stdout EOF, not a diagnostic).
+                reply = {'event': 'reply', 'ok': False,
+                         'error': 'command must be a JSON object'}
+            else:
+                op = str(cmd.get('op', cmd.get('command', '')))
+                try:
+                    result = session.command(cmd)
+                except (GraphValidationError, ComponentError, DAGError) as exc:
+                    # A validation / control error is a clean reply, not a dead session: an
+                    # illegal preview window (GraphValidationError) or a component misuse must
+                    # leave the process driving the next command, so the error rides the reply.
+                    result = {'ok': False, 'error': str(exc)}
+                reply = {'event': 'reply', 'op': op,
+                         'request_id': str(cmd.get('request_id', '')), **result}
         try:
             sys.stdout.write(PREFIX + json.dumps(reply, ensure_ascii=False, default=str) + '\n')
             sys.stdout.flush()
