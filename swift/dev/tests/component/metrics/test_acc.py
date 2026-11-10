@@ -87,11 +87,8 @@ def test_a_batch_that_is_all_padding_yields_no_observations():
     assert compute_acc(np.array([1, 2]), np.array([-100, -100])) == {'acc': []}
 
 
-@pytest.mark.xfail(
-    reason='AccMetrics.compute_metrics averages an empty list: its `len(metric) == 0` guard counts dict '
-    'keys rather than observations, so an all-padding validation batch raises ZeroDivisionError',
-    strict=False)
 def test_a_validation_set_that_is_all_padding_does_not_divide_by_zero():
+    """The metric layer skips the empty observation list instead of averaging it."""
     metrics = _acc_metrics().compute_metrics(_eval_prediction([[1, 2]], [[-100, -100]]))
     assert metrics == {}
 
@@ -120,6 +117,15 @@ def test_seq_strategy_scores_a_whole_sequence_as_one_observation():
     metric = _acc_metrics(acc_strategy='seq').compute_metrics(
         _eval_prediction([[1, 2, 3, 0], [0, 1, 2, 3]], [[0, 1, 2, 3], [0, 1, 2, 3]]))
     assert metric == {'seq_acc': pytest.approx(0.5)}
+
+
+def test_seq_strategy_drops_an_all_padding_row_instead_of_scoring_it_perfect():
+    """``np.all`` over an empty mask is True, so an all-padding row must be skipped rather than
+    counted as a fully correct sequence."""
+    result = compute_acc(
+        np.array([[1, 2], [3, 4]]), np.array([[0, 1], [-100, -100]]), acc_strategy='seq')
+    assert [bool(x) for x in result['seq_acc']] == [True]
+    assert _acc_metrics(acc_strategy='seq').compute_metrics(_eval_prediction([[1, 2]], [[-100, -100]])) == {}
 
 
 def test_seq_strategy_with_cu_seqlens_scores_each_packed_sequence_separately():

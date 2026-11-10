@@ -43,20 +43,14 @@ def test_a_positive_ranked_third_scores_a_third():
     """The first query's positive is last of three, the second's is first: the mean is (1/3 + 1) / 2.
 
     NDCG discounts rather than reciprocates, so the same ranking gives (0.5 + 1) / 2.
+
+    Grouping is by the next positive, so the uneven queries (three items, then two) are not
+    reshaped: a fixed-width split would score 0.5 MRR and 0.63 NDCG instead of the values below.
     """
     result = _reranker()._calculate_metrics(
         np.array([0.1, 0.9, 0.2, 0.8, 0.3]), np.array([1, 0, 0, 1, 0]))
     assert result['mrr'] == pytest.approx(2 / 3)
     assert result['ndcg'] == pytest.approx(0.75)
-
-
-def test_a_query_boundary_is_the_next_positive_not_a_fixed_width():
-    """Grouping is by positive position, so an uneven batch is handled without being reshaped."""
-    result = _reranker()._calculate_metrics(
-        np.array([0.1, 0.9, 0.2, 0.8, 0.3]), np.array([1, 0, 0, 1, 0]))
-    assert result['mrr'] == pytest.approx(2 / 3)
-    # A width-2 grouping would have split [0.1, 0.9] / [0.2, 0.8] / [0.3] instead.
-    assert result['ndcg'] != pytest.approx(1.0)
 
 
 def test_labels_without_any_positive_report_zero_rather_than_crashing():

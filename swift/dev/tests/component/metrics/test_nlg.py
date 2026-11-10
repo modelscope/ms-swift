@@ -18,11 +18,18 @@ from transformers.trainer_utils import EvalPrediction
 from swift.metrics.nlg import NlgMetrics, compute_rouge_bleu
 from swift.utils import Serializer
 
-pytest.importorskip('jieba', reason='compute_rouge_bleu tokenizes with jieba')
-pytest.importorskip('nltk', reason='compute_rouge_bleu scores BLEU with nltk')
-pytest.importorskip('rouge', reason='compute_rouge_bleu scores ROUGE with the rouge package')
-
 _SCORES = {'rouge-1', 'rouge-2', 'rouge-l', 'bleu-4'}
+
+
+def _require_scorers():
+    """Skip only the tests that score text when a scorer dependency is missing.
+
+    ``jieba`` is not declared in any requirements file, so a module-level skip would take the
+    serializer round-trip tests down with it wherever it is absent.
+    """
+    pytest.importorskip('jieba', reason='compute_rouge_bleu tokenizes with jieba')
+    pytest.importorskip('nltk', reason='compute_rouge_bleu scores BLEU with nltk')
+    pytest.importorskip('rouge', reason='compute_rouge_bleu scores ROUGE with the rouge package')
 
 
 class _Args:
@@ -38,6 +45,7 @@ def _pack(texts):
 
 
 def test_identical_text_scores_full_marks():
+    _require_scorers()
     result = compute_rouge_bleu(['我喜欢吃苹果'], ['我喜欢吃苹果'])
     assert set(result) == _SCORES
     assert result['rouge-1'] == pytest.approx(100.0)
@@ -47,6 +55,7 @@ def test_identical_text_scores_full_marks():
 
 
 def test_unrelated_text_scores_zero():
+    _require_scorers()
     result = compute_rouge_bleu(['苹果'], ['香蕉'])
     assert result['rouge-1'] == pytest.approx(0.0)
     assert result['rouge-l'] == pytest.approx(0.0)
@@ -54,21 +63,25 @@ def test_unrelated_text_scores_zero():
 
 
 def test_partial_overlap_lands_between_the_two_extremes():
+    _require_scorers()
     result = compute_rouge_bleu(['今天天气很好'], ['今天天气很差'])
     assert 0 < result['rouge-1'] < 100
 
 
 def test_nothing_to_score_reports_zeros_rather_than_dividing_by_zero():
+    _require_scorers()
     assert compute_rouge_bleu([], []) == dict.fromkeys(_SCORES, 0)
 
 
 def test_a_prediction_that_tokenizes_to_nothing_is_skipped():
     """Blank text has no hypothesis to score, so the pair drops out instead of counting as 0%."""
+    _require_scorers()
     assert compute_rouge_bleu(['   '], ['苹果']) == dict.fromkeys(_SCORES, 0)
 
 
 def test_nlg_metrics_decodes_serialized_rows():
     """The end-to-end path: serialized predictions in, percentage scores out."""
+    _require_scorers()
     metrics = NlgMetrics(_Args(), object())
     prediction = EvalPrediction(
         predictions=_pack(['我喜欢吃苹果', '今天天气很好']),

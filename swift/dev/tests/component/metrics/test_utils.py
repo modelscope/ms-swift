@@ -108,10 +108,10 @@ def test_re_declaring_a_name_with_the_same_style_overwrites():
     """The guard only refuses a style collision; a plain re-declaration is the caller changing their
     mind, and the last declaration wins."""
     metric = _Recorder(default_factory=list)
-    metric.add_state('items', default_factory=list)  # same style again: allowed
+    metric.add_state('items', default_factory=lambda: ['x'])  # same style again: allowed
     metric.update('first')
     metric.reset()
-    assert metric.compute() == {'items': []}
+    assert metric.compute() == {'items': ['x']}
 
 
 def test_a_mutable_default_is_shared_across_resets_but_a_factory_is_not():

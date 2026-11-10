@@ -17,6 +17,14 @@ from transformers.trainer_utils import EvalPrediction
 from swift.metrics.embedding import EmbedddingMetricMixin, InfonceMetrics
 
 
+@pytest.fixture(autouse=True)
+def _clean_infonce_env(monkeypatch):
+    """``InfonceMetrics`` reads these on every call, so an ambient shell export would change what
+    these tests assert (and can crash the parser). Every test starts from the code's own defaults."""
+    monkeypatch.delenv('INFONCE_USE_BATCH', raising=False)
+    monkeypatch.delenv('INFONCE_HARD_NEGATIVES', raising=False)
+
+
 class _Args:
     pass
 
