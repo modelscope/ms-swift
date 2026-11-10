@@ -658,6 +658,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     if session.state != 'released':
         session._release()
     session._executor.shutdown(wait=True)
+    # The session always boots ray (_bootstrap). Tear the runtime down explicitly instead of
+    # leaving it to interpreter shutdown, where the CUDA/NCCL C-extension cleanup races the
+    # ray actor teardown and segfaults the driver on exit. _release already released the
+    # resident actors; this stops the local ray runtime so the process exits cleanly.
+    try:
+        import ray
+        if ray.is_initialized():
+            ray.shutdown()
+    except Exception:  # noqa: BLE001
+        pass
     return 0
 
 
