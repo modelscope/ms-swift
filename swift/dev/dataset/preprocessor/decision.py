@@ -13,7 +13,9 @@ Output row contract (see also `swift/model/decision_head.py`):
                   the template re-renders the full decision layout from the fields below.
     questions:    List[str]           per-question text
     kinds:        List[str]           per-question 'noul' | 'choice' | 'score'
-    options:      List[List[str]]     per-question option texts (noul -> ['false','true'], score -> ['0'..'5'])
+    options:      List[List[str]]     per-question option texts (noul -> ['false','true'], score -> ['0'..'5'];
+                                      Kev alone renders noul as ['no','yes'], the texts its released
+                                      checkpoints were trained with)
     target_probs: List[List[float]]   per-question gold distribution over its OWN options (training only)
 
 Subclasses override `parse_record` to turn a model-specific raw row into `(state, questions)`,
@@ -781,6 +783,14 @@ class KevPreprocessor(ScoringPreprocessor):
 
     fan_out = True
 
+    # Kev's reference encode (and SGLang's kev route) render a noul question's two
+    # options as 'no' then 'yes' -- the texts the released checkpoints were trained
+    # with. The base class's 'false'/'true' canonical set stays for the other
+    # families, whose checkpoints were trained with those spellings.
+    NOUL_OPTIONS = ["no", "yes"]
+
+    _NOUL_GOLD_ALIASES = {"y": 1, "true": 1, "n": 0, "false": 0}
+
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
         state = self._first(row, self.STATE_KEYS, default="")
         answers = self._first(row, self.ANSWERS_KEYS, default=None)
@@ -854,6 +864,10 @@ class KevPreprocessor(ScoringPreprocessor):
         if isinstance(gold, int):
             return gold
         text = str(gold).strip()
+        if kind == "noul" and options == self.NOUL_OPTIONS:
+            alias = self._NOUL_GOLD_ALIASES.get(text.lower())
+            if alias is not None:
+                return alias
         for index, option in enumerate(options):
             if text == option or text.lower() == option.lower():
                 return index
