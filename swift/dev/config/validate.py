@@ -1811,9 +1811,10 @@ def _check_attn_impl_availability(model_config: 'ModelConfig') -> None:
         return
     from transformers.utils import (
         is_flash_attn_2_available as _fa2,  # noqa: N813
+        is_torch_npu_available,
     )
     if probe_name == 'flash_attention_2':
-        available = _fa2()
+        available = is_torch_npu_available() or _fa2()
     elif probe_name == 'flash_attention_3':
         from transformers.utils import is_flash_attn_3_available as probe
         available = probe()
