@@ -412,7 +412,8 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         if self.vllm_mode == 'server':
             # Server mode uses external vLLM server
             if self.is_main_process:
-                self.vllm_client.get_engine_type()
+                from swift.rlhf_trainers.utils import check_rollout_truncation_config
+                check_rollout_truncation_config(self.template, self.vllm_client.get_engine_type())
                 self.vllm_client.reset_mm_cache()
                 enable_lora = [self.vllm_client.enable_lora]
                 enable_multi_turn = [self.vllm_client.enable_multi_turn]
