@@ -114,9 +114,11 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
         indices = [index % len(samples) for index in range(lo, hi)]
         inputs = [samples[index].encoded for index in indices]
         batching = {'micro_batch_size': micro_batch_size}
-        policy_plan = plan_rollout_batch(state, inputs, micro_batch_kwargs=batching)
+        update_samples = [samples[index] for index in indices]
+        policy_plan = plan_rollout_batch(state, inputs, samples=update_samples, micro_batch_kwargs=batching)
         value_plan = plan_rollout_batch(
-            state, inputs, model=value_model, micro_batch_kwargs=batching, metric_prefix='dp_balance/value')
+            state, inputs, samples=update_samples, model=value_model, micro_batch_kwargs=batching,
+            metric_prefix='dp_balance/value')
         policy_indices = apply_rollout_plan(policy_plan, indices)
         value_indices = apply_rollout_plan(value_plan, indices)
         state.micro_step += (hi - lo) // train_batch_size

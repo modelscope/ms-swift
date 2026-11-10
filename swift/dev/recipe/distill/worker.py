@@ -14,13 +14,15 @@ class DistillRow(NamedTuple):
     """One distillation training row: the student feature plus the context a teacher view needs.
 
     Uniform across both ``lmbda`` sources -- an on-policy rollout sample and an off-policy dataset
-    completion both reduce to ``(feature, messages, extra)`` -- so the loop's update grouping and
-    the teacher scoring never branch on where a row came from.
+    completion both share the same fields, so the loop's update grouping and teacher scoring
+    never branch on where a row came from. Streaming rows retain lightweight token lengths
+    for controller-side balancing without fetching the feature.
     """
 
     feature: Dict[str, Any]
     messages: List[dict]
     extra: Dict[str, Any]
+    token_lengths: Optional[tuple[int, int]] = None
 
 
 def response_ids_from_feature(feature: Dict[str, Any]) -> List[int]:
