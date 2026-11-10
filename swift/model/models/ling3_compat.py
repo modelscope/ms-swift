@@ -60,8 +60,8 @@ def _packed_params(hidden_states, position_ids, attention_mask, kwargs, *, requi
         if any(kwargs.get(key) is None for key in _PACKING_KEYS[:4]):
             raise ValueError('Ling3 packing requires cu_seq_lens_q/k and max_length_q/k together.')
     consecutive = (position_ids[:, 1:] == 0) | (position_ids.diff(dim=-1) == 1)
-    if position_ids.shape[1] == 0 or int(position_ids[0, 0]) != 0 or bool(
-        (position_ids < 0).any()) or not bool(consecutive.all()):
+    if (position_ids.shape[1] == 0 or int(position_ids[0, 0]) != 0 or bool((position_ids < 0).any())
+            or not bool(consecutive.all())):
         raise ValueError('Ling3 packed positions must reset to zero and increase consecutively')
     from swift.utils import get_packed_seq_params
 
@@ -441,7 +441,8 @@ def _get_ling3_compat_kernel(modeling):
             lower_bound=-5.0,
             cu_seqlens=None)
     except (ImportError, AttributeError, TypeError, ValueError) as error:
-        return None, f'Ling3 attention adapters require the compatible FLA causal-convolution/chunk-KDA interfaces: {error}'
+        return None, ('Ling3 attention adapters require the compatible FLA '
+                      f'causal-convolution/chunk-KDA interfaces: {error}')
     return causal_conv1d, None
 
 
