@@ -316,16 +316,17 @@ def test_in_batch_negatives_gather_across_ranks(monkeypatch):
     local_labels = torch.tensor([1, 0])
     other_labels = torch.tensor([1, 0])
 
+    # the reference is the same batch scored by plain, single-process code
+    gathered = _loss(InfonceLoss)(
+        {'last_hidden_state': torch.cat([local['last_hidden_state'], other])},
+        torch.cat([local_labels, other_labels]))
+
     monkeypatch.setattr(embedding, 'get_dist_setting', lambda: (0, 0, 2, 2))
+    # accelerate's gather_object flattens one level: a per-rank batch of [1, L, D] arrives as [L, D],
+    # and a per-rank label vector of [L] arrives as L scalars.
     monkeypatch.setattr(
         embedding, 'gather_object',
         lambda obj: [*obj, *other.unsqueeze(0)] if obj.dim() == 3 else [*obj, *other_labels])
 
     local_loss = float(_loss(InfonceLoss)(local, local_labels))
-
-    # the reference is the same batch on a single process, so that no gather happens
-    monkeypatch.setattr(embedding, 'get_dist_setting', lambda: (0, 0, 1, 1))
-    gathered = _loss(InfonceLoss)(
-        {'last_hidden_state': torch.cat([local['last_hidden_state'], other])},
-        torch.cat([local_labels, other_labels]))
     assert local_loss == pytest.approx(float(gathered), rel=1e-4)
