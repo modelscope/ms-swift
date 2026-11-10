@@ -317,6 +317,7 @@ def _train_mini_batches(
         indices = [index % len(samples) for index in range(lo, hi)]
         plan = plan_rollout_batch(
             state, [samples[index].encoded for index in indices],
+            samples=[samples[index] for index in indices],
             micro_batch_kwargs={'micro_batch_size': train_batch_size // dp_size, **(batching_kwargs or {})})
         if plan is not None:
             indices = plan.apply(indices)

@@ -38,7 +38,7 @@ def _rows_from_samples(samples: List[Any]) -> List[DistillRow]:
     return [
         DistillRow(sample.encoded,
                    sample.messages if sample.messages is not None else list(sample.prompt or []),
-                   sample.extra or {}) for sample in samples
+                   sample.extra or {}, getattr(sample, 'token_lengths', None)) for sample in samples
     ]
 
 
@@ -62,7 +62,8 @@ def _train_rows(cluster: Cluster, state: StepState, rows: List[DistillRow],
         # The worker builds the kwargs where the teacher forward runs -- the driver never sees the
         # full-vocab logits or the logps, only the light kwargs carrying them as refs.
         plan = (plan_rollout_batch(
-            state, [row.feature for row in update_rows], micro_batch_kwargs={'micro_batch_size': micro_batch_size})
+            state, [row.feature for row in update_rows], samples=update_rows,
+            micro_batch_kwargs={'micro_batch_size': micro_batch_size})
                 if use_student and getattr(state, 'balance_batch', False) else None)
         if plan is not None:
             update_rows = plan.apply(update_rows)

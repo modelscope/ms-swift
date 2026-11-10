@@ -283,6 +283,7 @@ def _train_selected_samples(cluster, state, selected, train_batch_size, save_ste
         update_samples = selected[start:end]
         plan = plan_rollout_batch(
             state, [sample.encoded for sample in update_samples],
+            samples=update_samples,
             micro_batch_kwargs={'micro_batch_size': train_batch_size // cluster.model.device_mesh.data_world_size})
         if plan is not None:
             update_samples = plan.apply(update_samples)

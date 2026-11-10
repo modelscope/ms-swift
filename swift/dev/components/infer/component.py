@@ -531,20 +531,36 @@ class InferComponent(RecipeComponent):
         A pooling task routes by backend: vLLM / SGLang have a pooling head, so the model is served
         through ``sampler.encode``; transformers falls back to ``build_model`` + ``forward_only``.
         A ``generative_reranker`` is a causal LM -- generation-scored on vLLM/SGLang, the same HF
-        forward on transformers. A ``decision`` (System-1 scoring) model ALWAYS takes the
-        transformers forward: no vLLM/SGLang pooling head hosts the family ``ScoringHead`` (it is
-        patched onto the HF model's own forward by the loader), so an engine backend is honoured
-        as a plain fallback with a log line, not an error. Row assembly is shared, label from the
-        row's ``label`` column.
+        forward on transformers. A ``decision`` (System-1 scoring) model routes by family AND
+        backend: the kev / clef families have native SGLang poolers, so ``sampler=sglang`` scores
+        them on the SGLang offline engine; every other decision family (and every other engine
+        backend) takes the transformers forward, honoured as a plain fallback with a log line,
+        not an error. Row assembly is shared, label from the row's ``label`` column.
         """
         from swift.dev.builders import to_trajectory
+        from swift.dev.components.infer.sglang_decision import (
+            decision_via_sglang,
+            is_sglang_decision_template,
+        )
 
         rows = _forward_rows(self.dataset_config, self.max_rows, self.split_dataset_ratio,
                              self.distributed_config)
         reranker_use_activation = self.infer_config.reranker_use_activation
 
         if task_type == "decision":
-            if self.backend in ("vllm", "sglang"):
+            if self.backend == "sglang" and is_sglang_decision_template(self.template_config.template):
+                per_row = decision_via_sglang(
+                    self.model_config,
+                    self.template_config,
+                    rows,
+                    adapters=self.adapters,
+                    engine_args=self.engine_args,
+                    shutdown=self.shutdown,
+                )
+                return _finalize_forward_results(
+                    rows, per_row, task_type, self.backend, self.output_path, self.infer_config.metric
+                )
+            elif self.backend in ("vllm", "sglang"):
                 logger.info(
                     f"run_infer: sampler={self.backend!r} has no pooling head for the decision "
                     "scoring_head; running the transformers forward instead."
