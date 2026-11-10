@@ -13,6 +13,9 @@ try:
                 raise ImportError('Megatron on Ascend NPU requires MegatronAdaptor. Install the local '
                                   'MegatronAdaptor checkout before importing swift.megatron.') from exc
             raise
+    # Preserve Swift's initialization import order before loading model patches.
+    from .init import init_megatron_env
+    if is_torch_npu_available():
         from swift.model.npu_patch.megatron_moe import patch_megatron_moe
         from swift.model.npu_patch.megatron_norm import patch_megatron_norm
         from swift.model.npu_patch.megatron_optimizer import patch_megatron_optimizer
@@ -22,7 +25,6 @@ try:
         patch_megatron_norm()
         from swift.utils import get_logger
         get_logger().info('Installed Swift Megatron NPU optimizer, normalization and permutation performance patches.')
-    from .init import init_megatron_env
     init_megatron_env()
 except Exception:
     # allows lint pass.
