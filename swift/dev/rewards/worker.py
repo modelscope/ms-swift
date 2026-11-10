@@ -138,14 +138,29 @@ class RewardWorker(ScoreWorker):
         # the frame rows are in whole-batch order; the kept samples pick theirs by index
         ref_rows = [[float(x) for x in ref_all[i]] if ref_all[i] is not None else old
                     for i, old in zip(kept, old_logps)]
+        lengths = [len(old) for old in old_logps]
         token_rewards = GAEAdvantage.build_token_rewards(
-            rm_scores, [len(old) for old in old_logps],
+            rm_scores, lengths,
             old_logps=old_logps, ref_logps=ref_rows, kl_coef=rl_config.kl_coef)
         values = [values_all[i] for i in kept]
-        advantages, returns = GAEAdvantage(
+        # GAEAdvantage consumes rectangular [batch, max_len] tensors plus a valid-token mask, but a
+        # batch's completions stop at different lengths (a sample can end before max_completion_length),
+        # so token_rewards/values arrive ragged and torch.as_tensor inside GAE would raise on the uneven
+        # rows. Pad both lanes to the batch max, mask the padding, run GAE, then unpad each estimate back
+        # to its own response length so advantages/returns stay token-aligned with the ragged
+        # values/old_logps that _train_ppo_batch replays against.
+        if any(len(value) != length for value, length in zip(values, lengths)):
+            raise ValueError('PPO GAE: critic value length does not match the response length')
+        max_len = max(lengths)
+        rewards_pad = [list(row) + [0.0] * (max_len - len(row)) for row in token_rewards]
+        values_pad = [list(row) + [0.0] * (max_len - len(row)) for row in values]
+        masks = [[True] * length + [False] * (max_len - length) for length in lengths]
+        adv_pad, ret_pad = GAEAdvantage(
             gamma=rl_config.gamma, gae_lambda=rl_config.lam,
-            normalize=rl_config.whiten_rewards)(token_rewards, values)
-        return kept, advantages.tolist(), returns.tolist(), values, old_logps
+            normalize=rl_config.whiten_rewards)(rewards_pad, values_pad, masks=masks)
+        advantages = [adv_pad[i, :length].tolist() for i, length in enumerate(lengths)]
+        returns = [ret_pad[i, :length].tolist() for i, length in enumerate(lengths)]
+        return kept, advantages, returns, values, old_logps
 
     @remote_function(dispatch='all', collect='first', lazy_collect=False)
     def reward_metrics(self, samples: List[Any], scored: Any, reward_config: Any,
