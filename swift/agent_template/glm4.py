@@ -83,8 +83,10 @@ class GLM4AgentTemplate(ChatGLM4AgentTemplate):
 class GLM4_5AgentTemplate(BaseAgentTemplate):
     model_type = 'glm4_5'
 
+    supports_tool_schema = True
+
     @staticmethod
-    def _find_function_call(single_content: str) -> Optional[Function]:
+    def _find_function_call(single_content: str, tool_schemas: Optional[dict] = None) -> Optional[Function]:
         single_content = single_content.strip()
         func_name_match = re.match(r'^([^\n<]+)', single_content)
         if not func_name_match:
@@ -94,14 +96,15 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         values = re.findall(r'<arg_value>(.*?)</arg_value>', single_content, re.DOTALL)
         if len(keys) != len(values):
             return None
-        args = {k.strip(): v.strip() for k, v in zip(keys, values)}
+        args = BaseAgentTemplate._decode_schema_args(zip(keys, values), tool_schemas, func_name)
         return Function(name=func_name, arguments=json.dumps(args, ensure_ascii=False))
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
+        tool_schemas = self._get_tool_schemas(tools)
         toolcall_list = re.findall(r'<tool_call>(.*?)</tool_call>', response, re.DOTALL)
         functions = []
         for toolcall in toolcall_list:
-            function = self._find_function_call(toolcall)
+            function = self._find_function_call(toolcall, tool_schemas)
             if function:
                 functions.append(function)
         if len(functions) == 0:
@@ -159,6 +162,12 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
                 res.append(f'<tool_response>{tool_content}</tool_response>')
             res.append('<|assistant|>')
         return assistant_content, res
+
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
+        # Keep the native tool turns and replace only their trailing assistant transition.
+        _, tool_content = self._format_tool_responses('', tool_messages)
+        prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
+        return tool_content[:-1] + [prefix + message['content'] for message in user_messages] + [suffix]
 
     def _format_standalone_tool_responses(self, tool_messages) -> 'Prompt':
         res = ['<|observation|>']

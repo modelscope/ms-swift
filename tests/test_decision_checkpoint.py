@@ -334,7 +334,8 @@ class TestDecisionCheckpoint(unittest.TestCase):
                 model = torch.nn.Module()
                 model.lm_head = head._output_embeddings
                 model.scoring_head = head
-                assert head._modules['_output_embeddings'] is model.lm_head
+                assert '_output_embeddings' not in head._modules
+                assert '_output_embeddings' not in dict(head.named_children())
                 assert head._output_embeddings is model.lm_head
                 state = model.state_dict(prefix=prefix)
                 assert prefix + 'lm_head.weight' in state
