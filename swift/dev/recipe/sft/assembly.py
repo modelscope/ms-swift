@@ -102,6 +102,7 @@ def build_supervised_objects(
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor, processor_kwargs
+    from twinkle import DeviceMesh, Platform
 
     remote = distributed_config.mode == 'remote'
     if not remote:
@@ -204,6 +205,14 @@ def build_supervised_objects(
             # Full-parameter path: consume the freeze/trainable knobs BEFORE configure_optimizer reads
             # requires_grad to build its param groups; an adapter run selects through target_modules.
             apply_full_param_freeze(model, train_config)
+        processor_options = processor_kwargs(template)
+        cp_size = distributed_config.context_parallel_size
+        if distributed_config.parallel_spec:
+            cp_size = max(cp_size, DeviceMesh.parse_spec(distributed_config.parallel_spec).get('cp_size', 1) or 1)
+        if (distributed_config.fsdp and distributed_config.backend != 'megatron'
+                and (distributed_config.nproc_per_node or Platform.get_world_size()) > 1
+                and cp_size == 1 and template.multimodal_graph_adapter is not None):
+            processor_options['uniform_multimodal_graph'] = True
         model.set_processor(
             InputProcessor,
             padding_free=template_config.padding_free,
@@ -211,7 +220,7 @@ def build_supervised_objects(
             # padding_side to it), or a training-time --padding_side left reaches the Template only.
             padding_side=template_config.padding_side,
             cp_partition_mode=distributed_config.cp_partition_mode,
-            **processor_kwargs(template),
+            **processor_options,
         )
         model.set_template(template)
         configure_loss(model)
