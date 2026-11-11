@@ -2,7 +2,24 @@
 """Controller-side DP balancing for post-rollout training batches."""
 
 from __future__ import annotations
+import math
 from typing import Any
+
+
+def streaming_batch_geometry(
+    *, need_rows: int, num_generations: int, parameter_sync_step: int, max_staleness: int
+) -> tuple[int, int]:
+    """Size admission windows in prompt groups and prefetch capacity in trajectories.
+
+    One optimizer update consumes ``need_rows`` trajectories, not one prompt group.
+    Round a publication cycle up to complete optimizer batches and generation groups,
+    then reserve a cycle for the current version and each permitted overlapping version.
+    The iterator driver waits for training's commit, so extra in-flight capacity must
+    exist before it hands off a batch for generation to continue during training.
+    """
+    pull_rows = math.lcm(need_rows, num_generations)
+    cycle_rows = ((need_rows * parameter_sync_step + pull_rows - 1) // pull_rows) * pull_rows
+    return cycle_rows // num_generations, (max_staleness + 1) * cycle_rows
 
 
 def plan_rollout_batch(
