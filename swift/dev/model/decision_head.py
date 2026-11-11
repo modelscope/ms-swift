@@ -155,7 +155,7 @@ class ScoringHead(nn.Module):
     encoder_backbone: bool = False
 
     def set_output_embeddings(self, output_embeddings: nn.Module) -> None:
-        self._output_embeddings = output_embeddings
+        object.__setattr__(self, "_output_embeddings", output_embeddings)
 
     def has_kind_temperatures(self) -> bool:
         return hasattr(self, "temperatures") or hasattr(self, "temps")
