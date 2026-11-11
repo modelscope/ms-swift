@@ -57,6 +57,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         fsdp_config: Optional[Dict[str, Any]] = None,
         grad_scaler_config: Optional[Dict[str, Any]] = None,
         memory_efficient_init: bool = False,
+        model_arch: Optional[Dict[str, Any]] = None,
         sentence_transformer_kwargs: Optional[Dict[str, Any]] = None,
         gradient_checkpointing: bool = True,
         gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None,
@@ -80,6 +81,13 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         # The inherited _construct_default_optimizer_group reads this (same contract as the parent's
         # ctor arg); a sentence encoder accumulates per token like any causal-LM-shaped model.
         self._acc_strategy = kwargs.pop("acc_strategy", "token")
+        # This __init__ mirrors the parent's plumbing but skips its __init__, so model_arch must be set
+        # here too: _patch_frozen_towers reads self.model_arch on every add_adapter_to_model, and the
+        # all-linear narrowing reads its language_model role. Same role normalization as the parent.
+        self.model_arch = dict(model_arch or {})
+        for _role in ('language_model', 'vision_tower', 'aligner'):
+            _value = self.model_arch.get(_role)
+            self.model_arch[_role] = [_value] if isinstance(_value, str) else list(_value or [])
         # Router replay is a MoE-causal-LM concept; irrelevant to sentence encoders.
         self._router_replay_enabled = False
         self._router_replay_applied = False

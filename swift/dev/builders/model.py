@@ -1285,6 +1285,10 @@ def _build_sentence_transformer_model(
         st_kwargs["sentence_transformer_kwargs"] = {
             "trust_remote_code": getattr(model_loader, "trust_remote_code", True)
         }
+        # The loader's model_arch (language_model / vision_tower / aligner) drives twinkle's all-linear
+        # narrowing and the frozen-tower patch; forward it exactly as the plain transformers build does,
+        # else _patch_frozen_towers reads an unset attribute and all-linear LoRA lands on every linear.
+        st_kwargs["model_arch"] = _loader_model_arch(model_loader)
     # --fsdp selects the FSDP strategy on the ST path too (the deepspeed guard above points here),
     # so its config rides the same shared-kwarg forwarding.
     if kwargs.get("fsdp_config") is not None:
