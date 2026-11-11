@@ -598,6 +598,121 @@ class Thx02Preprocessor(ClefPreprocessor):
         return out
 
 
+def _h2o_desc_text(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+
+def _h2o_options_of(kind: str, criteria: Any, max_options: int = 255) -> Tuple[List[str], List[str]]:
+    """H2O option names/descriptions, byte-identical to the released `h2o_lightning_shim.py`.
+
+    `choice` keeps the `criteria` map order, `noul` is true/false, `score` is the level index.
+    """
+    if kind == 'noul':
+        criteria = criteria or {}
+        if not isinstance(criteria, dict):
+            raise ValueError('H2O noul criteria must be an object with true/false descriptions')
+        true_desc = criteria.get('true', criteria.get('yes'))
+        false_desc = criteria.get('false', criteria.get('no'))
+        return ['true', 'false'], [
+            _h2o_desc_text(true_desc) if true_desc not in (None, '') else 'the statement holds',
+            _h2o_desc_text(false_desc) if false_desc not in (None, '') else 'it does not',
+        ]
+    if kind == 'score':
+        if not isinstance(criteria, list) or len(criteria) < 1:
+            raise ValueError('H2O score criteria must be an ordered array of levels')
+        return [str(i) for i in range(len(criteria))], [_h2o_desc_text(value) for value in criteria]
+    if not isinstance(criteria, dict) or len(criteria) < 1:
+        raise ValueError('H2O choice criteria must map option -> description')
+    if len(criteria) > max_options:
+        raise ValueError(f'H2O choice supports at most {max_options} options')
+    names = list(criteria)
+    return names, [_h2o_desc_text(criteria[name]) if criteria[name] is not None else name for name in names]
+
+
+def _h2o_state_text(state: Any) -> str:
+    if isinstance(state, str):
+        return state
+    if state is None:
+        return ''
+    return json.dumps(state, ensure_ascii=False, separators=(',', ':'))
+
+
+class H2OPreprocessor(ScoringPreprocessor):
+    """H2O request schema -> ONE row per question.
+
+    A record is `{state, questions: [{type, instructions, criteria}, ...], answers?}`. `criteria` is
+    `{name: description}` for `choice`, an ordered list of level descriptions for `score`, and optional
+    for `noul`. H2O defines its own option set (`noul` true/false, any level count for `score`), so the
+    shared canonical noul/score defaults are not applied.
+    """
+    STATE_KEYS = ('state', 'context', 'passage', 'text', 'input')
+    QUESTIONS_KEYS = ('questions', )
+    KIND_KEYS = ('type', 'kind', 'question_type')
+    INSTRUCTION_KEYS = ('instructions', 'instruction', 'question', 'prompt', 'query')
+    GOLD_KEYS = ('gold', 'answer', 'label', 'target')
+    ANSWERS_KEYS = ('answers', 'golds', 'targets')
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+        state, questions = self.parse_record(row)
+        if not questions:
+            return None
+        state, questions = self._augment(state, questions)
+        # One row per question: H2O reads a single question per sequence.
+        return [self._build_row(row, state, [q]) for q in questions]
+
+    def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
+        state = self._first(row, self.STATE_KEYS, default='')
+        answers = self._first(row, self.ANSWERS_KEYS, default=None)
+        questions: List[Dict[str, Any]] = []
+        for qid, q in self._question_items(self._first(row, self.QUESTIONS_KEYS, default=None)):
+            if not isinstance(q, dict):
+                raise ValueError(f'H2O question {qid!r} must be a dict with type/instructions/criteria; got {q!r}')
+            kind = self._normalize_kind(self._first(q, self.KIND_KEYS, default='choice'))
+            names, descs = _h2o_options_of(kind, q.get('criteria'))
+            question = {
+                'kind': kind,
+                'question': self._first(q, self.INSTRUCTION_KEYS, default=''),
+                'options': [f'{name}: {desc}' for name, desc in zip(names, descs)],
+                'question_id': str(qid),
+                'criteria': q.get('criteria'),
+                'names': names,
+            }
+            gold = self._resolve_h2o_gold(q, answers, qid, kind, names)
+            if gold is not None:
+                question['gold'] = gold
+            questions.append(question)
+        return state, questions
+
+    def _resolve_h2o_gold(self, question: Dict[str, Any], answers: Any, qid: Any, kind: str,
+                          names: List[str]) -> Optional[Any]:
+        gold = self._first(question, self.GOLD_KEYS, default=None)
+        if gold is None and isinstance(answers, dict):
+            gold = answers.get(str(qid), answers.get(qid))
+        if gold is None:
+            return None
+        if isinstance(gold, (list, tuple)):
+            return [float(x) for x in gold]
+        if kind == 'noul' and isinstance(gold, bool):
+            return 0 if gold else 1
+        text = str(gold).strip()
+        if text in names:
+            return names.index(text)
+        if text.lstrip('-').isdigit():
+            return int(text)
+        raise ValueError(f'H2O gold {gold!r} for question {qid!r} matches no option name {names}.')
+
+    def _resolve_options(self, question: Dict[str, Any]) -> List[str]:
+        # H2O defines the option order itself (noul is true/false, score can have any level count).
+        # Do not let ScoringPreprocessor force the JEV canonical false/true or 0..5 sets.
+        return list(question['options'])
+
+    def _build_row(self, row: Dict[str, Any], state: Any, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        out = ScoringPreprocessor._build_row(self, row, state, questions)
+        # H2O renders a structured state as compact JSON, not as concatenated values.
+        out['messages'] = [{'role': 'user', 'content': _h2o_state_text(state)}]
+        return out
+
+
 def _omnijev_render_option(o: Dict[str, Any]) -> str:
     """How one option block is written into the prompt. An abstain option renders as
     'none of the above'; a region option as its integer box; otherwise the option text

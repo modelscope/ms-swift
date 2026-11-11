@@ -642,6 +642,99 @@ class Thx02Template(Qwen3_5Template):
 register_template(QwenTemplateMeta(MLLMTemplateType.thx02, template_cls=Thx02Template, default_system=None))
 
 
+_H2O_SYSTEM = ('You are a decision engine. You read a record and answer one question about it by '
+               'choosing exactly one option. Reply with a single letter.')
+_H2O_PREFILL = 'Answer:'
+
+
+class H2OTemplate(Thx02Template):
+    """H2O single-question readout template.
+
+    One question per sequence, byte-compatible with the released `h2o_lightning_shim.py`:
+
+        <|im_start|>system
+        {system}<|im_end|>
+        <|im_start|>user
+        record: {state}
+        question: {instructions}
+        options:
+        A) name: description
+        ...<|im_end|>
+        <|im_start|>assistant
+        <think>
+
+        </think>
+
+        Answer:
+
+    The head reads the last hidden state of the final prompt token (the `Answer:` prefill), so records
+    are never truncated and packing is not supported.
+    """
+
+    @staticmethod
+    def _h2o_instructions(value: Any) -> str:
+        # Same serialization as the reference shim (render_instr): json.dumps(value, indent=1).
+        return value if isinstance(value, str) else json.dumps(value, indent=1)
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        if self.padding_free:
+            raise NotImplementedError('H2O reads one question per sequence; packing/padding_free is not supported.')
+        from swift.model.decision_head import QUESTION_TYPES
+        from ..vision_utils import load_image
+
+        extra = inputs.extra_kwargs
+        questions = extra.get('questions') or []
+        kinds = extra.get('kinds') or []
+        options_list = extra.get('options') or []
+        if len(questions) != 1 or len(kinds) != 1 or len(options_list) != 1:
+            raise ValueError(f'H2O expects exactly one question per row, got questions={questions!r}')
+        kind = str(kinds[0]).strip().lower()
+        if kind not in QUESTION_TYPES:
+            raise ValueError(f'H2O question kind must be one of {list(QUESTION_TYPES)}, got {kind!r}')
+        options = list(options_list[0])
+        labels = getattr(self.processor, 'h2o_labels', None)
+        if not labels:
+            raise ValueError('H2O option labels missing: load the processor through H2OModelLoader.')
+        if not 1 <= len(options) <= len(labels):
+            raise ValueError(f'H2O supports 1 to {len(labels)} options per question, got {len(options)}')
+
+        state = DecisionTemplate._get_state(inputs)
+        user = (f'record: {state}\nquestion: {self._h2o_instructions(questions[0])}\noptions:\n' +
+                '\n'.join(f'{labels[i]}) {option}' for i, option in enumerate(options))).strip()
+        images = [load_image(image) for image in (inputs.images or [])]
+        content = [{'type': 'image'} for _ in images] + [{'type': 'text', 'text': user}]
+        messages = [{'role': 'system', 'content': _H2O_SYSTEM}, {'role': 'user', 'content': content}]
+        kwargs = dict(inputs.chat_template_kwargs or {})
+        kwargs.setdefault('enable_thinking', False)
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, **kwargs) + _H2O_PREFILL
+        processed = self.processor(text=[text], images=images or None, return_tensors='pt')
+        input_ids = processed['input_ids'][0]
+        if self.max_length is not None and len(input_ids) > self.max_length:
+            raise MaxLengthError(f'H2O record has {len(input_ids)} tokens, more than max_length={self.max_length}; '
+                                 'H2O records are never truncated (the readout position would shift).')
+        readout = len(input_ids) - 1
+        encoded = {
+            'input_ids': input_ids.tolist(),
+            'decision_meta': {
+                'n_options': [len(options)],
+                'kinds': [QUESTION_TYPES[kind]],
+                'readout_positions': [readout],
+                'question_spans': [(readout, readout + 1)],
+                'option_spans': [[]],
+            },
+        }
+        if images:
+            encoded['pixel_values'] = processed['pixel_values']
+            encoded['image_grid_thw'] = processed['image_grid_thw']
+        if processed.get('mm_token_type_ids') is not None:
+            encoded['mm_token_type_ids'] = processed['mm_token_type_ids'][0]
+        return encoded
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.h2o, template_cls=H2OTemplate, default_system=None))
+
+
 # Mirror of startlux_decision/jevfmt.py::_norm (official package): keep byte-identical semantics --
 # it decides whether a criterion is a bare restatement of the option name, and the Stage A align
 # test asserts our prompt matches the official one exactly.
