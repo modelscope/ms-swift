@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 
-from swift.dev.recipe.batching import plan_rollout_batch, publish_rollout_weights, record_rollout_step
+from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
+from swift.dev.recipe.streaming import publish_rollout_weights
 from swift.dev.recipe.grpo.assembly import (
     greedy_params,
     group_variance,
@@ -665,7 +666,9 @@ def _disaggregated_loop(
                 if strategy == 'in_place':
                     # Park in-flight generation across the update, then resume on the new weights.
                     def _visible_sync(window: Any) -> None:
-                        publish_rollout_weights(cluster)
+                        publish_rollout_weights(
+                            sampler=cluster.sampler, engine=cluster.engine, adapter=cluster.adapter
+                        )
 
                     driver.request_publish(_visible_sync)
                 else:

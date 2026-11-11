@@ -2,7 +2,6 @@
 # ruff: noqa: C901
 # GRPO's device and cluster assembly: the init halves and the StreamingDriver seams (per-recipe).
 from __future__ import annotations
-import math
 import os
 from copy import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
@@ -440,23 +439,27 @@ def build_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'Ro
             values = worker.score_group([greedy[0]])[0] if cluster.orm_scorers else []
             return weighted_reward(values, orm_weights)
 
-    from swift.dev.recipe.batching import streaming_batch_geometry
+    from swift.dev.recipe.streaming import plan_streaming_batches
 
-    groups_per_partition, buffer_depth = streaming_batch_geometry(
-        need_rows=need_rows, num_generations=num_generations,
-        parameter_sync_step=rollout_config.parameter_sync_step, max_staleness=max_staleness)
+    batch_plan = plan_streaming_batches(
+        need_rows=need_rows,
+        num_generations=num_generations,
+        parameter_sync_step=rollout_config.parameter_sync_step,
+        max_staleness=max_staleness,
+        group_pull=True,
+    )
     driver = StreamingDriver(
         version_control=True,
         prompt_stream=prompt_dataloader,
         num_train_epochs=num_train_epochs,
         max_staleness=max_staleness,
         num_generations=num_generations,
-        groups_per_partition=groups_per_partition,
-        buffer_depth=buffer_depth,
+        groups_per_partition=batch_plan.groups_per_partition,
+        buffer_depth=batch_plan.buffer_depth,
         rollout=rollout,
         group_pull=True,
         need_rows=need_rows,
-        max_rows_per_pull=math.lcm(need_rows, num_generations),
+        max_rows_per_pull=batch_plan.max_rows_per_pull,
         snapshot_model=(cluster.model if strategy == "adapter_snapshot" else None),
         snapshot_dir=os.path.join(output_dir, "async_adapters"),
         adapter_name=adapter_name,

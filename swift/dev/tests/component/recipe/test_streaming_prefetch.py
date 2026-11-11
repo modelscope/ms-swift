@@ -6,30 +6,31 @@ from types import SimpleNamespace
 import pytest
 
 from swift.dev.config import RewardConfig, RLConfig, RolloutConfig
-from swift.dev.recipe.batching import publish_rollout_weights, streaming_batch_geometry
+from swift.dev.recipe.streaming import plan_streaming_batches, publish_rollout_weights
 
 
 @pytest.mark.parametrize(
     "need_rows,generations,sync_steps,lag,expected",
     [
-        (64, 8, 1, 0, (8, 64)),
-        (64, 8, 1, 1, (8, 128)),
-        (64, 8, 1, 2, (8, 192)),
-        (64, 8, 2, 1, (16, 256)),
-        (4, 3, 1, 1, (4, 24)),
-        (4, 3, 2, 1, (4, 24)),
-        (4, 3, 4, 1, (8, 48)),
-        (4, 8, 1, 1, (1, 16)),
-        (16, 1, 1, 1, (16, 32)),
+        (64, 8, 1, 0, (8, 64, 64)),
+        (64, 8, 1, 1, (8, 128, 64)),
+        (64, 8, 1, 2, (8, 192, 64)),
+        (64, 8, 2, 1, (16, 256, 64)),
+        (4, 3, 1, 1, (4, 24, 12)),
+        (4, 3, 2, 1, (4, 24, 12)),
+        (4, 3, 4, 1, (8, 48, 12)),
+        (4, 8, 1, 1, (1, 16, 8)),
+        (16, 1, 1, 1, (16, 32, 16)),
     ],
 )
 def test_capacity_covers_complete_updates_and_generation_groups(need_rows, generations, sync_steps, lag, expected):
     assert (
-        streaming_batch_geometry(
+        plan_streaming_batches(
             need_rows=need_rows,
             num_generations=generations,
             parameter_sync_step=sync_steps,
             max_staleness=lag,
+            group_pull=True,
         )
         == expected
     )
@@ -222,11 +223,8 @@ def test_in_place_publish_keeps_partial_rollout_parked_until_weights_arrive():
     try:
         assert started.wait(timeout=5)
         publish_rollout_weights(
-            SimpleNamespace(
-                sampler=sampler,
-                engine=SimpleNamespace(sync_weights=transfer),
-                adapter=None,
-            )
+            sampler=sampler,
+            engine=SimpleNamespace(sync_weights=transfer),
         )
         outcome = future.result(timeout=5)
         assert seen_versions == [0, 1]
@@ -256,11 +254,99 @@ def test_failed_publish_does_not_resume_generation():
         ),
     )
     with pytest.raises(RuntimeError, match="transfer failed"):
-        publish_rollout_weights(cluster)
+        publish_rollout_weights(sampler=cluster.sampler, engine=cluster.engine, adapter=cluster.adapter)
     assert events == ["pause", "transfer"]
 
 
 def test_adaptive_publication_uses_its_own_pause_transaction():
     events = []
-    publish_rollout_weights(SimpleNamespace(adapter=SimpleNamespace(publish=lambda: events.append("publish"))))
+    publish_rollout_weights(
+        sampler=None, engine=None, adapter=SimpleNamespace(publish=lambda: events.append("publish"))
+    )
     assert events == ["publish"]
+
+
+def test_per_sample_plan_keeps_group_aligned_capacity_but_pulls_one_optimizer_batch():
+    plan = plan_streaming_batches(
+        need_rows=4, num_generations=3, parameter_sync_step=1, max_staleness=1, group_pull=False
+    )
+    assert plan.groups_per_partition == 4
+    assert plan.buffer_depth == 24
+    assert plan.max_rows_per_pull == 4
+
+
+@pytest.mark.parametrize("field", ["need_rows", "num_generations", "parameter_sync_step", "max_staleness"])
+@pytest.mark.parametrize("value", [True, 1.5])
+def test_batch_plan_rejects_non_integer_counts(field, value):
+    kwargs = {"need_rows": 64, "num_generations": 8, "parameter_sync_step": 1, "max_staleness": 1, "group_pull": True}
+    kwargs[field] = value
+    with pytest.raises(TypeError, match=field):
+        plan_streaming_batches(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "field,value", [("need_rows", 0), ("num_generations", 0), ("parameter_sync_step", 0), ("max_staleness", -1)]
+)
+def test_batch_plan_rejects_invalid_counts(field, value):
+    kwargs = {"need_rows": 64, "num_generations": 8, "parameter_sync_step": 1, "max_staleness": 1, "group_pull": True}
+    kwargs[field] = value
+    with pytest.raises(ValueError, match=field):
+        plan_streaming_batches(**kwargs)
+
+
+@pytest.mark.parametrize("failure", ["pause", "transfer", "resume"])
+def test_publication_stops_at_failed_phase(failure):
+    events = []
+
+    def phase(name):
+        def run():
+            events.append(name)
+            if name == failure:
+                raise RuntimeError(name)
+
+        return run
+
+    with pytest.raises(RuntimeError, match=failure):
+        publish_rollout_weights(
+            sampler=SimpleNamespace(pause_generation=phase("pause"), resume_generation=phase("resume")),
+            engine=SimpleNamespace(sync_weights=phase("transfer")),
+        )
+    phases = ["pause", "transfer", "resume"]
+    assert events == phases[: phases.index(failure) + 1]
+
+
+def test_failed_adaptive_publication_does_not_fall_back_to_static_sync():
+    def fail():
+        raise RuntimeError("adaptive publication failed")
+
+    with pytest.raises(RuntimeError, match="adaptive publication failed"):
+        publish_rollout_weights(sampler=None, engine=None, adapter=SimpleNamespace(publish=fail))
+
+
+@pytest.mark.parametrize("algorithm", ["grpo", "ppo", "gkd", "opsd", "mopd"])
+def test_failed_publication_does_not_advance_driver_version(driver_factory, algorithm):
+    build, _, _ = driver_factory
+    driver = build(algorithm, complete_all=True, steps=2)
+    iterator = iter(driver)
+    assert len(next(iterator)) == 64
+    events = []
+
+    def transfer():
+        raise RuntimeError("transfer failed")
+
+    def publish(window):
+        publish_rollout_weights(
+            sampler=SimpleNamespace(
+                pause_generation=lambda: events.append("pause"),
+                resume_generation=lambda: events.append("resume"),
+            ),
+            engine=SimpleNamespace(sync_weights=transfer),
+        )
+
+    driver.request_publish(publish)
+    driver.commit(1)
+    with pytest.raises(RuntimeError, match="transfer failed"):
+        next(iterator)
+    assert events == ["pause"]
+    assert driver.stats.publishes == 0
+    assert driver._current_version() == 0

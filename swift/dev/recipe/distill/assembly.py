@@ -426,23 +426,27 @@ def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_con
     )
     num_generations = max(1, rl_config.num_generations)
     need_rows = train_batch_size * gradient_accumulation_steps
-    from swift.dev.recipe.batching import streaming_batch_geometry
+    from swift.dev.recipe.streaming import plan_streaming_batches
 
-    groups_per_partition, buffer_depth = streaming_batch_geometry(
-        need_rows=need_rows, num_generations=num_generations,
-        parameter_sync_step=rollout_config.parameter_sync_step, max_staleness=max_staleness)
+    batch_plan = plan_streaming_batches(
+        need_rows=need_rows,
+        num_generations=num_generations,
+        parameter_sync_step=rollout_config.parameter_sync_step,
+        max_staleness=max_staleness,
+        group_pull=False,
+    )
     return StreamingDriver(
         version_control=True,
         prompt_stream=prompt_dataloader,
         num_train_epochs=num_train_epochs,
         max_staleness=max_staleness,
         num_generations=num_generations,
-        groups_per_partition=groups_per_partition,
-        buffer_depth=buffer_depth,
+        groups_per_partition=batch_plan.groups_per_partition,
+        buffer_depth=batch_plan.buffer_depth,
         rollout=cluster.rollout,
         group_pull=False,
         need_rows=need_rows,
-        max_rows_per_pull=need_rows,
+        max_rows_per_pull=batch_plan.max_rows_per_pull,
         snapshot_model=(cluster.model if strategy == "adapter_snapshot" else None),
         snapshot_dir=os.path.join(output_dir, "async_adapters"),
         adapter_name=adapter_name,

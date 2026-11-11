@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 
-from swift.dev.recipe.batching import (
-    apply_rollout_plan, plan_rollout_batch, publish_rollout_weights, record_rollout_step)
+from swift.dev.recipe.batching import apply_rollout_plan, plan_rollout_batch, record_rollout_step
+from swift.dev.recipe.streaming import publish_rollout_weights
 from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.ppo.assembly import (
@@ -246,7 +246,9 @@ def _streaming_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'Rew
                 if strategy == 'in_place':
                     # Park in-flight generation across the update, then resume on the new weights.
                     def _visible_sync(window: Any) -> None:
-                        publish_rollout_weights(cluster)
+                        publish_rollout_weights(
+                            sampler=cluster.sampler, engine=cluster.engine, adapter=cluster.adapter
+                        )
 
                     driver.request_publish(_visible_sync)
                 else:
