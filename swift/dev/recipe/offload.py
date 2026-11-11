@@ -11,9 +11,14 @@ def offload_for_rollout(model: Any, rollout_config: Any) -> None:
     caching allocator so a colocated vLLM process can map its KV cache. vLLM sleep is
     :func:`sleep_for_rollout`. ``reload_to_gpu`` later restores only what this call actually moved.
     """
+    extra = {}
+    reservation = getattr(rollout_config, 'vllm_gpu_memory_utilization', None)
+    if reservation is not None and not rollout_config.offload_model and not rollout_config.offload_optimizer:
+        extra['gc_min_free_fraction'] = min(1.0, float(reservation) + 0.05)
     model.offload_to_cpu(
         offload_model=bool(rollout_config.offload_model),
         offload_optimizer=bool(rollout_config.offload_optimizer),
+        **extra,
     )
 
 

@@ -121,12 +121,15 @@ class QuantSyncWorkerExtension(TwinkleWorkerExtension):
                                 peft_config: Optional[Dict] = None,
                                 base_sync_done: bool = False,
                                 use_shm: bool = False,
-                                zmq_handle: Optional[str] = None) -> None:
+                                zmq_handle: Optional[str] = None,
+                                auth_key: str = '',
+                                independent: bool = False) -> None:
         """Load one bucketed transfer, quantizing a base sync before it lands."""
         opened = self._open_quant_reload(peft_config, base_sync_done)
         try:
             return super().update_weights_from_ipc(
-                peft_config=peft_config, base_sync_done=base_sync_done, use_shm=use_shm, zmq_handle=zmq_handle)
+                peft_config=peft_config, base_sync_done=base_sync_done, use_shm=use_shm,
+                zmq_handle=zmq_handle, auth_key=auth_key, independent=independent)
         finally:
             if opened:
                 self._close_quant_reload()

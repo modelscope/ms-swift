@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional, Sequence
 
+import numpy as np
 import torch
 
 _MULTIMODAL_KEYS = ('images', 'videos', 'audios', 'tools', 'objects', 'chat_template_kwargs')
@@ -35,7 +36,9 @@ def response_positions(feature: Dict[str, Any]) -> List[int]:
     labels = feature.get('labels')
     if labels is None:
         return []
-    return [idx for idx, label in enumerate(labels) if int(label) != -100]
+    if isinstance(labels, torch.Tensor):
+        return torch.nonzero(labels.reshape(-1) != -100, as_tuple=True)[0].tolist()
+    return np.flatnonzero(np.asarray(labels) != -100).tolist()
 
 def row_token_scores(row: Any, positions: List[int], feature: Dict[str, Any]) -> List[float]:
     """Extract one feature's response-token scores from its (possibly padded) full-sequence row.
@@ -51,6 +54,9 @@ def row_token_scores(row: Any, positions: List[int], feature: Dict[str, Any]) ->
     if row.numel() < feature_length:
         raise RuntimeError(f'forward returned {row.numel()} values for a {feature_length}-token feature; '
                            'response-token alignment is impossible.')
+    if (positions and positions[-1] - positions[0] + 1 == len(positions)
+            and bool(np.all(np.diff(positions) == 1))):
+        return row.narrow(0, positions[0], len(positions)).tolist()
     return row[positions].tolist()
 
 def response_token_scores(frame: Any, features: List[dict], *, output_key: str = 'logps',
@@ -235,8 +241,8 @@ def ece_score(confidences: List[float], correct: List[bool], n_bins: int = 15) -
         if cnt > 0:
             ece += (cnt / n) * abs(float(conf[m].mean()) - float(corr[m].mean()))
     return float(ece)
-  
-  
+
+
 def sample_token_lengths(sample):
     """Unpadded initial prompt and full response, including tool observations.
 

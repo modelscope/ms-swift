@@ -504,3 +504,14 @@ def test_naming_tables_agree_with_the_ecosystem_names():
     # the megatron decay-style values stay inside Megatron's legal set
     from swift.dev.utils.naming import _MEGATRON_DECAY_STYLE_MAP
     assert set(_MEGATRON_DECAY_STYLE_MAP.values()) <= {'cosine', 'linear', 'constant', 'inverse-square-root'}
+
+
+def test_score_gather_keeps_disjoint_duplicate_and_reordered_positions():
+    import torch
+
+    from swift.dev.utils.scoring import row_token_scores
+
+    row = torch.arange(8).float()
+    feature = {'labels': [0] * 8}
+    for positions in ([2, 3, 4, 5], [2, 3, 3, 5], [5, 2, 3], [], [1, 3, 7]):
+        assert row_token_scores(row, positions, feature) == row[positions].tolist()
