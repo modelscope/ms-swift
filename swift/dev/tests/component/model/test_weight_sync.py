@@ -10,9 +10,9 @@ on-disk BF16 export back into the source's packed format (read back from the wri
 Maps to ut_plan S19-01..09 (the vLLM refit itself, S19-12..15, needs a live quantized engine and
 checkpoint -- environment-gated, not written here).
 """
-import json
 import os
 
+import json
 import pytest
 import torch
 from safetensors.torch import load_file, save_file
@@ -22,6 +22,37 @@ from swift.dev.weight_sync import mxfp4_kernel as MX
 from swift.dev.weight_sync.checks import check_quantized_weight_sync
 
 BLOCK = (16, 16)
+
+
+@pytest.mark.parametrize('fail', [False, True])
+@pytest.mark.parametrize('independent', [False, True])
+def test_quant_sync_forwards_ipc_authentication_and_closes_reload(monkeypatch, fail, independent):
+    from twinkle.sampler.vllm_sampler.vllm_worker_extension import TwinkleWorkerExtension
+
+    from swift.dev.weight_sync.worker_extension import QuantSyncWorkerExtension
+
+    worker = object.__new__(QuantSyncWorkerExtension)
+    calls = []
+    worker._open_quant_reload = lambda *args: True
+    worker._close_quant_reload = lambda: calls.append('closed')
+
+    def receive(self, **kwargs):
+        calls.append(kwargs)
+        if fail:
+            raise RuntimeError('receive failed')
+
+    monkeypatch.setattr(TwinkleWorkerExtension, 'update_weights_from_ipc', receive)
+    if fail:
+        with pytest.raises(RuntimeError, match='receive failed'):
+            worker.update_weights_from_ipc(zmq_handle='ipc:///tmp/test.sock', auth_key='authenticated',
+                                           independent=independent)
+    else:
+        worker.update_weights_from_ipc(zmq_handle='ipc:///tmp/test.sock', auth_key='authenticated',
+                                       independent=independent)
+    assert calls[0]['auth_key'] == 'authenticated'
+    assert calls[0]['zmq_handle'] == 'ipc:///tmp/test.sock'
+    assert calls[0]['independent'] is independent
+    assert calls[-1] == 'closed'
 
 
 class TestFP8Kernel:
