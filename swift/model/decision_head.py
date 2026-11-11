@@ -96,7 +96,7 @@ def maybe_load_trained_scoring_head(model: nn.Module, adapter_dir: Optional[str]
     Two scenarios:
     - Adapter checkpoint (LoRA): ``scoring_head.safetensors`` exists → load weights from it.
     - Full-finetune checkpoint: ``scoring_head.safetensors`` is absent, ``scoring_head.json``
-      present → the head's parameters are inside the model safetensors shards (ignored by
+      present → the head's parameters are inside the model weight files (ignored by
       ``from_pretrained`` because ``scoring_head`` was not yet attached). Extract them here.
     """
     if not adapter_dir:
@@ -138,7 +138,7 @@ def thx02_option_ids(kind: str, criteria: Any) -> List[str]:
 
 
 class ScoringHead(nn.Module):
-    """Abstract base for the three decision heads (JEV / Clef / OmniJev).
+    """Abstract base for the decision heads.
 
     A head turns base-model representations into per-option logits over each question's own
     option set. `forward` receives BOTH the last hidden states and the lm_head logits so every
@@ -163,6 +163,23 @@ class ScoringHead(nn.Module):
     # no lm logits, so the loader's forward wrapper reads `last_hidden_state` directly instead of
     # forcing `output_hidden_states=True` and slicing `hidden_states[-1]`.
     encoder_backbone: bool = False
+    head_type: Optional[str] = None
+    # (filename, environment override, optional subdirectory). Any factory artifact takes
+    # precedence over saved metadata, including incomplete factories, which must still fail.
+    factory_artifacts: Tuple[Tuple[str, str, Optional[str]], ...] = ()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.register_state_dict_post_hook(self._remove_output_embeddings)
+
+    @staticmethod
+    def _remove_output_embeddings(module, state_dict, prefix, local_metadata) -> None:
+        # Keep the registered reference for device moves and DataParallel replication, but
+        # let only the backbone save it. Otherwise safetensors deduplication can retain the
+        # head alias instead of lm_head.weight, which the backbone loader cannot recognize.
+        for key in list(state_dict):
+            if key.startswith(prefix + '_output_embeddings.'):
+                del state_dict[key]
 
     def set_output_embeddings(self, output_embeddings: nn.Module) -> None:
         self._output_embeddings = output_embeddings
@@ -171,7 +188,7 @@ class ScoringHead(nn.Module):
     def _locate(model_dir: str, filename: str, env_var: str, subdir: Optional[str] = None) -> Optional[str]:
         """Locate a head artifact file: check an env-var override first, then model_dir/filename
         (and optionally model_dir/subdir/filename). Returns the path if found, else None.
-        Shared by all three head subclasses (JEV passes ``subdir='adapter_vllm'``)."""
+        JEV also searches ``subdir='adapter_vllm'``."""
         env = os.environ.get(env_var)
         if env and os.path.exists(env):
             return env
@@ -200,30 +217,57 @@ class ScoringHead(nn.Module):
         raise NotImplementedError
 
     def extra_state_for_save(self) -> Dict[str, Any]:
-        """Non-parameter meta (verbalizer_ids / bias / temperatures) to persist alongside the
-        head weights, so a reloaded checkpoint can rebuild the head."""
+        """JSON-serializable constructor arguments: ``type(self)(**meta)`` rebuilds the head.
+
+        Include architecture and non-parameter state; trained parameters are restored separately.
+        """
         return {}
 
     @classmethod
-    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'ScoringHead':
-        """Construct the head and STRICT-load its factory weights from `model_dir`.
+    def from_pretrained(cls, model_dir: str, model=None, config=None, **kwargs) -> 'ScoringHead':
+        """Prefer factory artifacts, otherwise rebuild from checkpoint constructor metadata.
 
-        Each model subclass reads its own artifact (JEV: decision_head.json + calibration.json;
-        Clef: joint_head.safetensors; OmniJev: head.pt + ord.pt) and asserts a 0-missing /
-        0-unexpected strict load. `model`/`config` are passed for heads that size themselves from
-        the base
+        Factory loaders retain their format-specific validation and strict weight loading.
+        Checkpoint weights are restored by ``load_pretrained`` after the head is attached.
         """
+        if not any(cls._locate(model_dir, *artifact) for artifact in cls.factory_artifacts):
+            meta = cls._read_saved_meta(model_dir)
+            if meta is not None:
+                head = cls._from_saved_meta(meta, model_dir=model_dir, model=model, config=config, **kwargs)
+                head._needs_checkpoint_weights = any(not name.startswith('_output_embeddings.')
+                                                     for name, _ in head.named_parameters())
+                return head
+        return cls._from_factory(model_dir, model=model, config=config, **kwargs)
+
+    @classmethod
+    def _from_factory(cls, model_dir: str, model=None, config=None, **kwargs) -> 'ScoringHead':
         raise NotImplementedError
+
+    @classmethod
+    def _read_saved_meta(cls, model_dir: str) -> Optional[Dict[str, Any]]:
+        meta_file = os.path.join(model_dir, cls.HEAD_META_NAME)
+        if not os.path.isfile(meta_file):
+            return None
+        with open(meta_file, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+        if not isinstance(meta, dict):
+            raise ValueError(f'{meta_file!r} must contain a head metadata object.')
+        head_type = meta.pop('head_type', None)
+        if head_type is not None and head_type != cls.head_type:
+            raise ValueError(f'{meta_file!r} has head_type={head_type!r}, expected {cls.head_type!r}.')
+        return meta
+
+    @classmethod
+    def _from_saved_meta(cls, meta: Dict[str, Any], **kwargs) -> 'ScoringHead':
+        return cls(**meta)
 
     HEAD_WEIGHTS_NAME = 'scoring_head.safetensors'
     HEAD_META_NAME = 'scoring_head.json'
 
     def head_state_dict(self) -> Dict[str, torch.Tensor]:
         """The head's OWN state (params + persistent buffers), EXCLUDING the injected live
-        `_output_embeddings`. `set_output_embeddings` assigns an nn.Module, which `nn.Module.__setattr__`
-        auto-registers as a child, so a naive `state_dict()` would drag in the ENTIRE base lm_head
-        (vocab x hidden, possibly tied to embed_tokens). That reference is re-wired by the loader on
-        rebuild, so it is never persisted here.
+        `_output_embeddings`. The backbone owns that reference and the loader re-wires it on
+        rebuild, so it must not be duplicated in the head checkpoint.
         """
         return {k: v.detach().cpu() for k, v in self.state_dict().items() if not k.startswith('_output_embeddings')}
 
@@ -241,15 +285,15 @@ class ScoringHead(nn.Module):
         if save_weights:
             save_file(self.head_state_dict(), os.path.join(save_directory, self.HEAD_WEIGHTS_NAME))
         with open(os.path.join(save_directory, self.HEAD_META_NAME), 'w', encoding='utf-8') as f:
-            json.dump(self.extra_state_for_save(), f, indent=2, ensure_ascii=False)
+            json.dump({**self.extra_state_for_save(), 'head_type': self.head_type}, f, indent=2, ensure_ascii=False)
 
     def load_pretrained(self, load_directory: str) -> bool:
         """Two scenarios:
         - Adapter checkpoint (LoRA): ``HEAD_WEIGHTS_NAME`` exists → load weights from it (the head
           is NOT inside the LoRA adapter).
-        - Full-finetune checkpoint: ``HEAD_WEIGHTS_NAME`` is absent → the head's parameters are
-          already restored from the model ``state_dict`` by ``from_pretrained``; only the meta
-          json is present, and we return True so the caller knows the head was recognised.
+        - Full-finetune checkpoint: ``HEAD_WEIGHTS_NAME`` is absent → extract the head's parameters
+          from the model weight files. The backbone loader has not restored these parameters,
+          because the scoring head was not attached yet.
 
         In both cases, if ``HEAD_META_NAME`` carries non-parameter calibration state (temperatures,
         biases, etc. from ``extra_state_for_save``), it is applied to the head so a reloaded
@@ -262,18 +306,26 @@ class ScoringHead(nn.Module):
         has_meta = os.path.exists(meta_file)
         if not has_weights and not has_meta:
             return False
+        meta = self._read_saved_meta(load_directory) if has_meta else None
         if has_weights:
             state = load_file(weights_file)
             self._validate_and_load(state, weights_file)
         elif has_meta:
             state = self._extract_head_state_from_model_dir(load_directory)
             if state is not None:
-                self._validate_and_load(state, 'model safetensors')
-        if has_meta:
-            self._load_calibration_meta(meta_file)
+                self._validate_and_load(state, 'model weights')
+            elif getattr(self, '_needs_checkpoint_weights', False):
+                raise FileNotFoundError(f'No trained scoring_head weights found under {load_directory!r}; '
+                                        'metadata alone cannot restore the trained head parameters.')
+        if meta is not None:
+            self._apply_calibration_meta(meta)
         return True
 
     def _validate_and_load(self, state: Dict[str, torch.Tensor], source: str) -> None:
+        if any(key.startswith('_output_embeddings.') for key in state):
+            raise ValueError(f'{source} contains a legacy scoring_head._output_embeddings alias. '
+                             'Migrate it to the backbone output-embedding key before loading; ignoring it '
+                             'could leave the backbone output embeddings randomly initialized.')
         own_keys = {k for k in self.state_dict() if not k.startswith('_output_embeddings')}
         own_params = {n for n, _ in self.named_parameters() if not n.startswith('_output_embeddings')}
         unexpected = set(state) - own_keys
@@ -282,47 +334,45 @@ class ScoringHead(nn.Module):
             raise ValueError(f'{source} does not match head {type(self).__name__}: '
                              f'unexpected={sorted(unexpected)} missing_params={sorted(missing_params)}')
         self.load_state_dict(state, strict=False)
+        self._needs_checkpoint_weights = False
 
     def _extract_head_state_from_model_dir(self, model_dir: str) -> Optional[Dict[str, torch.Tensor]]:
         """Used when loading a full-finetune checkpoint: ``from_pretrained`` ignored scoring_head keys
-        (the submodule was not yet attached); this reads them back from the safetensors files.
+        (the submodule was not yet attached); this reads them back from safetensors or PyTorch files.
         Returns ``None`` when the model dir carries no scoring_head weights (e.g. a factory model).
         """
         from safetensors.torch import load_file
-        index_path = os.path.join(model_dir, 'model.safetensors.index.json')
-        if os.path.exists(index_path):
-            with open(index_path, 'r') as f:
-                index = json.load(f)
-            weight_map = index.get('weight_map', {})
-            head_keys = {k for k in weight_map if 'scoring_head' in k}
-            if not head_keys:
-                return None
-            shards = set(weight_map[k] for k in head_keys)
-            result: Dict[str, torch.Tensor] = {}
-            for shard in shards:
-                data = load_file(os.path.join(model_dir, shard))
-                for k, v in data.items():
-                    if 'scoring_head' in k:
-                        result[k.split('scoring_head.', 1)[1] if 'scoring_head.' in k else k] = v
-            return result if result else None
-        single = os.path.join(model_dir, 'model.safetensors')
-        if os.path.exists(single):
-            data = load_file(single)
-            result = {}
-            for k, v in data.items():
-                if 'scoring_head' in k:
-                    result[k.split('scoring_head.', 1)[1] if 'scoring_head.' in k else k] = v
-            return result if result else None
-        return None
 
-    def _load_calibration_meta(self, meta_file: str) -> None:
-        """Subclasses override to map the JSON dict onto their own buffers"""
-        try:
-            with open(meta_file, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return
-        self._apply_calibration_meta(meta)
+        def load_bin(path):
+            return torch.load(path, map_location='cpu', weights_only=True)
+
+        # Match the preferred model format; do not mix stale weights from another format.
+        for filename, load_weights in (('model.safetensors', load_file), ('pytorch_model.bin', load_bin)):
+            index_path = os.path.join(model_dir, filename + '.index.json')
+            if os.path.exists(index_path):
+                with open(index_path, 'r') as f:
+                    index = json.load(f)
+                weight_map = index.get('weight_map', {})
+                head_keys = {k for k in weight_map if 'scoring_head.' in k}
+                if not head_keys:
+                    return None
+                shards = set(weight_map[k] for k in head_keys)
+                result: Dict[str, torch.Tensor] = {}
+                for shard in shards:
+                    data = load_weights(os.path.join(model_dir, shard))
+                    for k, v in data.items():
+                        if k in head_keys:
+                            result[k.split('scoring_head.', 1)[1]] = v
+                return result if result else None
+            single = os.path.join(model_dir, filename)
+            if os.path.exists(single):
+                data = load_weights(single)
+                result = {}
+                for k, v in data.items():
+                    if 'scoring_head.' in k:
+                        result[k.split('scoring_head.', 1)[1]] = v
+                return result if result else None
+        return None
 
     def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
         """Apply non-parameter calibration meta (temperatures, biases, ...) to this head.
@@ -336,6 +386,8 @@ class JevVerbalizerHead(ScoringHead):
 
     needs_lm_logits = True
     keep_fp32 = True
+    head_type = 'jev'
+    factory_artifacts = (('decision_head.json', 'JEV_DECISION_HEAD', 'adapter_vllm'), )
 
     DEFAULT_RANGES = {'noul': (0, 2), 'choice': (8, 24), 'score': (2, 8)}
     DEFAULT_TEMPERATURES = {'noul': 1.0, 'choice': 1.0, 'score': 1.0}
@@ -454,26 +506,9 @@ class JevVerbalizerHead(ScoringHead):
                     self.temperatures[k] = float(temps[name])
 
     @classmethod
-    def _from_saved_meta(cls, model_dir: str) -> Optional['JevVerbalizerHead']:
-        meta_file = os.path.join(model_dir, cls.HEAD_META_NAME)
-        if not os.path.isfile(meta_file):
-            return None
-        with open(meta_file, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
-        return cls(
-            bias=meta['bias'],
-            verbalizer_ids=meta['verbalizer_ids'],
-            ranges=meta['ranges'],
-            temperatures=meta['temperatures'],
-            head_temperature=meta.get('head_temperature', 1.0))
-
-    @classmethod
-    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'JevVerbalizerHead':
+    def _from_factory(cls, model_dir: str, model=None, config=None) -> 'JevVerbalizerHead':
         head_file = cls._locate(model_dir, 'decision_head.json', 'JEV_DECISION_HEAD', subdir='adapter_vllm')
         if head_file is None:
-            head = cls._from_saved_meta(model_dir)
-            if head is not None:
-                return head
             raise FileNotFoundError(
                 f'JEV decision_head.json not found under {model_dir!r} (or {model_dir}/adapter_vllm). '
                 'Set JEV_DECISION_HEAD to its path.')
@@ -548,25 +583,16 @@ class JevVerbalizerHead(ScoringHead):
 class StartLuxLetterHead(JevVerbalizerHead):
 
     DEFAULT_RANGES = {'noul': (0, 2), 'choice': (0, 26), 'score': (0, 10)}
+    head_type = 'startlux'
+    factory_artifacts = (('decision_config.json', 'STARTLUX_DECISION_CONFIG', None), )
 
     @classmethod
-    def from_pretrained(cls, model_dir: str, model=None, config=None, tokenizer=None) -> 'StartLuxLetterHead':
-        """model/config are accepted for signature parity with the other heads' loaders; `tokenizer`
-        is used only to resolve `letter_token_ids` when decision_config.json omits them."""
-        head_file = cls._locate(model_dir, 'decision_config.json', 'STARTLUX_DECISION_CONFIG')
-        saved_head = None
-        if head_file is None:
-            saved_head = cls._from_saved_meta(model_dir)
-            if saved_head is None:
-                raise FileNotFoundError(
-                    f'StartLux decision_config.json not found under {model_dir!r}. The letter token ids and the '
-                    'per-kind read-out temperatures ship in the model folder beside the weights; point --model at a '
-                    'StartLuxAI/StartLux-Decision-v1.1-*-AutoThink checkpoint (or set STARTLUX_DECISION_CONFIG).')
-            head = {}
-        else:
-            with open(head_file, 'r') as f:
-                head = json.load(f)
-        config_file = os.path.join(os.path.dirname(head_file) if head_file else model_dir, 'config.json')
+    def _from_saved_meta(cls, meta: Dict[str, Any], model_dir: str, **kwargs) -> 'StartLuxLetterHead':
+        cls._check_prompt_attention(model_dir, os.path.join(model_dir, 'config.json'), {})
+        return cls(**meta)
+
+    @staticmethod
+    def _check_prompt_attention(model_dir: str, config_file: str, head: Dict[str, Any]) -> None:
         prompt_attention = head.get('prompt_attention')
         if prompt_attention is None and os.path.isfile(config_file):
             with open(config_file, 'r') as f:
@@ -576,8 +602,20 @@ class StartLuxLetterHead(JevVerbalizerHead):
                              'prompt is read with bidirectional attention in the full-attention layers, which this '
                              'loader does not implement. Use an AutoThink checkpoint (causal) or the official '
                              'startlux-decide package for Instant models.')
-        if saved_head is not None:
-            return saved_head
+
+    @classmethod
+    def _from_factory(cls, model_dir: str, model=None, config=None, tokenizer=None) -> 'StartLuxLetterHead':
+        """model/config are accepted for signature parity with the other heads' loaders; `tokenizer`
+        is used only to resolve `letter_token_ids` when decision_config.json omits them."""
+        head_file = cls._locate(model_dir, 'decision_config.json', 'STARTLUX_DECISION_CONFIG')
+        if head_file is None:
+            raise FileNotFoundError(
+                f'StartLux decision_config.json not found under {model_dir!r}. The letter token ids and the '
+                'per-kind read-out temperatures ship in the model folder beside the weights; point --model at a '
+                'StartLuxAI/StartLux-Decision-v1.1-*-AutoThink checkpoint (or set STARTLUX_DECISION_CONFIG).')
+        with open(head_file, 'r') as f:
+            head = json.load(f)
+        cls._check_prompt_attention(model_dir, os.path.join(os.path.dirname(head_file), 'config.json'), head)
         temperatures = head.get('temperature_by_type') or {}
         if any(k not in KIND_NAMES or not isinstance(v, (int, float)) or v <= 0 for k, v in temperatures.items()):
             raise ValueError(f'{head_file}: temperature_by_type must map noul/choice/score to positive numbers.')
@@ -635,6 +673,11 @@ class ClefJointSchemaHead(ScoringHead):
     needs_output_embeddings = True
     needs_lm_logits = False
     keep_fp32 = False
+    head_type = 'clef'
+    factory_artifacts = (
+        ('joint_head_config.json', 'CLEF_JOINT_HEAD_CONFIG', None),
+        ('joint_head.safetensors', 'CLEF_JOINT_HEAD_WEIGHTS', None),
+    )
 
     def __init__(self,
                  hidden_size: int,
@@ -645,6 +688,14 @@ class ClefJointSchemaHead(ScoringHead):
                  feedforward: int,
                  dropout: float = 0.0) -> None:
         super().__init__()
+        self._head_config = dict(
+            hidden_size=hidden_size,
+            width=width,
+            routing_layers=routing_layers,
+            layers=layers,
+            heads=heads,
+            feedforward=feedforward,
+            dropout=dropout)
         self.hidden_norm = nn.LayerNorm(hidden_size)
         self.memory_projection = nn.Linear(hidden_size, width, bias=False)
         self.question_projection = nn.Linear(hidden_size, width, bias=False)
@@ -810,8 +861,11 @@ class ClefJointSchemaHead(ScoringHead):
             record_logits.append(prior + torch.sigmoid(self.residual_gate) * joint)
         return record_logits
 
+    def extra_state_for_save(self) -> Dict[str, Any]:
+        return dict(self._head_config)
+
     @classmethod
-    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'ClefJointSchemaHead':
+    def _from_factory(cls, model_dir: str, model=None, config=None) -> 'ClefJointSchemaHead':
         from safetensors.torch import load_file
         config_file = cls._locate(model_dir, 'joint_head_config.json', 'CLEF_JOINT_HEAD_CONFIG')
         weights_file = cls._locate(model_dir, 'joint_head.safetensors', 'CLEF_JOINT_HEAD_WEIGHTS')
@@ -836,12 +890,22 @@ THX02_DECISION_CONFIG_KEYS = ('attention_mode', 'codes', 'temperature')
 
 def load_thx02_decision_config(model_dir: str) -> Dict[str, Any]:
     """Read and validate THX-02's `decision_config.json` (answer codes, temperature, attention mode, image
-    pixel bound). `THX02_DECISION_CONFIG` overrides the path."""
+    pixel bound). `THX02_DECISION_CONFIG` overrides the path; trained checkpoints can instead carry
+    the same configuration under `config.json`'s `thx02_decision_config` key."""
     config_file = ScoringHead._locate(model_dir, 'decision_config.json', 'THX02_DECISION_CONFIG')
     if config_file is None:
-        raise FileNotFoundError(f'THX-02 decision_config.json not found under {model_dir!r}.')
-    with open(config_file, 'r') as f:
-        decision_config = json.load(f)
+        config_file = os.path.join(model_dir, 'config.json')
+        decision_config = None
+        if os.path.isfile(config_file):
+            with open(config_file, 'r') as f:
+                decision_config = json.load(f).get('thx02_decision_config')
+        if decision_config is None:
+            raise FileNotFoundError(f'THX-02 decision_config.json not found under {model_dir!r}.')
+    else:
+        with open(config_file, 'r') as f:
+            decision_config = json.load(f)
+    if not isinstance(decision_config, dict):
+        raise ValueError(f'THX-02 decision configuration in {config_file!r} must be an object.')
     missing = [key for key in THX02_DECISION_CONFIG_KEYS if key not in decision_config]
     if missing:
         raise ValueError(f'THX-02 {config_file!r} is missing required keys {missing}; '
@@ -869,6 +933,11 @@ class Thx02ReadoutHead(ScoringHead):
     needs_output_embeddings = False
     needs_lm_logits = False
     keep_fp32 = False
+    head_type = 'thx02'
+    factory_artifacts = (
+        ('readout.safetensors', 'THX02_READOUT', None),
+        ('decision_config.json', 'THX02_DECISION_CONFIG', None),
+    )
 
     def __init__(self,
                  hidden_size: int,
@@ -942,7 +1011,7 @@ class Thx02ReadoutHead(ScoringHead):
                     self.temperatures[k] = float(temps[name])
 
     @classmethod
-    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'Thx02ReadoutHead':
+    def _from_factory(cls, model_dir: str, model=None, config=None) -> 'Thx02ReadoutHead':
         from safetensors.torch import load_file
         weights_file = cls._locate(model_dir, 'readout.safetensors', 'THX02_READOUT')
         if weights_file is None:
@@ -1090,6 +1159,12 @@ class OmniJevHead(ScoringHead):
     needs_output_embeddings = True
     needs_lm_logits = False
     keep_fp32 = True
+    head_type = 'omnijev'
+    factory_artifacts = (
+        ('head_meta.json', 'OMNIJEV_HEAD_META', None),
+        ('head.pt', 'OMNIJEV_HEAD', None),
+        ('ord.pt', 'OMNIJEV_ORD', None),
+    )
 
     def __init__(self,
                  hidden_size: int,
@@ -1101,7 +1176,9 @@ class OmniJevHead(ScoringHead):
                  ordinal: bool = True,
                  temperatures: Optional[Dict[str, float]] = None,
                  noul_bias: float = 0.0,
-                 head_temperature: float = 1.0) -> None:
+                 head_temperature: float = 1.0,
+                 open_len: int = 1,
+                 close_len: int = 1) -> None:
         super().__init__()
         self.head = OmniOptionScorer(hidden_size, head_hidden, n_types, norm)
         self.ord = OmniOrdinalHead(hidden_size, ord_hidden)
@@ -1115,8 +1192,7 @@ class OmniJevHead(ScoringHead):
             torch.as_tensor([float(temps.get(KIND_NAMES[k], 1.0)) for k in range(n_types)], dtype=torch.float32),
             persistent=False)
         self.register_buffer('noul_bias', torch.as_tensor(float(noul_bias), dtype=torch.float32), persistent=False)
-        self.open_len = 1
-        self.close_len = 1
+        self.set_marker_lengths(open_len, close_len)
 
     def set_marker_lengths(self, open_len: int, close_len: int) -> None:
         """Token lengths of `<|opt|>` / `<|/opt|>` (normally 1 each); the loader sets these from the
@@ -1227,6 +1303,10 @@ class OmniJevHead(ScoringHead):
     def extra_state_for_save(self) -> Dict[str, Any]:
         """Persist the calibration + flags so a reloaded checkpoint rebuilds the head without head_meta.json."""
         return {
+            'hidden_size': self.head.opt[0].in_features,
+            'head_hidden': self.head.opt[0].out_features,
+            'ord_hidden': self.ord.z[0].out_features,
+            'n_types': self.head.log_tau.numel(),
             'norm': self.head.norm,
             'lm_feats': self.lm_feats,
             'ordinal': self.ordinal,
@@ -1253,7 +1333,7 @@ class OmniJevHead(ScoringHead):
             self.noul_bias = torch.as_tensor(float(meta['noul_bias']), dtype=torch.float32)
 
     @classmethod
-    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'OmniJevHead':
+    def _from_factory(cls, model_dir: str, model=None, config=None) -> 'OmniJevHead':
         meta_file = cls._locate(model_dir, 'head_meta.json', 'OMNIJEV_HEAD_META')
         head_meta: Dict[str, Any] = {}
         if meta_file is not None:
@@ -1325,13 +1405,15 @@ class KevPointerHead(ScoringHead):
     needs_lm_logits = False
     keep_fp32 = True
     DEFAULT_POINTER_DIM = 256
+    head_type = 'kev'
+    factory_artifacts = (('head.pt', 'KEV_HEAD', None), )
 
-    def __init__(self, hidden_size: int, pointer_dim: int = DEFAULT_POINTER_DIM) -> None:
+    def __init__(self, hidden_size: int, pointer_dim: int = DEFAULT_POINTER_DIM, temperature: float = 1.0) -> None:
         super().__init__()
         # Attribute names q/k match head.pt['head'] keys exactly (strict load, 0 missing / 0 unexpected).
         self.q = nn.Linear(hidden_size, pointer_dim)
         self.k = nn.Linear(hidden_size, pointer_dim)
-        self.register_buffer('temperature', torch.tensor(1.0), persistent=False)
+        self.register_buffer('temperature', torch.tensor(float(temperature)), persistent=False)
         self.scale = float(pointer_dim)**-0.5
 
     def _pointer_logits(self, h_decide: torch.Tensor, h_opts: torch.Tensor) -> torch.Tensor:
@@ -1411,14 +1493,18 @@ class KevPointerHead(ScoringHead):
         return self._assemble(per_question, kinds, counts, max_opt, device)
 
     def extra_state_for_save(self) -> Dict[str, Any]:
-        return {'temperature': float(self.temperature)}
+        return {
+            'hidden_size': self.q.in_features,
+            'pointer_dim': self.q.out_features,
+            'temperature': float(self.temperature),
+        }
 
     def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
         if 'temperature' in meta:
             self.temperature = torch.tensor(float(meta['temperature']))
 
     @classmethod
-    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'KevPointerHead':
+    def _from_factory(cls, model_dir: str, model=None, config=None) -> 'KevPointerHead':
         head_file = cls._locate(model_dir, 'head.pt', 'KEV_HEAD')
         if head_file is None:
             raise FileNotFoundError(
@@ -1445,6 +1531,11 @@ class LayaHead(ScoringHead):
     keep_fp32 = True
     # ModernBERT encoder backbone: the loader's forward wrapper feeds us last_hidden_state directly.
     encoder_backbone = True
+    head_type = 'laya'
+    factory_artifacts = (
+        ('rl_agent_config.json', 'LAYA_CONFIG', 'typed-decisions'),
+        ('rl_agent_config.json', 'LAYA_CONFIG', 'multilingual'),
+    )
 
     # swift kind id -> Laya question-type id
     LAYA_QTYPE_OF_KIND = {0: 2, 1: 0, 2: 1}
@@ -1456,6 +1547,7 @@ class LayaHead(ScoringHead):
                  temperatures: Optional[Sequence[float]] = None,
                  temperature_by_options: Optional[Dict[str, float]] = None) -> None:
         super().__init__()
+        self.dropout = float(dropout)
         d = hidden_size
         nhead = max(1, d // 64)
         layer = nn.TransformerEncoderLayer(d, nhead, 4 * d, dropout, batch_first=True, norm_first=True)
@@ -1582,12 +1674,13 @@ class LayaHead(ScoringHead):
         return {
             'hidden_size': int(self.scorer[0].normalized_shape[0]),
             'head_layers': 0 if self.head is None else len(self.head.layers),
-            'temperature': self.temperature.detach().float().tolist(),
+            'dropout': self.dropout,
+            'temperatures': self.temperature.detach().float().tolist(),
             'temperature_by_options': dict(self.temperature_by_options),
         }
 
     def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
-        temps = meta.get('temperature')
+        temps = meta.get('temperatures', meta.get('temperature'))
         if isinstance(temps, (list, tuple)) and len(temps) == 3:
             self.temperature = torch.as_tensor([float(t) for t in temps], dtype=torch.float32)
         buckets = meta.get('temperature_by_options')
@@ -1595,7 +1688,20 @@ class LayaHead(ScoringHead):
             self.temperature_by_options = {str(k): float(v) for k, v in buckets.items()}
 
     @classmethod
-    def from_pretrained(cls, model_dir: str, model=None, config=None) -> 'LayaHead':
+    def _from_saved_meta(cls, meta: Dict[str, Any], model_dir: str, model=None, config=None, **kwargs) -> 'LayaHead':
+        # Older checkpoints used the buffer name instead of the constructor argument.
+        meta = dict(meta)
+        if 'temperature' in meta:
+            meta.setdefault('temperatures', meta.pop('temperature'))
+        if not meta.get('hidden_size'):
+            meta['hidden_size'] = int(
+                getattr(config, 'hidden_size', 0) or getattr(getattr(model, 'config', None), 'hidden_size', 0))
+        if not meta['hidden_size']:
+            raise ValueError(f'LayaHead cannot resolve hidden_size from {model_dir!r} / config / model.')
+        return cls(**meta)
+
+    @classmethod
+    def _from_factory(cls, model_dir: str, model=None, config=None) -> 'LayaHead':
         head_config: Dict[str, Any] = {}
         config_file = cls._locate(model_dir, 'rl_agent_config.json', 'LAYA_CONFIG')
         if config_file is None:
@@ -1605,21 +1711,6 @@ class LayaHead(ScoringHead):
                     config_file = candidate
                     break
         if config_file is None:
-            meta_file = os.path.join(model_dir, cls.HEAD_META_NAME)
-            if os.path.isfile(meta_file):
-                with open(meta_file, 'r') as f:
-                    head_config = json.load(f)
-                hidden_size = int(
-                    head_config.get('hidden_size') or getattr(config, 'hidden_size', 0)
-                    or getattr(getattr(model, 'config', None), 'hidden_size', 0))
-                if not hidden_size:
-                    raise ValueError(f'LayaHead cannot resolve hidden_size from {meta_file!r} '
-                                     f'/ config {config!r} / model {model!r}.')
-                return cls(
-                    hidden_size=hidden_size,
-                    head_layers=int(head_config.get('head_layers', 2)),
-                    temperatures=head_config.get('temperature') or (1.0, 1.0, 1.0),
-                    temperature_by_options=head_config.get('temperature_by_options') or {})
             raise FileNotFoundError(
                 f'Laya rl_agent_config.json not found under {model_dir!r} (or its typed-decisions / '
                 'multilingual subfolders). Set LAYA_CONFIG to its path.')
