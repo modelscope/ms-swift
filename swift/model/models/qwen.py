@@ -6,6 +6,7 @@ import os
 import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import wraps
 from importlib import import_module
 from packaging import version
@@ -36,6 +37,7 @@ dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: '
 
 causal_conv1d = None
 chunk_gated_delta_rule = None
+_QWEN4_EXP_PLE_INPUT_IDS = ContextVar('qwen4_exp_ple_input_ids', default=None)
 
 _QWEN3_5_TEXT_PACKING_KWARGS = (
     'cu_seq_lens_q',
@@ -1949,6 +1951,46 @@ def _patch_qwen4_exp_fsdp2_loading(model_cls) -> None:
     model_cls._swift_fsdp2_loading_patched = True
 
 
+def _patch_qwen4_exp_ple_input_ids(model) -> None:
+    """Supply PLE ids for precomputed multimodal embeddings without reverse lookup."""
+    if not getattr(model.config.text_config, 'ple_layer_ids', None):
+        return
+    core = model.model
+    if getattr(core, '_swift_ple_input_ids_patched', False):
+        return
+    forward = core.forward
+    if 'ple_input_ids' in inspect.signature(forward).parameters:
+        return
+    language_model = core.language_model
+    # Scope the ids to one forward, including nested calls and exception cleanup.
+    # Do not store batch tensors on the model or change Transformers globally.
+
+    @wraps(getattr(language_model.reverse_embedding, '__func__', language_model.reverse_embedding))
+    def _reverse_embedding(self, inputs_embeds):
+        context = _QWEN4_EXP_PLE_INPUT_IDS.get()
+        if context is not None and context[0] is self and context[1] is not None:
+            return context[1]
+        return self._swift_reverse_embedding(inputs_embeds)
+
+    @wraps(getattr(forward, '__func__', forward))
+    def _forward(self, *args, ple_input_ids=None, **kwargs):
+        inputs_embeds = kwargs.get('inputs_embeds')
+        if ple_input_ids is not None and inputs_embeds is not None:
+            if ple_input_ids.shape != inputs_embeds.shape[:2]:
+                raise ValueError('ple_input_ids must match the batch and sequence dimensions of inputs_embeds.')
+        token = _QWEN4_EXP_PLE_INPUT_IDS.set((self.language_model, ple_input_ids))
+        try:
+            return self._swift_ple_forward(*args, **kwargs)
+        finally:
+            _QWEN4_EXP_PLE_INPUT_IDS.reset(token)
+
+    language_model._swift_reverse_embedding = language_model.reverse_embedding
+    language_model.reverse_embedding = MethodType(_reverse_embedding, language_model)
+    core._swift_ple_forward = forward
+    core.forward = MethodType(_forward, core)
+    core._swift_ple_input_ids_patched = True
+
+
 class Qwen4ExpLoader(Qwen3VLLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
@@ -1958,7 +2000,9 @@ class Qwen4ExpLoader(Qwen3VLLoader):
         self.auto_model_cls = self.auto_model_cls or Qwen4ExpForConditionalGeneration
         fsdp2 = (os.environ.get('ACCELERATE_USE_FSDP', '').lower() == 'true' and os.environ.get('FSDP_VERSION') == '2')
         if not fsdp2:
-            return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+            model = Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+            _patch_qwen4_exp_ple_input_ids(model)
+            return model
         from ..fsdp import apply_patch as apply_fsdp_patch
 
         apply_fsdp_patch()
@@ -1971,6 +2015,7 @@ class Qwen4ExpLoader(Qwen3VLLoader):
         _patch_qwen4_exp_fsdp2_loading(self.auto_model_cls)
         # Keep the regular Transformers loading/initialization path on every rank.
         model = Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        _patch_qwen4_exp_ple_input_ids(model)
         _, local_rank, world_size, _ = get_dist_setting()
         if is_dist() and world_size > 1:
             # Frozen PLE is later excluded from FSDP, so every rank must retain

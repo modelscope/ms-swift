@@ -684,19 +684,16 @@ class Qwen3_8Template(Qwen3_5Template):
         return self.reasoning_effort_instructions[reasoning_effort]
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        encoded = super()._post_encode(model, inputs)
         if self.is_training:
-            # Qwen4Exp PLE needs token ids. The default path returns only inputs_embeds, which
-            # forces reverse_embedding and breaks under FSDP2 (mixed Tensor/DTensor).
-            has_mm = any(
-                inputs.get(k) is not None
-                for k in ('pixel_values', 'pixel_values_videos', 'image_grid_thw', 'video_grid_thw'))
-            if not has_mm:
-                base_model = self.get_base_model(model)
-                config = getattr(base_model, 'config', None)
-                text_config = getattr(config, 'text_config', config)
-                if getattr(text_config, 'ple_layer_ids', None):
-                    return inputs
-        return super()._post_encode(model, inputs)
+            base_model = self.get_base_model(model)
+            config = getattr(base_model, 'config', None)
+            text_config = getattr(config, 'text_config', config)
+            if getattr(text_config, 'ple_layer_ids', None):
+                # Keep the existing shared vision call (including dummy text images),
+                # but never reverse-lookup ids from embeddings containing visual features.
+                encoded['ple_input_ids'] = inputs['input_ids']
+        return encoded
 
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         system = super()._get_system(inputs)
