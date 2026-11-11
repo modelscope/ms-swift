@@ -609,7 +609,7 @@ class EvidenceRoutingLayer(nn.Module):
 def _batched_enabled(env_key: str) -> bool:
     """Batched decision heads run by default; setting the head's env var to 0 selects the
     per-record loop (SWIFT_CLEF_BATCHED / SWIFT_KEV_BATCHED)."""
-    return os.environ.get(env_key, "1") != "0"
+    return os.environ.get(env_key, '1') != '0'
 
 
 @dataclass
@@ -681,17 +681,12 @@ def _compile_clef_batch_layout(
         span_ends = [question_spans[qi][1] for qi in group] + [e for qi in group for _, e in option_spans[qi]]
         # spans are unpadded offsets into the record's real tokens; anything crossing that
         # range would silently pool padding (or run off the padded grid), so fail loudly here
-        bad_spans = [
-            (int(start), int(end))
-            for start, end in zip(span_starts, span_ends)
-            if not 0 <= start < end <= seq_len
-        ]
+        bad_spans = [(int(start), int(end)) for start, end in zip(span_starts, span_ends)
+                     if not 0 <= start < end <= seq_len]
         if bad_spans:
-            raise ValueError(
-                f"record {rec} carries question/option spans outside its real tokens "
-                f"(seq_len={seq_len}); spans must satisfy 0 <= start < end <= seq_len, "
-                f"got e.g. {bad_spans[:3]}"
-            )
+            raise ValueError(f'record {rec} carries question/option spans outside its real tokens '
+                             f'(seq_len={seq_len}); spans must satisfy 0 <= start < end <= seq_len, '
+                             f'got e.g. {bad_spans[:3]}')
         low = min(span_starts)
         high = max(max(span_ends), seq_len)
         region_positions.extend(rec * padded_len + p for p in range(offset + low, offset + high))
@@ -714,6 +709,7 @@ def _compile_clef_batch_layout(
                 lex_positions.extend(rec * padded_len + p for p in range(offset + start, offset + end))
                 lex_segments.extend([rec * p_max + flat_option] * (end - start))
                 flat_option += 1
+
     def _moved(values, dtype=torch.long) -> torch.Tensor:
         return torch.as_tensor(values, dtype=dtype, device=device)
 
@@ -733,9 +729,8 @@ def _compile_clef_batch_layout(
     )
 
 
-def _route_evidence_padded(
-    layer: EvidenceRoutingLayer, queries: torch.Tensor, memory: torch.Tensor, padding: torch.Tensor
-) -> torch.Tensor:
+def _route_evidence_padded(layer: EvidenceRoutingLayer, queries: torch.Tensor, memory: torch.Tensor,
+                           padding: torch.Tensor) -> torch.Tensor:
     """EvidenceRoutingLayer.forward over a padded batch, memory keys masked by ``padding``."""
     normalized_memory = layer.memory_norm(memory)
     routed, _ = layer.attention(
@@ -853,13 +848,9 @@ class ClefJointSchemaHead(ScoringHead):
         seq_lens = meta.get('seq_lens') or [padded_len] * num_records
         output_embedding_weight = self._output_embeddings.weight
 
-        if (
-            _batched_enabled("SWIFT_CLEF_BATCHED")
-            and torch.is_tensor(input_ids)
-            and set(record_index) == set(range(num_records))
-                        and record_index == sorted(record_index)
-            and min(n_options) >= 1
-        ):
+        if (_batched_enabled('SWIFT_CLEF_BATCHED') and torch.is_tensor(input_ids)
+                and set(record_index) == set(range(num_records)) and record_index == sorted(record_index)
+                and min(n_options) >= 1):
             return self._forward_batched(hidden_states, meta, input_ids, output_embedding_weight)
 
         by_record: List[List[int]] = [[] for _ in range(num_records)]
@@ -963,21 +954,19 @@ class ClefJointSchemaHead(ScoringHead):
     ) -> ScoringOutput:
         """Whole-batch scoring pass, numerically equivalent to the per-record loop above"""
         device = hidden_states.device
-        n_options = [int(n) for n in meta["n_options"]]
-        kinds = [int(k) for k in meta["kinds"]]
+        n_options = [int(n) for n in meta['n_options']]
+        kinds = [int(k) for k in meta['kinds']]
         padded_len = int(hidden_states.shape[1])
         batch = int(hidden_states.shape[0])
-        seq_lens = [int(s) for s in (meta.get("seq_lens") or [padded_len] * batch)]
-        left_padding = bool(meta.get("left_padding", False))
-        counts = meta.get("counts")
-        counts_t = (
-            torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None
-        )
+        seq_lens = [int(s) for s in (meta.get('seq_lens') or [padded_len] * batch)]
+        left_padding = bool(meta.get('left_padding', False))
+        counts = meta.get('counts')
+        counts_t = (torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None)
         layout = _compile_clef_batch_layout(
-            [int(r) for r in meta["record_index"]],
+            [int(r) for r in meta['record_index']],
             n_options,
-            meta["question_spans"],
-            meta["option_spans"],
+            meta['question_spans'],
+            meta['option_spans'],
             kinds,
             seq_lens,
             padded_len,
@@ -991,13 +980,11 @@ class ClefJointSchemaHead(ScoringHead):
         memory = self.memory_projection(normalized)
 
         region_rows = normalized.reshape(-1, normalized.shape[-1])[layout.region_positions].to(torch.float32)
-        prefix = torch.cumsum(
-            torch.cat([region_rows.new_zeros(1, region_rows.shape[-1]), region_rows]), dim=0
-        )
+        prefix = torch.cumsum(torch.cat([region_rows.new_zeros(1, region_rows.shape[-1]), region_rows]), dim=0)
         span_counts = (layout.packed_ends - layout.packed_starts).clamp(min=1).unsqueeze(-1)
         pooled = ((prefix[layout.packed_ends] - prefix[layout.packed_starts]) / span_counts).to(compute_dtype)
-        question_vectors = pooled[:, : layout.q_max]
-        contexts = pooled[:, layout.q_max : layout.q_max + layout.p_max]
+        question_vectors = pooled[:, :layout.q_max]
+        contexts = pooled[:, layout.q_max:layout.q_max + layout.p_max]
         global_vector = pooled[:, -1]
 
         emb_dtype = output_embedding_weight.dtype
@@ -1005,47 +992,35 @@ class ClefJointSchemaHead(ScoringHead):
         lex_rows = output_embedding_weight[option_token_ids].to(torch.float32)
         lex_sums = lex_rows.new_zeros(batch * layout.p_max, lex_rows.shape[-1])
         lex_sums.index_add_(0, layout.lex_segments, lex_rows)
-        option_counts = (
-            layout.packed_ends[:, layout.q_max : layout.q_max + layout.p_max]
-            - layout.packed_starts[:, layout.q_max : layout.q_max + layout.p_max]
-        ).clamp(min=1)
+        option_counts = (layout.packed_ends[:, layout.q_max:layout.q_max + layout.p_max]
+                         - layout.packed_starts[:, layout.q_max:layout.q_max + layout.p_max]).clamp(min=1)
         lexical = (lex_sums / option_counts.reshape(-1, 1)).view(batch, layout.p_max, -1).to(emb_dtype)
 
         positions = torch.arange(padded_len, device=device)
         pad_offsets = (padded_len - layout.seq_lens) if left_padding else torch.zeros_like(layout.seq_lens)
         padding = (positions.unsqueeze(0) < pad_offsets.unsqueeze(-1)) | (
-            positions.unsqueeze(0) >= (pad_offsets + layout.seq_lens).unsqueeze(-1)
-        )
+            positions.unsqueeze(0) >= (pad_offsets + layout.seq_lens).unsqueeze(-1))
 
         hidden_size = question_vectors.shape[-1]
-        owner_questions = question_vectors.gather(
-            1, layout.owner.unsqueeze(-1).expand(-1, -1, hidden_size)
-        )
+        owner_questions = question_vectors.gather(1, layout.owner.unsqueeze(-1).expand(-1, -1, hidden_size))
         routed = (
-            self.option_context_projection(contexts)
-            + self.option_lexical_projection(lexical)
-            + self.option_question_projection(owner_questions)
-        )
+            self.option_context_projection(contexts) + self.option_lexical_projection(lexical)
+            + self.option_question_projection(owner_questions))
         for layer in self.evidence_layers:
             routed = _route_evidence_padded(layer, routed, memory, padding)
 
         width = routed.shape[-1]
-        options_grid = routed.gather(
-            1, layout.option_index.view(batch, -1, 1).expand(-1, -1, width)
-        ).view(batch, layout.q_max, layout.o_max, width)
+        options_grid = routed.gather(1,
+                                     layout.option_index.view(batch, -1, 1).expand(-1, -1, width)).view(
+                                         batch, layout.q_max, layout.o_max, width)
         base_fields = self.question_projection(question_vectors)
         scores = torch.matmul(options_grid, base_fields.unsqueeze(-1)).squeeze(-1) / math.sqrt(width)
-        scores = scores.masked_fill(
-            ~layout.option_valid & layout.question_valid.unsqueeze(-1), float("-inf")
-        )
+        scores = scores.masked_fill(~layout.option_valid & layout.question_valid.unsqueeze(-1), float('-inf'))
         weights = torch.softmax(scores, dim=-1)
         summaries = (weights.unsqueeze(-1) * options_grid).sum(dim=2)
         fields = (
-            base_fields
-            + self.option_summary_norm(summaries)
-            + self.global_projection(global_vector).unsqueeze(1)
-            + self.type_embedding(layout.types)
-        )
+            base_fields + self.option_summary_norm(summaries) + self.global_projection(global_vector).unsqueeze(1)
+            + self.type_embedding(layout.types))
         field_padding = ~layout.question_valid
         for layer in self.layers:
             fields = _decode_fields_padded(layer, fields, memory, field_padding, padding)
@@ -1059,25 +1034,19 @@ class ClefJointSchemaHead(ScoringHead):
         owner_fields = fields.gather(1, layout.owner.unsqueeze(-1).expand(-1, -1, width))
         normed = self.option_norm(routed)
         cosine = F.cosine_similarity(owner_fields, normed, dim=-1)
-        features = torch.cat(
-            [owner_fields, normed, owner_fields * normed, (owner_fields - normed).abs()], dim=-1
-        )
+        features = torch.cat([owner_fields, normed, owner_fields * normed, (owner_fields - normed).abs()], dim=-1)
         residual = self.residual_scorer(features).squeeze(-1)
         joint_scale = self.joint_logit_scale.clamp(max=math.log(100.0)).exp()
         per_option = prior + torch.sigmoid(self.residual_gate) * (joint_scale * cosine + residual)
 
-        logits_grid = per_option.gather(1, layout.option_index.view(batch, -1)).view(
-            batch, layout.q_max, layout.o_max
-        )
-        logits_grid = logits_grid.masked_fill(~layout.option_valid, float("-inf"))
+        logits_grid = per_option.gather(1, layout.option_index.view(batch, -1)).view(batch, layout.q_max, layout.o_max)
+        logits_grid = logits_grid.masked_fill(~layout.option_valid, float('-inf'))
         logits = logits_grid.view(batch * layout.q_max, layout.o_max).index_select(0, layout.output_rows)
-        option_mask = layout.option_valid.view(batch * layout.q_max, layout.o_max).index_select(
-            0, layout.output_rows
-        )
-        max_opt = int(meta.get("max_opt") or layout.o_max)
+        option_mask = layout.option_valid.view(batch * layout.q_max, layout.o_max).index_select(0, layout.output_rows)
+        max_opt = int(meta.get('max_opt') or layout.o_max)
         if max_opt > layout.o_max:
             extra = max_opt - layout.o_max
-            logits = F.pad(logits, (0, extra), value=float("-inf"))
+            logits = F.pad(logits, (0, extra), value=float('-inf'))
             option_mask = F.pad(option_mask, (0, extra))
         elif max_opt < layout.o_max:
             logits, option_mask = logits[:, :max_opt], option_mask[:, :max_opt]
@@ -1615,26 +1584,20 @@ def _compile_kev_batch_layout(
     opt_rows = [[0] * o_max for _ in range(total_q)]
     for qi in range(total_q):
         if len(opt_idx[qi]) != n_options[qi]:
-            raise ValueError(
-                f"Kev meta mismatch: question {qi} has {n_options[qi]} options but "
-                f"{len(opt_idx[qi])} </opt> positions."
-            )
+            raise ValueError(f'Kev meta mismatch: question {qi} has {n_options[qi]} options but '
+                             f'{len(opt_idx[qi])} </opt> positions.')
         rec = record_index[qi]
         offset = (padded_len - int(seq_lens[rec])) if left_padding else 0
         decide_col = offset + int(decide_idx[qi])
         if not 0 <= decide_col < padded_len:
-            raise ValueError(
-                f"Kev decide_idx {decide_idx[qi]} out of range for record {rec} "
-                f"(padded_len={padded_len}, left_padding={left_padding})."
-            )
+            raise ValueError(f'Kev decide_idx {decide_idx[qi]} out of range for record {rec} '
+                             f'(padded_len={padded_len}, left_padding={left_padding}).')
         decide_rows[qi] = rec * padded_len + decide_col
         for option, pos in enumerate(opt_idx[qi]):
             opt_col = offset + int(pos)
             if not 0 <= opt_col < padded_len:
-                raise ValueError(
-                    f"Kev opt_idx position {pos} (question {qi}, option {option}) out of range "
-                    f"for record {rec} (padded_len={padded_len}, left_padding={left_padding})."
-                )
+                raise ValueError(f'Kev opt_idx position {pos} (question {qi}, option {option}) out of range '
+                                 f'for record {rec} (padded_len={padded_len}, left_padding={left_padding}).')
             opt_rows[qi][option] = rec * padded_len + opt_col
     return (
         torch.as_tensor(decide_rows, dtype=torch.long, device=device),
@@ -1711,7 +1674,7 @@ class KevPointerHead(ScoringHead):
         num_records = int(hidden_states.shape[0])
         left_padding = bool(meta.get('left_padding', False))
         seq_lens = meta.get('seq_lens') or [padded_len] * num_records
-        if _batched_enabled("SWIFT_KEV_BATCHED") and min(n_options) >= 1:
+        if _batched_enabled('SWIFT_KEV_BATCHED') and min(n_options) >= 1:
             return self._forward_batched(hidden_states, meta)
 
         # Official PointerHead consumes the backbone's last_hidden_state.float(); the head itself is
@@ -1738,18 +1701,18 @@ class KevPointerHead(ScoringHead):
     def _forward_batched(self, hidden_states: torch.Tensor, meta: Dict[str, Any]) -> ScoringOutput:
         """Whole-batch pointer scoring, numerically equivalent to the per-question loop above"""
         device = hidden_states.device
-        n_options = [int(n) for n in meta["n_options"]]
+        n_options = [int(n) for n in meta['n_options']]
         padded_len = int(hidden_states.shape[1])
         batch = int(hidden_states.shape[0])
-        seq_lens = [int(s) for s in (meta.get("seq_lens") or [padded_len] * batch)]
+        seq_lens = [int(s) for s in (meta.get('seq_lens') or [padded_len] * batch)]
         decide_rows, opt_rows = _compile_kev_batch_layout(
-            [int(r) for r in meta["record_index"]],
+            [int(r) for r in meta['record_index']],
             n_options,
-            meta["decide_idx"],
-            meta["opt_idx"],
+            meta['decide_idx'],
+            meta['opt_idx'],
             seq_lens,
             padded_len,
-            bool(meta.get("left_padding", False)),
+            bool(meta.get('left_padding', False)),
             device,
         )
         flat = hidden_states.float().reshape(-1, hidden_states.shape[-1])
@@ -1761,9 +1724,9 @@ class KevPointerHead(ScoringHead):
         per_question = [scores[qi, :n] for qi, n in enumerate(n_options)]
         return self._assemble(
             per_question,
-            [int(k) for k in meta.get("kinds") or []],
-            meta.get("counts"),
-            int(meta.get("max_opt") or max(n_options)),
+            [int(k) for k in meta.get('kinds') or []],
+            meta.get('counts'),
+            int(meta.get('max_opt') or max(n_options)),
             device,
         )
 
