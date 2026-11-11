@@ -8,6 +8,7 @@ from itertools import islice
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
+from swift.dev.recipe.streaming import publish_rollout_weights
 from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.distill.assembly import (
@@ -193,14 +194,11 @@ def _distill_streaming_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_con
             steps_since_publish += optimizer_steps
             if steps_since_publish >= rollout_config.parameter_sync_step:
                 if strategy == 'in_place':
-                    # in_place overwrites the sampler's single live weight copy, so the visible half of
-                    # the publish runs here: abort every in-flight generation, then push the weights.
+                    # Park in-flight generation across the update, then resume on the new weights.
                     def _visible_sync(window: Any) -> None:
-                        cluster.rollout.abort_all_inflight()
-                        if cluster.adapter is not None:
-                            cluster.adapter.publish()
-                        else:
-                            cluster.engine.sync_weights()
+                        publish_rollout_weights(
+                            sampler=cluster.sampler, engine=cluster.engine, adapter=cluster.adapter
+                        )
 
                     driver.request_publish(_visible_sync)
                 else:
