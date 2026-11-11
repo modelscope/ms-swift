@@ -393,7 +393,8 @@ def enable_noncausal_full_attention(language_model) -> None:
         if attention_mask is None:
             attention_mask = torch.ones(embeddings.shape[:2], device=embeddings.device, dtype=torch.bool)
         kwargs['attention_mask'] = {
-            'full_attention': noncausal_full_attention_mask(attention_mask, seq_len, embeddings.device.type),
+            'full_attention':
+            noncausal_full_attention_mask(attention_mask, seq_len, embeddings.device.type),
             'linear_attention':
             create_recurrent_attention_mask(
                 config=module.config, inputs_embeds=embeddings, attention_mask=attention_mask),
@@ -489,11 +490,10 @@ def _require_h2o_two_way_support() -> None:
         from transformers.masking_utils import create_recurrent_attention_mask  # noqa: F401
     except ImportError as exc:
         import transformers
-        raise RuntimeError(
-            f'H2O_TWO_WAY=1 requires transformers>=5.13.0; installed {transformers.__version__}. '
-            'transformers<5.13 has no create_recurrent_attention_mask and its Qwen3.5 forward does not '
-            'accept the {full_attention, linear_attention} mask mapping. Upgrade transformers or unset '
-            'H2O_TWO_WAY.') from exc
+        raise RuntimeError(f'H2O_TWO_WAY=1 requires transformers>=5.13.0; installed {transformers.__version__}. '
+                           'transformers<5.13 has no create_recurrent_attention_mask and its Qwen3.5 forward does not '
+                           'accept the {full_attention, linear_attention} mask mapping. Upgrade transformers or unset '
+                           'H2O_TWO_WAY.') from exc
 
 
 class H2OModelLoader(Thx02ModelLoader):

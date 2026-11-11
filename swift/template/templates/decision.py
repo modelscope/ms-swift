@@ -641,7 +641,6 @@ class Thx02Template(Qwen3_5Template):
 
 register_template(QwenTemplateMeta(MLLMTemplateType.thx02, template_cls=Thx02Template, default_system=None))
 
-
 _H2O_SYSTEM = ('You are a decision engine. You read a record and answer one question about it by '
                'choosing exactly one option. Reply with a single letter.')
 _H2O_PREFILL = 'Answer:'
@@ -699,8 +698,8 @@ class H2OTemplate(Thx02Template):
             raise ValueError(f'H2O supports 1 to {len(labels)} options per question, got {len(options)}')
 
         state = DecisionTemplate._get_state(inputs)
-        user = (f'record: {state}\nquestion: {self._h2o_instructions(questions[0])}\noptions:\n' +
-                '\n'.join(f'{labels[i]}) {option}' for i, option in enumerate(options))).strip()
+        user = (f'record: {state}\nquestion: {self._h2o_instructions(questions[0])}\noptions:\n'
+                + '\n'.join(f'{labels[i]}) {option}' for i, option in enumerate(options))).strip()
         images = [load_image(image) for image in (inputs.images or [])]
         content = [{'type': 'image'} for _ in images] + [{'type': 'text', 'text': user}]
         messages = [{'role': 'system', 'content': _H2O_SYSTEM}, {'role': 'user', 'content': content}]

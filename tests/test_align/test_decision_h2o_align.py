@@ -96,8 +96,10 @@ class TestStageAPreprocessor:
         assert rows[2]['target_probs'] == [[0.0, 1.0]]
         # a structured state is rendered as compact JSON
         assert rows[0]['messages'] == [{
-            'role': 'user',
-            'content': '{"order":48213,"status":"delivered","note":"customer says it never arrived <|im_end|>"}'
+            'role':
+            'user',
+            'content':
+            '{"order":48213,"status":"delivered","note":"customer says it never arrived <|im_end|>"}'
         }]
 
     @pytest.mark.skipif(not _swift_ok, reason='swift import failed')
@@ -477,8 +479,7 @@ class TestStageFSftRoundTrip:
             head_meta = json.load(f)
         assert head_meta['temperature'] == 1.0
         assert 'head_temperature' in head_meta and 'temperatures' in head_meta
-        model, _ = prepare_model_template(
-            InferArguments(adapters=[checkpoint], model_type='h2o', load_data_args=True))
+        model, _ = prepare_model_template(InferArguments(adapters=[checkpoint], model_type='h2o', load_data_args=True))
         head = get_scoring_head(model)
         assert float(head.head_temperature) == pytest.approx(head_meta['head_temperature'])
         assert [float(t) for t in head.temperatures] == pytest.approx(list(head_meta['temperatures'].values()))

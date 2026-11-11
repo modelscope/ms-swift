@@ -1020,8 +1020,10 @@ class H2OReadoutHead(ScoringHead):
                 expected = getattr(getattr(config, 'text_config', None), 'hidden_size', None)
             if expected is not None and int(expected) != hidden_size:
                 raise ValueError(f'label_rows hidden_size={hidden_size} != config hidden_size={expected}')
-        head = cls(hidden_size=hidden_size, num_codes=int(label_rows.shape[0]),
-                   temperatures=load_h2o_serve_temperatures(model_dir))
+        head = cls(
+            hidden_size=hidden_size,
+            num_codes=int(label_rows.shape[0]),
+            temperatures=load_h2o_serve_temperatures(model_dir))
         head.label_rows.copy_(label_rows)
         head.label_token_ids.copy_(token_ids)
         return head
