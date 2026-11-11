@@ -209,6 +209,21 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
         return model, processor
 
 
+def _resolve_hf_attn_impl(attn_impl: Optional[str]) -> Optional[str]:
+    """Map dev's ``attn_impl`` alias to the spelling transformers' ``from_pretrained`` accepts.
+
+    ``flash_attn`` is dev's alias (and legacy v4's spelling) for transformers' ``flash_attention_2``;
+    the versioned ``flash_attention_3/4`` and the non-flash values (``eager``/``sdpa``/``flex_attention``)
+    are already valid transformers spellings and pass through unchanged. Both the config write
+    (``_postprocess_load_config``) and the explicit ``attn_implementation`` load kwarg must resolve it:
+    the kwarg overrides the config inside ``from_pretrained``, so leaving it raw makes transformers
+    reject the very alias ``_SP_PADDING_FREE_ATTN_IMPLS`` documents as valid.
+    """
+    if attn_impl in {"flash_attn", "flash_attention_2"}:
+        return "flash_attention_2"
+    return attn_impl
+
+
 def _postprocess_load_config(config, info, attn_impl) -> None:
     """The raw-load half of legacy ``ModelLoader._postprocess_config`` that ``_build_hf_config``
     does not already cover: inference-ignore keys, the resolved dtype (vision sub-configs
@@ -224,7 +239,7 @@ def _postprocess_load_config(config, info, attn_impl) -> None:
     HfConfigFactory.compat_zero3(config)
     if attn_impl:
         use_flash_attn = attn_impl in {"flash_attn", "flash_attention_2"}
-        resolved = "flash_attention_2" if use_flash_attn else attn_impl
+        resolved = _resolve_hf_attn_impl(attn_impl)
         for key in ("_attn_implementation", "attn_implementation", "llm_attn_implementation"):
             HfConfigFactory.set_config_attr(config, key, resolved, include_vit=True, ensure_set=False)
         for key in ("_flash_attn_2_enabled", "use_flash_attn", "_use_flash_attention_2"):
@@ -970,7 +985,7 @@ def _build_transformers_model(
     # torch_dtype is a Literal, so getattr always resolves; forward to from_pretrained.
     if model_config.torch_dtype:
         _set_load_kwarg(kwargs, "dtype", getattr(torch, model_config.torch_dtype))
-    _set_load_kwarg(kwargs, "attn_implementation", model_config.attn_impl)
+    _set_load_kwarg(kwargs, "attn_implementation", _resolve_hf_attn_impl(model_config.attn_impl))
     _set_load_kwarg(kwargs, "experts_implementation", model_config.experts_impl)
     _set_load_kwarg(kwargs, "revision", model_config.model_revision)
     _set_load_kwarg(kwargs, "max_memory", model_config.max_memory)
