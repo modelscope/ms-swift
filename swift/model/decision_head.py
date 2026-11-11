@@ -165,7 +165,14 @@ class ScoringHead(nn.Module):
     encoder_backbone: bool = False
 
     def set_output_embeddings(self, output_embeddings: nn.Module) -> None:
-        self._output_embeddings = output_embeddings
+        # Bypass ``nn.Module.__setattr__``: a plain assignment registers the backbone lm_head as a
+        # child of ``scoring_head``, so ``model.state_dict()`` gains
+        # ``scoring_head._output_embeddings.weight``. That tensor aliases the backbone output
+        # embeddings but is not covered by the backbone ``_tied_weights_keys``, and
+        # ``PreTrainedModel.save_pretrained`` rejects it in the tied-weight check once a full
+        # fine-tuning run tries to write its checkpoint. Keep the live reference, but not in the
+        # module tree; the loader re-wires it on rebuild anyway.
+        object.__setattr__(self, '_output_embeddings', output_embeddings)
 
     @staticmethod
     def _locate(model_dir: str, filename: str, env_var: str, subdir: Optional[str] = None) -> Optional[str]:
@@ -220,10 +227,10 @@ class ScoringHead(nn.Module):
 
     def head_state_dict(self) -> Dict[str, torch.Tensor]:
         """The head's OWN state (params + persistent buffers), EXCLUDING the injected live
-        `_output_embeddings`. `set_output_embeddings` assigns an nn.Module, which `nn.Module.__setattr__`
-        auto-registers as a child, so a naive `state_dict()` would drag in the ENTIRE base lm_head
-        (vocab x hidden, possibly tied to embed_tokens). That reference is re-wired by the loader on
-        rebuild, so it is never persisted here.
+        `_output_embeddings`. `set_output_embeddings` keeps that reference out of the module tree, so a
+        naive `state_dict()` no longer drags in the ENTIRE base lm_head (vocab x hidden, possibly tied
+        to embed_tokens); the filter remains as a guard for subclasses that still register it as a
+        child. The reference is re-wired by the loader on rebuild, so it is never persisted here.
         """
         return {k: v.detach().cpu() for k, v in self.state_dict().items() if not k.startswith('_output_embeddings')}
 
