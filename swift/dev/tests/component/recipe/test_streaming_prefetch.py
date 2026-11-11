@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from swift.dev.config import RewardConfig, RLConfig, RolloutConfig
-from swift.dev.recipe.batching import streaming_batch_geometry
+from swift.dev.recipe.batching import publish_rollout_weights, streaming_batch_geometry
 
 
 @pytest.mark.parametrize(
@@ -156,3 +156,111 @@ def test_completed_prefetch_is_not_merged_into_one_training_handoff(driver_facto
     assert driver.stats.optimizer_steps == driver.stats.train_pulls == 2
     assert driver.stats.consumed == 128
     assert driver.stats.off_policy_consumed == 64
+
+
+def test_in_place_publish_keeps_partial_rollout_parked_until_weights_arrive():
+    import asyncio
+    import threading
+
+    from twinkle.data_format import SampledSequence, SampleResponse, SamplingParams
+    from twinkle.sampler.partial_rollout import PartialRolloutMixin
+
+    sampler = PartialRolloutMixin()
+    sampler.template = SimpleNamespace(decode=lambda tokens: str(tokens))
+    loop = asyncio.new_event_loop()
+    sampler._async_loop = loop
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    started, seen_versions = threading.Event(), []
+    version = [0]
+
+    async def rollout():
+        aborted = asyncio.Event()
+
+        async def abort(request_id):
+            aborted.set()
+
+        sampler._abort_request = abort
+
+        async def attempt(feature, state, params, index):
+            seen_versions.append(version[0])
+            if index == 0:
+                sampler._register_inflight("pending")
+                started.set()
+                try:
+                    await aborted.wait()
+                finally:
+                    sampler._unregister_inflight("pending")
+            response = SampleResponse(
+                prompt_token_ids=[99],
+                sequences=[
+                    SampledSequence(
+                        stop_reason="abort" if index == 0 else "stop",
+                        tokens=[index + 1],
+                        decoded="",
+                        new_input_feature={"input_ids": [99, 1]},
+                    )
+                ],
+            )
+            return response, None
+
+        return await sampler._run_partial_rollout(
+            {"input_ids": [99]},
+            SamplingParams(max_tokens=8),
+            run_attempt=attempt,
+            allow_partial_rollout=True,
+        )
+
+    future = asyncio.run_coroutine_threadsafe(rollout(), loop)
+
+    def transfer():
+        assert sampler._generation_paused
+        assert not future.done()
+        assert seen_versions == [0]
+        version[0] = 1
+
+    try:
+        assert started.wait(timeout=5)
+        publish_rollout_weights(
+            SimpleNamespace(
+                sampler=sampler,
+                engine=SimpleNamespace(sync_weights=transfer),
+                adapter=None,
+            )
+        )
+        outcome = future.result(timeout=5)
+        assert seen_versions == [0, 1]
+        assert outcome.response.sequences[0].tokens == [1, 2]
+        assert outcome.resumed_partial_output
+    finally:
+        if not future.done():
+            future.cancel()
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
+def test_failed_publish_does_not_resume_generation():
+    events = []
+
+    def transfer():
+        events.append("transfer")
+        raise RuntimeError("transfer failed")
+
+    cluster = SimpleNamespace(
+        adapter=None,
+        engine=SimpleNamespace(sync_weights=transfer),
+        sampler=SimpleNamespace(
+            pause_generation=lambda: events.append("pause"),
+            resume_generation=lambda: events.append("resume"),
+        ),
+    )
+    with pytest.raises(RuntimeError, match="transfer failed"):
+        publish_rollout_weights(cluster)
+    assert events == ["pause", "transfer"]
+
+
+def test_adaptive_publication_uses_its_own_pause_transaction():
+    events = []
+    publish_rollout_weights(SimpleNamespace(adapter=SimpleNamespace(publish=lambda: events.append("publish"))))
+    assert events == ["publish"]

@@ -65,5 +65,21 @@ def record_rollout_step(state, *plans):
     return state.record(extra_metrics=metrics) if metrics else state.record()
 
 
+def publish_rollout_weights(cluster):
+    """Keep partial rollouts parked until the new in-place weights have arrived.
+
+    An abort alone allows requests to retry on their old weights while the sync RPC
+    waits for those same requests to drain. Pause closes the retry gate; resume only
+    after a successful sync. The adaptive adapter owns this transaction itself.
+    """
+    if cluster.adapter is not None:
+        cluster.adapter.publish()
+        return
+    cluster.sampler.pause_generation()
+    # Leave generation paused if transfer fails; never decode partially updated weights.
+    cluster.engine.sync_weights()
+    cluster.sampler.resume_generation()
+
+
 def apply_rollout_plan(plan, values):
     return values if plan is None else plan.apply(values)
