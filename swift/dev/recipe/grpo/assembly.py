@@ -347,10 +347,16 @@ def initialize_cluster(
     # registration reads it off the proxy the adapter will actually drive.
     elastic_models = {}
     if adapter is not None:
+        from swift.dev.rewards.scorer import RewardModel
+
         for scorer in (*orm_scorers, *prm_scorers):
+            # Rules arrive as _AwaitableToSync and judges are not frozen RM proxies. Only a
+            # RewardModel carries the ray handle the adapter can scale; the rest stay static.
+            if not isinstance(scorer, RewardModel):
+                continue
             scorer_model = scorer.model
             if (
-                getattr(scorer, "placement_key", None) is not None
+                scorer.placement_key is not None
                 and getattr(scorer_model, "_worker_factory", None) is not None
             ):
                 elastic_models[scorer.placement_key] = scorer_model
