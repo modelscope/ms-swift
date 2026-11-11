@@ -19,8 +19,8 @@ class ExportArguments(MergeArguments, BaseArguments):
     Args:
         output_dir (Optional[str]): Directory to save the exported results. Defaults to None, which automatically sets
             a path with an appropriate suffix.
-        quant_method (Optional[str]): The quantization method. Can be 'awq', 'gptq', 'bnb', 'fp8', or 'gptq_v2'.
-            Defaults to None. See examples for more details.
+        quant_method (Optional[str]): The quantization method. Can be 'awq', 'gptq', 'bnb', 'fp8', 'entropack',
+            or 'gptq_v2'. Defaults to None. See examples for more details.
         quant_n_samples (int): Number of samples for GPTQ/AWQ calibration. Defaults to 256.
         quant_batch_size (int): The batch size for quantization. Defaults to 1.
         group_size (int): The group size for quantization. Defaults to 128.
@@ -54,7 +54,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     output_dir: Optional[str] = None
 
     # awq/gptq
-    quant_method: Literal['awq', 'gptq', 'bnb', 'fp8', 'gptq_v2'] = None
+    quant_method: Literal['awq', 'gptq', 'bnb', 'fp8', 'entropack', 'gptq_v2'] = None
     quant_n_samples: int = 256
     quant_batch_size: int = 1
     group_size: int = 128
@@ -126,8 +126,10 @@ class ExportArguments(MergeArguments, BaseArguments):
             self.quant_batch_size = None
         if self.quant_bits and self.quant_method is None:
             raise ValueError('Please specify the quantization method using `--quant_method awq/gptq/bnb`.')
-        if self.quant_method and self.quant_bits is None and self.quant_method != 'fp8':
+        if self.quant_method and self.quant_bits is None and self.quant_method not in {'fp8', 'entropack'}:
             raise ValueError('Please specify `--quant_bits`.')
+        if self.quant_method == 'entropack' and self.entropack_target_bpp is None:
+            raise ValueError('Please specify `--entropack_target_bpp`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
         if self.to_mcore or self.to_hf:

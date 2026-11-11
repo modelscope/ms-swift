@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from swift.template.templates.decision import _startlux_norm
 from .core import RowPreprocessor
 
 
@@ -318,6 +319,12 @@ class ScoringPreprocessor(RowPreprocessor):
                 return value
         return default
 
+    def _lookup_gold(self, question: Dict[str, Any], answers: Any, qid: Any) -> Any:
+        gold = self._first(question, self.GOLD_KEYS, default=None)
+        if gold is None and isinstance(answers, dict):
+            gold = answers.get(str(qid), answers.get(qid))
+        return gold
+
     @staticmethod
     def _as_option_dict(option: Any) -> Dict[str, Any]:
         """Normalize ONE unified option element to a dict."""
@@ -444,7 +451,7 @@ class ClefPreprocessor(ScoringPreprocessor):
     CRITERIA_KEYS = ('criteria', 'options', 'choices', 'levels')
     GOLD_KEYS = ('answer', 'gold', 'label', 'target', 'value')
     ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
-    ID_KEYS = ('id', 'record_id')
+    MODEL_NAME = 'Clef'  # used in error messages (subclasses reuse the gold resolution)
 
     def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
         state = self._first(row, self.STATE_KEYS, default='')
@@ -521,9 +528,7 @@ class ClefPreprocessor(ScoringPreprocessor):
         Accepts, at question level then in a record-level `answers` map: a distribution (list/tuple of
         floats), a bool (noul), an option id string, or an int index.
         """
-        gold = self._first(question, self.GOLD_KEYS, default=None)
-        if gold is None and isinstance(answers, dict):
-            gold = answers.get(str(qid), answers.get(qid))
+        gold = self._lookup_gold(question, answers, qid)
         if gold is None:
             return None
         if isinstance(gold, (list, tuple)):
@@ -538,7 +543,59 @@ class ClefPreprocessor(ScoringPreprocessor):
                 return index
         if text.lstrip('-').isdigit():
             return int(text)
-        raise ValueError(f'Clef gold {gold!r} for question {qid!r} matches no option id {option_ids}.')
+        raise ValueError(f'{self.MODEL_NAME} gold {gold!r} for question {qid!r} matches no option id {option_ids}.')
+
+
+class Thx02Preprocessor(ClefPreprocessor):
+    """THX-02 preprocessor: ONE record -> ONE row carrying ALL its questions (joint inline readout).
+
+    Same native schema as the Decisions API: `{state, questions: {qid: {type, instructions, criteria}},
+    images?, answers?}`. `criteria` is `{option: description}` for `choice` (kept in the given order),
+    a list of level descriptions for `score`, and optional for `noul` (options false/true).
+
+    Gold answers (a record-level `answers` map or a per-question `answer`/`gold`) may be an option key,
+    an index, a bool (`noul`), or a full distribution in option order. A record-level `targets` map of
+    distributions (e.g. teacher probabilities for distillation) is accepted as well.
+    """
+
+    ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
+    MODEL_NAME = 'THX-02'
+
+    def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
+        from swift.model.decision_head import thx02_option_ids
+        state = self._first(row, self.STATE_KEYS, default='')
+        answers = self._first(row, self.ANSWERS_KEYS, default=None)
+        questions: List[Dict[str, Any]] = []
+        for qid, q in self._question_items(self._first(row, self.QUESTIONS_KEYS, default=None)):
+            if not isinstance(q, dict):
+                raise ValueError(f'THX-02 question {qid!r} must be a dict of type/instructions/criteria; got {q!r}')
+            kind = self._normalize_kind(self._first(q, self.KIND_KEYS, default=None))
+            criteria = self._normalize_criteria(kind, self._first(q, self.CRITERIA_KEYS, default=None))
+            option_ids = thx02_option_ids(kind, criteria)
+            question = {
+                'kind': kind,
+                'question': self._first(q, self.INSTRUCTION_KEYS, default=None),
+                'options': option_ids,
+                'question_id': str(qid),
+                'criteria': criteria,
+            }
+            gold = self._resolve_gold(q, answers, qid, option_ids)
+            if gold is not None:
+                question['gold'] = gold
+            questions.append(question)
+        return state, questions
+
+    def _build_row(self, row: Dict[str, Any], state: Any, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        out = ScoringPreprocessor._build_row(self, row, state, questions)
+        out['messages'] = [{'role': 'user', 'content': self._state_to_text(state)}]
+        out['state_is_json'] = not isinstance(state, str) and state is not None
+        out['state'] = json.dumps(state, ensure_ascii=False) if out['state_is_json'] else (state or '')
+        out['question_ids'] = [q['question_id'] for q in questions]
+        out['criteria'] = [
+            json.dumps(c, ensure_ascii=False) if c is not None and not isinstance(c, str) else c
+            for c in [q.get('criteria') for q in questions]
+        ]
+        return out
 
 
 def _omnijev_render_option(o: Dict[str, Any]) -> str:
@@ -735,9 +792,7 @@ class OmniJevPreprocessor(ScoringPreprocessor):
         score match the gold text against `column_keys` (choice 'abstain'/'none' -> the abstain column)
         or accept an explicit index.
         """
-        gold = self._first(question, self.GOLD_KEYS, default=None)
-        if gold is None and isinstance(answers, dict):
-            gold = answers.get(str(qid), answers.get(qid))
+        gold = self._lookup_gold(question, answers, qid)
         if gold is None:
             return None
         if isinstance(gold, (list, tuple)):
@@ -764,6 +819,101 @@ class OmniJevPreprocessor(ScoringPreprocessor):
         raise ValueError(f'OmniJev gold {gold!r} for question {qid!r} matches no column key {column_keys}.')
 
 
+class KevPreprocessor(ScoringPreprocessor):
+
+    STATE_KEYS = ('state', 'context', 'passage', 'text', 'input')
+    QUESTIONS_KEYS = ('questions', )
+    KIND_KEYS = ('kind', 'type', 'question_type')
+    INSTR_KEYS = ('instr', 'instruction', 'instructions', 'question', 'prompt', 'query')
+    OPTIONS_KEYS = ('options', 'opts', 'choices')
+    GOLD_KEYS = ('label', 'gold', 'answer', 'target', 'value')
+    ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
+
+    _NOUL_TEXTS = {'true', 'false', 'yes', 'no', 'y', 'n'}
+    _error_prefix = 'Kev'
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+        state, questions = self.parse_record(row)
+        if not questions:
+            return None
+        state, questions = self._augment(state, questions)
+        # One row per question (this model family scores a single question per forward).
+        return [self._build_row(row, state, [q]) for q in questions]
+
+    def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
+        state = self._first(row, self.STATE_KEYS, default='')
+        answers = self._first(row, self.ANSWERS_KEYS, default=None)
+        items = self._question_items(self._first(row, self.QUESTIONS_KEYS, default=None))
+        if not items:
+            # Flat unified row: kind/question/options at the record level. Without a kind-ish or
+            # question-ish column there is no question to score -> drop the row (like JevPreprocessor).
+            if self._first(row, self.KIND_KEYS, default=None) is None \
+                    and self._first(row, self.INSTR_KEYS, default=None) is None:
+                return state, []
+            items = [(None, row)]
+        questions: List[Dict[str, Any]] = []
+        for qid, q in items:
+            if not isinstance(q, dict):
+                raise ValueError(f'{self._error_prefix} question {qid!r} must be an object with '
+                                 'kind/instructions/options, got {q!r}.')
+            options = self._first(q, self.OPTIONS_KEYS, default=None)
+            kind = self._first(q, self.KIND_KEYS, default=None)
+            if kind is None:
+                kind = self._infer_kind(options)
+            kind = self._normalize_kind(kind)
+            options = self._finalize_options(q, kind, options)
+            instr = self._first(q, self.INSTR_KEYS, default=None)
+            if instr is None:
+                instr = str(qid)
+            item: Dict[str, Any] = {'kind': kind, 'question': instr, 'options': options}
+            gold = self._question_gold(q, answers, qid, kind, options)
+            if gold is not None:
+                item['gold'] = gold
+            questions.append(item)
+        return state, questions
+
+    def _finalize_options(self, q: Dict[str, Any], kind: str, options: Optional[List[str]]) -> List[str]:
+        """Final option texts: caller-supplied options, else the canonical noul/score defaults.
+        A `choice` question has no defaults and must carry its own options."""
+        if options is not None:
+            return [str(o) for o in options]
+        default = self.default_options(kind)
+        if default is None:
+            raise ValueError(f"A 'choice' question must provide its options: {q}")
+        return default
+
+    def _question_gold(self, q: Dict[str, Any], answers: Any, qid: Any, kind: str, options: List[str]) -> Optional[Any]:
+        return self._resolve_gold(self._lookup_gold(q, answers, qid), qid, kind, options)
+
+    @classmethod
+    def _infer_kind(cls, options: Optional[List[str]]) -> str:
+        if options and len(options) == 2 and {str(o).strip().lower() for o in options} <= cls._NOUL_TEXTS:
+            return 'noul'
+        if options and all(str(o).strip().lstrip('-').isdigit() for o in options):
+            return 'score'
+        return 'choice'
+
+    def _resolve_gold(self, gold: Any, qid: Any, kind: str, options: List[str]) -> Optional[Any]:
+        if gold is None:
+            return None
+        if isinstance(gold, (list, tuple)):
+            return [float(x) for x in gold]
+        if isinstance(gold, bool):
+            if kind != 'noul':
+                raise ValueError(
+                    f'{self._error_prefix} boolean gold {gold!r} for non-noul question {qid!r} (kind={kind}).')
+            return 1 if gold else 0  # rendered noul options are [false, true]
+        if isinstance(gold, int):
+            return gold
+        text = str(gold).strip()
+        for index, option in enumerate(options):
+            if text == option or text.lower() == option.lower():
+                return index
+        if text.lstrip('-').isdigit():
+            return int(text)
+        raise ValueError(f'{self._error_prefix} gold {gold!r} for question {qid!r} matches no option {options}.')
+
+
 class GenericDecisionPreprocessor(JevPreprocessor):
     """Generic decision preprocessor: same layout as ``JevPreprocessor``, for any CausalLM.
 
@@ -773,3 +923,245 @@ class GenericDecisionPreprocessor(JevPreprocessor):
     ``JevTemplate``), which renders the same bare prompt layout for any text CausalLM.
     """
     pass
+
+
+class LayaPreprocessor(KevPreprocessor):
+
+    # Laya-native aliases come first; the remaining entries are the Kev/unified names, inherited
+    # alongside STATE_KEYS / OPTIONS_KEYS / ANSWERS_KEYS / _NOUL_TEXTS.
+    QUESTIONS_KEYS = ('qs', 'questions', 'fields')
+    KIND_KEYS = ('t', 'kind', 'type', 'question_type')
+    INSTR_KEYS = ('ins', 'instr', 'instruction', 'instructions', 'question', 'prompt', 'query')
+    CRITERIA_KEYS = ('crit', 'criteria', 'levels')
+    GOLD_KEYS = ('y', 'gold', 'label', 'answer', 'target', 'value')
+    SOFT_KEYS = ('soft', 'target_probs', 'probs', 'dist')
+
+    _error_prefix = 'Laya'
+
+    def _finalize_options(self, q: Dict[str, Any], kind: str, options: Optional[List[str]]) -> List[str]:
+        return self._laya_options(kind, self._first(q, self.CRITERIA_KEYS, default=None), options)
+
+    def _question_gold(self, q: Dict[str, Any], answers: Any, qid: Any, kind: str, options: List[str]) -> Optional[Any]:
+        # wins over the hard gold when both are present.
+        gold = self._first(q, self.SOFT_KEYS, default=None)
+        if gold is None:
+            gold = self._resolve_gold(self._lookup_gold(q, answers, qid), qid, kind, options)
+        return gold
+
+    def _laya_options(self, kind: str, criteria: Any, options: Optional[List[str]]) -> List[str]:
+        if options:
+            return [str(o) for o in options]
+        if kind == 'noul':
+            crit = criteria if isinstance(criteria, dict) else {}
+            return [
+                'false: ' + str(crit.get('false') or 'no, the statement does not hold'),
+                'true: ' + str(crit.get('true') or 'yes, the statement holds')
+            ]
+        if kind == 'choice':
+            crit = criteria or {}
+            if not isinstance(crit, dict):
+                raise ValueError(f"Laya choice 'crit' must be a dict {{option_id: criteria}}; got {crit!r}")
+            return [str(k) if not v else f'{k}: {v}' for k, v in crit.items()]
+        crit = criteria if criteria is not None else list(range(6))
+        if not isinstance(crit, (list, tuple)):
+            raise ValueError(f"Laya score 'crit' must be a list of level descriptions; got {crit!r}")
+        return [f'level {i}: {c}' for i, c in enumerate(crit)]
+
+    @classmethod
+    def _infer_kind(cls, options: Optional[List[str]]) -> str:
+        if options and len(options) == 2 and {str(o).strip().lower() for o in options} <= cls._NOUL_TEXTS:
+            return 'noul'
+        return 'choice'
+
+
+class StartLuxPreprocessor(ScoringPreprocessor):
+    STATE_KEYS = ('state', 'context', 'input')
+    QUESTIONS_KEYS = ('questions', 'fields')
+    KIND_KEYS = ('type', 'kind', 'question_type')
+    INSTRUCTION_KEYS = ('instructions', 'instruction', 'question', 'prompt', 'text')
+    CRITERIA_KEYS = ('criteria', 'options', 'choices', 'levels')
+    GOLD_KEYS = ('answer', 'gold', 'label', 'target', 'value')
+    ANSWERS_KEYS = ('answers', 'labels', 'golds', 'targets')
+    IMAGES_KEYS = ('images', 'image')
+    MODEL_NAME = 'StartLux'
+    _MAX_OPTIONS = 26
+    _MAX_LEVELS = 10
+    _ANNOTATE_MIN = 8
+    _NOUL_INSTRUCTIONS = 'Which answer fits the evidence?'
+    _NONE_OPTION = 'None of the above'
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+        state, questions = self.parse_record(row)
+        if not questions:
+            return None
+        state, questions = self._augment(state, questions)
+        # One row per question (each question is its own prompt holding the whole state).
+        return [self._build_row(row, state, [q]) for q in questions]
+
+    def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
+        state = self._first(row, self.STATE_KEYS, default='')
+        answers = self._first(row, self.ANSWERS_KEYS, default=None)
+        questions: List[Dict[str, Any]] = []
+        for qid, q in self._question_items(self._first(row, self.QUESTIONS_KEYS, default=None)):
+            if not isinstance(q, dict):
+                raise ValueError(f'{self.MODEL_NAME} question {qid!r} must be an object with '
+                                 'type/instructions/criteria, got {q!r}.')
+            kind = self._normalize_kind(self._first(q, self.KIND_KEYS, default=None))
+            instructions = self._startlux_value_text(self._first(q, self.INSTRUCTION_KEYS, default=None))
+            criteria_raw = self._first(q, self.CRITERIA_KEYS, default=None)
+            ids, criteria, none_option = self._startlux_options(kind, criteria_raw, q)
+            if not instructions:
+                if kind == 'noul':
+                    instructions = self._NOUL_INSTRUCTIONS
+                else:
+                    raise ValueError(f'{self.MODEL_NAME} question {qid!r} needs instructions (choice and score '
+                                     'questions require them).')
+            item: Dict[str, Any] = {
+                'kind': kind,
+                'question': instructions,
+                'options': list(zip(ids, [criteria[i] for i in ids])),
+            }
+            if none_option:
+                item['none_option'] = True
+            gold = self._resolve_gold(q, answers, qid, kind, ids)
+            if gold is not None:
+                item['gold'] = gold
+            questions.append(item)
+        return state, questions
+
+    @staticmethod
+    def _startlux_value_text(v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+        s = s.strip()
+        return s or None
+
+    @classmethod
+    def _startlux_annotate_indices(cls, x: Any) -> Any:
+        if isinstance(x, list):
+            if len(x) >= cls._ANNOTATE_MIN:
+                return [({
+                    '_index': i,
+                    **cls._startlux_annotate_indices(v)
+                } if isinstance(v, dict) else {
+                    '_index': i,
+                    'value': cls._startlux_annotate_indices(v)
+                }) for i, v in enumerate(x)]
+            return [cls._startlux_annotate_indices(v) for v in x]
+        if isinstance(x, dict):
+            return {k: cls._startlux_annotate_indices(v) for k, v in x.items()}
+        return x
+
+    @classmethod
+    def _startlux_state_text(cls, state: Any) -> str:
+        if isinstance(state, str):
+            return state
+        if state is None or state == {} or state == []:
+            return ''
+        return json.dumps(cls._startlux_annotate_indices(state), ensure_ascii=False)
+
+    def _startlux_options(self, kind: str, criteria_raw: Any, q: Dict[str,
+                                                                      Any]) -> Tuple[List[str], Dict[str, Any], bool]:
+        none_option = bool(q.get('allow_none')) and kind == 'choice'
+        if kind == 'noul':
+            crit = criteria_raw if isinstance(criteria_raw, dict) else {}
+            ids = ['true', 'false']
+            criteria = {i: self._startlux_value_text(crit.get(i)) for i in ids}
+            return ids, criteria, False
+        if kind == 'score':
+            if isinstance(criteria_raw, dict):
+                try:
+                    keys = sorted(criteria_raw, key=lambda k: float(k))
+                except (TypeError, ValueError):
+                    keys = list(criteria_raw)
+                levels = [criteria_raw[k] for k in keys]
+            elif isinstance(criteria_raw, (list, tuple)):
+                levels = list(criteria_raw)
+            else:
+                raise ValueError(f'{self.MODEL_NAME} score question needs criteria: a list of levels, lowest first.')
+            if not 2 <= len(levels) <= self._MAX_LEVELS:
+                raise ValueError(f'{self.MODEL_NAME} score question needs 2 to {self._MAX_LEVELS} levels, '
+                                 f'got {len(levels)}.')
+            ids = [str(i) for i in range(len(levels))]
+            return ids, {i: self._startlux_value_text(c) for i, c in zip(ids, levels)}, False
+        # choice
+        if isinstance(criteria_raw, (list, tuple)):
+            criteria_raw = {self._option_key(o, i): self._option_text(o) for i, o in enumerate(criteria_raw)}
+        if not isinstance(criteria_raw, dict):
+            raise ValueError(f'{self.MODEL_NAME} choice question needs criteria: {{option: description or null}} '
+                             'or a list of options.')
+        ids = [str(k) for k in criteria_raw.keys()]
+        criteria = {i: self._startlux_value_text(criteria_raw[i]) for i in ids}
+        if none_option:
+            if any(_startlux_norm(i) == _startlux_norm(self._NONE_OPTION) for i in ids):
+                raise ValueError(f'{self.MODEL_NAME} allow_none adds the option "{self._NONE_OPTION}" itself: '
+                                 'remove the option of that name or leave allow_none out.')
+            ids.append(self._NONE_OPTION)
+            criteria[self._NONE_OPTION] = None
+        if not 2 <= len(ids) <= self._MAX_OPTIONS:
+            raise ValueError(f'{self.MODEL_NAME} choice question needs 2 to {self._MAX_OPTIONS} options in one '
+                             f'pass, got {len(ids)}; lists over {self._MAX_OPTIONS - 1} go through the official '
+                             'server\'s knockout rounds, which swift does not implement.')
+        if len(set(ids)) != len(ids):
+            raise ValueError(f'{self.MODEL_NAME} duplicate option id in {ids}.')
+        for i in ids:
+            if not i.strip() or '\n' in i or '\r' in i or len(i) > 200:
+                raise ValueError(f'{self.MODEL_NAME} bad option id {i!r}: ids must be non-empty single-line strings '
+                                 'of at most 200 characters.')
+        return ids, criteria, none_option
+
+    def _build_row(self, row: Dict[str, Any], state: Any, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        q = questions[0]
+        ids = [i for i, _ in q['options']]
+        criteria = dict(q['options'])
+        state_text = self._startlux_state_text(state)
+        out: Dict[str, Any] = {
+            'messages': [{
+                'role': 'user',
+                'content': state_text
+            }],
+            'questions': [q['question']],
+            'kinds': [q['kind']],
+            'options': [ids],
+            'criterias': [[criteria[i] for i in ids]],
+            'none_options': [bool(q.get('none_option')) and ids[-1:] == [self._NONE_OPTION]],
+            'state': state_text,
+        }
+        images = self._first(row, self.IMAGES_KEYS, default=None)
+        if images is not None:
+            out['images'] = images if isinstance(images, (list, tuple)) else [images]
+        if q.get('gold') is not None:
+            out['target_probs'] = [self.to_target_dist(q['gold'], len(ids))]
+        return out
+
+    def _resolve_gold(self, question: Dict[str, Any], answers: Any, qid: Any, kind: str,
+                      option_ids: List[str]) -> Optional[Any]:
+        gold = self._lookup_gold(question, answers, qid)
+        if gold is None:
+            return None
+        if isinstance(gold, (list, tuple)):
+            return [float(x) for x in gold]
+        if isinstance(gold, bool):
+            if kind != 'noul':
+                raise ValueError(f'{self.MODEL_NAME} boolean gold {gold!r} for non-noul question {qid!r}.')
+            return 0 if gold else 1  # rendered noul options are [true(yes), false(no)]
+        if isinstance(gold, int):
+            if not 0 <= gold < len(option_ids):
+                raise ValueError(f'{self.MODEL_NAME} gold index {gold} out of range for {option_ids}.')
+            return gold
+        text = str(gold).strip()
+        if kind == 'noul' and text.lower() in ('yes', 'y'):
+            return 0
+        if kind == 'noul' and text.lower() in ('no', 'n'):
+            return 1
+        if text.lower() in ('none', 'none of the above') and option_ids[-1] == self._NONE_OPTION:
+            return len(option_ids) - 1
+        for index, option_id in enumerate(option_ids):
+            if text == option_id or text.lower() == option_id.lower():
+                return index
+        if text.lstrip('-').isdigit():
+            idx = int(text)
+            if 0 <= idx < len(option_ids):
+                return idx
+        raise ValueError(f'{self.MODEL_NAME} gold {gold!r} for question {qid!r} matches no option id {option_ids}.')

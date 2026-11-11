@@ -47,13 +47,18 @@ class ScoringLoss(BaseLoss):
     def _masked_soft_ce(self, logits: torch.Tensor, option_mask: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Per-question CE: softmax over real options only, scored against the target dist.
 
-        Returns `[total_q]` (one scalar per question). Pad slots carry prob 0 (masked_softmax)
-        and target 0, so they contribute nothing; the `* option_mask` guards against a stray
-        nonzero target landing on a pad column.
+        Returns `[total_q]` (one scalar per question). Padded log-probabilities are zeroed
+        before multiplying by targets, so even a stray nonzero padding target contributes
+        neither loss nor gradient.
         """
-        probs = masked_softmax(logits, option_mask)  # [total_q, max_opt], pad cols = 0
-        log_probs = torch.log(probs.clamp_min(1e-9))
-        return -(target * log_probs * option_mask).sum(dim=-1)
+        # Compute CE in log space so confidently wrong predictions retain gradients.
+        masked_logits = logits.float().masked_fill(~option_mask, float('-inf'))
+        # Empty option rows contribute zero; avoid an all -inf log_softmax row.
+        masked_logits = masked_logits.masked_fill(~option_mask.any(dim=-1, keepdim=True), 0.0)
+        log_probs = torch.log_softmax(masked_logits, dim=-1)
+        # Zero padding before multiplication to avoid 0 * -inf (including soft targets).
+        log_probs = log_probs.masked_fill(~option_mask, 0.0)
+        return -(target * log_probs).sum(dim=-1)
 
     def _reduce(self, per_question: torch.Tensor, num_items_in_batch: Optional[int]) -> torch.Tensor:
         """Mean over this micro-batch's questions."""

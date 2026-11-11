@@ -361,9 +361,10 @@ def _should_use_npu_generated_attention_mask(args) -> bool:
         return False
     if args.task_type != 'causal_lm' or args.padding_free:
         return False
-    if getattr(args, 'attention_backend', None) == 'local':
+    attention_backend = getattr(args, 'attention_backend', None)
+    if getattr(attention_backend, 'name', attention_backend) == 'local':
         return False
-    return bool(getattr(args, 'use_flash_attn', False))
+    return True
 
 
 def _prepare_npu_generated_attention_mask(batch, *, keep_attention_mask_2d: bool) -> None:

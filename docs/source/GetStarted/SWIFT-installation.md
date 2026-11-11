@@ -159,7 +159,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | --- | --- |
 | NVIDIA GPU | 默认支持 |
 | AMD GPU | [AMD GPU 支持](../BestPractices/AMD-support.md) |
-| 华为 Ascend NPU | [NPU 支持](../BestPractices/NPU-support.md) |
+| Huawei Ascend NPU | [NPU 支持](../BestPractices/NPU-support.md) |
 | 沐曦 MetaX GPU | [MetaX 支持](../BestPractices/Metax-support.md) |
 | 摩尔线程 MUSA GPU | [MUSA 支持](../BestPractices/MUSA-support.md) |
 | Apple MPS | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
@@ -178,7 +178,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | peft         | >=0.11,<0.20 |                     |                    |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                    |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF               |
-| deepspeed    | >=0.14       | 0.18.9              | 训练                 |
+| deepspeed    | >=0.19.3,<0.20 | 0.19.7            | 训练                 |
 | vllm         | >=0.5.1      | 0.11.0/0.23.0        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |

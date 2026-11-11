@@ -20,6 +20,13 @@ from swift.utils import get_packed_seq_params as _get_packed_seq_params
 logger = get_logger()
 
 
+def get_hf_mtp_num_layers(mtp_num_layers, repeated):
+    """HF configs record physical MTP layers, not the logical prediction depth."""
+    if not mtp_num_layers:
+        return mtp_num_layers
+    return 1 if repeated else mtp_num_layers
+
+
 def find_all_linears(model, extra_layers=None):
 
     def _cond(name, module):

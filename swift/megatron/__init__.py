@@ -4,11 +4,27 @@ try:
     from transformers.utils import is_torch_npu_available
 
     if is_torch_npu_available():
-        from swift.model.npu_patch.mindspeed import prepare_mindspeed_gdn_import
-        prepare_mindspeed_gdn_import()
-        # Enable Megatron on Ascend NPU
-        import mindspeed.megatron_adaptor  # F401
+        try:
+            # MegatronAdaptor must patch MCore before mcore-bridge or any TE
+            # wrapper caches the original callables.
+            import megatron_adaptor  # F401
+        except ModuleNotFoundError as exc:
+            if exc.name == 'megatron_adaptor':
+                raise ImportError('Megatron on Ascend NPU requires MegatronAdaptor. Install the local '
+                                  'MegatronAdaptor checkout before importing swift.megatron.') from exc
+            raise
+    # Preserve Swift's initialization import order before loading model patches.
     from .init import init_megatron_env
+    if is_torch_npu_available():
+        from swift.model.npu_patch.megatron_moe import patch_megatron_moe
+        from swift.model.npu_patch.megatron_norm import patch_megatron_norm
+        from swift.model.npu_patch.megatron_optimizer import patch_megatron_optimizer
+
+        patch_megatron_optimizer()
+        patch_megatron_moe()
+        patch_megatron_norm()
+        from swift.utils import get_logger
+        get_logger().info('Installed Swift Megatron NPU optimizer, normalization and permutation performance patches.')
     init_megatron_env()
 except Exception:
     # allows lint pass.

@@ -40,6 +40,10 @@ def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     if isinstance(obj, (torch.dtype, torch.device)):
         obj = str(obj)
         return obj[len('torch.'):] if obj.startswith('torch.') else obj
+    if isinstance(obj, np.generic):  # numpy scalar, e.g. np.float32
+        return check_json_format(obj.item(), token_safe)
+    if isinstance(obj, np.ndarray):
+        return check_json_format(obj.tolist(), token_safe)
 
     if isinstance(obj, Sequence):
         res = []
@@ -53,7 +57,7 @@ def check_json_format(obj: Any, token_safe: bool = True) -> Any:
             else:
                 res[k] = check_json_format(v, token_safe)
     else:
-        if token_safe:
+        if token_safe and hasattr(obj, '__dict__'):
             unsafe_items = {}
             for k, v in obj.__dict__.items():
                 if '_token' in k:
@@ -379,9 +383,8 @@ def split_list(ori_list: List[_T], num_shards: int, contiguous=True) -> List[Lis
         for i in range(len(idx_list) - 1):
             shard.append(ori_list[idx_list[i]:idx_list[i + 1]])
     else:
-        ori_list = np.array(ori_list)
         for i in range(num_shards):
-            shard.append(ori_list[np.arange(i, len(ori_list), num_shards)].tolist())
+            shard.append(ori_list[i::num_shards])
     return shard
 
 

@@ -177,7 +177,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | peft         | >=0.11,<0.20 |                     |                                           |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                                           |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF                                      |
-| deepspeed    | >=0.14       | 0.18.9              | Training                                  |
+| deepspeed    | >=0.19.3,<0.20 | 0.19.7            | Training                                  |
 | vllm         | >=0.5.1      | 0.11.0/0.23.0       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |

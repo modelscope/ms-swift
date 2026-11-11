@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageDraw, ImageFont
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-from .omnijev_branch import OPT_CLOSE, OPT_OPEN
+from .decision_branch import OPT_CLOSE, OPT_OPEN
 
 # ---- panels (verbatim) ----
 # MSO_NO_PANELS=1 restores the old behaviour (encode only the first image). It exists so the same

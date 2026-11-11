@@ -1,6 +1,6 @@
-# Ascend NPU
+# Huawei Ascend NPU
 
-For environment preparation of Megatron-SWIFT on Ascend NPU, please refer to [NPU Best Practices](../BestPractices/NPU-support.md).
+For environment preparation of Megatron-SWIFT on Huawei Ascend NPU, please refer to [NPU Best Practices](../BestPractices/NPU-support.md).
 
 ## NPU Performance Data Collection
 

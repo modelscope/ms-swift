@@ -1,6 +1,6 @@
-# Ascend NPU
+# Huawei Ascend NPU
 
-关于Megatron-SWIFT在Ascend NPU上的环境准备，请参考[NPU最佳实践](../BestPractices/NPU-support.md)。
+关于Megatron-SWIFT在Huawei Ascend NPU上的环境准备，请参考[NPU最佳实践](../BestPractices/NPU-support.md)。
 
 ## NPU 性能数据采集
 

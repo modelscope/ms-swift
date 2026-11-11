@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next 最佳实践
 
-[Qwen3.8-Flash-Next](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next) 是一个多模态超稀疏 MoE 模型，共 125B 参数（其中包含一张额外的 51B N-gram 嵌入表），每 token 激活约 6B。它的架构结合了三个关键设计：
+[Qwen3.8-Flash-Next](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next) 是一个多模态超稀疏 MoE 模型，具有 125B 参数（每 token 激活约 6B），另有一张 51B N-gram 嵌入表和一个 4B MTP 模块。它的架构结合了三个关键设计：
 
 ![Qwen3.8-Flash-Next 模型结构](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.8-Flash-Next/architecture.png)
 

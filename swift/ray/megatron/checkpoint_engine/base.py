@@ -40,6 +40,7 @@ class MasterMetadata:
     zmq_port: int
     nccl_store_host: str = ''
     nccl_store_port: int = 0
+    auth_key: str = ''  # HMAC shared secret for authenticating ZMQ control messages
 
 
 class CheckpointEngine(ABC):

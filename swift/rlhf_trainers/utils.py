@@ -667,6 +667,59 @@ def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
     return torch.cat(per_token_entropies, dim=0)
 
 
+def selective_log_softmax(logits, index, temperature: float = 1.0, row_mask=None, chunk_size: int = 1024):
+    """Compute the log-probabilities of `index` under `logits` in a memory-efficient way.
+
+    Equivalent to `torch.gather(logits.log_softmax(-1), dim=-1, index=index)`, but the rows are
+    processed in chunks instead of one at a time.
+
+    TRL's implementation loops over the *leading* dimension of `logits`. That is fine when it is a
+    batch dimension, but under `padding_free`/packing swift flattens the logits to
+    `[total_nnz, vocab_size]`, so the loop degenerates to one iteration per token: thousands of
+    tiny kernel launches per call. Chunking keeps the peak memory bounded by `chunk_size` rows
+    (the original motivation for the loop) while batching the work back together.
+
+    Args:
+        logits: Tensor of shape `(..., num_classes)`.
+        index: Tensor of shape `(...)` or `(..., K)`, positions to gather.
+        temperature: Divides the logits before the log-softmax.
+        row_mask: Optional mask; rows where it is zero return zero log-probability.
+        chunk_size: Number of rows expanded to log-probabilities at a time.
+
+    Returns:
+        Gathered log probabilities with the same shape as `index`.
+    """
+    if temperature <= 0:
+        raise ValueError('temperature must be positive')
+    if temperature != 1.0:
+        logits = logits / temperature
+    squeeze = index.ndim == logits.ndim - 1
+    if squeeze:
+        index = index.unsqueeze(-1)
+
+    flat_logits = logits.reshape(-1, logits.shape[-1])
+    flat_index = index.reshape(-1, index.shape[-1])
+    if logits.dtype in (torch.float32, torch.float64):
+        # log_softmax(x)_i == x_i - logsumexp(x), which avoids expanding the whole tensor.
+        selected_logits = torch.gather(flat_logits, dim=-1, index=flat_index)
+        logsumexp_values = torch.cat([torch.logsumexp(chunk, dim=-1) for chunk in flat_logits.split(chunk_size, dim=0)])
+        # one logsumexp per row, broadcast over the K gathered positions
+        per_token_logps = selected_logits - logsumexp_values.unsqueeze(-1)
+    else:
+        # logsumexp is unstable in low precision, so materialise the log-softmax per chunk.
+        per_token_logps = torch.cat([
+            F.log_softmax(chunk, dim=-1).gather(dim=-1, index=chunk_index)
+            for chunk, chunk_index in zip(flat_logits.split(chunk_size, dim=0), flat_index.split(chunk_size, dim=0))
+        ])
+    per_token_logps = per_token_logps.reshape(index.shape)
+
+    if squeeze:
+        per_token_logps = per_token_logps.squeeze(-1)
+    if row_mask is not None:
+        per_token_logps = per_token_logps.masked_fill(row_mask == 0, 0.0)
+    return per_token_logps
+
+
 def load_pil_img(img) -> Image:
     if isinstance(img, (list, tuple)):
         if len(img) == 1:
@@ -731,8 +784,39 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
         if messages and messages[-1].get('role') == 'assistant':
             data = {**data, 'messages': messages[:-1] + [{**messages[-1], 'content': None}]}
 
-    encoded = template.encode(data, return_length=True)
+    response_ids = sample.response_token_ids
+    if response_ids and isinstance(response_ids[0], int):
+        response_ids = [response_ids]
+    response_len = len(response_ids[-1]) if response_ids else 0
+    # Extend by response_len so the prompt truncates at max_length, matching the engine pre-fill.
+    orig_max_length = getattr(template, 'max_length', None)
+    try:
+        if response_len and orig_max_length is not None:
+            template.max_length = orig_max_length + response_len
+        encoded = template.encode(data, return_length=True)
+    finally:
+        if orig_max_length is not None:
+            template.max_length = orig_max_length
     return encoded
+
+
+def check_rollout_truncation_config(template: Template, server_cfg: Dict[str, Any]) -> None:
+    """Warn when the rollout server's truncation config differs from the training template.
+
+    Training re-encodes with ``max_length + completion_len`` so its prompt truncation should land
+    where the engine pre-filled; a mismatch therefore hints that the two sides may truncate
+    differently (this is only a drift warning, not a hard failure).
+    """
+    if 'max_length' not in server_cfg or 'truncation_strategy' not in server_cfg:
+        return  # older rollout server does not report truncation config; skip the check
+    train_cfg = (template.max_length, template.truncation_strategy)
+    server_cfg_tuple = (server_cfg.get('max_length'), server_cfg.get('truncation_strategy'))
+    if train_cfg != server_cfg_tuple:
+        get_logger().warning_once(
+            f'Rollout truncation config mismatch: train max_length/truncation_strategy={train_cfg}, '
+            f'rollout server={server_cfg_tuple}. Training re-encodes with '
+            'max_length + completion_len; please align max_length/truncation_strategy (and '
+            'mm_processor_kwargs) on both sides.')
 
 
 def replace_assistant_response_with_ids(messages: 'Messages',

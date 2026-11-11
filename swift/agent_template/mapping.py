@@ -3,6 +3,7 @@ from .deepseek_v3_1 import DeepSeekV31AgentTemplate
 from .deepseek_v4 import DeepSeekV4AgentTemplate
 from .deepseek_v41 import DeepSeekV41AgentTemplate
 from .extra import ReactGRPOAgentTemplate
+from .flint import FlintAgentTemplate
 from .gemma4 import Gemma4AgentTemplate
 from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate,
                    GLM5_1AgentTemplate)
@@ -62,6 +63,8 @@ agent_template_map = {
     'xing4_0': Xing4_0AgentTemplate,
     # ref: https://modelscope.cn/models/google/gemma-4-12B-it
     'gemma4': Gemma4AgentTemplate,
+    # ref: https://modelscope.cn/models/RecursiveSI/flint
+    'flint': FlintAgentTemplate,
     # extra
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate,

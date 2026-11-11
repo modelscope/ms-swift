@@ -38,7 +38,7 @@ try:
     from transformers.trainer_utils import sort_checkpoints
 except ImportError:
     sort_checkpoints = None
-from transformers.utils import is_torch_musa_available
+from transformers.utils import is_torch_musa_available, is_torch_npu_available
 from types import MethodType
 from typing import Callable, Dict, List, Optional
 
@@ -209,6 +209,19 @@ class SwiftMixin:
             yield
         finally:
             trainer.deepspeed_load_checkpoint = origin_deepspeed_load_checkpoint
+
+    def _track_num_input_tokens(self, inputs):
+        """De-duplicate the SP replicas counted by HF's all-process gather."""
+        if not hasattr(super(), '_track_num_input_tokens'):
+            return  # transformers < 4.46
+        sp_size = self.template.sequence_parallel_size
+        if sp_size <= 1:
+            return super()._track_num_input_tokens(inputs)
+        before = self.state.num_input_tokens_seen
+        super()._track_num_input_tokens(inputs)
+        delta = self.state.num_input_tokens_seen - before
+        if delta:
+            self.state.num_input_tokens_seen = before + delta // sp_size
 
     def get_use_logits_to_keep(self, default_value: bool = True):
         use_logits_to_keep = self.args.use_logits_to_keep
@@ -624,6 +637,40 @@ class SwiftMixin:
         if checkpoint_dir:
             update_last_checkpoint_symlink(checkpoint_dir)
 
+    def _build_rng_states(self) -> Dict:
+        """Collect the RNG states to checkpoint, including the active accelerator's.
+
+        `Trainer._load_rng_state` (and its `set_rng_state_for_device` helper) restores the
+        accelerator state from the 'cuda' / 'npu' / 'musa' entries, so every accelerator the base
+        implementation covers has to be saved here as well.
+        """
+        # Save RNG state in non-distributed training
+        rng_states = {
+            'python': random.getstate(),
+            'numpy': np.random.get_state(),
+            'cpu': torch.random.get_rng_state(),
+        }
+        if torch.cuda.is_available():
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                # In non distributed, we save the global
+                # CUDA RNG state (will take care of DataParallel)
+                rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
+            else:
+                rng_states['cuda'] = torch.cuda.random.get_rng_state()
+        if is_torch_npu_available():
+            # Restored by `Trainer._load_rng_state` from the 'npu' key.
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                rng_states['npu'] = torch.npu.random.get_rng_state_all()
+            else:
+                rng_states['npu'] = torch.npu.random.get_rng_state()
+        if is_torch_musa_available():
+            # Restored by `Trainer._load_rng_state` from the 'musa' key.
+            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+                rng_states['musa'] = torch.musa.get_rng_state_all()
+            else:
+                rng_states['musa'] = torch.musa.get_rng_state()
+        return rng_states
+
     def _save_flash_checkpoint(self, model, trial, metrics=None):
         from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
         from transformers.trainer import DeepSpeedSchedulerWrapper
@@ -690,25 +737,7 @@ class SwiftMixin:
                 else:
                     self.state.stateful_callbacks[cb_name] = cb_state
             self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
-        # Save RNG state in non-distributed training
-        rng_states = {
-            'python': random.getstate(),
-            'numpy': np.random.get_state(),
-            'cpu': torch.random.get_rng_state(),
-        }
-        if torch.cuda.is_available():
-            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
-                # In non distributed, we save the global
-                # CUDA RNG state (will take care of DataParallel)
-                rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
-            else:
-                rng_states['cuda'] = torch.cuda.random.get_rng_state()
-        if is_torch_musa_available():
-            # Restored by `Trainer._load_rng_state` from the 'musa' key.
-            if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
-                rng_states['musa'] = torch.musa.get_rng_state_all()
-            else:
-                rng_states['musa'] = torch.musa.get_rng_state()
+        rng_states = self._build_rng_states()
 
         # A process can arrive here before the process 0 has a chance to
         # save the model, in which case output_dir may not yet exist.
@@ -937,6 +966,14 @@ class SwiftMixin:
 
                         model.forward = MethodType(reranker_forward, model)
 
+    @staticmethod
+    def _is_deepspeed_version_at_least(min_version: str) -> bool:
+        try:
+            import deepspeed
+            return version.parse(deepspeed.__version__.strip()) >= version.parse(min_version)
+        except (ImportError, AttributeError, TypeError, ValueError):
+            return False
+
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
@@ -947,7 +984,16 @@ class SwiftMixin:
         else:
             use_reentrant_ = None
         if use_reentrant_ is None:
-            if is_dist() and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
+            ds_plugin = getattr(getattr(self, 'accelerator', None), 'state', None)
+            ds_plugin = getattr(ds_plugin, 'deepspeed_plugin', None)
+            zero3 = getattr(ds_plugin, 'zero_stage', None) == 3
+            if (self.is_deepspeed_enabled and zero3 and self._is_deepspeed_version_at_least('0.19.3')):
+                # Reentrant checkpointing + ZeRO-3 leaks the gathered parameters of
+                # recomputed layers during backward (deepspeedai/DeepSpeed#8481).
+                # Non-reentrant is only safe here with the ZeRO-3 fixes in >=0.19.3
+                # (deepspeedai/DeepSpeed#8130, #8144, #8148).
+                use_reentrant_ = False
+            elif is_dist() and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
                 use_reentrant_ = False
             else:
                 use_reentrant_ = True
@@ -1360,7 +1406,7 @@ class DataLoaderMixin:
             return {'multiprocessing_context': mp_context}
         return {}
 
-    def get_sp_dataloader(self, dataset, batch_size, skip_batches=0, *, shuffle=True, seed=42):
+    def get_sp_dataloader(self, dataset, batch_size, skip_batches=0, *, shuffle=True, seed=42, round_up=False):
 
         data_collator = self.data_collator
         if isinstance(dataset, datasets.Dataset):
@@ -1368,7 +1414,7 @@ class DataLoaderMixin:
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
         if hasattr(dataset, '__len__'):
-            sampler = SequenceParallelSampler(sequence_parallel, dataset, shuffle=shuffle, seed=seed)
+            sampler = SequenceParallelSampler(sequence_parallel, dataset, shuffle=shuffle, seed=seed, round_up=round_up)
             dataloader_params = {
                 'batch_size': batch_size,
                 'collate_fn': data_collator,
@@ -1488,7 +1534,8 @@ class DataLoaderMixin:
             if eval_dataset is None and self.eval_dataset is None:
                 raise ValueError('Trainer: evaluation requires an eval_dataset.')
             eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-            dataloader = self.get_sp_dataloader(eval_dataset, self.args.eval_batch_size)
+            # Evaluation must cover every sample, so keep the ceil + round_up behaviour here.
+            dataloader = self.get_sp_dataloader(eval_dataset, self.args.eval_batch_size, round_up=True)
         if dataloader is None:
             with self._disable_group_by_length():
                 return super().get_eval_dataloader(eval_dataset=eval_dataset)

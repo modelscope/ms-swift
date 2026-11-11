@@ -315,6 +315,33 @@ class AIShell1Preprocessor(ResponsePreprocessor):
         return super().preprocess(row)
 
 
+class FleursCantonesePreprocessor(ResponsePreprocessor):
+    prompt = ('Transcribe the audio in Cantonese using traditional Chinese characters. '
+              'Preserve the spoken wording and use punctuation. Output only the transcript.')
+
+    def prepare_dataset(self, dataset):
+        from datasets import Audio
+        return dataset.cast_column('audios', Audio(decode=False))
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row['query'] = self.prompt
+        row['response'] = row['raw_transcription']
+        row['audios'] = [row['audios']['bytes']]
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='google/fleurs',
+        hf_dataset_id='google/fleurs',
+        subsets=[
+            SubsetDataset('yue_hant_hk_train', 'yue_hant_hk', ['train']),
+            SubsetDataset('yue_hant_hk_validation', 'yue_hant_hk', ['validation']),
+            SubsetDataset('yue_hant_hk_test', 'yue_hant_hk', ['test']),
+        ],
+        preprocess_func=FleursCantonesePreprocessor(),
+        tags=['chat', 'multi-modal', 'audio']))
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='speech_asr/speech_asr_aishell1_trainsets',

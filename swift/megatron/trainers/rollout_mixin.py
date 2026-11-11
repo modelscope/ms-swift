@@ -39,8 +39,8 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        vllm_supports_lora_load_inplace)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
-from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
-                         synchronize, to_device)
+from swift.utils import (HfConfigFactory, JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available,
+                         remove_response, synchronize, to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
                     offload_megatron_optimizer)
 
@@ -219,8 +219,22 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         args = self.args
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size', None)
         assert vp_size is None or vp_size == 1, 'Teacher distillation does not support VPP.'
-        self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
-        self.teacher_models = get_mcore_model(args, self.teacher_hf_config)
+        self.teacher_hf_config = HfConfigFactory.load_hf_config(args.teacher_model_dir, trust_remote_code=True)
+        if self.teacher_hf_config is None:
+            self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
+        teacher_args = copy(args)
+        teacher_args.model_dir = args.teacher_model_dir
+        teacher_args.megatron_model_meta = args.teacher_megatron_model_meta
+        # The teacher only provides logits and does not need the MTP.
+        teacher_args.mtp_num_layers = 0
+        teacher_args.mtp_shared_weights = False
+        teacher_args.mtp_use_repeated_layer = False
+        teacher_args.megatron_extra_kwargs = {
+            key: value
+            for key, value in (args.megatron_extra_kwargs or {}).items()
+            if key not in {'mtp_num_layers', 'mtp_shared_weights', 'mtp_use_repeated_layer'}
+        }
+        self.teacher_models = get_mcore_model(teacher_args, self.teacher_hf_config)
         self.teacher_config = self.teacher_models[0].config
         if not args.use_cpu_initialization:
             for teacher_model in self.teacher_models:
@@ -400,7 +414,8 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         if self.vllm_mode == 'server':
             # Server mode uses external vLLM server
             if self.is_main_process:
-                self.vllm_client.get_engine_type()
+                from swift.rlhf_trainers.utils import check_rollout_truncation_config
+                check_rollout_truncation_config(self.template, self.vllm_client.get_engine_type())
                 self.vllm_client.reset_mm_cache()
                 enable_lora = [self.vllm_client.enable_lora]
                 enable_multi_turn = [self.vllm_client.enable_multi_turn]

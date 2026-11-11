@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Best Practice
 
-[Qwen3.8-Flash-Next](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next) is a multimodal, ultra-sparse MoE model with 125B parameters in total (including an additional 51B N-gram embedding table), activating about 6B per token. Its architecture combines three key designs:
+[Qwen3.8-Flash-Next](https://modelscope.cn/models/Qwen/Qwen3.8-Flash-Next) is a multimodal, ultra-sparse MoE model with 125B parameters (about 6B activated per token), plus a 51B N-gram embedding table and a 4B MTP module. Its architecture combines three key designs:
 
 ![Qwen3.8-Flash-Next architecture](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.8-Flash-Next/architecture.png)
 

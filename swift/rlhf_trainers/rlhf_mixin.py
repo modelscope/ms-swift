@@ -10,9 +10,9 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl.models.utils import prepare_deepspeed
 from trl.trainer import disable_dropout_in_model
-from trl.trainer.utils import selective_log_softmax
 from typing import Dict, List, Optional, Tuple, Union
 
+from swift.rlhf_trainers.utils import selective_log_softmax
 from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.utils import HfConfigFactory
 

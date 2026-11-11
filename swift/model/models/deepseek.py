@@ -708,3 +708,21 @@ register_model(
         requires=['transformers==4.46.3', 'easydict'],
         tags=['vision'],
     ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.unlimited_ocr2,
+        [
+            ModelGroup([
+                Model('PaddlePaddle/Unlimited-OCR-2', 'baidu/Unlimited-OCR-2'),
+            ]),
+        ],
+        UnlimitedOCRLoader,
+        template=TemplateType.unlimited_ocr,
+        model_arch=ModelArch.unlimited_ocr,
+        architectures=['UnlimitedOCRForCausalLM'],
+        # remote code hard-imports both: `deepencoder.py` (easydict) and `modeling_unlimitedocr.py`
+        # (addict, a different package).
+        requires=['transformers>=4.46.3,<5', 'easydict', 'addict'],
+        tags=['vision'],
+    ))

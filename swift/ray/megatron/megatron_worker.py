@@ -224,18 +224,14 @@ class MegatronWorker(CheckpointEngineMixin):
             f'{args.num_microbatches}; check per_device_generation_batch_size / micro_batch_size config.')
         router_replay_mode = getattr(args, 'router_replay_mode', 'disabled')
         need_routing_replay = router_replay_mode != 'disabled'
-        RouterReplay = None
         if need_routing_replay:
-            try:
-                from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-                RouterReplay.set_global_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
-            except ImportError:
-                need_routing_replay = False
+            from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+            RouterReplay.set_global_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
 
         try:
             megatron.run_train_step(data_iterator, None)
         finally:
-            if need_routing_replay and RouterReplay is not None:
+            if need_routing_replay:
                 RouterReplay.clear_global_indices()
                 RouterReplay.clear_global_router_replay_action()
         del data_iterator
@@ -398,15 +394,8 @@ class MegatronWorker(CheckpointEngineMixin):
         enable_routing_replay = bool(getattr(megatron, 'enable_routing_replay', False))
         router_mode = getattr(args, 'router_replay_mode', 'disabled')
 
-        RouterReplay = None
-        RouterReplayAction = None
         if enable_routing_replay:
-            try:
-                from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-            except ImportError:
-                enable_routing_replay = False
-
-        if enable_routing_replay and RouterReplay is not None:
+            from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
             if router_mode == 'R2':
                 RouterReplay.set_global_router_replay_action(RouterReplayAction.RECORD)
             elif router_mode == 'R3':
@@ -417,7 +406,7 @@ class MegatronWorker(CheckpointEngineMixin):
             logps_packed, routing_topk_idx = megatron.compute_per_token_logps(
                 model, iter([model_inputs]), temperature=temperature)
         finally:
-            if enable_routing_replay and RouterReplay is not None:
+            if enable_routing_replay:
                 RouterReplay.clear_global_indices()
                 RouterReplay.clear_global_router_replay_action()
 

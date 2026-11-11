@@ -36,7 +36,7 @@ class TestLazyDatasetRetries(unittest.TestCase):
         self.assertEqual(len(self.attempts), 3)
         self.assertEqual(set(self.attempts), {0, 1, 2})
 
-    def test_retry_cursor_wraps_without_repeating_initial_row(self):
+    def test_repeated_access_does_not_retry_initial_row(self):
         data = self._dataset([False, True], random_state=1)
         for _ in range(4):
             self.attempts.clear()
@@ -70,6 +70,29 @@ class TestLazyDatasetRetries(unittest.TestCase):
         data = self._dataset([False, True], random_state=1)
         loader = DataLoader(data, batch_size=2, num_workers=0)
         self.assertEqual(next(iter(loader))['id'].tolist(), [1, 1])
+
+    def test_fallback_matches_after_resume(self):
+        valid = [i not in {2, 20} for i in range(64)]
+        continuous = self._dataset(valid, error=MaxLengthError, random_state=42)
+        full = [continuous[i] for i in range(32)]
+
+        interrupted = self._dataset(valid, error=MaxLengthError, random_state=42)
+        prefix = [interrupted[i] for i in range(16)]
+        resumed = self._dataset(valid, error=MaxLengthError, random_state=42)
+        tail = [resumed[i] for i in range(16, 32)]
+
+        self.assertEqual(full, prefix + tail)
+
+    def test_fallback_is_independent_of_access_order(self):
+        valid = [i not in {2, 3, 20} for i in range(64)]
+        for error in [ValueError, MaxLengthError]:
+            with self.subTest(error=error.__name__):
+                first = self._dataset(valid, error=error, random_state=42)
+                expected = {i: first[i] for i in [2, 3, 20]}
+                second = self._dataset(valid, error=error, random_state=42)
+                for i in [20, 3, 2, 20, 2]:
+                    self.assertEqual(second[i], expected[i])
+                self.assertEqual(second[-44], expected[20])
 
 
 if __name__ == '__main__':
