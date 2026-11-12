@@ -3,8 +3,8 @@ import ast
 import json
 import numpy as np
 import os
+import pyarrow as pa
 from collections import Counter
-from contextlib import contextmanager
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
@@ -133,7 +133,7 @@ class RowPreprocessor:
         published as Parquet/Arrow already carry that padding, `Dataset.from_list` adds it
         while inferring the features, and casting a batch to the features inferred from
         another one may even drop fields silently. The padding is removed here and
-        `_patch_arrow_writer` stores the columns as `List(Json())`, so that every schema
+        `_install_arrow_writer_patch` stores the columns as `List(Json())`, so that every schema
         survives the Arrow cache and the concatenation verbatim.
         """
         for key in TOOL_KEYS:
@@ -216,6 +216,14 @@ class RowPreprocessor:
                 box[0], box[2] = box[2], box[0]
             if box[1] > box[3]:
                 box[1], box[3] = box[3], box[1]
+
+    def _mapped_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        # `Dataset.map` runs this function (hence the writes) inside worker processes that
+        # may have been freshly spawned, so the writer patch has to be installed here and
+        # not only in the parent; subclasses overriding `batched_preprocess` are covered
+        # because the wrapper, not the override, is what `__call__` maps with.
+        self._install_arrow_writer_patch()
+        return self.batched_preprocess(batched_row, **kwargs)
 
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool,
                            ignore_max_length_error: bool) -> Dict[str, Any]:
@@ -300,41 +308,113 @@ class RowPreprocessor:
             dataset = dataset.select_columns(k_list)
         return dataset
 
-    @contextmanager
-    def _patch_arrow_writer(self):
-        # fix AI-ModelScope/ms_agent_for_agentfabric:all
+    # fix AI-ModelScope/ms_agent_for_agentfabric:all
+    @staticmethod
+    def _install_arrow_writer_patch():
+        """Force our canonical features onto every ArrowWriter created in this process.
+
+        Without the patch, `datasets` stores the message/tool columns with the types it
+        infers from the batches, and heterogeneous dicts are aligned into one struct: the
+        fields a row never defined are padded with `null` (see `_normalize_tools`), and the
+        schemas of two datasets preprocessed separately become incompatible, so
+        `concatenate_datasets` raises. Forcing `List(Json())` keeps every schema verbatim
+        instead, also through the Arrow cache.
+
+        `Dataset.map` runs the writes in worker processes (`num_proc` >= 1 spawns a pool,
+        even for one worker, and Windows/macOS spawn fresh interpreters instead of
+        forking), so patching in the parent before `map` is not enough: the patch has to
+        be installed in every process that writes, hence the wrapper passed to
+        `map` below. The patch is idempotent and stays installed; it only
+        touches the columns we own and is a no-op for a writer whose features already
+        match them.
+        """
+        from datasets import DatasetInfo
+        from datasets import Features as HfFeatures
         from datasets.arrow_writer import ArrowWriter
+        from datasets.features import Json, List
+        if getattr(ArrowWriter, '_swift_patched', False):
+            return
 
         def _new_init(_self, schema=None, features=None, *args, **kwargs):
-
-            if features is not None:
-                from datasets.features import Json, List
-                messages_feature = List(Json())
-                for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
+            # Only the writers that will update their features from the written batches are
+            # ours (the `Dataset.map` ones); a writer whose caller fixed the features - e.g.
+            # a hub dataset builder - must stay completely untouched, since its caller
+            # compares the written data against the very `Features` object it passed in.
+            if features is None or not kwargs.get('update_features', False):
+                return ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
+            # Work on a copy: the caller may hold this `Features` object somewhere live
+            # (a dataset's `features`), and mutating it here would leak state across
+            # datasets, because the patch stays installed for the process lifetime.
+            features = HfFeatures({**features})
+            messages_feature = List(Json())
+            for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
+                if key in features:
                     features[key] = messages_feature
-                # Tool schemas are heterogeneous as well; `Json` keeps every schema verbatim
-                # instead of aligning them into one struct type (see `_normalize_tools`).
-                # Guarded, unlike the message keys above: only agent datasets carry tools and
-                # adding the column would give every other dataset a null one.
-                tools_feature = List(Json())
-                for key in TOOL_KEYS:
-                    if key in features:
-                        features[key] = tools_feature
-                image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
-                features['images'] = image_feature
-                if 'teacher_images' in features:
-                    features['teacher_images'] = image_feature
-                features['objects'] = Json()
-                features['chat_template_kwargs'] = Json()
-            ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
+            # Tool schemas are heterogeneous as well; `Json` keeps every schema verbatim
+            # instead of aligning them into one struct type (see `_normalize_tools`).
+            # Guarded: only agent datasets carry tools, and adding the column would give
+            # every other dataset a null one.
+            tools_feature = List(Json())
+            for key in TOOL_KEYS:
+                if key in features:
+                    features[key] = tools_feature
+            image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+            for key in ['images', 'teacher_images']:
+                if key in features:
+                    features[key] = image_feature
+            for key in ['objects', 'chat_template_kwargs']:
+                if key in features:
+                    features[key] = Json()
+            return ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
+
+        def _new_build_schema(_self, inferred_schema):
+            schema, features = ArrowWriter.__origin_build_schema(_self, inferred_schema)
+            if features is None or not getattr(_self, 'update_features', False):
+                return schema, features
+            # `update_features=True` (the `Dataset.map` default) lets the features inferred
+            # from the written batches win wherever they differ from the ones forced by
+            # `_new_init`, and a spawned worker never ran `_new_init` at all, so the
+            # canonical features may have been lost entirely. Re-assert them, but only for
+            # the columns the rows actually contain; `features` may also still carry
+            # columns forced by `_new_init` that the data never had, and keeping those
+            # would fill the dataset with all-null columns. `write_table` casts each batch
+            # to the rebuilt schema, exactly like `Dataset.cast_column` does.
+            inferred_names = set(inferred_schema.names)
+            for key in [key for key in list(features.keys()) if key not in inferred_names]:
+                features.pop(key)
+            message_keys = ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']
+            message_feature = List(Json())
+            tools_feature = List(Json())
+            image_feature = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+            canonical = {key: message_feature for key in message_keys}
+            canonical.update({key: tools_feature for key in TOOL_KEYS})
+            canonical.update({'images': image_feature, 'teacher_images': image_feature})
+            canonical.update({'objects': Json(), 'chat_template_kwargs': Json()})
+            changed = {}
+            for key, feature in canonical.items():
+                if key in inferred_names and features.get(key) != feature:
+                    features[key] = feature
+                    changed[key] = feature
+            if changed:
+                field_types = {
+                    key: HfFeatures({
+                        key: feature
+                    }).arrow_schema.field(key).type
+                    for key, feature in changed.items()
+                }
+                fields = [
+                    pa.field(field.name, field_types.get(field.name, field.type), nullable=field.nullable)
+                    for field in schema
+                ]
+                metadata = ArrowWriter._build_metadata(DatasetInfo(features=features), _self.fingerprint)
+                schema = pa.schema(fields, metadata=metadata)
+            return schema, features
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
         ArrowWriter.__init__ = _new_init
-        try:
-            yield
-        finally:
-            ArrowWriter.__init__ = ArrowWriter.__origin_init__
-            del ArrowWriter.__origin_init__
+        ArrowWriter.__origin_build_schema = ArrowWriter._build_schema
+        ArrowWriter._build_schema = _new_build_schema
+        ArrowWriter._swift_patched = True
 
     def _cast_pil_image(self, dataset):
         features = dataset.features
@@ -387,11 +467,12 @@ class RowPreprocessor:
                 dataset = dataset.rename_columns(columns)
 
         ignore_max_length_error = True
-        with self._patch_arrow_writer(), safe_ddp_context(None, True):
+        self._install_arrow_writer_patch()
+        with safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
                 map_kwargs['cache_file_name'] = self._map_cache_file(dataset._fingerprint)
             dataset_mapped = dataset.map(
-                self.batched_preprocess,
+                self._mapped_preprocess,
                 fn_kwargs={
                     'strict': strict,
                     'ignore_max_length_error': ignore_max_length_error,
