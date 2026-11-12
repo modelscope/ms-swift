@@ -59,6 +59,7 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
         os.environ['TOKENIZERS_PARALLELISM'] = 'true'
         self._try_init_process_group()
         super(PreTrainedModel, self).__init__()
+        self._init_dp_balance(kwargs.pop("dp_balance", True))
         self._default_tokenizer = None
         # Overrides the @remote_class-wrapped base, so no automatic device_mesh injection; resolve
         # the global default to uphold the "a constructed model holds a real mesh" invariant.

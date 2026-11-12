@@ -270,3 +270,13 @@ def sample_token_lengths(sample):
     prompt = sum(bool(x) for x in attention[:first])
     response = sum(bool(x) for x in attention[first:])
     return prompt, response
+
+
+def batch_input_lengths(samples):
+    """Lightweight sequence lengths for TrainableModel dispatch; never materialize encoded ObjectRefs.
+
+    Missing metadata leaves ordinary encoded inputs to the model's length reader. Opaque inputs
+    without lengths are dispatched unchanged by the model, rather than fetched onto the controller.
+    """
+    counts = [getattr(sample, 'token_lengths', None) for sample in samples]
+    return [sum(item) for item in counts] if all(item is not None for item in counts) else None

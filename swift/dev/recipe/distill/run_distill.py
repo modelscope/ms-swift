@@ -7,7 +7,6 @@ import random
 from itertools import islice
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
-from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
 from swift.dev.recipe.streaming import publish_rollout_weights
 from swift.dev.utils.logger import get_logger
 
@@ -62,17 +61,11 @@ def _train_rows(cluster: Cluster, state: StepState, rows: List[DistillRow],
         state.micro_step += (hi - lo) // train_batch_size
         # The worker builds the kwargs where the teacher forward runs -- the driver never sees the
         # full-vocab logits or the logps, only the light kwargs carrying them as refs.
-        plan = (plan_rollout_batch(
-            state, [row.feature for row in update_rows], samples=update_rows,
-            micro_batch_kwargs={'micro_batch_size': micro_batch_size})
-                if use_student and getattr(state, 'balance_batch', False) else None)
-        if plan is not None:
-            update_rows = plan.apply(update_rows)
         kwargs = dict(cluster.worker.forward_kwargs(update_rows, use_student))
         kwargs.update(gradient_accumulation_steps=1, micro_batch_size=micro_batch_size)
         cluster.model.forward_backward(**kwargs)
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        record_rollout_step(state, plan)
+        state.record()
         optimizer_steps += 1
         state.step_tail(save=save)
     return optimizer_steps
@@ -303,7 +296,6 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     state = StepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
-        balance_batch=rl_config.balance_batch,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

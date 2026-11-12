@@ -101,7 +101,7 @@ class DistillWorker:
         adds the supervised CE term to a dataset-sourced update); the logps forms score the same rows
         either way.
         """
-        from swift.dev.utils.scoring import copy_inputs
+        from swift.dev.utils.scoring import batch_input_lengths, copy_inputs
 
         features = [row.feature for row in rows]
         if self.signal == 'logits':
@@ -140,6 +140,7 @@ class DistillWorker:
                 signal_kwargs['teacher_weights'] = tuple(self.teacher_weights)
         return {
             'inputs': copy_inputs(features),
+            'input_lengths': batch_input_lengths(rows),
             'gradient_accumulation_steps': 1,
             **signal_kwargs,
         }

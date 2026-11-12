@@ -1096,13 +1096,14 @@ def _build_transformers_model(
     if enable_router_replay:
         kwargs["enable_router_replay"] = True
 
-    # NEFTune + acc_strategy are transformers-family ctor kwargs consumed by the twinkle base
-    # constructor (megatron rejects both in _HF_ONLY). Plain-HF and unsloth both reach that
+    # NEFTune + acc_strategy are transformers-family options. DP balance is shared by TrainableModel.
+    # Plain-HF and unsloth both reach the TransformersModel
     # constructor; the ST branch threads acc_strategy itself and rejects neftune in its guard.
     if train_config is not None:
         if train_config.neftune_noise_alpha:
             kwargs["neftune_noise_alpha"] = train_config.neftune_noise_alpha
         kwargs["acc_strategy"] = train_config.acc_strategy
+        kwargs["dp_balance"] = train_config.dp_balance
 
     # Three exclusive paths: sentence_transformers (its own pipeline) / unsloth (owns construction
     # + LoRA install) / plain TransformersModel with the family loader handed over.
@@ -1273,6 +1274,7 @@ def _build_sentence_transformer_model(
         "strategy": kwargs["strategy"],
         "mixed_precision": kwargs["mixed_precision"],
         "ddp_config": kwargs.get("ddp_config"),
+        "dp_balance": kwargs.get("dp_balance", True),
     }
     # The loader is the authority on trust_remote_code for the ST backbone build: the base
     # SentenceTransformerModel takes no model_loader, so thread the resolved flag through
@@ -1731,6 +1733,7 @@ def _build_megatron_model(
         bridge_backend=distributed_config.bridge_backend,
         **extra_kwargs,
     )
+    model_kwargs["dp_balance"] = train_config.dp_balance if train_config is not None else True
     if distributed_config.mode != "local":
         model_kwargs["remote_group"] = remote_group or "model"
         # Same-group actor disambiguator, mirroring the transformers path's _apply_ray_placement.

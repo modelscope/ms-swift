@@ -138,6 +138,8 @@ class TrainConfig:
     full_determinism: bool = False
     use_liger_kernel: bool = False
     neftune_noise_alpha: Optional[float] = None
+    # Shared TrainableModel DP balancing (Transformers / Megatron); unsafe loss/layout configurations skip.
+    dp_balance: bool = True
 
     # === Training Strategy ===
     router_aux_loss_coef: float = 0.0
