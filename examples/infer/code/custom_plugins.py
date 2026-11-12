@@ -15,7 +15,7 @@ The kinds demonstrated here, and the field that selects each:
 
   * reward (sync)   -- ``ORM.__call__(trajectories, **kwargs)``        -> ``--orm`` / ``--prm`` by name
   * reward (async)  -- the SAME base, ``async def __call__``           -> ``--orm`` / ``--prm`` by name
-  * tool            -- ``ToolPlugin.build(env)``                       -> ``--tools`` by name
+  * tool            -- ``ToolPlugin.build()``                          -> ``--tools`` by name
   * model loader    -- ``ModelLoader`` + ``@register_model``           -> ``--model_type`` by name
   * dataset loader  -- ``DatasetLoader`` + ``@register_dataset``       -> ``--dataset`` by name
   * template        -- ``register_template(TemplateMeta(...))``        -> ``--template`` by name
@@ -79,11 +79,11 @@ class AsyncLengthBonus(ORM):
 
 
 # --- tool: a multi-turn rollout tool ------------------------------------------------------
-# A ToolPlugin is built once per run and asked for its tools per episode: build(env) receives the leased
-# sandbox Env and returns the twinkle Tool objects the model may call that turn (return [] to contribute
-# nothing). Each Tool implements __call__(tool_name, arguments) -> str (the observation fed back to the
-# model) and tool_info() -> the OpenAI-shaped schema advertised in the prompt. Tools are multi-turn, so a
-# run naming one also needs --max_turns.
+# A ToolPlugin is built once per run and asked for its tools once: build() returns the twinkle Tool
+# objects every episode may call (the rollout copies them per episode; return [] to contribute nothing).
+# Each Tool implements __call__(tool_name, arguments) -> str (the observation fed back to the model) and
+# tool_info() -> the OpenAI-shaped schema advertised in the prompt. Tools are multi-turn, so a run naming
+# one also needs --max_turns.
 
 
 class _WordCount:
@@ -115,10 +115,10 @@ class _WordCount:
 
 @PluginRegistry.register('tool', 'word_count')
 class WordCountTools(ToolPlugin):
-    """Expose the word_count tool. Selected with ``--tools word_count``. It touches no workspace, so the
-    leased env is ignored; a tool that acts in the sandbox would wrap ``env`` (see ``EnvTool.from_env``)."""
+    """Expose the word_count tool. Selected with ``--tools word_count``. It touches no workspace; tools
+    that act in the sandbox are the env's own (``--tools sandbox``)."""
 
-    def build(self, env: Any) -> List[Any]:
+    def build(self) -> List[Any]:
         return [_WordCount()]
 
 

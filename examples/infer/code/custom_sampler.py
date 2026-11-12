@@ -17,12 +17,12 @@ of the shared plugin file means a training run that builds no sampler never pays
 
 Constructor contract (what ``build_sampler`` calls, and so what any custom sampler must accept)::
 
-    Cls(model, *, engine_args, device_mesh, remote_group)
+    Cls(model, *, engine_args, device_mesh, template, remote_group)
 
 ``engine_args`` is passed VERBATIM for a custom sampler -- dev applies none of the built-in engines'
 ModelConfig/LoRA/pooling knob mapping, so this class owns its own knob vocabulary. ``device_mesh`` carries
 data parallelism; ``remote_group`` names the twinkle DeviceGroup to place the engine in under ``mode='ray'``
-(omitted in local mode). ``build_sampler`` then calls ``set_template(template)`` on the instance.
+(omitted in local mode); ``template`` is the run's template (omitted when there is none).
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class LoggingTransformersSampler(TransformersSampler):
     generator for tests, a wrapper that adds caching or routing). This one keeps the whole transformers
     contract by inheriting it and only interposing on ``sample``, which is the smallest change that still
     proves the file was resolved and constructed as the run's sampler. ``__init__`` is inherited verbatim,
-    so the ``Cls(model, *, engine_args, device_mesh, remote_group)`` contract above is met by the base.
+    so the ``Cls(model, *, engine_args, device_mesh, template, remote_group)`` contract above is met by the base.
     """
 
     def sample(self, trajectories: Any, *args, **kwargs) -> List[Any]:

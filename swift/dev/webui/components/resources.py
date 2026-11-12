@@ -155,27 +155,27 @@ def encode_rows(template: Any, data: Any) -> list:
 
     The native batch entry is ``batch_encode`` (list[Trajectory]). The batch
     arrives as a row list (a twinkle DataLoader batch) or as a dict exposing
-    ``rows``. A rollout sample carries its own ``encoded`` feature -- that IS
-    the authority (labels already shifted, aligned with rollout_logps /
-    response_token_ids), so it is returned verbatim: re-encoding its messages
-    would rebuild the labels from scratch and count turn-boundary tokens the
-    ledger never put in the response, misaligning every token-level lane
-    downstream. Anything unrecognised fails loudly."""
+    ``rows``. A rollout trajectory already carries its encoding (``input_ids``
+    / ``labels``) -- that IS the authority (labels already shifted, aligned
+    with ``rollout_logprobs``), so it is returned verbatim: re-encoding its
+    messages would rebuild the labels from scratch and count turn-boundary
+    tokens the ledger never put in the response, misaligning every token-level
+    lane downstream. Anything unrecognised fails loudly."""
     items = data if isinstance(data, list) else (
         (data or {}).get('rows', []) if isinstance(data, dict) else [])
     if isinstance(data, dict) and not isinstance(data.get('rows', []), list):
         raise ComponentError(
             'cannot encode: a dict batch must expose a row list under "rows" '
             f'(got keys {sorted(data.keys())[:8]})')
-    if items and not isinstance(items[0], dict):
-        encoded = [getattr(item, 'encoded', None) for item in items]
-        if all(isinstance(feature, dict) and feature for feature in encoded):
-            return encoded
-        rows = [getattr(item, 'messages', None) for item in items]
-        if any(row is None for row in rows):
-            raise ComponentError(
-                'cannot encode: items are neither message rows nor trajectories')
-        items = [{'messages': row} for row in rows]
+    if items and not all(isinstance(item, dict) for item in items):
+        raise ComponentError('cannot encode: items are neither message rows nor trajectories')
+    if items and all(item.get('input_ids') is not None for item in items):
+        return list(items)
+    if any(item.get('input_ids') is not None for item in items):
+        failed = [item.get('error') for item in items if item.get('input_ids') is None]
+        raise ComponentError(
+            f'cannot encode: {len(failed)} of {len(items)} trajectories carry no encoding '
+            f'(a failed episode, e.g. {failed[0]!r}); re-encoding them would misalign the batch')
     encode = getattr(template, 'batch_encode', None)
     if not callable(encode):
         raise ComponentError(f'the template {template!r} exposes no batch_encode()')
@@ -354,9 +354,9 @@ class SamplerComponent(ResourceComponent):
 class RolloutComponent(ResourceComponent):
     """The multi-turn episode engine: a native MultiTurnRollout binding.
 
-    Tools arrive as a wired ToolManager, or through the ENV that executes them
-    (``env.tool_manager()``) -- both wired with an env that has tools is a
-    conflict, refused rather than merged."""
+    Tools arrive as a wired ToolManager (shared by every episode) and/or
+    through the wired ENV, whose tools the rollout binds to each episode's
+    session."""
 
     type = 'rollout'
 
@@ -367,14 +367,6 @@ class RolloutComponent(ResourceComponent):
         sampler = inputs.get('sampler')
         if sampler is None:
             raise ComponentError(f'{self.node_id}: rollout needs a wired sampler')
-        tools = inputs.get('tools')
-        env = inputs.get('env')
-        env_tools = bool(env is not None and env.tools())
-        if tools is not None and env_tools:
-            raise ComponentError(
-                f'{self.node_id}: rollout takes ONE tool source -- a wired ToolManager or '
-                'the env that executes them, not both')
-        tool_manager = tools if tools is not None else (env.tool_manager() if env_tools else None)
         template = build_template_from(
             str(self.params.get('tokenizer') or ''),
             dict(self.params.get('template_config') or {}), self.node_id,
@@ -391,7 +383,7 @@ class RolloutComponent(ResourceComponent):
                 raise ComponentError(f'{self.node_id}: generation_config: {exc}') from None
         try:
             self.obj = MultiTurnRollout(
-                sampler, template=template, tool_manager=tool_manager,
+                sampler, template=template, env=inputs.get('env'), tool_manager=inputs.get('tools'),
                 sampling_params=sampling_params,
                 max_turns=int(self.params.get('max_turns', '8') or 8), **cfg)
         except TypeError as exc:
@@ -609,22 +601,6 @@ class SandboxEnvComponent(ResourceComponent):
                            'kind=%r ignores it', self.node_id, kind)
         _reject_unknown_kwargs(cls, kv, self.node_id, f'sandbox {kind!r}')
         self.obj = cls(**kv)
-        return self.obj
-
-
-class PolicyEndpointComponent(ResourceComponent):
-    """A local OpenAI-shaped endpoint over the serving sampler."""
-
-    type = 'policy_endpoint'
-
-    IMPORTS = ('twinkle_agentic.rollout.endpoint',)
-
-    def build(self, inputs: Dict[str, Any]) -> Any:
-        from twinkle_agentic.rollout.endpoint import PolicyEndpoint
-        sampler = inputs.get('sampler')
-        if sampler is None:
-            raise ComponentError(f'{self.node_id}: policy_endpoint needs a wired sampler')
-        self.obj = PolicyEndpoint(sampler, port=int(self.params.get('port', '8000') or 8000))
         return self.obj
 
 

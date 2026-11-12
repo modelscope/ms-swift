@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
-from swift.dev.recipe.distill.worker import DistillRow, DistillWorker
+from swift.dev.recipe.distill.worker import DistillWorker
 from swift.dev.recipe.utils import TEACHER_GROUP, auxiliary_mesh, build_rl_sampler, teacher_group
 from swift.dev.utils.logger import get_logger
 
@@ -31,19 +31,23 @@ logger = get_logger()
 DISTILL_SIGNALS = {"gkd": "logits", "opsd": "logps", "mopd": "multi_logps"}
 
 
-def distill_dataset_rows(template: Any, raw_rows: Sequence[Dict[str, Any]]) -> List[DistillRow]:
+def distill_dataset_rows(template: Any, raw_rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """The off-policy training rows: dataset rows that carry their own assistant completion.
 
     Each is encoded once with the student's template (its labels mark the completion's trainable
-    positions) and keeps the full conversation plus passthrough extras for the teacher view.
+    positions) and keeps the full conversation plus the dataset columns for the teacher view --
+    the same keys a rollout trajectory carries, so an update never branches on its source.
     """
-    dataset_rows: List[DistillRow] = []
+    dataset_rows: List[Dict[str, Any]] = []
     for row in raw_rows:
         messages = row.get("messages") if isinstance(row, dict) else None
         if not messages or messages[-1].get("role") != "assistant":
             continue
-        extra = {key: copy.deepcopy(value) for key, value in row.items() if key != "messages"}
-        dataset_rows.append(DistillRow(template.encode(row), copy.deepcopy(messages), extra))
+        encoded = dict(template.encode(row))
+        for key, value in row.items():
+            encoded.setdefault(key, copy.deepcopy(value))
+        encoded["messages"] = copy.deepcopy(messages)
+        dataset_rows.append(encoded)
     return dataset_rows
 
 
@@ -124,28 +128,31 @@ def initialize_distill_cluster(
     max_steps: int,
     signal: str,
     train_batch_size: int,
+    batch_size: int,
     quantize_config: Optional["QuantizeConfig"] = None,
     megatron_config: Optional["MegatronConfig"] = None,
     moe_config: Optional["MoEConfig"] = None,
     generation_config: Optional[Any] = None,
     resource_plan: Any = None,
     auxiliary_meshes: Optional[Dict[str, Any]] = None,
-    output_dir: str = "output",
 ) -> Cluster:
     """Build every actor distillation trains with, explicitly: policy, sampler, teachers, worker.
 
     Nothing is hidden behind a shared assembly class (deep_refactor's initialize_cluster note).
     ``max_steps`` is the resolved step budget derived by the caller BEFORE this stage, so the
-    optimizer's LR scheduler is fully configured here.
+    optimizer's LR scheduler is fully configured here; ``batch_size`` is the rows of one driver
+    batch (it bounds the episodes in flight).
     """
-    from twinkle.checkpoint_engine import CheckpointEngineManager
-    from twinkle.data_format import SamplingParams
-    from twinkle_agentic.async_rl import REF_ONLY_REMOTE_GROUP
-    from twinkle_agentic.rollout import MultiTurnRollout
-
-    from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
+    from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builders.streaming import (
+        CONTROL_GROUP,
+        build_checkpoint_manager,
+        build_cluster_adapter,
+        build_rollout,
+        inflight_rows,
+    )
     from swift.dev.loss import configure_rl_loss
     from swift.dev.processor import InputProcessor, processor_kwargs
 
@@ -208,31 +215,16 @@ def initialize_distill_cluster(
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
     )
+    engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
-        from twinkle_agentic.async_rl import ClusterAdapter
-
-        adapter = ClusterAdapter.build(model=model, sampler=sampler, plan=resource_plan, rollout_config=rollout_config)
+        adapter = build_cluster_adapter(
+            resource_plan, rollout_config, model=model, sampler=sampler, checkpoint_manager=engine)
     params = distill_sampling_params(rl_config, generation_config)
-    # One engine for every generation entry (distillation rolls out single-turn): disaggregated
-    # places it on the CPU payload group; colocate keeps it local for the visible loop's generate.
-    rollout = MultiTurnRollout(
-        sampler,
-        template,
-        sampling_params=SamplingParams(**params),
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
-        max_turns=1,
-        max_trajectory_tokens=rollout_config.max_trajectory_tokens,
-        remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP),
-    )
-    engine = (
-        adapter.dedicated_manager
-        if adapter is not None
-        else CheckpointEngineManager(
-            model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
-            sync_backend=rollout_config.weight_sync_backend,
-        )
-    )
+    # One rollout for every on-policy generation (distillation rolls out single-turn), on its CPU group.
+    rollout = build_rollout(
+        sampler, template, rollout_config, sampling_params=params, remote=True,
+        inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)))
 
     teachers, teacher_options = _build_teachers(
         model=model,
@@ -251,6 +243,7 @@ def initialize_distill_cluster(
         gkd_logits_topk=rl_config.gkd_logits_topk,
         sft_alpha=rl_config.sft_alpha,
         train_batch_size=train_batch_size,
+        remote_group=CONTROL_GROUP,
         **teacher_options,
     )
     return Cluster(
@@ -392,69 +385,24 @@ def _build_teachers(
 
 
 def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
-                         tuner_config: Optional['TunerConfig'], train_batch_size: int,
-                         gradient_accumulation_steps: int, prompt_dataloader: Any,
-                         num_train_epochs: float, max_steps: int,
-                         output_dir: str) -> Any:
-    """Assemble twinkle's StreamingDriver over the cluster for a purely on-policy run (lmbda == 1).
+                         prompt_dataloader: Any, batch_size: int, num_train_epochs: float,
+                         max_steps: Optional[int]) -> Any:
+    """Assemble twinkle's StreamingDriver over the cluster for the on-policy updates.
 
-    Distillation scores no outcome channel, so no remote score shape rides the barrier and no group
-    verdict exists -- the driver streams samples one by one (``unit_size=1``), the recipe lifts each
-    pull into rows, and the teacher scoring happens in the DistillWorker per mini-batch.
+    Distillation scores no outcome channel and has no group verdict: the driver only streams the
+    student's rollouts; the teacher scoring happens in the DistillWorker per update.
     """
-    import os
+    from swift.dev.builders.streaming import build_streaming_driver
 
-    from twinkle_agentic.async_rl import StreamingDriver
-
-    from swift.dev.recipe.utils import check_streaming_config
-
-    strategy = rollout_config.weight_sync_strategy
-    if rollout_config.async_mode == "none":
-        max_staleness = 0
-    elif rollout_config.async_mode == "one_step_off":
-        max_staleness = 1
-    else:
-        max_staleness = rollout_config.max_staleness
-    adapter_name = "default" if tuner_config is not None else None
-    check_streaming_config(
-        adapter_name=adapter_name,
-        max_staleness=max_staleness,
-        weight_sync_strategy=strategy,
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
-        parameter_sync_step=rollout_config.parameter_sync_step,
-        serialize_generation=False,
-    )
-    num_generations = max(1, rl_config.num_generations)
-    need_rows = train_batch_size * gradient_accumulation_steps
-    from swift.dev.recipe.streaming import plan_streaming_batches
-
-    batch_plan = plan_streaming_batches(
-        need_rows=need_rows,
-        num_generations=num_generations,
-        parameter_sync_step=rollout_config.parameter_sync_step,
-        max_staleness=max_staleness,
-        group_pull=False,
-    )
-    return StreamingDriver(
-        version_control=True,
-        prompt_stream=prompt_dataloader,
-        num_train_epochs=num_train_epochs,
-        max_staleness=max_staleness,
-        num_generations=num_generations,
-        groups_per_partition=batch_plan.groups_per_partition,
-        buffer_depth=batch_plan.buffer_depth,
+    return build_streaming_driver(
+        dataloader=prompt_dataloader,
         rollout=cluster.rollout,
-        group_pull=False,
-        need_rows=need_rows,
-        max_rows_per_pull=batch_plan.max_rows_per_pull,
-        snapshot_model=(cluster.model if strategy == "adapter_snapshot" else None),
-        snapshot_dir=os.path.join(output_dir, "async_adapters"),
-        adapter_name=adapter_name,
+        rollout_config=rollout_config,
+        batch_size=batch_size,
+        num_generations=max(1, rl_config.num_generations),
+        num_train_epochs=num_train_epochs,
         max_steps=max_steps,
-        consume=None,
-        score=None,
-        resource_adapter=cluster.adapter,
-        regenerate=None,
-        baseline_fn=None,
-        max_group_regenerations=0,
+        checkpoint_manager=cluster.engine,
+        cluster_adapter=cluster.adapter,
+        remote=True,
     )

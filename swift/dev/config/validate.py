@@ -373,19 +373,18 @@ def _check_multi_turn(rollout_config: Optional['RolloutConfig']) -> None:
 
 
 def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
-                            rl_config: Optional['RLConfig'] = None,
-                            tuner_config: Optional['TunerConfig'] = None) -> None:
+                            rl_config: Optional['RLConfig'] = None) -> None:
     """Validate the rollout tools/sandbox surface without RL-training-only constraints.
 
     max_turns lives on the rollout_config itself; its GRPO-only gate runs here too
-    (_check_rollout_tools). rl_config/tuner_config are read only by _check_rollout_tools and
-    _check_async_mode (no-op at async_mode='none').
+    (_check_rollout_tools). rl_config is read by _check_rollout_tools, _check_resource_mode and
+    _check_async_mode.
     """
     _check_rollout_sampler(rollout_config)
     _check_rollout_tools(rollout_config, rl_config)
     _check_offload_knobs(rollout_config)
     _check_resource_mode(rollout_config, rl_config)
-    _check_async_mode(rollout_config, rl_config, tuner_config)
+    _check_async_mode(rollout_config, rl_config)
     _check_weight_sync_backend(rollout_config, rl_config)
 
 
@@ -464,21 +463,11 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
         raise ValueError('resource_mode="adaptive" keeps dedicated sampler actors and optionally borrows the '
                          'complete trainer world; set sampler_mode="disaggregated" instead of configuring the '
                          'legacy exclusive colocate path.')
-    if rollout_config.max_turns is not None:
-        raise ValueError('resource_mode="adaptive" does not support multi-turn rollout in the first version; '
-                         'use resource_mode="estimate" or disable max_turns.')
     if rl_config.rl_type in {'gkd', 'opsd', 'mopd'} and rl_config.lmbda != 1.0:
         raise ValueError('resource_mode="adaptive" requires lmbda=1 for distillation recipes: off-policy '
                          'dataset rounds use the synchronous round loop and have no streaming publish boundary '
                          'where the adaptive controller can move a complete replica. Set lmbda=1 or use '
                          'resource_mode="estimate".')
-    if rollout_config.weight_sync_strategy != 'in_place' or not rollout_config.allow_partial_rollout:
-        raise ValueError('resource_mode="adaptive" requires weight_sync_strategy="in_place" and '
-                         'allow_partial_rollout=true so shared generations can pause across handovers.')
-    if rollout_config.sleep_level not in (0, 1):
-        raise ValueError('resource_mode="adaptive" supports only sleep_level 0 or 1. 0 leaves the shared '
-                         'sampler resident; 1 offloads its weights. Level 2 discards weights the shared '
-                         'sampler handover still needs.')
 
 
 # Online recipes that roll out per prompt batch and train on the collected samples (overlap generation
@@ -486,27 +475,18 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
 _ASYNC_RLHF_TYPES = frozenset({'grpo', 'ppo', 'gkd', 'opsd', 'mopd'})
 
 
-# Streaming knobs read ONLY by the per-sample streaming driver: all four under an OVERLAPPING
-# async_mode; staleness-0 streaming all but max_staleness/allow_partial_rollout; sync-only none.
+# Streaming knobs read ONLY by the streaming driver: both under an OVERLAPPING async_mode; staleness-0
+# streaming all but max_staleness; the round loops (RFT, sync-only distillation) and non-online none.
 _FULLY_ASYNC_ONLY_DEFAULTS = {
     'max_staleness': 1,
-    'weight_sync_strategy': 'adapter_snapshot',
-    'allow_partial_rollout': False,
     'parameter_sync_step': 1
 }
 
 # The subset inert even when async_mode='none' rides the streaming driver: the dispatch pins max_staleness
-# to 0 and the staleness-0 drain makes allow_partial_rollout a no-op, so neither is read on that path.
+# to 0, so it is not read on that path.
 _INERT_UNDER_NONE_STREAMING = {
     'max_staleness': _FULLY_ASYNC_ONLY_DEFAULTS['max_staleness'],
-    'allow_partial_rollout': _FULLY_ASYNC_ONLY_DEFAULTS['allow_partial_rollout'],
 }
-
-# A merge-only round loop (RFT, sync-only distillation) rides no streaming driver, so it reads none of the
-# streaming knobs EXCEPT weight_sync_strategy -- which stays live as a sampler-construction gate (it decides
-# enable_lora) and is forced to in_place by process._derive_weight_sync_strategy. It is therefore validated
-# on its own (an explicit non-in_place choice has no publication path), not folded into the inert set.
-_MERGE_LOOP_INERT_KNOBS = {k: v for k, v in _FULLY_ASYNC_ONLY_DEFAULTS.items() if k != 'weight_sync_strategy'}
 
 
 def _sync_only_feature(rl_config: Optional['RLConfig']) -> bool:
@@ -531,69 +511,25 @@ def _streams_under_none(rl_config: Optional['RLConfig']) -> bool:
     return not _sync_only_feature(rl_config)
 
 
-def _merges_every_round(rl_config: Optional['RLConfig']) -> bool:
-    """Whether the loop pushes the FULL LoRA-merged base into the sampler every round.
-
-    RFT and the synchronous distillation round loops (``gkd``/``opsd``/``mopd`` at ``lmbda != 1.0``)
-    call ``CheckpointEngineManager.sync_weights(merge_and_sync=True)`` unconditionally -- they ride no
-    streaming driver and have NO adapter-snapshot publication path -- so the sampler must not be built
-    with ``enable_lora`` (whose ``*WithLoRA`` wrappers park the base weight under ``.base_layer`` while a
-    merge sync ships canonical names, which the receiver then cannot find). Such a run is ``in_place``-only
-    at every placement/tuner, unlike the streaming family where a disaggregated LoRA run may pin adapters.
-    """
-    if rl_config is None:
-        return False
-    if rl_config.rl_type == 'rft':
-        return True
-    if rl_config.rl_type in {'gkd', 'opsd', 'mopd'}:
-        return rl_config.lmbda != 1.0
-    return False
-
-
-def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig'],
-                      tuner_config: Optional['TunerConfig'] = None) -> None:
+def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
     """Reject async_mode combinations the online loops cannot honour (fail-loudly).
 
     Refused, not degraded: non-online recipes, no IS correction, colocate, remax, off-policy mix.
     """
     if rollout_config is None:
         return
-    # allow_partial_rollout is only MEANINGFUL under an OVERLAPPING streaming publish; at staleness 0 the
-    # drain empties the in-flight set, so it is inert there (refused below if set explicitly).
     mode = rollout_config.async_mode
     if mode == 'none':
         # An online loop with no sync-only feature rides the StreamingDriver at staleness 0; only the
         # distillation off-policy mix (lmbda != 1.0) runs its synchronous round loop instead.
         if _streams_under_none(rl_config):
-            # max_staleness (pinned to 0) and allow_partial_rollout (inert at staleness 0) are never read on
-            # this path; weight_sync_strategy and parameter_sync_step ARE, validated by the publication check.
-            inert = _INERT_UNDER_NONE_STREAMING
-            if rollout_config.resource_mode == 'adaptive':
-                # Adaptive shared handover may pause a long request at every batch boundary even at
-                # staleness 0, so partial rollout is active and required there.
-                inert = {'max_staleness': _INERT_UNDER_NONE_STREAMING['max_staleness']}
-            _reject_inert_streaming_knobs(rollout_config, mode, inert)
-            _check_streaming_publication(rollout_config, rl_config, tuner_config, mode)
+            # max_staleness (pinned to 0) is never read on this path; parameter_sync_step is, validated
+            # by the publication check.
+            _reject_inert_streaming_knobs(rollout_config, mode, _INERT_UNDER_NONE_STREAMING)
+            _check_streaming_publication(rollout_config, mode)
         else:
-            if _merges_every_round(rl_config):
-                # A merge-only round loop (RFT, sync-only distillation) publishes by pushing the full
-                # LoRA-merged base into the sampler every round (sync_weights(merge_and_sync=True)); it has
-                # no streaming driver and no per-version adapter path, so weight_sync_strategy is live only
-                # as the enable_lora gate and is forced to in_place. Reject an explicit other choice rather
-                # than let it build an enable_lora sampler whose .base_layer names the merge cannot find.
-                if ('weight_sync_strategy' in _changed_fields(rollout_config)
-                        and rollout_config.weight_sync_strategy != 'in_place'):
-                    raise ValueError(
-                        f"--weight_sync_strategy={rollout_config.weight_sync_strategy!r} has no publication "
-                        f"path on {rl_config.rl_type}'s synchronous round loop: it pushes the full "
-                        "LoRA-merged base into the sampler every round and never pins a per-version adapter, "
-                        "so only 'in_place' (the derived default) is sound. Drop the flag, or use a streaming "
-                        "recipe (grpo/ppo, or distillation at --lmbda 1) that publishes adapter snapshots.")
-                _reject_inert_streaming_knobs(rollout_config, mode, _MERGE_LOOP_INERT_KNOBS)
-            else:
-                # A non-online recipe (or no rl_config) syncs nothing into a sampler, so it reads none of
-                # the streaming knobs -- weight_sync_strategy included.
-                _reject_inert_streaming_knobs(rollout_config, mode, _FULLY_ASYNC_ONLY_DEFAULTS)
+            # A round loop (RFT, sync-only distillation) or a non-online recipe rides no streaming driver.
+            _reject_inert_streaming_knobs(rollout_config, mode, _FULLY_ASYNC_ONLY_DEFAULTS)
         return
     # The legacy bool is the old spelling of 'one_step_off'; process folds it in when async_mode is
     # unset, so reaching here with async_generate True AND a different explicit mode is ambiguous.
@@ -644,7 +580,7 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
             'distillation loops overlap a single step -- use --async_mode one_step_off for them.')
     # Every surviving overlapping regime runs the SAME per-sample StreamingDriver (differing only in the
     # staleness knob), so all validate their publication identically below.
-    _check_streaming_publication(rollout_config, rl_config, tuner_config, mode)
+    _check_streaming_publication(rollout_config, mode)
 
 
 def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, inert_defaults: dict) -> None:
@@ -661,11 +597,10 @@ def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, in
                 'nothing. Drop it, or use a regime that reads it.')
 
 
-def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
-                                 tuner_config: Optional['TunerConfig'], mode: str) -> None:
-    """Publication guards for the per-sample streaming driver (every online regime that rides it).
+def _check_streaming_publication(rollout_config: 'RolloutConfig', mode: str) -> None:
+    """Publication guards for the streaming driver (every online regime that rides it).
 
-    Checks sync_step>=1, staleness per regime, colocate->in_place, and the strategy/partial pairing.
+    Checks sync_step>=1, staleness per regime, and colocate's one sync per step.
     """
     if rollout_config.parameter_sync_step < 1:
         raise ValueError(
@@ -683,55 +618,11 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
         raise ValueError(
             f'--max_staleness must be >= 1 under --async_mode fully_async (0 would admit nothing ahead of '
             f'the oldest untrained window, i.e. the synchronous loop); got {rollout_config.max_staleness}.')
-    strategy = rollout_config.weight_sync_strategy
-    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    if rollout_config.sampler_mode == 'colocate' and strategy != 'in_place':
+    if rollout_config.sampler_mode == 'colocate' and rollout_config.parameter_sync_step != 1:
         raise ValueError(
-            f"--sampler_mode colocate with --weight_sync_strategy {strategy!r} cannot hand the shared device "
-            "back to the sampler each cycle: a colocated sampler time-shares ONE DeviceGroup with the trainer, "
-            "and the per-cycle wake+sync that returns it to generation rides in_place's publish, whereas "
-            "adapter_snapshot publishes by writing a new adapter path with no weight sync. Use "
-            "--weight_sync_strategy in_place (what dev derives for a colocated run); a colocated run is "
-            "synchronous (--async_mode none), so in_place needs no --allow_partial_rollout there.")
-    if strategy == 'adapter_snapshot':
-        if rollout_config.weight_sync_backend == 'delta_sharded':
-            raise ValueError(
-                '--weight_sync_strategy adapter_snapshot publishes by writing adapter paths and performs '
-                'no weight sync at all, so --weight_sync_backend delta_sharded would never be read on this '
-                'path. Publish with --weight_sync_strategy in_place to overwrite the live weights (the '
-                'delta backend then ships only the changed elements), or drop the backend setting.')
-        # Per-version LoRA pinning needs an adapter to pin; a full-parameter policy has none. The sound
-        # full-parameter stream is in_place (below), so point the user there.
-        if tuner == 'full':
-            raise ValueError(
-                f"--async_mode {mode} with --weight_sync_strategy adapter_snapshot pins each trained "
-                "version as a LoRA adapter path, but this is a full-parameter run (tuner='full') with no "
-                'adapter to pin. Configure an adapter-based tuner (e.g. LoRA), or use --weight_sync_strategy '
-                'in_place, which overwrites the sampler\'s live merged base weights (add '
-                '--allow_partial_rollout for an overlapping regime, which resumes each in-flight generation).')
-        if rollout_config.allow_partial_rollout:
-            raise ValueError(
-                '--allow_partial_rollout is inert under --weight_sync_strategy adapter_snapshot: each version '
-                'is pinned as its own adapter path, so publishing never overwrites a weight copy an in-flight '
-                'generation decodes and there is nothing to interrupt and resume. Drop --allow_partial_rollout, '
-                'or use --weight_sync_strategy in_place (which overwrites one live copy and so needs it).')
-    elif strategy == 'in_place':
-        # Overwriting the live copy under an in-flight generation is unsound unless each is aborted and
-        # resumed on fresh weights (allow_partial_rollout); the staleness-0 drain makes it a no-op there.
-        if mode != 'none' and not rollout_config.allow_partial_rollout:
-            raise ValueError(
-                f"--async_mode {mode} with --weight_sync_strategy in_place overwrites the sampler's single "
-                'live weight copy while the streaming buffer still has generations in flight, so it needs '
-                '--allow_partial_rollout: each publish then aborts every in-flight generation and resumes it '
-                'from its own tokens on the fresh weights (twinkle PartialRolloutMixin + abort-on-publish). '
-                'Without it the rest of an in-flight generation would decode under half-updated weights whose '
-                'logprobs match no consistent policy, which importance sampling cannot correct. Set '
-                '--allow_partial_rollout, or use --weight_sync_strategy adapter_snapshot (per-version LoRA '
-                'pinning, no interrupt).')
-    else:
-        raise ValueError(
-            f"--weight_sync_strategy must be 'adapter_snapshot' or 'in_place' under --async_mode {mode}; "
-            f'got {strategy!r}.')
+            f'--sampler_mode colocate needs --parameter_sync_step 1, got {rollout_config.parameter_sync_step}: '
+            'the sampler sleeps while the trainer holds the shared GPUs and only the weight sync after each '
+            'step wakes it, so every step must sync.')
 
 
 def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
@@ -756,11 +647,11 @@ def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
             'sampler_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer '
             'to make room for it does not apply: ignoring --offload_model/--offload_optimizer.',
             rollout_config.sampler_mode)
-    if 'sleep_level' in changed and rollout_config.resource_mode != 'adaptive':
+    if 'sleep_level' in changed:
         logger.warning(
             'sampler_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put '
             'to sleep between steps: --sleep_level is inert here (it only takes effect under '
-            "--sampler_mode colocate, or resource_mode adaptive).", rollout_config.sampler_mode)
+            "--sampler_mode colocate).", rollout_config.sampler_mode)
 
 
 def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
@@ -781,8 +672,9 @@ def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
                          rl_config: Optional['RLConfig'] = None) -> None:
     if rollout_config is None:
         return
-    if rollout_config.sandbox_num_envs < 1:
-        raise ValueError(f'sandbox_num_envs must be >= 1, got {rollout_config.sandbox_num_envs}.')
+    for name in ('sandbox_num_envs', 'sandbox_num_workers', 'rollout_num_workers'):
+        if getattr(rollout_config, name) < 1:
+            raise ValueError(f'{name} must be >= 1, got {getattr(rollout_config, name)}.')
     # Multi-turn is orchestrated by the GRPO recipe only; sampling (rl_config is None, the TUI) is exempt.
     if rollout_config.max_turns is not None and rl_config is not None and rl_config.rl_type != 'grpo':
         raise ValueError(f'multi-turn rollout (max_turns) is GRPO-only, but rl_type={rl_config.rl_type!r}: the '
@@ -1080,13 +972,12 @@ def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutCon
 def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
     """Reject GRPO process-reward (PRM) combinations the loop cannot honour (no silently dead knob).
 
-    Refuses RLSD/SDAR overlap, scorer knobs with no --prm channel, prm_orm_mix outside [0, 1].
+    Refuses RLSD/SDAR overlap, prm_orm_mix with no --prm channel or outside [0, 1].
     The prm channel and its knobs all live on the RewardConfig; a missing one counts as "no channel".
     """
     if cfg.rl_type != 'grpo':
         return
-    scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter', 'prm_orm_mix'}.intersection(
-        _changed_fields(reward_config)))
+    scorer_knobs = sorted({'prm_orm_mix'}.intersection(_changed_fields(reward_config)))
     if reward_config is None or not reward_config.prm:
         if scorer_knobs:
             details = ', '.join(f'--{name}' for name in scorer_knobs)

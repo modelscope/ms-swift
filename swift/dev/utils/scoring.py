@@ -1,97 +1,35 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# Backend-agnostic scoring pieces: the response-token frame, forward-output alignment, reward folds.
+# Backend-agnostic scoring pieces: the privileged teacher view, reward folds, calibration scores.
 from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional, Sequence
 
-import numpy as np
 import torch
+from twinkle import remote_class, remote_function
+from twinkle.data_format import ground_truth
+from twinkle.signals import response_positions
 
 _MULTIMODAL_KEYS = ('images', 'videos', 'audios', 'tools', 'objects', 'chat_template_kwargs')
 
-def should_copy_inputs() -> bool:
-    """Whether a driver-side defensive copy of forward inputs is load-bearing in the current mode.
 
-    Under twinkle's ``'ray'`` mode a ``forward_only`` / ``forward_backward`` serializes its inputs to a
-    worker process, so the compute already sees an isolated copy and a driver-side deepcopy is redundant.
-    Under ``'local'`` the compute shares this process and may mutate the feature dicts in place (padding,
-    writing ``routed_experts``), so the copy protects the sample's canonical ``input_feature``. Read
-    through twinkle's public ``get_mode()`` rather than reaching into a private global.
+def collect(result: Any) -> Any:
+    """Resolve a maybe-lazy remote result to its value.
+
+    A method declared ``lazy_collect=True`` returns a pending handle under ray (``.result()``
+    materialises it, raising the worker's exception here) and the plain value when it ran in this
+    process. Callers that consume the VALUE, or need a worker-side failure to fail THIS step, route
+    through here so they are correct under both.
     """
-    from twinkle import get_mode
-    return get_mode() != 'ray'
+    return result.result() if hasattr(result, 'result') else result
+
 
 def copy_inputs(features: Sequence[Any]) -> List[Any]:
-    """Defensive-copy a forward's inputs iff the current twinkle mode needs it (see :func:`should_copy_inputs`)."""
-    if should_copy_inputs():
-        return [copy.deepcopy(feature) for feature in features]
-    return list(features)
+    """Defensive-copy a forward's inputs: a forward in this process may pad / annotate them in place.
 
-def response_positions(feature: Dict[str, Any]) -> List[int]:
-    """Indices of the trainable (response) tokens in ``feature``, i.e. where ``labels != -100``.
-
-    This is the exact frame the loss mask uses, so scores extracted at these positions (a teacher's
-    log-probs, a PRM's per-token rewards) align one-to-one with the student's per-token loss.
+    Remotely the copies are of references, so the cost is small.
     """
-    labels = feature.get('labels')
-    if labels is None:
-        return []
-    if isinstance(labels, torch.Tensor):
-        return torch.nonzero(labels.reshape(-1) != -100, as_tuple=True)[0].tolist()
-    return np.flatnonzero(np.asarray(labels) != -100).tolist()
+    return [copy.deepcopy(feature) for feature in features]
 
-def row_token_scores(row: Any, positions: List[int], feature: Dict[str, Any]) -> List[float]:
-    """Extract one feature's response-token scores from its (possibly padded) full-sequence row.
-
-    A response-only frame already holds exactly ``len(positions)`` values, so it is returned as-is; a
-    full-sequence frame is indexed at the feature's own response positions. A frame shorter than the
-    feature cannot be aligned and raises rather than silently mis-scoring.
-    """
-    if row.numel() == len(positions):
-        return row.tolist()  # response-only form: nothing to strip
-    labels = feature.get('labels')
-    feature_length = len(labels) if labels is not None else 0
-    if row.numel() < feature_length:
-        raise RuntimeError(f'forward returned {row.numel()} values for a {feature_length}-token feature; '
-                           'response-token alignment is impossible.')
-    if (positions and positions[-1] - positions[0] + 1 == len(positions)
-            and bool(np.all(np.diff(positions) == 1))):
-        return row.narrow(0, positions[0], len(positions)).tolist()
-    return row[positions].tolist()
-
-def response_token_scores(frame: Any, features: List[dict], *, output_key: str = 'logps',
-                          allow_missing: bool = False) -> List[Any]:
-    """Align one whole-batch ``forward_only`` frame -> one response-token score list per feature.
-
-    ``frame`` is a single forward's output -- either materialised (local mode, or a caller that
-    collected already) or the lazy handle the ray driver receives; the lazy form is collected HERE,
-    so both deployment forms feed the same alignment. The dict ``collect_tensor_dict`` pads and
-    stacks across the DP ranks, or a bare tensor; ``output_key`` selects the frame (``'logps'`` for
-    a causal scorer, ``'logits'`` for a value / seq_cls head). The batch splits are the dispatch's
-    business (``slice_dp`` per rank, ``micro_batch_size`` inside the kernel), so this side sees
-    exactly one frame for the whole batch. Full-sequence, right-padded rows are indexed at each
-    feature's own response positions (see :func:`row_token_scores`), so right-padding never shifts
-    them.
-
-    ``allow_missing`` returns ``[None] * len(features)`` when the frame is entirely absent -- PPO's
-    reference reads a missing ``logps`` as "no KL penalty" -- while the default raises, so a silent
-    no-score never passes for a real one.
-    """
-    if callable(frame) and getattr(frame, '_is_lazy_collect', False):
-        frame = frame()
-    values = frame.get(output_key) if isinstance(frame, dict) else frame
-    if values is None:
-        if allow_missing:
-            return [None] * len(features)
-        raise RuntimeError(f'forward_only returned no {output_key!r}.')
-    values = torch.as_tensor(values).detach().float().cpu()
-    if values.dim() == 1:
-        values = values.unsqueeze(0)
-    if values.shape[0] != len(features):
-        raise RuntimeError(f'forward returned {values.shape[0]} rows for {len(features)} features; '
-                           'per-row alignment is impossible.')
-    return [row_token_scores(values[i].reshape(-1), response_positions(feature), feature)
-            for i, feature in enumerate(features)]
 
 def encode_privileged_view(
     template: Any,
@@ -124,6 +62,7 @@ def encode_privileged_view(
                            'share a tokenizer and score exactly the same response tokens.')
     return feature
 
+
 def encode_privileged_feature(template: Any, prompt_messages: List[dict], teacher_prompt: Any,
                               response_ids: List[int], extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Encode one single-turn privileged teacher view (RLSD / OPSD share the exact contract).
@@ -145,6 +84,80 @@ def encode_privileged_feature(template: Any, prompt_messages: List[dict], teache
     messages.append({'role': 'assistant', 'content': list(response_ids)})
     return encode_privileged_view(template, messages, response_ids, extra)
 
+
+def _messages_with_token_ids(messages: List[dict], response_ids: List[int],
+                             encoded: Dict[str, Any]) -> List[dict]:
+    """Splice each assistant turn's exact sampled tokens back into the messages.
+
+    The teacher view re-encodes under a different prompt but must score the *same* tokens the
+    policy produced, so each turn carries its ids verbatim rather than its text (re-encoding text
+    can drift to different ids). ``encoded`` is the policy's flat feature: twinkle's
+    ``turn_token_spans`` splits ``response_ids`` into one contiguous slice per assistant turn, and
+    the newest slice maps to the newest assistant message.
+    """
+    from twinkle_agentic.rollout import turn_token_spans
+
+    turn_token_ids = [list(response_ids[start:end]) for start, end in turn_token_spans(encoded)]
+    result = [dict(message) for message in messages]
+    completion_index = 0
+    for message in reversed(result):
+        if message.get('role') != 'assistant':
+            continue
+        if completion_index >= len(turn_token_ids):
+            break
+        ids = turn_token_ids[-1 - completion_index]
+        message['content'] = {'token_ids': ids, 'loss_scale': [1] * len(ids)}
+        completion_index += 1
+    if completion_index != len(turn_token_ids):
+        raise RuntimeError(
+            f'multi-turn messages contain {completion_index} generated assistant turns, but the '
+            f'trajectory has {len(turn_token_ids)} trainable token runs. A run-splitting mismatch '
+            'means an assistant turn produced no trainable token (an empty generation) or a '
+            'completion_mask split one turn in two.')
+    return result
+
+
+@remote_class(execute='first')
+class PrivilegedView:
+    """Re-encode each response under its privileged ``teacher_prompt`` column, for the teacher forward.
+
+    A trajectory without a ``teacher_prompt`` is returned unchanged; with one, the SAME response
+    tokens are re-encoded from the privileged view (the first user turn carries the hint), so the
+    teacher grades the policy's answer hint-augmented. Single-turn rows go through
+    :func:`encode_privileged_feature`, multi-turn rows pin every assistant turn to its sampled ids.
+    """
+
+    def __init__(self, *, template: Any):
+        self.template = template
+
+    @remote_function(dispatch='all', collect='first', lazy_collect=True)
+    def __call__(self, trajs: List[Dict[str, Any]], **kwargs) -> List[Dict[str, Any]]:
+        features = []
+        for traj in trajs:
+            teacher_prompt = ground_truth(traj, 'teacher_prompt') or traj.get('teacher_prompt')
+            if not teacher_prompt:
+                features.append(traj)
+                continue
+            response_ids = [int(t) for t in traj['response_token_ids']]
+            messages = list(traj.get('messages') or [])
+            assistant = [i for i, message in enumerate(messages) if message.get('role') == 'assistant']
+            if len(assistant) == 1:
+                features.append(encode_privileged_feature(
+                    self.template, messages[:assistant[0]], teacher_prompt, response_ids, traj))
+                continue
+            pinned = [dict(message) for message in messages]
+            for message in pinned:
+                if message.get('role') == 'user':
+                    message['content'] = teacher_prompt
+                    break
+            else:
+                raise ValueError('teacher_prompt requires a user turn in the prompt to carry the '
+                                 'privileged context.')
+            features.append(encode_privileged_view(
+                self.template, _messages_with_token_ids(pinned, response_ids, traj), response_ids, traj))
+        return features
+
+
 def build_reward_weights(reward_weights: Optional[Sequence[float]], n_funcs: int) -> torch.Tensor:
     """Build/validate the per-function weight vector (``None`` -> all-ones).
 
@@ -160,6 +173,7 @@ def build_reward_weights(reward_weights: Optional[Sequence[float]], n_funcs: int
         raise ValueError(f'reward_weights length {len(reward_weights)} != number of reward funcs {n_funcs}.')
     return torch.tensor(list(reward_weights), dtype=torch.float32)
 
+
 def weighted_rewards(rewards_per_func: Any, reward_weights: Optional[List[float]]):
     """Combine the ``[N, n_scorers]`` matrix into one ``[N]`` weighted-sum reward per sample.
 
@@ -169,6 +183,7 @@ def weighted_rewards(rewards_per_func: Any, reward_weights: Optional[List[float]
     weight_tensor = build_reward_weights(reward_weights, rewards_per_func.shape[1]).to(
         device=rewards_per_func.device, dtype=rewards_per_func.dtype)
     return (rewards_per_func * weight_tensor.unsqueeze(0)).nansum(dim=1)
+
 
 def accumulate_reward_metric(metric: Any,
                              samples: List[Any],
@@ -189,7 +204,7 @@ def accumulate_reward_metric(metric: Any,
         if col < len(names):
             rewards[names[col]] = [float(v) for v in rewards_per_func[:, col].tolist()]
     rewards['total'] = [float(v) for v in weighted_rewards(rewards_per_func, reward_weights).tolist()]
-    completion_lengths = [len(getattr(sample, 'response_token_ids', None) or []) for sample in samples]
+    completion_lengths = [sample.token_lengths[1] if sample.token_lengths else 0 for sample in samples]
     metric.accumulate(rewards=rewards, completion_lengths=completion_lengths)
 
 
@@ -242,31 +257,3 @@ def ece_score(confidences: List[float], correct: List[bool], n_bins: int = 15) -
             ece += (cnt / n) * abs(float(conf[m].mean()) - float(corr[m].mean()))
     return float(ece)
 
-
-def sample_token_lengths(sample):
-    """Unpadded initial prompt and full response, including tool observations.
-
-    Twinkle stores shifted labels/masks. Policy tokens identify the first response
-    position; subsequent masked tool tokens belong to the full response span too.
-    """
-    encoded = sample.encoded
-    ids = list(encoded["input_ids"])
-    labels = list(encoded["labels"])
-    if len(labels) != len(ids):
-        raise ValueError("performance metrics require one shifted label per input token")
-    labels = labels[-1:] + labels[:-1]
-    mask = encoded.get("completion_mask")
-    if mask is not None:
-        mask = list(mask)
-        if len(mask) != len(ids):
-            raise ValueError("completion mask and input_ids must have equal lengths")
-        mask = mask[-1:] + mask[:-1]
-    attention = encoded.get("attention_mask")
-    attention = list(attention) if attention is not None else [1] * len(ids)
-    if len(attention) != len(ids):
-        raise ValueError("performance metrics require a one-dimensional attention mask")
-    positions = [i for i, label in enumerate(labels) if label != -100 and (mask is None or mask[i]) and attention[i]]
-    first = positions[0] if positions else len(ids)
-    prompt = sum(bool(x) for x in attention[:first])
-    response = sum(bool(x) for x in attention[first:])
-    return prompt, response

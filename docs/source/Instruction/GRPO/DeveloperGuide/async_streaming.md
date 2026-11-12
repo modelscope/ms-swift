@@ -1,50 +1,60 @@
-# v5 异步 rollout 的批次与发布契约
+# v5 流式 rollout 的批次与权重同步
 
-本文适用于 `dev-swift-v5` 的流式 GRPO、PPO，以及 `lmbda=1` 的 GKD/OPSD/MOPD 路径。
+本文适用于 `dev-swift-v5` 的流式 GRPO、PPO，以及 `lmbda>0` 的 GKD/OPSD/MOPD on-policy 路径。RFT 每一轮建一个 driver；infer 也用同一个 driver（不传 checkpoint manager）。
 
 ## 职责边界
 
-- Swift 配方决定一次 optimizer update 消耗多少轨迹、何时发布权重，以及使用静态还是自适应部署。
-- Twinkle `StreamingDriver` 负责准入、版本窗口、完成队列和训练交接；它接收发布回调，不拥有模型权重或训练算法。
-- Twinkle sampler 负责可恢复的暂停与继续，checkpoint engine 负责权重传输。
-- `swift.dev.recipe.streaming` 统一配方侧的容量规划和发布编排；`batching` 只负责已经组成的训练批次的 DP 负载均衡。
+- Swift 配方决定每批多少条轨迹、何时调用 `checkpoint_manager.sync_weights()`、colocate 下何时让 sampler 休眠，以及 advantage 的计算。
+- Twinkle `StreamingDriver` 按顺序抽取 prompt，每个 prompt 准入一组 `num_generations` 个 episode，用 `rollout.step` 逐轮推进，结束后调用 orms/prms 打分；整组完成后进入就绪队列，按批交出 `(trajs, samples)`。它读取 checkpoint manager 的 version 来控制准入和丢弃过旧的组，不持有模型权重，也不实现训练算法。
+- `MultiTurnRollout` 每次 `step` 推进一轮生成（含这一轮的工具调用）；最后一轮返回带 token 记录（`input_ids` / `labels` / `logprobs` 等）的轨迹。
+- `CheckpointEngineManager` 是全局唯一的实例：每完成一次 `sync_weights()`，version 加一。
+- sampler 提供 `pause_generation` / `resume_generation`，供权重传输期间暂停生成。
 
-## 容量和每次取数是两个约束
+## 批大小
 
-设 `B = train_batch_size * gradient_accumulation_steps` 为一次更新的轨迹数，`G = num_generations`，`S = parameter_sync_step`，`L = max_staleness`：
+设 `B = train_batch_size * gradient_accumulation_steps` 为一次更新的轨迹数，`G = num_generations`：
 
 ```text
-Q = lcm(B, G)
-C = ceil(B * S / Q) * Q
-groups_per_partition = C / G
-buffer_depth = (L + 1) * C
-max_rows_per_pull = Q（GRPO，完整组）或 B（PPO/蒸馏，逐样本）
+disaggregated: batch_size = lcm(B, G)
+colocate:      batch_size = ceil(generation_batch_size * G / lcm(B, G)) * lcm(B, G)
 ```
 
-`plan_streaming_batches` 返回一个包含上述三个 driver 参数的 `StreamingBatchPlan`，调用方不再分别计算容量与取数上限。分区按 prompt group 计数，容量和取数上限按轨迹计数。
+一批总是由完整的组和完整的 optimizer update 组成（`stream_batch_size`）。colocate 每批都要做一次休眠、唤醒和权重同步，所以把批放大到一个 generation batch 来摊薄这部分开销。driver 的 `max_steps` 按批计数，配方把 optimizer 步数换算成批数后再传入。
 
-例如 B=64、G=8、S=1 时，`one_step_off` 的容量为 128，每次交接仍为 64：训练当前批次期间可以继续生成下一批。`none` 对应 L=0、容量 64；`fully_async` 使用配置的 L。改变容量不会放宽 driver 的版本校验。
+## 准入与过期
 
-只扩大容量仍不够：如果一次取走全部已完成的 128 条，就会把两批合并到同一次交接中，推迟配方的权重发布。GRPO 在 B/G 不整除时以 Q 为最小完整交接单位，不能拆开组来强行凑成 B。
+设 `K = parameter_sync_step`，`L = max_staleness`（`none` 为 0，`one_step_off` 为 1，`fully_async` 取配置值）：
 
-## 原地发布的顺序与失败语义
+```text
+capacity = (version - base_version + L + 1) * K * batch_size
+```
 
-静态部署的 `in_place` 路径执行：
+driver 保证在途和就绪的轨迹总数不超过 `capacity`，其中 `base_version` 是 driver 启动时的 version。version 每加一，就多放行 K 批。就绪组如果满足 `version - 组内最早准入版本 > L`，就会被丢弃，并计入 `dropped_stale`。
+
+没有 checkpoint manager 时，version 取「已交出批数 // K」，只用来控制准入节奏；这时权重不会变化，所以不丢弃任何组。
+
+例如 B=64、G=8、K=1 时，`one_step_off` 的批大小是 64、容量是 128：训练当前批次的同时，可以继续生成下一批。`none` 的容量是 64，即先生成完一批再训练。
+
+## 权重同步
+
+配方每交出 K 批后调用一次 `sync_weights()`，并且在拉取下一批之前完成。standalone 模式下的顺序是：
 
 ```python
-sampler.pause_generation()
-engine.sync_weights()
-sampler.resume_generation()
+sampler.pause_generation()   # 优先让引擎把运行中的请求原地冻结；不支持时等待它们结束
+# 传输权重
+sampler.resume_generation()  # 运行中的请求在新权重上继续
 ```
 
-暂停必须关闭重试入口，并等待在途请求离开 decode；只调用 abort 会让 partial rollout 在新权重到达前用旧权重重试。暂停或传输异常会向上传播，不能在 `finally` 中无条件恢复生成。配方异常路径负责关闭 driver 和 actors。
+因此一个 episode 可能跨越多个版本。`sample.policy_version` 记录的是准入时的版本，`version_span` 等于交出时的 version 减去 `policy_version`。
 
-自适应部署委托 `ClusterAdapter.publish()` 完成其已有的暂停、资源调整、传输和恢复事务，不再外套一次静态发布。`adapter_snapshot` 仍使用 driver 的不可变快照路径。
+colocate 模式下，配方拿到一批后让 sampler 休眠、开始训练，到同步时由 manager 唤醒 sampler 并传输权重。
 
-Twinkle 的 abort/pause/resume/状态查询必须声明为控制 RPC，能够越过等待生成完成的屏障；否则中断指令本身会排在需要中断的生成后面。普通生命周期与权重操作仍遵循同步约束。
+自适应部署（`ClusterAdapter`）在 trainer 等待批次期间，把空闲的卡借给 sampler 增加副本，交出批次前收回；新副本先由 `CheckpointEngineManager.warm` 加载当前权重，再开始接收请求。
 
-## 兼容性与验证
+## 指标
 
-Swift 需要支持 `StreamingDriver(max_rows_per_pull=...)` 和 sampler 控制 RPC 的配套 Twinkle 版本，建议先合入并升级 Twinkle。Twinkle 未指定取数上限时保留原有行为；自定义 `assembly_ready` 必须自行管理批次，不能同时传入该上限。
-
-回归测试覆盖五种算法的真实 driver 交接、同步/异步模式、稀疏发布、已完成的预取批次、partial rollout 恢复，以及发布各阶段失败。性能应按实际消费 token 计算，并分别查看生成等待、训练计算与权重发布；异步阶段计时可能重叠，不能直接相加。
+- `policy_version`：已完成的同步次数，异步训练时应逐步增长。
+- `version_span_mean` / `max_partial_span`：本批的版本差，上界为 `max_staleness`。
+- `partial_ratio`：本批中版本差大于 0 的样本占比。
+- `dropped_stale`：因过期被丢弃的样本数。
+- `trainer_idle_ratio`：trainer 等待批次的时间占比。

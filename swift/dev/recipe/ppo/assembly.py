@@ -2,7 +2,6 @@
 # PPO's assembly: the value-critic cluster (policy + critic + reference + reward channel).
 from __future__ import annotations
 import copy
-import os
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
 from swift.dev.recipe.utils import REF_GROUP, auxiliary_mesh, build_rl_sampler, resolve_reward_scorers
@@ -57,7 +56,10 @@ def ppo_group_requests(
 
 
 class Cluster(NamedTuple):
-    """Every actor PPO's visible loop drives (a plain handle bundle, not a layer)."""
+    """Every actor PPO's visible loop drives (a plain handle bundle, not a layer).
+
+    The signal components (``scores`` ... ``reduce``) read the per-token lanes where they live.
+    """
 
     model: Any
     value_model: Any
@@ -66,9 +68,15 @@ class Cluster(NamedTuple):
     engine: Any
     adapter: Any
     reference: Any
-    worker: Any
+    orm_scorers: List[Any]
+    orm_names: List[str]
     sampling_params: Dict[str, Any]
     colocate: bool
+    scores: Any
+    kl: Any
+    reward_shape: Any
+    gae: Any
+    reduce: Any
 
 
 def initialize_ppo_cluster(
@@ -84,29 +92,33 @@ def initialize_ppo_cluster(
     reward_config: "RewardConfig",
     tuner_config: Optional["TunerConfig"],
     max_steps: int,
+    batch_size: int,
     quantize_config: Optional["QuantizeConfig"] = None,
     megatron_config: Optional["MegatronConfig"] = None,
     moe_config: Optional["MoEConfig"] = None,
     generation_config: Optional[Any] = None,
     resource_plan: Any = None,
     auxiliary_meshes: Optional[Dict[str, Any]] = None,
-    output_dir: str = "output",
 ) -> Cluster:
     """Build PPO's actors explicitly: the policy, the value critic, the frozen reference, the rewards.
 
     The critic is a trainable seq_cls ``num_labels=1`` model on the policy's OWN 'model' group (a
     distinct ``instance_id``) -- policy and critic MUST slice_dp at the same data_world_size,
     which is also why PPO plans no SP mesh. ``max_steps`` is the resolved step budget, so both
-    optimizers' LR schedulers are fully configured here.
+    optimizers' LR schedulers are fully configured here; ``batch_size`` is the rows of one driver
+    batch (it bounds the episodes in flight).
     """
-    from twinkle.checkpoint_engine import CheckpointEngineManager
-    from twinkle.data_format import SamplingParams
-    from twinkle_agentic.async_rl import REF_ONLY_REMOTE_GROUP
-    from twinkle_agentic.rollout import MultiTurnRollout
-
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builders.streaming import (
+        CONTROL_GROUP,
+        build_checkpoint_manager,
+        build_cluster_adapter,
+        build_rollout,
+        inflight_rows,
+        rollout_sampling_params,
+    )
     from swift.dev.loss import (
         configure_ppo_value_loss,
         configure_ppo_value_metric,
@@ -114,7 +126,9 @@ def initialize_ppo_cluster(
         configure_rl_metrics,
     )
     from swift.dev.processor import InputProcessor, processor_kwargs
-    from swift.dev.rewards.worker import RewardWorker
+    from twinkle.advantage import GAEAdvantage
+    from twinkle.reward import RewardShape
+    from twinkle.signals import KLEstimator, Reduce, ResponseScores
 
     sp = template_config.sequence_parallel_size
     sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
@@ -217,44 +231,18 @@ def initialize_ppo_cluster(
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
     )
+    engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
-        from twinkle_agentic.async_rl import ClusterAdapter
-
-        # the critic is never published, but a colocate-borrowing adaptive runtime must hand the
-        # device over with BOTH training models offloaded, so it rides the adapter's handover.
-        adapter = ClusterAdapter.build(
-            model=model,
-            sampler=sampler,
-            plan=resource_plan,
-            rollout_config=rollout_config,
-            additional_models=(value_model,),
-        )
-    params: Dict[str, Any] = {"max_tokens": rl_config.max_completion_length}
-    if generation_config is not None:
-        for key in ("temperature", "top_p", "top_k"):
-            value = getattr(generation_config, key, None)
-            if value is not None:
-                params[key] = value
-    # One engine for every generation entry (PPO rolls out single-turn): disaggregated places it
-    # on the CPU payload group; colocate keeps it local for the visible loop's generate.
-    rollout = MultiTurnRollout(
-        sampler,
-        template,
-        sampling_params=SamplingParams(**params),
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
-        max_turns=1,
-        max_trajectory_tokens=rollout_config.max_trajectory_tokens,
-        remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP),
-    )
-    engine = (
-        adapter.dedicated_manager
-        if adapter is not None
-        else CheckpointEngineManager(
-            model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
-            sync_backend=rollout_config.weight_sync_backend,
-        )
-    )
+        # Only the flex ranks: the trainer's ranks also hold the critic, which lending would leave
+        # resident next to the borrowed replicas.
+        adapter = build_cluster_adapter(
+            resource_plan, rollout_config, model=model, sampler=sampler, checkpoint_manager=engine, lend=False)
+    params = rollout_sampling_params(rl_config.max_completion_length, generation_config)
+    # PPO rolls out single-turn, on the rollout CPU group.
+    rollout = build_rollout(
+        sampler, template, rollout_config, sampling_params=params, remote=True,
+        inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)))
 
     # PPO ALWAYS anchors the KL: the full-parameter default is a frozen policy-init copy on the ref
     # group; a LoRA run reuses the policy actor itself with its adapter off (identity-derived).
@@ -285,19 +273,19 @@ def initialize_ppo_cluster(
         model_revision=rl_config.ref_model_revision,
     )
 
-    backend = rollout_config.rollout_sampler
-    orm_scorers = resolve_reward_scorers(
+    orm_scorers, orm_names = resolve_reward_scorers(
         "orm",
         reward_config=reward_config,
         model_config=model_config,
         template_config=template_config,
         distributed_config=distributed_config,
         rollout_config=rollout_config,
-        backend=backend,
+        backend=rollout_config.rollout_sampler,
         sampler=sampler,
+        worker_group=CONTROL_GROUP,
         quantize_config=quantize_config,
     )
-    worker = RewardWorker(orm_scorers=orm_scorers, template=template)
+    group = {"remote_group": CONTROL_GROUP}
     return Cluster(
         model=model,
         value_model=value_model,
@@ -306,75 +294,38 @@ def initialize_ppo_cluster(
         engine=engine,
         adapter=adapter,
         reference=reference,
-        worker=worker,
+        orm_scorers=orm_scorers,
+        orm_names=orm_names,
         sampling_params=params,
         colocate=colocate,
+        scores=ResponseScores(**group),
+        kl=KLEstimator(**group),
+        reward_shape=RewardShape(**group),
+        gae=GAEAdvantage(gamma=rl_config.gamma, gae_lambda=rl_config.lam, normalize=rl_config.whiten_rewards, **group),
+        reduce=Reduce(**group),
     )
 
 
 def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
-                     tuner_config: Optional['TunerConfig'], train_batch_size: int,
-                     gradient_accumulation_steps: int, prompt_dataloader: Any,
-                     num_train_epochs: float, max_steps: int,
-                     output_dir: str) -> Any:
-    """Assemble twinkle's StreamingDriver for PPO: the per-sample pull stream, batch-scored.
+                     prompt_dataloader: Any, batch_size: int, num_train_epochs: float,
+                     max_steps: Optional[int]) -> Any:
+    """Assemble twinkle's StreamingDriver for PPO: ORM-scored episodes, no group verdict.
 
-    PPO has no group contract (per-token GAE scores each trajectory on its own), so the pull rule
-    is group_pull=False with no group-completion verdict -- the driver batches the ORM scoring at
-    the pull boundary via the remote ``score`` shape, and the recipe lifts each pull through the GAE
-    pipeline. No sync-only feature exists either: every async_mode rides this one stream.
+    PPO has no group contract (per-token GAE scores each trajectory on its own); every async_mode
+    rides this one stream.
     """
-    from twinkle_agentic.async_rl import StreamingDriver
+    from swift.dev.builders.streaming import build_streaming_driver
 
-    from swift.dev.recipe.utils import check_streaming_config
-
-    strategy = rollout_config.weight_sync_strategy
-    if rollout_config.async_mode == "none":
-        max_staleness = 0
-    elif rollout_config.async_mode == "one_step_off":
-        max_staleness = 1
-    else:
-        max_staleness = rollout_config.max_staleness
-    adapter_name = "default" if tuner_config is not None else None
-    check_streaming_config(
-        adapter_name=adapter_name,
-        max_staleness=max_staleness,
-        weight_sync_strategy=strategy,
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
-        parameter_sync_step=rollout_config.parameter_sync_step,
-        serialize_generation=False,
-    )
-    num_generations = max(1, rl_config.num_generations)
-    need_rows = train_batch_size * gradient_accumulation_steps
-    from swift.dev.recipe.streaming import plan_streaming_batches
-
-    batch_plan = plan_streaming_batches(
-        need_rows=need_rows,
-        num_generations=num_generations,
-        parameter_sync_step=rollout_config.parameter_sync_step,
-        max_staleness=max_staleness,
-        group_pull=False,
-    )
-    return StreamingDriver(
-        version_control=True,
-        prompt_stream=prompt_dataloader,
-        num_train_epochs=num_train_epochs,
-        max_staleness=max_staleness,
-        num_generations=num_generations,
-        groups_per_partition=batch_plan.groups_per_partition,
-        buffer_depth=batch_plan.buffer_depth,
+    return build_streaming_driver(
+        dataloader=prompt_dataloader,
         rollout=cluster.rollout,
-        group_pull=False,
-        need_rows=need_rows,
-        max_rows_per_pull=batch_plan.max_rows_per_pull,
-        snapshot_model=(cluster.model if strategy == "adapter_snapshot" else None),
-        snapshot_dir=os.path.join(output_dir, "async_adapters"),
-        adapter_name=adapter_name,
+        rollout_config=rollout_config,
+        batch_size=batch_size,
+        num_generations=max(1, rl_config.num_generations),
+        num_train_epochs=num_train_epochs,
         max_steps=max_steps,
-        consume=None,
-        score=cluster.worker,
-        resource_adapter=cluster.adapter,
-        regenerate=None,
-        baseline_fn=None,
-        max_group_regenerations=0,
+        checkpoint_manager=cluster.engine,
+        orms=cluster.orm_scorers,
+        cluster_adapter=cluster.adapter,
+        remote=True,
     )

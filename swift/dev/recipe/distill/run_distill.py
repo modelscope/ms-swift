@@ -1,25 +1,23 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# The distillation recipes' visible training main: five segments, then ONE loop body by placement.
+# The distillation recipes' visible training main: five segments, then ONE loop over the streaming driver.
 from __future__ import annotations
 
 import math
 import random
-from itertools import islice
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from itertools import count
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
-from swift.dev.recipe.streaming import publish_rollout_weights
+from swift.dev.recipe.batching import apply_rollout_plan, plan_rollout_batch, record_rollout_step
 from swift.dev.utils.logger import get_logger
+from swift.dev.utils.scoring import copy_inputs
 
 from swift.dev.recipe.distill.assembly import (
     DISTILL_SIGNALS, Cluster, build_distill_driver, distill_dataset_rows, distill_group_requests,
     initialize_distill_cluster)
-from swift.dev.recipe.distill.worker import DistillRow
 from swift.dev.recipe.utils import (
     StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
     resolve_generation_batch_size, resolve_rollout_max_steps, resume_training, rollout_step_budget,
-    save_final_checkpoint, save_training_step,
-    snapshot_initial_adapter)
+    save_final_checkpoint, save_training_step, snapshot_initial_adapter, stream_batch_size)
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -30,47 +28,35 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def _rows_from_samples(samples: List[Any]) -> List[DistillRow]:
-    """Lift rollout samples into training rows: the encoded feature + the conversation + extras.
+def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], samples: Optional[List[Any]],
+                use_student: bool, *, train_batch_size: int, save: Optional[Callable[[str], Any]]) -> int:
+    """Submit full GA updates, dropping the tail; both models split micro-batches internally.
 
-    A multi-turn record never occurs here (distillation rolls out single-turn), so a sample's own
-    conversation defaults to the prompt it was admitted for.
+    ``trajs`` are the driver's trajectories (on-policy, with their ``samples``) or encoded dataset
+    rows (off-policy, ``samples`` None).
     """
-    return [
-        DistillRow(sample.encoded,
-                   sample.messages if sample.messages is not None else list(sample.prompt or []),
-                   sample.extra or {}, getattr(sample, 'token_lengths', None)) for sample in samples
-    ]
-
-
-def _train_rows(cluster: Cluster, state: StepState, rows: List[DistillRow],
-                use_student: bool, *, train_batch_size: int,
-                save: Optional[Callable[[str], Any]]) -> int:
-    """Submit full GA updates, dropping the tail; both models split micro-batches internally."""
     update_batch_size = train_batch_size * state.ga
-    dropped = len(rows) % update_batch_size
+    dropped = len(trajs) % update_batch_size
     if dropped:
         logger.warning(
             f"Dropping {dropped} distillation samples that cannot fill an optimizer batch of {update_batch_size}."
         )
     optimizer_steps = 0
     micro_batch_size = train_batch_size // cluster.model.device_mesh.data_world_size
-    for lo, hi in optimizer_batch_slices(len(rows), train_batch_size, state.ga):
-        update_rows = rows[lo:hi]
+    for lo, hi in optimizer_batch_slices(len(trajs), train_batch_size, state.ga):
         if state.reached_max() or state.should_stop():
             break
+        update = trajs[lo:hi]
         state.micro_step += (hi - lo) // train_batch_size
-        # The worker builds the kwargs where the teacher forward runs -- the driver never sees the
-        # full-vocab logits or the logps, only the light kwargs carrying them as refs.
-        plan = (plan_rollout_batch(
-            state, [row.feature for row in update_rows], samples=update_rows,
-            micro_batch_kwargs={'micro_batch_size': micro_batch_size})
-                if use_student and getattr(state, 'balance_batch', False) else None)
-        if plan is not None:
-            update_rows = plan.apply(update_rows)
-        kwargs = dict(cluster.worker.forward_kwargs(update_rows, use_student))
-        kwargs.update(gradient_accumulation_steps=1, micro_batch_size=micro_batch_size)
-        cluster.model.forward_backward(**kwargs)
+        plan = (plan_rollout_batch(state, update, samples=samples[lo:hi],
+                                   micro_batch_kwargs={'micro_batch_size': micro_batch_size})
+                if samples is not None else None)
+        update = apply_rollout_plan(plan, update)
+        # The worker runs the teacher forward -- the driver never sees the full-vocab logits or the
+        # logps, only the light kwargs carrying them as refs.
+        signal = dict(cluster.worker.forward_kwargs(update, use_student))
+        cluster.model.forward_backward(
+            inputs=copy_inputs(update), gradient_accumulation_steps=1, micro_batch_size=micro_batch_size, **signal)
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         record_rollout_step(state, plan)
         optimizer_steps += 1
@@ -78,141 +64,60 @@ def _train_rows(cluster: Cluster, state: StepState, rows: List[DistillRow],
     return optimizer_steps
 
 
-def _distill_round_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
-                        dataset_rows: List[DistillRow], dataloader: Any, state: StepState, *,
-                        train_batch_size: int, num_train_epochs: float, seed: int,
-                        save: Optional[Callable[[str], Any]]) -> None:
-    """Choose one source per update and prepare exactly GBS rows from that source.
+def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
+                dataset_rows: List[Dict[str, Any]], state: StepState, *, train_batch_size: int,
+                batch_size: int, seed: int, save: Optional[Callable[[str], Any]]) -> None:
+    """One loop over the driver; off-policy blocks are drawn in between.
 
-    Prompt rows repeat ``num_generations`` times before grouping into updates, independently of
-    the dataloader's batch size. Only an epoch's incomplete final update is dropped, before any
-    generation. Off-policy updates advance their own dataset cursor by GBS rows.
-
-    An on-policy update rolls the student (borrowing the device when colocated, or one weight sync
-    when disaggregated); an off-policy update distils the dataset's own completions and adds GKD's
-    supervised CE term -- it is not a skipped update.
+    Every block of ``batch_size`` rows draws its source: with probability ``lmbda`` the student's
+    next driver batch (on-policy), otherwise the next ``batch_size`` dataset completions
+    (off-policy, GKD adds its supervised CE term). The draws before each on-policy block run first,
+    so the weight sync -- which, colocated, hands the devices to the sampler -- happens only right
+    before the driver is asked for a batch.
     """
-    colocate = cluster.colocate
-    update_batch_size = train_batch_size * state.ga
-    update_index = 0
+    from swift.dev.recipe.offload import sleep_for_rollout
+
+    draws = count()
     dataset_offset = 0
-    entered = False
+
+    def train_off_policy() -> bool:
+        """Train dataset blocks until a block draws the student; ``False`` once training must stop."""
+        nonlocal dataset_offset
+        while not (state.reached_max() or state.should_stop()):
+            if random.Random(seed + next(draws)).random() < rl_config.lmbda:
+                return True
+            rows = [dataset_rows[(dataset_offset + i) % len(dataset_rows)] for i in range(batch_size)]
+            dataset_offset = (dataset_offset + batch_size) % len(dataset_rows)
+            _train_rows(cluster, state, rows, None, False, train_batch_size=train_batch_size, save=save)
+        return False
+
+    lent = False
+    batches = 0
     try:
-        for epoch in range(max(1, math.ceil(num_train_epochs))):
-            if state.reached_max() or state.should_stop():
+        if not train_off_policy():
+            return
+        # the initial publication: a resumed policy differs from the weights the sampler loaded
+        cluster.engine.sync_weights()
+        lent = cluster.colocate
+        for trajs, samples in driver:
+            if cluster.colocate:
+                sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
+                cluster.model.reload_to_gpu()
+                lent = False
+            _train_rows(cluster, state, trajs, samples, True, train_batch_size=train_batch_size, save=save)
+            batches += 1
+            if not train_off_policy():
                 break
-            dataloader.set_epoch(epoch)
-            # Expand prompt metadata, not generated answers. An iterator also handles GBS values
-            # that are not multiples of num_generations without generating extra completions.
-            prompt_rows = (row for batch in dataloader for row in batch for _ in range(rl_config.num_generations))
-            while not state.reached_max() and not state.should_stop():
-                batch = list(islice(prompt_rows, update_batch_size))
-                if len(batch) < update_batch_size:
-                    if batch:
-                        logger.warning(
-                            f"Dropping {len(batch)} distillation sample slots that cannot fill "
-                            f"an optimizer batch of {update_batch_size}."
-                        )
-                    break
-                use_student = random.Random(seed + update_index).random() < rl_config.lmbda
-                update_index += 1
-                if use_student:
-                    if colocate:
-                        # borrow the device: wake the sampler's weights so the sync has somewhere to
-                        # write, sync the trained policy in, step the trainer aside, wake the kv cache.
-                        from swift.dev.recipe.offload import wake_for_rollout
-                        wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['weights'])
-                        cluster.engine.sync_weights(merge_and_sync=True)
-                        from swift.dev.recipe.offload import offload_for_rollout
-                        offload_for_rollout(cluster.model, rollout_config)
-                        wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['kv_cache'])
-                        entered = True
-                    else:
-                        cluster.engine.sync_weights()
-                    samples, encodings = cluster.rollout.generate(
-                        [row['messages'] for row in batch],
-                        num_samples=1,
-                        sampling_params=cluster.sampling_params,
-                        prompt_extras=[{k: v for k, v in row.items() if k != 'messages'} for row in batch] or None,
-                    )
-                    for sample, encoded in zip(samples, encodings):
-                        sample.encoded = encoded
-                    if colocate:
-                        # return the device: sleep the sampler, then reload the trainer's weights.
-                        from swift.dev.recipe.offload import sleep_for_rollout
-                        sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-                        cluster.model.reload_to_gpu()
-                        entered = False
-                    _train_rows(
-                        cluster, state, _rows_from_samples(samples), True, train_batch_size=train_batch_size, save=save
-                    )
-                else:
-                    # A rolling window over the dataset completions, so successive off-policy
-                    # updates cover new rows (run_distill rejected lmbda<1 without completions).
-                    # The window and cursor advance by update_batch_size, keeping the same sample
-                    # budget as one on-policy update instead of consuming a whole dataset epoch.
-                    # Only off-policy updates consume dataset completions; intervening on-policy
-                    # updates must not skip any of them.
-                    count = len(dataset_rows)
-                    rows = [dataset_rows[(dataset_offset + i) % count] for i in range(update_batch_size)]
-                    dataset_offset = (dataset_offset + update_batch_size) % count
-                    _train_rows(cluster, state, rows, False,
-                                train_batch_size=train_batch_size, save=save)
+            if batches % rollout_config.parameter_sync_step == 0:
+                cluster.engine.sync_weights()
+                lent = cluster.colocate
     finally:
-        if entered:
-            # ended mid-window (e.g. reached_max inside a generation round): give the device back so
-            # the post-run final save finds the model resident.
-            from swift.dev.recipe.offload import sleep_for_rollout
+        # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
+        driver.close()
+        if lent:
+            # ended with the devices lent: give them back so the final save finds the model resident
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
-
-
-def _distill_streaming_loop(cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
-                            tuner_config: Optional['TunerConfig'], dataloader: Any, state: StepState, *,
-                            train_batch_size: int, num_train_epochs: float, output_dir: str,
-                            save: Optional[Callable[[str], Any]]) -> None:
-    """The purely on-policy disaggregated loop (lmbda == 1): the StreamingDriver streams, body trains.
-
-    Per pull: lift the samples into rows, train the mini-batches through the remote worker, then the
-    visible publish -- ``in_place`` aborts in-flight generations and pushes the live weights,
-    ``adapter_snapshot`` hands the driver the next version's save.
-    """
-    driver = build_distill_driver(
-        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config, tuner_config=tuner_config,
-        train_batch_size=train_batch_size, gradient_accumulation_steps=state.ga,
-        prompt_dataloader=dataloader, num_train_epochs=num_train_epochs, max_steps=state.max_steps,
-        output_dir=output_dir)
-    strategy = rollout_config.weight_sync_strategy
-    steps_since_publish = 0
-    try:
-        for samples in driver:
-            optimizer_steps = _train_rows(
-                cluster, state, _rows_from_samples(samples), True,
-                train_batch_size=train_batch_size, save=save)
-            # the visible publish: cadence inline, then one request; the driver brackets the push with
-            # its version accounting and the adapter's decide/register (commit releases its thread).
-            steps_since_publish += optimizer_steps
-            if steps_since_publish >= rollout_config.parameter_sync_step:
-                if strategy == 'in_place':
-                    # Park in-flight generation across the update, then resume on the new weights.
-                    def _visible_sync(window: Any) -> None:
-                        publish_rollout_weights(
-                            sampler=cluster.sampler, engine=cluster.engine, adapter=cluster.adapter
-                        )
-
-                    driver.request_publish(_visible_sync)
-                else:
-                    # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
-                    driver.request_publish()
-                steps_since_publish = 0
-            driver.commit(optimizer_steps)
-            if state.reached_max() or state.should_stop():
-                break
-
-    finally:
-        # Release the driver thread before the caller's teardown shuts the rollout/sampler:
-        # an exception on the recipe thread otherwise leaves it blocked on the bridge ack.
-        driver.abort()
 
 
 def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
@@ -267,15 +172,20 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         num_generations=rl_config.num_generations, num_iterations=1,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps)
-    # Updates span prompt-loader batches. The round loop drops each epoch's tail; the streaming
-    # driver instead combines all passes before dropping its delivery tail.
+    batch_size = stream_batch_size(
+        colocate=rollout_config.sampler_mode == "colocate", generation_batch_size=generation_batch_size,
+        num_generations=max(1, rl_config.num_generations), train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+    num_train_epochs = math.ceil(train_config.num_train_epochs)
+    # The driver combines all passes before dropping its delivery tail; off-policy blocks spend the
+    # same step budget, they only replace some of the on-policy batches.
     budget = rollout_step_budget(
         num_prompts=len(prompts), num_generations=rl_config.num_generations,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
-        num_train_epochs=math.ceil(train_config.num_train_epochs),
+        num_train_epochs=num_train_epochs,
         generation_batch_size=generation_batch_size,
-        streaming=rollout_config.sampler_mode != "colocate" and rl_config.lmbda == 1,
+        stream_batch_rows=batch_size,
     )
     max_steps = resolve_rollout_max_steps(train_config.max_steps, budget, recipe='run_distill')
     # segment 3: the cluster -- every actor distillation trains with, built explicitly, nothing hidden.
@@ -284,11 +194,10 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         train_config=train_config, distributed_config=distributed_config,
         checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
         tuner_config=tuner_config, max_steps=max_steps, signal=signal,
-        train_batch_size=train_batch_size,
+        train_batch_size=train_batch_size, batch_size=batch_size,
         quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
         generation_config=generation_config, resource_plan=resource_plan,
         auxiliary_meshes=auxiliary_meshes,
-        output_dir=output_dir,
     )
     # segment 4: dataloader + the dissolved step cadence + the save closure.
     from swift.dev.builders import build_prompt_dataloader
@@ -299,6 +208,11 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         shuffle=dataset_config.train_dataloader_shuffle,
         batch_size=generation_batch_size,
     )
+    # A batch feeds batch_size / (train_batch_size * GA) optimizer steps.
+    steps_per_batch = max(1, batch_size // (train_batch_size * train_config.gradient_accumulation_steps))
+    driver = build_distill_driver(
+        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config, prompt_dataloader=dataloader,
+        batch_size=batch_size, num_train_epochs=num_train_epochs, max_steps=math.ceil(max_steps / steps_per_batch))
 
     state = StepState(
         cluster.model, train_config,
@@ -337,22 +251,11 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             **{f'teacher_{index}': teacher for index, teacher in enumerate(cluster.teachers)},
     })):
         logger.info('[perf] profiling enabled for the online %s loop.', rl_config.rl_type.upper())
-    # segment 5: ONE visible loop -- colocate trains a plain round loop; disaggregated picks by lmbda.
+    # segment 5: ONE visible loop (every placement and lmbda rides the stream).
     state.handler.on_train_begin()
     try:
-        if not cluster.colocate and rl_config.lmbda == 1.0:
-            _distill_streaming_loop(cluster, rl_config, rollout_config, tuner_config, dataloader,
-                                    state, train_batch_size=train_batch_size,
-                                    num_train_epochs=train_config.num_train_epochs,
-                output_dir=output_dir,
-                save=save,
-            )
-        else:
-            _distill_round_loop(cluster, rl_config, rollout_config, dataset_rows, dataloader,
-                                state, train_batch_size=train_batch_size,
-                                num_train_epochs=train_config.num_train_epochs, seed=train_config.seed,
-                save=save,
-            )
+        _train_loop(cluster, driver, rl_config, rollout_config, dataset_rows, state,
+                    train_batch_size=train_batch_size, batch_size=batch_size, seed=train_config.seed, save=save)
     finally:
         Perf.shutdown()
         cluster.rollout.close()

@@ -34,7 +34,7 @@ from .sampler import (
     to_pooling_params,
     to_sampling_params,
 )
-from .sandbox import TOOL, build_env_pool, build_tool_sandbox, resolve_tool_plugins, tool_manager_for
+from .sandbox import TOOL, build_env_pool, build_tools, resolve_tool_plugins
 from .template import build_template, build_template_from_spec, build_template_spec
 
 __all__ = [
@@ -71,7 +71,6 @@ __all__ = [
     "build_template_spec",
     "TOOL",
     "build_env_pool",
-    "build_tool_sandbox",
+    "build_tools",
     "resolve_tool_plugins",
-    "tool_manager_for",
 ]

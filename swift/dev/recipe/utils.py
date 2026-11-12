@@ -3,7 +3,6 @@
 from __future__ import annotations
 import math
 import os
-import time
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
@@ -11,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTupl
 import json
 
 from swift.dev.utils.logger import get_logger
+from swift.dev.utils.scoring import collect  # noqa: F401 -- the recipes import it from here
 
 if TYPE_CHECKING:
     from twinkle.perf import TimeRecorder
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
         TrainConfig,
         TunerConfig,
     )
-    from swift.dev.config.rollout_config import WeightSyncStrategyName
     from swift.dev.model import TrainableModel
 
 logger = get_logger()
@@ -44,19 +43,6 @@ TEACHER_GROUP = 'teacher'
 #: A FULL-PARAMETER frozen reference is an independent weight copy: its own DeviceGroup. A LoRA /
 #: disable_adapter reference reuses the policy's base and plans no group.
 REF_GROUP = 'ref'
-
-
-def collect(result: Any) -> Any:
-    """Resolve a maybe-lazy remote result to its value.
-
-    A worker method declared ``lazy_collect=True`` hands the ray driver a ``LazyCollect`` future (collect
-    on demand), but the SAME handle can resolve eagerly -- a CPU-payload worker (the reward/scoring actor)
-    materialises at the call, so ``grpo_advantages``/``gae`` come back as the plain tuple, not a future.
-    Recipes that consume the VALUE route through here so they are correct under both, mirroring the
-    resolve-if-lazy seam in :func:`swift.dev.utils.scoring.response_token_scores`. Calling ``()`` blindly
-    assumes the lazy form and raises ``'tuple' object is not callable`` on the eager one.
-    """
-    return result() if callable(result) and getattr(result, '_is_lazy_collect', False) else result
 
 
 #: The console cadence when no LoggingConfig was supplied (legacy logging_steps=1: every step).
@@ -780,25 +766,20 @@ class RolloutStepState(StepState):
         batch = self._iteration_facts
         if batch is None:
             return
-        if length_fn is None:
-            from swift.dev.utils.scoring import sample_token_lengths
-
-            length_fn = sample_token_lengths
         samples = list(samples)
-        # Prefer the lengths counted at feature-build time: under ray mode the stashed ``encoded``
-        # reaches the driver only as an ObjectRef, so length_fn (which reads encoded) would either
-        # crash on the ref or, worse, force-materialise the heavy feature. Only synthesised
-        # samples (no token_lengths) fall back to reading the local feature.
-        lengths = [tuple(sample.token_lengths) if getattr(sample, 'token_lengths', None) is not None
-                   else None for sample in samples]
-        fallback = [index for index, value in enumerate(lengths) if value is None]
-        if fallback:
-            computed = [length_fn(samples[index]) for index in fallback]
-            for index, value in zip(fallback, computed):
-                lengths[index] = tuple(value)
+        # The rollout counts (prompt, response) tokens when it builds the trajectory, so the heavy
+        # trajectory is never fetched for this; only synthesised samples need a length_fn.
+        lengths = []
+        for sample in samples:
+            counts = getattr(sample, 'token_lengths', None)
+            if counts is None:
+                if length_fn is None:
+                    raise ValueError('rollout metrics need token_lengths on every sample (or a length_fn).')
+                counts = length_fn(sample)
+            lengths.append(tuple(counts))
         batch['lengths'] = lengths
         batch['truncated'] = [bool(getattr(sample, 'truncated', False)) for sample in samples]
-        batch['turns'] = [getattr(sample, 'rollout_infos', {}).get('turns') for sample in samples]
+        batch['turns'] = [getattr(sample, 'turns', None) for sample in samples]
         # When the samples arrived -- the 'gen' fallback window end when no gen span exists.
         batch['received_ns'] = default_recorder.now_ns()
 
@@ -976,18 +957,31 @@ def resolve_generation_batch_size(generation_batch_size: Optional[int], *, num_p
     return max(1, prompts_per_update * _STEPS_PER_ROLLOUT_BATCH * max(1, num_iterations))
 
 
+def stream_batch_size(*, colocate: bool, generation_batch_size: int, num_generations: int,
+                      train_batch_size: int, gradient_accumulation_steps: int) -> int:
+    """Rows of one streaming-driver batch: whole groups and whole optimizer updates.
+
+    Disaggregated hands out the smallest such batch, ``lcm(train_batch_size * GA, num_generations)``.
+    Colocate pays a sleep / wake / weight sync per batch, so its batch is the generation batch
+    (``generation_batch_size`` prompts) rounded up to that quantum, amortizing the hand-over.
+    """
+    quantum = math.lcm(train_batch_size * max(1, gradient_accumulation_steps), num_generations)
+    if not colocate:
+        return quantum
+    return max(1, math.ceil(generation_batch_size * num_generations / quantum)) * quantum
+
+
 def rollout_step_budget(*, num_prompts: int, num_generations: int, train_batch_size: int,
                         gradient_accumulation_steps: int, num_train_epochs: float,
                         generation_batch_size: Optional[int] = None,
                         num_iterations: int = 1,
-                        streaming: bool = False,
-                        group_pull: bool = False) -> int:
+                        stream_batch_rows: Optional[int] = None) -> int:
     """Count full optimizer updates after dropping unusable rollout samples.
 
     ``train_batch_size`` is B * DP, so GBS = train_batch_size * gradient_accumulation_steps.
     Each generation batch repeats ``num_iterations`` times before its last incomplete update
-    is dropped. With ``streaming``, the driver combines generation batches and drops its own
-    delivery tail before replay; ``group_pull`` additionally requires whole generation groups.
+    is dropped. With ``stream_batch_rows`` (see :func:`stream_batch_size`), the streaming driver
+    combines generation batches and drops its own delivery tail before replay.
     """
     # Count the samples actually generated by each batch, including smaller epoch tails.
     prompt_batch_size = min(generation_batch_size or num_prompts, num_prompts)
@@ -1001,10 +995,9 @@ def rollout_step_budget(*, num_prompts: int, num_generations: int, train_batch_s
         sample_counts.append(actual_prompt_count * num_generations)
 
     global_batch_size = train_batch_size * gradient_accumulation_steps
-    # The driver drops before delivery. Colocate instead drops after replaying each batch.
-    if streaming:
-        alignment = math.lcm(global_batch_size, num_generations) if group_pull else global_batch_size
-        sample_counts = [(sum(sample_counts) // alignment) * alignment]
+    # The driver drops before delivery; a round loop instead drops after replaying each batch.
+    if stream_batch_rows:
+        sample_counts = [(sum(sample_counts) // stream_batch_rows) * stream_batch_rows]
 
     optimizer_steps = 0
     for num_samples in sample_counts:
@@ -1097,9 +1090,11 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     import twinkle
     from twinkle import DeviceGroup, DeviceMesh, Platform
     from twinkle.perf import Perf
-    from twinkle_agentic.async_rl import REF_ONLY_REMOTE_GROUP, estimate_plan, resource_device_groups
+    from twinkle_agentic.async_rl import estimate_plan, resource_device_groups
 
     from swift.dev.builders import build_dp_mesh, build_template, load_model_processor
+    from swift.dev.builders.sandbox import SANDBOX
+    from swift.dev.builders.streaming import CONTROL_GROUP, ENV_GROUP, ROLLOUT_GROUP
     from swift.dev.config import process_configs, validate_configs
 
     process_configs(
@@ -1144,7 +1139,7 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
             sampler_width * sampler_replicas,
             [(name, (mesh.world_size if mesh else 1)) for name, mesh in auxiliary_meshes.items()])
     else:
-        groups = resource_device_groups(resource_plan, adaptive=rollout_config.resource_mode == 'adaptive')
+        groups = resource_device_groups(resource_plan)
         auxiliary_meshes = {}
         logger.info('RL resource plan:\n%s', resource_plan.describe())
     if distributed_config.mode != 'ray':
@@ -1169,6 +1164,14 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     # The throughput denominator is the physical allocation, not the sum of
     # overlapping trainer/sampler worker counts or the currently active replicas.
     template.performance_device_groups = [(name, list(ranks)) for name, ranks in groups]
+    # The CPU groups of the stream: rollout replicas, sandbox env replicas, and one rank for the
+    # driver / checkpoint manager / scoring workers.
+    cpu_groups = [
+        DeviceGroup(name=ROLLOUT_GROUP, ranks=rollout_config.rollout_num_workers, device_type='CPU'),
+        DeviceGroup(name=CONTROL_GROUP, ranks=1, device_type='CPU'),
+    ]
+    if SANDBOX in (rollout_config.tools or ()):
+        cpu_groups.append(DeviceGroup(name=ENV_GROUP, ranks=rollout_config.sandbox_num_workers, device_type='CPU'))
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total,
@@ -1176,7 +1179,7 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
                             'tf32': train_config.tf32},
         global_device_mesh=build_dp_mesh(distributed_config, template_config.sequence_parallel_size),
         name=distributed_config.ray_exp_name,
-        groups=[*device_groups, DeviceGroup(name=REF_ONLY_REMOTE_GROUP, ranks=1, device_type='CPU')])
+        groups=[*device_groups, *cpu_groups])
     logger.info('twinkle initialized with DeviceGroups: %s', [(g.name, g.ranks) for g in device_groups])
     Perf.initialize({})  # the cluster's actors register themselves once built (see the run_*)
     return template, resource_plan, auxiliary_meshes
@@ -1209,11 +1212,6 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         sampler_engine_args.setdefault('worker_extension_cls', QUANT_SYNC_WORKER_EXTENSION)
     if colocate:
         sampler_engine_args['enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'] = True
-    if (backend == 'vllm' and tuner_config is not None and tuner_config.tuner == 'lora'
-            and rollout_config.weight_sync_strategy == 'adapter_snapshot'):
-        sampler_engine_args.setdefault('enable_lora', True)
-        sampler_engine_args.setdefault('max_lora_rank', tuner_config.lora_rank)
-        sampler_engine_args.setdefault('max_loras', 2)
     if enable_sampling_replay:
         sampler_engine_args['enable_sampling_replay'] = True
     if resource_plan is not None:
@@ -1234,14 +1232,18 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
 def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'ModelConfig',
                            template_config: 'TemplateConfig', distributed_config: 'DistributedConfig',
                            rollout_config: 'RolloutConfig', backend: str, sampler: Any,
-                           quantize_config: Optional['QuantizeConfig'] = None) -> List[Any]:
-    """One reward channel's ordered scorer list: the rules resolve locally, each MODEL via the builder.
+                           worker_group: Optional[str] = None,
+                           quantize_config: Optional['QuantizeConfig'] = None) -> Tuple[List[Any], List[str]]:
+    """One reward channel -> ``(scorer workers, metric names)``, one worker per ``--<channel>`` entry, in order.
 
     ``channel`` is 'orm' or 'prm': the merged ``--<channel>`` list resolves through
-    ``resolve_channel``; each reward MODEL goes through ``build_reward_model`` onto its own group
-    (``reward_<i>`` / ``prm_<i>`` -- the SAME names the recipe's group plan allocated). A PRM
-    model must resolve SCALAR (online RL places only a seq_cls/reranker frozen PRM today).
+    ``resolve_channel``; each rule becomes a ``FunctionWorker`` and each reward MODEL goes through
+    ``build_reward_model`` onto its own group (``reward_<i>`` / ``prm_<i>`` -- the SAME names the
+    recipe's group plan allocated). Every worker sits on ``worker_group``. A PRM model must resolve
+    SCALAR (online RL places only a seq_cls/reranker frozen PRM today).
     """
+    from twinkle.reward import FunctionWorker
+
     from swift.dev.builders import build_reward_model
     from swift.dev.rewards.reward import get_reward_funcs
     from swift.dev.rewards.scorer import ChannelCompanions, resolve_channel
@@ -1256,7 +1258,9 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
             template_names=getattr(reward_config, f'{channel}_template'),
             parallel_spec=getattr(reward_config, f'{channel}_parallel_spec')),
         channel=channel, sampler_model=model_config.model, backend=backend)
-    scorers = list(get_reward_funcs(plan.rules, reward_config)[0])
+    funcs, names = get_reward_funcs(plan.rules, reward_config)
+    scorers = [FunctionWorker(func, remote_group=worker_group) for func in funcs]
+    names = list(names)
     prefix = 'reward' if channel == 'orm' else channel
     for index, spec in enumerate(plan.specs):
         if channel == 'prm' and spec.kind != 'scalar':
@@ -1265,9 +1269,10 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
         scorers.append(build_reward_model(
             spec, model_config=model_config, template_config=template_config,
             distributed_config=distributed_config, rollout_config=rollout_config, backend=backend,
-            sampler=sampler, remote_group=f'{prefix}_{index}',
+            sampler=sampler, remote_group=f'{prefix}_{index}', worker_group=worker_group,
             judge_template=reward_config.judge_template, quantize_config=quantize_config))
-    return scorers
+        names.append(spec.display_name)
+    return scorers, names
 
 
 def teacher_group(index: int) -> str:
@@ -1507,8 +1512,7 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
     if backend == 'transformers':
         from twinkle.sampler import TransformersSampler
 
-        sampler = TransformersSampler(model=model)
-        sampler.set_template(template)
+        sampler = TransformersSampler(template=template, model=model)
         return GenerativeEval(
             sampler=sampler, template=template, datasets=eval_datasets, model_id=eval_model_id,
             task_config=task_config, enter=None, exit=None)
@@ -1528,19 +1532,25 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
         # model was placed with: an engine slicing inputs on another rank layout would be wrong.
         device_mesh=build_dp_mesh(distributed_config, template_config.sequence_parallel_size),
         remote_group='model')
-    manager = CheckpointEngineManager(model=model, sampler=sampler, mode='colocate')
-    # The eval hand-over is ColocateHandover's (the RL rollout's own sequence, so it cannot drift).
+    # Eval has no RolloutConfig. Sleep at level 1 so the trainer still gets the device back; the
+    # manager's colocate sync wakes the weights, pushes them, offloads the trainer and wakes the KV
+    # cache (the RL rollout's own sequence, so it cannot drift).
+    manager = CheckpointEngineManager(
+        model=model, sampler=sampler, mode='colocate', sleep_level=1,
+        offload_kwargs={'offload_model': True, 'offload_optimizer': True})
 
-    # Eval has no RolloutConfig. Sleep at level 1 so the trainer still gets the device back;
-    # a training run uses RolloutConfig.sleep_level, where 0 means do not sleep.
-    handover = ColocateHandover(model, sampler, manager, colocate=True, sleep_level=1)
+    def exit_eval() -> None:
+        """Take the device back for the trainer: sleep the engine, then reload the trainer."""
+        sampler.sleep(level=1)
+        model.reload_to_gpu()
+
     return GenerativeEval(
         sampler=sampler, template=template, datasets=eval_datasets, model_id=eval_model_id,
-        task_config=task_config, enter=handover.enter, exit=handover.exit)
+        task_config=task_config, enter=manager.sync_weights, exit=exit_eval)
 
 
-# The absorbed training infrastructure: the loop cadence helpers, the tracker, the colocate
-# hand-over, the streaming-config guard and the single-teacher resolver (was recipe/common).
+# The absorbed training infrastructure: the loop cadence helpers, the tracker and the
+# single-teacher resolver (was recipe/common).
 
 
 def filter_perf_actors(candidates: Dict[str, Any]) -> Dict[str, Any]:
@@ -1976,26 +1986,25 @@ class RunTracker:
             writer.log(scalars, step=step)
         return filtered
 
-    def log_prompts(self, prompts: Iterable[Any], samples: Iterable[Any], step: int, num_generations: int = 1) -> None:
-        """Log each distinct prompt/completion pair once when W&B prompt logging is enabled."""
-        if not self.config or not self.config.wandb_log_unique_prompts:
+    @property
+    def logs_prompts(self) -> bool:
+        """Whether :meth:`log_prompts` writes anything (W&B unique-prompt logging is on)."""
+        return bool(self.config and self.config.wandb_log_unique_prompts and self._writers.get('wandb') is not None)
+
+    def log_prompts(self, rows: Iterable[Tuple[Any, str]], step: int) -> None:
+        """Log each distinct ``(prompt, completion)`` pair once when W&B prompt logging is enabled."""
+        if not self.logs_prompts:
             return
-        writer = self._writers.get('wandb')
-        if writer is None:
-            return
-        prompts = list(prompts)
-        rows = []
-        for index, sample in enumerate(samples):
-            if not prompts:
-                break
-            prompt = prompts[min(index // max(1, num_generations), len(prompts) - 1)]
+        writer = self._writers['wandb']
+        table = []
+        for prompt, completion in rows:
             prompt_key = json.dumps(prompt, ensure_ascii=False, sort_keys=True, default=str)
             if prompt_key in self._logged_prompts:
                 continue
             self._logged_prompts.add(prompt_key)
-            rows.append([prompt_key, getattr(sample, 'decoded', str(sample))])
-        if rows:
-            writer.log({'completions': writer.Table(columns=['prompt', 'completion'], data=rows)}, step=step)
+            table.append([prompt_key, completion])
+        if table:
+            writer.log({'completions': writer.Table(columns=['prompt', 'completion'], data=table)}, step=step)
 
     def close(self) -> None:
         if self._metric_reporter is not None:
@@ -2119,330 +2128,6 @@ def _register_swanlab_notification(swanlab: Any, config: 'LoggingConfig') -> Non
     else:
         callback = callback_cls(webhook_url=config.swanlab_webhook_url, secret=config.swanlab_secret)
     swanlab.register_callbacks([callback])
-
-
-class ColocateHandover:
-    """Wake/sync/offload/reload around a generate phase, for a trainer and sampler sharing GPUs.
-
-    ``enter`` hands the device to the sampler and pushes the trained policy into it; ``exit`` hands the
-    device back to the trainer. A disaggregated (``colocate=False``) sampler lives on its own GPUs, so
-    there is no device to hand over: ``enter`` reduces to a plain weight sync and ``exit`` is a no-op.
-
-    ``model`` / ``sampler`` / ``manager`` are the twinkle objects the caller already built (the manager
-    wires the CUDA-IPC or NCCL path per its ``mode``); ``merge_and_sync`` is forwarded to
-    ``manager.sync_weights`` (merged base weights every step, correct for both full and LoRA training).
-    """
-
-    def __init__(self,
-                 model: Any,
-                 sampler: Any,
-                 manager: Any,
-                 *,
-                 colocate: bool,
-                 merge_and_sync: bool = True,
-                 sleep_level: int = 0,
-                 offload_model: bool = True,
-                 offload_optimizer: bool = True):
-        self.model = model
-        self.sampler = sampler
-        self.manager = manager
-        self.colocate = colocate
-        self.merge_and_sync = merge_and_sync
-        self.sleep_level = sleep_level
-        # Eval handover has no RolloutConfig; default both on so the trainer still steps aside.
-        self.offload_model = offload_model
-        self.offload_optimizer = offload_optimizer
-
-    def enter(self) -> None:
-        """Give the sampler the device and the trained weights, ready to generate.
-
-        Colocate order: wake the sampler's WEIGHTS so the sync has somewhere to write, sync the trained
-        policy into them, step the trainer aside (offload), then wake ONLY the KV cache so the sampler can
-        generate. The two wakes are tag-disjoint on purpose -- vLLM's ``wake_up`` aborts the whole call on
-        the first tag that is not still sleeping, so after waking ``weights`` the second wake may ask only
-        for ``kv_cache``: passing ``wake_up()`` (both tags) would hit the already-awake ``weights``, return
-        early, and leave the KV cache discarded, so the next generate builds attention metadata on freed
-        memory and dies with a CUDA illegal access. (A freshly built sampler is not sleeping yet, so on the
-        first round both wakes no-op -- which is why the bug only bites from round two on.)
-        """
-        if self.colocate:
-            self.sampler.wake_up(tags=['weights'])
-        self.manager.sync_weights(merge_and_sync=self.merge_and_sync)
-        if self.colocate:
-            self.model.offload_to_cpu(
-                offload_model=self.offload_model, offload_optimizer=self.offload_optimizer)
-            self.sampler.wake_up(tags=['kv_cache'])  # weights already awake; ready to generate
-
-    def exit(self) -> None:
-        """Take the device back for the trainer: sleep the sampler, then reload the trainer's weights.
-
-        ``sleep_level`` matches swift v4 and installed vLLM. 0 does not call sleep, so the engine
-        stays resident. 1 offloads vLLM weights to CPU and discards the KV cache. 2 discards both.
-        """
-        if self.colocate:
-            from swift.dev.recipe.offload import sleep_for_rollout
-            sleep_for_rollout(self.sampler, self.sleep_level)
-            self.model.reload_to_gpu()
-
-
-class AdaptiveColocateHandover:
-    """以 actor 子集暂停生成、同步权重，并在训练与 shared 引擎之间交接 GPU。"""
-
-    serializes = False
-    adaptive_shared = True
-
-    def __init__(self,
-                 model: Any,
-                 sampler: Any,
-                 dedicated_manager: Any,
-                 *,
-                 shared_manager: Any = None,
-                 additional_models: Iterable[Any] = (),
-                 sleep_level: int = 1):
-        if sleep_level not in (0, 1):
-            raise ValueError('adaptive shared sampler supports only sleep_level 0 or 1.')
-        self.model = model
-        self.models = (model, *tuple(additional_models))
-        self.sampler = sampler
-        self.dedicated_manager = dedicated_manager
-        self.shared_manager = shared_manager
-        self.controller = None
-        self.sleep_level = sleep_level
-        self.in_generation = False
-        self.enabled = False
-        self.borrow_time = 0.0
-        self.reclaim_time = 0.0
-
-    @property
-    def total_handover_time(self) -> float:
-        return self.borrow_time + self.reclaim_time
-
-    @staticmethod
-    def _wait(result):
-        if callable(result):
-            return result()
-        return result
-
-    def set_enabled(self, enabled: bool) -> None:
-        self.enabled = bool(enabled) and self.shared_manager is not None
-
-    def initialize_shared_workers(self, group, ranks, *, engine_args):
-        """构造 shared 引擎前释放训练显存，休眠引擎后恢复所有训练模型。"""
-        worker_ids = ()
-        initialization_error = None
-        can_reload = True
-        self.in_generation = True
-        try:
-            for model in self.models:
-                self._wait(model.offload_to_cpu())
-            worker_ids = self.sampler.add_workers(group, ranks, shared=True, engine_args=engine_args)
-            self.sampler.pause_workers(worker_ids)
-            self.sampler.pause_generation(_worker_ids=worker_ids)
-            from swift.dev.recipe.offload import sleep_for_rollout
-            self._wait(sleep_for_rollout(self.sampler, self.sleep_level, _worker_ids=worker_ids))
-        except BaseException as exc:
-            initialization_error = exc
-            try:
-                if worker_ids and not self.sampler.remove_workers(worker_ids):
-                    raise RuntimeError('Shared sampler initialization still has unfinished worker calls.')
-            except Exception:
-                logger.warning('初始化失败后未能完整关闭 shared sampler actors。', exc_info=True)
-            can_reload = not set(worker_ids) & set(self.sampler.worker_ids(shared=True))
-            raise
-        finally:
-            if can_reload:
-                try:
-                    self._reload_models()
-                    self.in_generation = False
-                except BaseException:
-                    if initialization_error is None:
-                        raise
-                    logger.warning('初始化失败后未能完整恢复训练模型。', exc_info=True)
-        return worker_ids
-
-    def _borrow_shared(self, *, publish: bool):
-        shared_ids = self.sampler.worker_ids(shared=True)
-        outstanding = any(self.sampler.worker_inflight(shared_ids))
-        if not shared_ids or (not self.enabled and not outstanding) or self.in_generation:
-            return
-        started = time.perf_counter()
-        # 即使停止 shared 新准入，也必须让已经提交的请求继续生成并正常接收新 policy。
-        self.in_generation = True
-        try:
-            self._wait(self.sampler.wake_up(tags=['weights'], _worker_ids=shared_ids))
-            if publish:
-                trainer_ranks = [ranks[0] for ranks in self.sampler.worker_ranks(shared_ids)]
-                self.shared_manager.set_receiver_workers(shared_ids, colocate_trainer_ranks=trainer_ranks)
-                self.shared_manager.sync_weights(merge_and_sync=True)
-            for model in self.models:
-                self._wait(model.offload_to_cpu())
-            self._wait(self.sampler.wake_up(tags=['kv_cache'], _worker_ids=shared_ids))
-            self.sampler.resume_generation(_worker_ids=shared_ids)
-            if self.enabled:
-                self.sampler.activate_workers(shared_ids)
-        except BaseException:
-            try:
-                self.reclaim()
-            except Exception:
-                logger.warning('shared 借卡失败后未能完整恢复训练模型。', exc_info=True)
-            raise
-        self.borrow_time += time.perf_counter() - started
-
-    def borrow(self, *, publish: bool) -> None:
-        if not publish:
-            self._borrow_shared(publish=False)
-            return
-        if self.in_generation:
-            self.reclaim()
-        suspended = self.sampler.worker_ids()
-        self.sampler.suspend_admission(suspended)
-        dedicated_ids = self.sampler.worker_ids(shared=False, states=('ACTIVE', 'DRAINING'))
-        try:
-            self.sampler.pause_generation(_worker_ids=dedicated_ids)
-            if self.controller is not None:
-                dedicated_ids = self.controller.prepare_publish()
-            self.dedicated_manager.set_receiver_workers(dedicated_ids)
-            self.dedicated_manager.sync_weights(merge_and_sync=True)
-            self._borrow_shared(publish=True)
-            if self.controller is not None:
-                self.controller.finish_publish()
-            self.sampler.resume_generation(_worker_ids=dedicated_ids)
-            self.sampler.resume_admission(suspended + dedicated_ids)
-        except BaseException as error:
-            try:
-                if self.controller is not None:
-                    self.controller.fail_publish(error)
-            except Exception:
-                logger.warning('发布失败后未能完整清理新增 sampler actors。', exc_info=True)
-            try:
-                self.reclaim()
-            except Exception:
-                logger.warning('发布失败后未能完整恢复训练模型。', exc_info=True)
-            raise
-
-    def _reload_models(self):
-        error = None
-        for model in reversed(self.models):
-            try:
-                self._wait(model.reload_to_gpu())
-            except BaseException as exc:
-                error = error or exc
-        if error is not None:
-            raise error
-
-    def reclaim(self) -> None:
-        """停止 shared 新准入，等生成暂停后释放显存，最后恢复所有训练模型。"""
-        if not self.in_generation:
-            return
-        started = time.perf_counter()
-        shared_ids = self.sampler.worker_ids(shared=True)
-        try:
-            self.sampler.pause_workers(shared_ids)
-            self.sampler.pause_generation(_worker_ids=shared_ids)
-            from swift.dev.recipe.offload import sleep_for_rollout
-            self._wait(sleep_for_rollout(self.sampler, self.sleep_level, _worker_ids=shared_ids))
-            # pause/sleep 失败时保留交接状态；终止 actors 后再恢复训练显存。
-            self._reload_models()
-            self.in_generation = False
-        finally:
-            self.reclaim_time += time.perf_counter() - started
-
-    def close_channels(self):
-        try:
-            self.dedicated_manager.close()
-        finally:
-            if self.shared_manager is not None:
-                self.shared_manager.close()
-
-    def enter(self) -> None:
-        self.borrow(publish=True)
-
-    def exit(self) -> None:
-        self.reclaim()
-
-    def drained(self, inflight: int) -> bool:
-        return True
-
-
-def check_streaming_config(*,
-                           adapter_name: Optional[str],
-                           max_staleness: int,
-                           weight_sync_strategy: WeightSyncStrategyName,
-                           allow_partial_rollout: bool,
-                           parameter_sync_step: int,
-                           serialize_generation: bool) -> None:
-    """Reject a streaming configuration that cannot be driven soundly (fail-loudly).
-
-    Mirrors ``config.validate`` at construction time (defense in depth: a driver built directly, not
-    through a ``run_*`` entry, still refuses an unsound stream). ``max_staleness >= 0`` because this
-    builder serves the synchronous regime too: ``0`` is ``async_mode='none'`` (admit one window, drain,
-    train, publish -- no overlap), ``1`` the one-step overlap, ``> 1`` the deep buffer. The publication
-    mechanism then imposes its own requirement:
-
-    * ``adapter_snapshot`` pins each version as a LoRA adapter path, so it needs an ``adapter_name``
-      (a full-parameter policy has no adapter to pin) and must NOT set ``allow_partial_rollout``
-      (publishing writes a new path and never overwrites a weight copy an in-flight generation decodes,
-      so there is nothing to interrupt and resume -- the flag would be inert).
-    * ``in_place`` overwrites the sampler's single live weight copy. Under an OVERLAPPING regime
-      (``max_staleness >= 1``) a stream always has trajectories in flight at a publish, so it REQUIRES
-      ``allow_partial_rollout``: without the abort-and-resume, the rest of an in-flight generation would
-      decode under half-updated weights whose logprobs match no consistent policy version. Under the
-      SYNCHRONOUS regime (``max_staleness == 0``) the drain barrier empties the in-flight set before
-      every publish, so nothing decodes across the overwrite and the flag is unnecessary.
-    * ``parameter_sync_step`` is the publish cadence in consume-reported steps; a non-positive cadence
-      would publish never (or divide by zero in the window sizing).
-    * ``serialize_generation`` (a colocated sampler sharing one device with the trainer) is sound only at
-      ``max_staleness == 0`` (an exclusive device cannot overlap generation with training, so it cannot
-      hold a lookahead window) and only under ``in_place`` (the per-cycle device hand-back rides in_place's
-      publish ``sync_fn``; ``adapter_snapshot`` publishes with no weight sync, so nothing would re-hand the
-      device to the sampler after the first consume's exit).
-    """
-    if max_staleness < 0:
-        raise ValueError(f'max_staleness must be >= 0 (0 = the synchronous regime, which this builder '
-                         f'also serves; 1 = one-step overlap; >1 = deep buffer); got {max_staleness}.')
-    if serialize_generation and max_staleness != 0:
-        raise ValueError(
-            f'serialize_generation (a colocated sampler time-sharing one device with the trainer) needs '
-            f'max_staleness=0: an exclusive device cannot overlap generation with training, so it cannot '
-            f'hold a lookahead window; got max_staleness={max_staleness}. A colocated run is synchronous.')
-    if serialize_generation and weight_sync_strategy != 'in_place':
-        raise ValueError(
-            f'serialize_generation (a colocated sampler time-sharing one device with the trainer) requires '
-            f"weight_sync_strategy='in_place': the per-cycle device hand-back (wake+sync the sampler before "
-            f'each generation window) rides in_place\'s publish ``sync_fn``, whereas adapter_snapshot '
-            f'publishes by writing a new adapter path with no weight sync, so after the first consume\'s '
-            f'exit() nothing would hand the device back to the sampler and the next window would submit to a '
-            f'sleeping engine. dev derives in_place for a colocated run; got {weight_sync_strategy!r}.')
-    if parameter_sync_step < 1:
-        raise ValueError(f'parameter_sync_step must be >= 1 (a weight publication every K steps); '
-                         f'got {parameter_sync_step}.')
-    if weight_sync_strategy == 'adapter_snapshot':
-        if not adapter_name:
-            raise ValueError(
-                "weight_sync_strategy='adapter_snapshot' pins each trained version as a LoRA adapter "
-                'snapshot, so it needs a non-empty adapter_name; a full-parameter policy has no adapter '
-                'to pin. Configure an adapter-based tuner (e.g. LoRA), or use '
-                "weight_sync_strategy='in_place' with --allow_partial_rollout for a full-parameter stream.")
-        if allow_partial_rollout:
-            raise ValueError(
-                '--allow_partial_rollout is inert under weight_sync_strategy=adapter_snapshot: each version '
-                'is pinned as its own adapter path, so publishing never overwrites a weight copy an '
-                'in-flight generation is decoding and there is nothing to interrupt and resume. Drop it, or '
-                "use weight_sync_strategy='in_place' (which overwrites one live copy and so needs it).")
-    elif weight_sync_strategy == 'in_place':
-        if allow_partial_rollout is False and max_staleness >= 1:
-            raise ValueError(
-                "weight_sync_strategy='in_place' overwrites the sampler's single live weight copy while the "
-                'stream still has trajectories in flight, so an overlapping regime (max_staleness >= 1) needs '
-                '--allow_partial_rollout: each publish aborts every in-flight generation and resumes it from '
-                'its own tokens on the fresh weights (twinkle PartialRolloutMixin + InPlaceWeightSync '
-                'abort-on-publish). Without it the rest of an in-flight generation would decode under '
-                'half-updated weights whose logprobs match no consistent policy, which importance sampling '
-                'cannot correct. Set --allow_partial_rollout, or use weight_sync_strategy=adapter_snapshot '
-                '(per-version LoRA pinning, no interrupt). The synchronous regime (max_staleness=0) drains '
-                'before it publishes, so it needs no partial rollout.')
-    else:
-        raise ValueError(f'unknown weight_sync_strategy: {weight_sync_strategy!r}')
 
 
 def single_teacher_id(teacher_model: Optional[List[str]], *, algo: str) -> Optional[str]:

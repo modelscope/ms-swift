@@ -1,50 +1,60 @@
-# Batch and publication contracts for v5 asynchronous rollout
+# Batches and weight sync for v5 streaming rollout
 
-This page covers streaming GRPO, PPO, and the `lmbda=1` GKD/OPSD/MOPD paths on `dev-swift-v5`.
+This page covers streaming GRPO, PPO, and the on-policy (`lmbda>0`) GKD/OPSD/MOPD paths on `dev-swift-v5`. RFT builds one driver per round; infer uses the same driver without a checkpoint manager.
 
 ## Responsibilities
 
-- Swift recipes choose trajectories per optimizer update, publication cadence, and static or adaptive placement.
-- Twinkle's `StreamingDriver` owns admission, version windows, completion queues, and training handoffs. It receives a publication callback; it does not own model weights or the training algorithm.
-- Twinkle samplers implement resumable pause/resume; checkpoint engines transfer weights.
-- `swift.dev.recipe.streaming` centralizes recipe-side capacity planning and publication orchestration. `batching` only balances an already assembled training batch across DP ranks.
+- Swift recipes choose the trajectories per batch, when to call `checkpoint_manager.sync_weights()`, when to put a colocated sampler to sleep, and how advantages are computed.
+- Twinkle's `StreamingDriver` draws prompts in order, admits a group of `num_generations` episodes per prompt, advances them with `rollout.step`, scores finished episodes with the orms/prms, queues each group once complete, and hands out `(trajs, samples)` batches. It reads the checkpoint manager's version to pace admission and drop groups that fell behind; it holds no weights and implements no training algorithm.
+- `MultiTurnRollout.step` advances one generation (and that turn's tool calls); the last step returns the trajectory with its token record (`input_ids` / `labels` / `logprobs` ...).
+- `CheckpointEngineManager` is a single shared instance; every completed `sync_weights()` adds one to its version.
+- Samplers provide `pause_generation` / `resume_generation` for the weight transfer.
 
-## Capacity and pull size are separate constraints
+## Batch size
 
-Let `B = train_batch_size * gradient_accumulation_steps` be trajectories per update, `G = num_generations`, `S = parameter_sync_step`, and `L = max_staleness`:
+Let `B = train_batch_size * gradient_accumulation_steps` be the trajectories of one update and `G = num_generations`:
 
 ```text
-Q = lcm(B, G)
-C = ceil(B * S / Q) * Q
-groups_per_partition = C / G
-buffer_depth = (L + 1) * C
-max_rows_per_pull = Q (GRPO, whole groups) or B (PPO/distillation, per sample)
+disaggregated: batch_size = lcm(B, G)
+colocate:      batch_size = ceil(generation_batch_size * G / lcm(B, G)) * lcm(B, G)
 ```
 
-`plan_streaming_batches` returns these three driver settings together as a `StreamingBatchPlan`, so callers do not calculate capacity and pull limits independently. Partitions count prompt groups; capacity and pull limits count trajectories.
+A batch is always whole groups and whole optimizer updates (`stream_batch_size`). Colocate pays a sleep, a wake-up and a weight sync per batch, so its batch grows to one generation batch to amortize them. The driver's `max_steps` counts batches; recipes convert optimizer steps to batches before passing it.
 
-For B=64, G=8, S=1, `one_step_off` has capacity 128 but hands off 64 trajectories at a time, allowing the next batch to generate during training. `none` uses L=0 and capacity 64; `fully_async` uses its configured L. Capacity does not relax the driver's version validation.
+## Admission and staleness
 
-Increasing capacity alone is insufficient: draining 128 completed trajectories in one handoff combines two batches and moves the recipe's publication boundary. When B and G do not divide evenly, GRPO uses Q as its minimum complete handoff rather than splitting groups to force a B-sized pull.
+Let `K = parameter_sync_step` and `L = max_staleness` (0 for `none`, 1 for `one_step_off`, the configured value for `fully_async`):
 
-## In-place publication and failure semantics
+```text
+capacity = (version - base_version + L + 1) * K * batch_size
+```
 
-Static placement uses this sequence for `in_place` publication:
+The driver keeps in-flight plus ready trajectories within `capacity`, where `base_version` is the version when the driver started; each new version lets K more batches in. A ready group with `version - (earliest admission version in the group) > L` is dropped and counted in `dropped_stale`.
+
+Without a checkpoint manager the version is "batches handed out // K" and only paces admission; the weights never change, so no group is dropped.
+
+For B=64, G=8, K=1, `one_step_off` has batch size 64 and capacity 128: the next batch generates while the current one trains. `none` has capacity 64, so a batch is fully generated before it trains.
+
+## Weight sync
+
+Recipes call `sync_weights()` once every K batches, before pulling the next batch. In standalone mode it runs:
 
 ```python
-sampler.pause_generation()
-engine.sync_weights()
-sampler.resume_generation()
+sampler.pause_generation()   # the engine freezes running requests in place; failing that, waits for them
+# transfer the weights
+sampler.resume_generation()  # running requests continue on the new weights
 ```
 
-Pause closes the retry gate and waits for in-flight requests to leave decode. Abort alone lets partial rollouts retry on old weights before the new weights arrive. Pause or transfer failures propagate; generation must not resume unconditionally in a `finally` block. Recipe exception handling tears down the driver and actors.
+An episode may therefore span versions. `sample.policy_version` is the version it was admitted under, and `version_span` is the version at hand-out minus `policy_version`.
 
-Adaptive placement delegates to `ClusterAdapter.publish()`, which already owns pause, resource changes, transfer, and resume. It is not wrapped in another static publication transaction. `adapter_snapshot` retains the driver's immutable snapshot path.
+In colocate mode the recipe puts the sampler to sleep once it has a batch and trains; the sync wakes the sampler and transfers the weights.
 
-Twinkle abort/pause/resume/status methods must be control RPCs that bypass generation-drain barriers. Otherwise an interruption waits behind the work it needs to interrupt. Ordinary lifecycle and weight operations retain their synchronization constraints.
+Adaptive placement (`ClusterAdapter`) lends the trainer's idle devices to the sampler as extra replicas while the trainer waits for a batch, and reclaims them before the batch is handed out; a new replica loads the current weights through `CheckpointEngineManager.warm` before it takes requests.
 
-## Compatibility and validation
+## Metrics
 
-Swift requires a matching Twinkle version with `StreamingDriver(max_rows_per_pull=...)` and sampler control RPCs; merge and upgrade Twinkle first. Omitting the pull limit retains Twinkle's existing behavior. A custom `assembly_ready` owns its batching and cannot be combined with this limit.
-
-Regression coverage includes real driver handoffs for five algorithms, synchronous/asynchronous modes, sparse publication, completed prefetch, partial rollout resume, and failures in each publication phase. Measure performance using consumed tokens and distinguish generation wait, training compute, and publication. Asynchronous timer intervals may overlap and must not be summed as exclusive costs.
+- `policy_version`: completed syncs; it should keep advancing in an async run.
+- `version_span_mean` / `max_partial_span`: the batch's version skew, bounded by `max_staleness`.
+- `partial_ratio`: the share of the batch with a version skew above 0.
+- `dropped_stale`: samples dropped for falling behind.
+- `trainer_idle_ratio`: the share of time the trainer waited for a batch.

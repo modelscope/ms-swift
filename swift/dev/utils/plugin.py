@@ -97,23 +97,23 @@ class RewardPlugin(SwiftPlugin):
 
 
 class ToolPlugin(SwiftPlugin):
-    """Build the tools a multi-turn rollout exposes to the model, bound to one sandbox env.
+    """Build the tools a multi-turn rollout exposes to the model.
 
-    A tool plugin is constructed once per run (``cls(args=RolloutConfig)``) and then asked for its tools
-    per episode: :meth:`build` receives the leased twinkle ``Env`` and returns the twinkle ``Tool``
-    instances (usually ``EnvTool``s) the agent may call that turn. Returning ``[]`` means the plugin
-    contributes nothing for that env, so a run with no tool plugins -- the default -- rolls out with no
-    tools at all.
+    A tool plugin is constructed once per run (``cls(args=RolloutConfig)``) and asked for its tools once:
+    :meth:`build` returns the twinkle ``Tool`` instances every episode may call (the rollout copies them
+    per episode). The sandbox env's own tools are not built here: naming the ``sandbox`` tool builds the
+    env, and the rollout binds its tools to each episode's session. Returning ``[]`` contributes nothing,
+    so a run with no tool plugins -- the default -- rolls out with no tools at all.
 
     Example::
 
         @PluginRegistry.register('tool', 'my_tools')
         class MyTools(ToolPlugin):
-            def build(self, env):
-                return [MyTool(env)]
+            def build(self):
+                return [MyTool()]
     """
 
-    def build(self, env: Any) -> List[Any]:
+    def build(self) -> List[Any]:
         raise NotImplementedError
 
 
@@ -141,12 +141,12 @@ class PluginKind:
 
 #: Modules whose import declares swift's built-in plugin kinds (each runs ``register_kind`` at module
 #: top level). A user's ``--external_plugins`` file may ``@register`` against any built-in kind -- the
-#: ``tool`` kind (``swift.dev.builders.sandbox``), the ``reward`` kind (``swift.dev.rewards.orm``), the
-#: ``prm_scorer`` kind (``swift.dev.rewards.prm``) or the ``callback`` kind (``swift.dev.callbacks``) --
+#: ``tool`` kind (``swift.dev.builders.sandbox``), the ``reward`` kind (``swift.dev.rewards.orm``) or
+#: the ``callback`` kind (``swift.dev.callbacks``) --
 #: so the loader must guarantee those kinds are declared BEFORE it imports the user file. Nothing in the
 #: CLI's config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before
 #: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
-_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm', 'swift.dev.builders.sandbox',
+_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.builders.sandbox',
                          'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins')
 
 

@@ -45,9 +45,10 @@ def infer_cli(
     chat turn (streamed when ``generation_config.stream``). A multimodal template prompts for media
     paths first, matching legacy's ``input_mm_data``.
     """
+    from dataclasses import asdict
+
     from swift.dev.builders import (apply_generation_baseline, build_sampler, build_template, load_model_processor,
                                     to_sampling_params)
-    from swift.dev.builders.sandbox import tools_factory
 
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor)
@@ -70,15 +71,12 @@ def infer_cli(
                     and rollout_config.max_turns is not None)
     rollout = None
     if tools_on:
-        from twinkle_agentic.rollout import MultiTurnRollout
+        from swift.dev.builders.streaming import build_rollout
 
-        # The engine builds its sandbox from rollout_config and leases one env per episode -- for the
+        # The run's tools come from rollout_config; the env opens one session per episode -- for the
         # REPL that is the single interactive conversation; teardown is rollout.close(), not shutdown.
-        rollout = MultiTurnRollout(
-            sampler, template, sampling_params=params,
-            max_turns=rollout_config.max_turns,
-            max_trajectory_tokens=rollout_config.max_trajectory_tokens,
-            tools_factory=tools_factory, tools_config=rollout_config)
+        rollout = build_rollout(sampler, template, rollout_config, sampling_params=asdict(params),
+                                adapter_path=adapter_path)
 
     state = _CliState(system=template_config.system)
     _print_welcome(tools_on, stream)
@@ -101,7 +99,7 @@ def infer_cli(
                 state.prompt_media(['images', 'audios', 'videos'])
             trajectory = state.to_trajectory()
             if rollout is not None:
-                response = _run_tool_turn(rollout, trajectory, adapter_path)
+                response = _run_tool_turn(rollout, trajectory)
             elif stream:
                 response = _run_stream_turn(sampler, trajectory, params, adapter_path)
             else:
@@ -155,7 +153,7 @@ def _run_plain_turn(sampler: Any, trajectory: Dict[str, Any], params: Any, adapt
     return response
 
 
-def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any], adapter_path: Optional[str]) -> str:
+def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any]) -> str:
     """One human turn through the tool-calling rollout, streamed live.
 
     ``rollout.stream`` yields the episode as it happens: ``StreamDelta`` deltas echo as they arrive
@@ -168,9 +166,8 @@ def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any], adapter_path: Optio
     print(f'{_CYAN}Agent:{_RESET} ', end='', flush=True)
     response = ''
     truncated = False
-    # sampling_params falls back to the construction-time params, and tool_manager to the sandbox the
-    # engine built from tools_factory -- nothing per-turn needs re-passing.
-    for event in rollout.stream(trajectory, adapter_path=adapter_path):
+    # sampling_params, the adapter and the tools are the rollout's own -- nothing per-turn needs re-passing.
+    for event in rollout.stream(trajectory):
         if isinstance(event, StreamDelta):
             if event.text:
                 print(event.text, end='', flush=True)

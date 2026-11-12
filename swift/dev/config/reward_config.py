@@ -46,11 +46,6 @@ class RewardConfig:
     prm_model_revision: Optional[List[str]] = None
     prm_template: Optional[List[str]] = None
     prm_parallel_spec: Optional[str] = None
-    # Which prm_scorer plugin segments a response into steps; None picks by rollout shape ('turn'
-    # when max_turns is set, 'delimiter' otherwise).
-    prm_scorer: Optional[Any] = None
-    # Step boundary for the 'delimiter' scorer; None = newline. Ignored by non-text scorers.
-    prm_step_delimiter: Optional[str] = None
     # PRM/ORM fusion on every response token: mix*process + (1-mix)*orm; 0 = standard GRPO, 1 = pure
     # process. Must be in [0, 1]; only read when a --prm channel is active for rl_type=grpo.
     prm_orm_mix: float = 0.5

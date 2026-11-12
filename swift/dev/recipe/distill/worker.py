@@ -1,28 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# Distillation's remote worker: the teacher forward and the per-update forward kwargs, in ONE actor.
+# Distillation's remote worker: the teacher forward and the per-update teacher signal, in ONE actor.
 from __future__ import annotations
 
-from typing import Any, Dict, List, NamedTuple, Optional, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from twinkle import remote_class, remote_function
-from twinkle_agentic.async_rl.score_worker import _run_grouped
+from twinkle.data_format import ground_truth
 
 from swift.dev.utils.scoring import encode_privileged_feature
-
-
-class DistillRow(NamedTuple):
-    """One distillation training row: the student feature plus the context a teacher view needs.
-
-    Uniform across both ``lmbda`` sources -- an on-policy rollout sample and an off-policy dataset
-    completion both share the same fields, so the loop's update grouping and teacher scoring
-    never branch on where a row came from. Streaming rows retain lightweight token lengths
-    for controller-side balancing without fetching the feature.
-    """
-
-    feature: Dict[str, Any]
-    messages: List[dict]
-    extra: Dict[str, Any]
-    token_lengths: Optional[tuple[int, int]] = None
 
 
 def response_ids_from_feature(feature: Dict[str, Any]) -> List[int]:
@@ -40,14 +26,41 @@ def response_ids_from_feature(feature: Dict[str, Any]) -> List[int]:
     return response_ids
 
 
+def _run_grouped(tasks: Sequence[Tuple[Any, Callable[[], Any]]]) -> List[Any]:
+    """Run teacher forwards grouped by placement: groups overlap as threads, within a group serial.
+
+    Teachers on disjoint device groups overlap wall-clock; one group stays strictly serial (two
+    forwards on the same cards would only race for memory). A single group runs inline.
+    """
+    groups: Dict[Any, List[int]] = {}
+    for index, (key, _task) in enumerate(tasks):
+        groups.setdefault(key, []).append(index)
+    results: List[Any] = [None] * len(tasks)
+    if len(groups) <= 1:
+        for index, (_key, task) in enumerate(tasks):
+            results[index] = task()
+        return results
+
+    def _run_group(indices: List[int]) -> None:
+        for index in indices:
+            results[index] = tasks[index][1]()
+
+    with ThreadPoolExecutor(max_workers=len(groups)) as pool:
+        for future in [pool.submit(_run_group, indices) for indices in groups.values()]:
+            future.result()
+    return results
+
+
 @remote_class(execute='first')
 class DistillWorker:
-    """Build one update's ``forward_backward`` kwargs where the teacher signal is produced.
+    """Build one update's teacher signal where the teacher forward runs.
 
     The teacher forward runs HERE (a CPU actor) so its heavy output never materialises in the
     driver: GKD's full-vocab logits and OPSD / MOPD's response-only logps are declared ``stash``
-    channels and ride the kwargs as refs Ray derefs at the training actor. ``teachers`` is
-    always a list of bare frozen models, described by the plain parameters below.
+    channels and ride the kwargs as refs Ray derefs at the training actor. The update's
+    trajectories are rollout trajectories (on-policy) or encoded dataset rows (off-policy); both
+    carry ``input_ids`` / ``labels`` / ``messages`` and the dataset columns. ``teachers`` is always
+    a list of bare frozen models, described by the plain parameters below.
     """
 
     def __init__(self, *, teachers: Sequence[Any], signal: str, template: Any = None,
@@ -71,10 +84,10 @@ class DistillWorker:
     def _response_logps(self, scorer: Any, features: List[dict], *, disable_lora: bool = False) -> List[List[float]]:
         """Score ``features`` with ``forward_only`` -> one response-token logp list per feature.
 
-        The features form one update (``forward_kwargs`` builds its signals together), so one
-        whole-batch call -- the dispatch splits it per rank -- is the whole story.
+        The features form one update, so one whole-batch call -- the dispatch splits it per rank --
+        is the whole story.
         """
-        from swift.dev.utils.scoring import response_token_scores
+        from twinkle.signals import response_token_scores
 
         frame = scorer.forward_only(
             inputs=features,
@@ -83,19 +96,19 @@ class DistillWorker:
         )
         return response_token_scores(frame, features)
 
-    def _privileged_feature(self, row: DistillRow) -> dict:
-        """Encode this row's privileged teacher view (``teacher_prompt`` + the shared response tokens)."""
-        teacher_prompt = (row.extra or {}).get('teacher_prompt')
+    def _privileged_feature(self, traj: Dict[str, Any]) -> dict:
+        """Encode this trajectory's privileged teacher view (``teacher_prompt`` + the shared response tokens)."""
+        teacher_prompt = ground_truth(traj, 'teacher_prompt')
         if not teacher_prompt:
             raise ValueError('OPSD requires a per-sample `teacher_prompt` carrying the privileged context; '
                              'a row in this batch has none.')
         return encode_privileged_feature(
-            self.template, row.messages, teacher_prompt, response_ids_from_feature(row.feature), row.extra)
+            self.template, list(traj.get('messages') or []), teacher_prompt, response_ids_from_feature(traj), traj)
 
     @remote_function(dispatch='all', collect='none', lazy_collect=False,
                      stash=('teacher_logits', 'teacher_logps'))
-    def forward_kwargs(self, rows: List[DistillRow], use_student: bool) -> Dict[str, Any]:
-        """One update's kwargs: student inputs plus the teacher signal in the ``signal`` form.
+    def forward_kwargs(self, trajs: List[Dict[str, Any]], use_student: bool) -> Dict[str, Any]:
+        """One update's teacher signal in the ``signal`` form (the caller passes ``inputs`` itself).
 
         ``use_student`` is the update's on/off-policy flag -- only GKD reads it (``apply_sft_loss``
         adds the supervised CE term to a dataset-sourced update); the logps forms score the same rows
@@ -103,43 +116,33 @@ class DistillWorker:
         """
         from swift.dev.utils.scoring import copy_inputs
 
-        features = [row.feature for row in rows]
         if self.signal == 'logits':
             teacher = self.teachers[0]
             if self.offload:
                 teacher.reload_to_gpu()
             try:
                 logits = teacher.forward_only(
-                    inputs=copy_inputs(features), return_logits=True,
+                    inputs=copy_inputs(trajs), return_logits=True,
                     micro_batch_size=max(1, self.train_batch_size // teacher.device_mesh.data_world_size),
                     **({'disable_lora': True} if self.disable_lora else {}),
                 )['logits']
             finally:
                 if self.offload:
                     teacher.offload_to_cpu()
-            signal_kwargs = {
+            return {
                 'teacher_logits': logits,
                 'topk': self.gkd_logits_topk,
                 'apply_sft_loss': bool(self.sft_alpha > 0 and not use_student),
             }
-        elif self.signal == 'logps':
-            privileged = [self._privileged_feature(row) for row in rows]
-            signal_kwargs = {
-                'teacher_logps': self._response_logps(
-                    self.teachers[0], privileged, disable_lora=self.disable_lora),
-            }
-        else:
-            # K response-only channels, overlapped across disjoint placements, plus the mixture weights.
-            # A dict keeps the teacher axis separate from DP/micro-batch slicing of each sample channel.
-            tasks = [(self.placements[index],
-                      lambda index=index: self._response_logps(self.teachers[index], features))
-                     for index in range(len(self.teachers))]
-            signal_kwargs = {'teacher_logps': dict(enumerate(_run_grouped(tasks)))}
-            if self.teacher_weights is not None:
-                # Mixture weights are global scalars; tuples are broadcast by DP dispatch.
-                signal_kwargs['teacher_weights'] = tuple(self.teacher_weights)
-        return {
-            'inputs': copy_inputs(features),
-            'gradient_accumulation_steps': 1,
-            **signal_kwargs,
-        }
+        if self.signal == 'logps':
+            privileged = [self._privileged_feature(traj) for traj in trajs]
+            return {'teacher_logps': self._response_logps(self.teachers[0], privileged, disable_lora=self.disable_lora)}
+        # K response-only channels, overlapped across disjoint placements, plus the mixture weights.
+        # A dict keeps the teacher axis separate from DP/micro-batch slicing of each sample channel.
+        tasks = [(self.placements[index], lambda index=index: self._response_logps(self.teachers[index], trajs))
+                 for index in range(len(self.teachers))]
+        signal_kwargs: Dict[str, Any] = {'teacher_logps': dict(enumerate(_run_grouped(tasks)))}
+        if self.teacher_weights is not None:
+            # Mixture weights are global scalars; tuples are broadcast by DP dispatch.
+            signal_kwargs['teacher_weights'] = tuple(self.teacher_weights)
+        return signal_kwargs

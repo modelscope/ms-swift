@@ -12,7 +12,6 @@ from transformers import PretrainedConfig, PreTrainedModel
 
 from twinkle import DeviceMesh, Platform, remote_class, remote_function
 from twinkle.hub import HubOperation
-from twinkle.infra import get_device_mesh
 from twinkle.model.base import ModelLoaderProtocol, copy_checkpoint_args, rotate_checkpoints
 from twinkle.model.multi_lora import MultiLora
 from twinkle.model.transformers.multi_lora_transformers import MultiLoraTransformersModel
@@ -60,9 +59,8 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
         self._try_init_process_group()
         super(PreTrainedModel, self).__init__()
         self._default_tokenizer = None
-        # Overrides the @remote_class-wrapped base, so no automatic device_mesh injection; resolve
-        # the global default to uphold the "a constructed model holds a real mesh" invariant.
-        self.device_mesh = device_mesh if device_mesh is not None else get_device_mesh()
+        # @remote_class injects the global default mesh when the caller passes none.
+        self.device_mesh = device_mesh
         self.mixed_precision = mixed_precision
         self._fsdp_config = dict(fsdp_config or {})
         self._ddp_config = ddp_config or {}

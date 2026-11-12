@@ -233,15 +233,16 @@ def _build_run(language: str, code: str, test_input: str) -> Tuple[str, str]:
     return 'shell', _shell_source(_SHELL_LANGS[lang], code, test_input)
 
 
-def _execute_one(env: Any, code: str, test_input: str, language: str, timeout: int) -> Optional[str]:
-    """Run one program against one test case in a worker thread; blocking, hence the executor.
+def _execute_one(env: Any, episode_id: str, code: str, test_input: str, language: str,
+                 timeout: int) -> Optional[str]:
+    """Run one program against one test case in the episode's session; blocking, hence the executor.
 
     Returns the program's captured stdout, or None when the wrapper never completed -- a timeout, a build
     failure, a hard crash -- every one of which is a wrong answer. Scoring keys off stdout alone, the way
     a judge does, so the exit code ``run_script`` also returns is dropped here.
     """
     interpreter, source = _build_run(language, code, test_input)
-    _exit_code, merged = env.run_script(source, interpreter, timeout=timeout)
+    _exit_code, merged = env.run_script(episode_id, source, interpreter, timeout=timeout)
     return _extract_stdout(merged)
 
 
@@ -266,27 +267,26 @@ class CodeExecutionReward(ORM):
     def _build_env(self) -> Any:
         """A throwaway execution env: ``LocalEnv`` by default, ``AgentEnv`` when a template is named.
 
-        Built once per scoring batch and shared across its concurrent runs -- safe because ``LocalEnv``
-        with ``workspace=None`` gives every ``run_script`` its own temp dir, and the shell wrapper's
-        uuid filenames keep concurrent ``AgentEnv`` runs from colliding in its one workspace.
+        Built once per scoring batch; every program runs in a session of its own (its own directory
+        or sandbox), so concurrent runs never collide.
         """
         if self.sandbox_template:
             from twinkle_agentic.envs import AgentEnv
-            env = AgentEnv(
+            return AgentEnv(
                 template=self.sandbox_template,
+                max_sessions=self.max_concurrency,
                 command_timeout=self.timeout,
                 metadata={'run': 'swift', 'reward': 'code_execution'})
-            env.clear()  # boots the sandbox; run_script needs one up.
-            return env
         from twinkle_agentic.envs import LocalEnv
-        return LocalEnv(workspace=None, command_timeout=self.timeout, memory_limit_gb=self.memory_limit_gb)
+        return LocalEnv(max_sessions=self.max_concurrency, command_timeout=self.timeout,
+                        memory_limit_gb=self.memory_limit_gb)
 
     @staticmethod
     def _close_env(env: Any) -> None:
         try:
-            env.close()
+            env.shutdown()
         except Exception as exc:  # noqa: BLE001 -- teardown is best effort; the score is already computed
-            logger.warning(f'code_execution reward: env close failed: {type(exc).__name__}: {exc}')
+            logger.warning(f'code_execution reward: env shutdown failed: {type(exc).__name__}: {exc}')
 
     @staticmethod
     def _row_spec(trajectory: Any) -> Tuple[List[Tuple[str, str]], Optional[str]]:
@@ -353,10 +353,18 @@ class CodeExecutionReward(ORM):
                          cases: List[Tuple[str, str]], language: str) -> float:
         if not cases:
             return 0.0
-        passed = 0
-        for test_input, expected in cases:
-            actual = await loop.run_in_executor(executor, _execute_one, env, code, test_input, language,
-                                                self.timeout)
-            if actual is not None and _outputs_match(actual, expected):
-                passed += 1
+        return await loop.run_in_executor(executor, self._run_cases, env, code, cases, language)
+
+    def _run_cases(self, env: Any, code: str, cases: List[Tuple[str, str]], language: str) -> float:
+        """One program against all its test cases, in one env session."""
+        episode_id = uuid.uuid4().hex
+        env.reset(episode_id)
+        try:
+            passed = 0
+            for test_input, expected in cases:
+                actual = _execute_one(env, episode_id, code, test_input, language, self.timeout)
+                if actual is not None and _outputs_match(actual, expected):
+                    passed += 1
+        finally:
+            env.close(episode_id)
         return passed / len(cases)

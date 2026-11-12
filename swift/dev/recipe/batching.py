@@ -12,12 +12,11 @@ def plan_rollout_batch(
 
     Callers apply the same permutation to every per-sample training signal, or reorder whole
     records before building teacher signals. Dataset completions and auxiliary SFT bypass this.
-    Streaming samples carry token_lengths alongside remote encoded features. Use that metadata
-    to plan without fetching the features from Ray; local/synthesized samples retain the fallback.
+    Streaming samples carry token_lengths alongside the trajectory references; plan from that
+    metadata without fetching the trajectories. Local/synthesized features fall back to their length.
     """
     if not getattr(state, "balance_batch", False) or not inputs:
         return None
-    from ray import ObjectRef
     from twinkle.model import MicroBatchConfig
     from twinkle.model.dp_balance import DPBalancePlan, plan_dp_balance_for_lengths
     from twinkle.model.micro_batch import sequence_length
@@ -29,9 +28,9 @@ def plan_rollout_batch(
     lengths = []
     for index, feature in enumerate(inputs):
         counts = getattr(samples[index], "token_lengths", None) if samples is not None else None
-        if counts is None and isinstance(feature, ObjectRef):
+        if counts is None and not isinstance(feature, dict):
             raise ValueError(
-                "balance_batch needs token_lengths on streaming samples with Ray ObjectRef features "
+                "balance_batch needs token_lengths on samples whose trajectories are references "
                 f"(missing metadata at batch index {index})."
             )
         lengths.append(sum(counts) if counts is not None else sequence_length(feature))

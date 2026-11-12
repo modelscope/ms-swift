@@ -3,8 +3,9 @@
 
 Every stage here is an independent, general math/functional meaning -- no
 algorithm name decides behaviour. All five are remote-execution stages: the
-binding only wires inputs and parameters and hands references to the numeric
-worker, so heavy forward payloads never materialise in the session process.
+binding only wires inputs and parameters and hands references to twinkle's
+signal components on the numeric group, so heavy forward payloads never
+materialise in the session process.
 """
 from __future__ import annotations
 
@@ -13,7 +14,13 @@ from typing import Any, Dict, List
 from twinkle.loss import Loss
 
 from ..component import ComponentError, StageComponent
-from ..numeric import get_numeric_worker
+from ..numeric import deref, numeric_component
+
+
+def _row_scalars(rows: Any) -> List[float]:
+    """A score matrix ``values[B, C]`` (or flat ``[B]``) folded to one scalar per row; None / nan count 0."""
+    from twinkle_agentic.async_rl import weighted_score
+    return [weighted_score(row, None) if isinstance(row, (list, tuple)) else float(row) for row in rows]
 
 
 class _ForwardProbeLoss(Loss):
@@ -43,10 +50,11 @@ class ModelForwardStage(StageComponent):
     under a stable key (``forward:<node_id>``); ``forward_only`` then selects
     that key explicitly. The training loss keeps its own separate key and the
     optimizer is never touched -- this call never changes what training uses.
-    Each declared output port carries ONE channel of the native return,
-    projected on the numeric worker (``project``): under Ray the other
-    channels never cross the boundary, and a channel the model does not
-    produce fails loudly at the projection. The input is raw data /
+    Each declared output port carries ONE channel of the native return, read
+    on the numeric group (``ResponseScores``): ``logps`` / ``values`` aligned to
+    each row's response tokens, ``logits`` / ``embeddings`` as the native frame.
+    Under Ray the other channels never cross the boundary, and a channel the
+    model does not produce fails loudly there. The input is raw data /
     trajectories: encoding happens HERE under the node's own tokenizer param
     (a construction fact, not a wire)."""
 
@@ -119,12 +127,14 @@ class ModelForwardStage(StageComponent):
                 require_values='values' in fields), loss_key=loss_key)
             self._probe_registered = True
         result = forward(inputs=features, loss_key=loss_key, **kwargs)
-        worker = get_numeric_worker()
-        return {field: worker.project(result, field) for field in fields}
+        from twinkle.signals import ResponseScores
+        scores = numeric_component(ResponseScores)
+        return {field: scores(features if field in ('logps', 'values') else None, result, output_key=field)
+                for field in fields}
 
 
 class ReduceStage(StageComponent):
-    """A named reduction over an explicit axis and mask: pure math on the worker."""
+    """A named reduction over an explicit axis: pure math on the numeric group (``Reduce``)."""
 
     type = 'reduce'
 
@@ -132,36 +142,62 @@ class ReduceStage(StageComponent):
         signal = inputs.get('signal')
         if signal is None:
             raise ComponentError(f'{self.node_id}: reduce needs a wired signal')
-        worker = get_numeric_worker()
-        result = worker.reduce(
-            signal, str(self.params.get('op', 'mean')), str(self.params.get('axis', 'token')))
-        return {'out': worker.project(result, 'out')}
+        from twinkle.signals import Reduce
+        return {'out': numeric_component(Reduce)(
+            signal, op=str(self.params.get('op', 'mean')), axis=str(self.params.get('axis', 'token')))}
 
 
 class RewardShapeStage(StageComponent):
     """r' = r - baseline - beta*KL: combine the wired reward, baseline and the
     two explicit KL forward lanes. Absent inputs are absent terms -- never
-    hidden defaults."""
+    hidden defaults. The reward's scorer columns are summed per row; the
+    ``outcome`` profile shapes one scalar per row (``values[B, 1]``), the
+    ``process`` profile one reward per response token (``KLEstimator`` +
+    ``RewardShape`` on the numeric group)."""
 
     type = 'reward_shape'
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
+        from twinkle.reward import RewardShape
+        from twinkle.signals import KLEstimator
+
         reward = inputs.get('reward')
         if reward is None:
             raise ComponentError(f'{self.node_id}: reward_shape needs a wired reward')
         beta = float(self.params.get('beta', 0.0) or 0.0)
         kl = str(self.params.get('kl', 'none') or 'none')
-        worker = get_numeric_worker()
-        result = worker.reward_shape(
-            reward, inputs.get('baseline'), inputs.get('logps'), inputs.get('reference'),
-            beta, kl)
-        return {'reward': worker.project(result, 'reward')}
+        outcome = str(self.params.get('profile', 'outcome') or 'outcome') == 'outcome'
+        reward = deref(reward)
+        rewards = _row_scalars(reward.get('values') if isinstance(reward, dict) else reward)
+        kl_lane = None
+        if kl != 'none':
+            if inputs.get('logps') is None or inputs.get('reference') is None:
+                raise ComponentError(f'{self.node_id}: a {kl} KL term needs both logps and reference lanes')
+            kl_lane = numeric_component(KLEstimator)(
+                inputs['logps'], inputs['reference'], kind=kl, reduce='mean' if outcome else 'none')
+        base = deref(inputs.get('baseline'))
+        shaped = numeric_component(RewardShape)(
+            rewards, kl_lane, base.get('scalar') if isinstance(base, dict) else base,
+            beta=beta, profile='outcome' if outcome else 'token')
+        # the outcome rows are one scalar each (read back here, the score lane's [B, C] shape);
+        # the per-token process rows stay a reference.
+        values = [[value] for value in deref(shaped)] if outcome else shaped
+        return {'reward': {'values': values, 'scorer_ids': ['shaped']}}
 
 
 class AdvantageStage(StageComponent):
-    """A = baseline-relative credit, computed on the worker over resolved
-    rewards / values. Never touches a model: those are inputs. GAE
-    additionally emits the returns lane (an optional output channel)."""
+    """A = baseline-relative credit over rewards / values. Never touches a
+    model: those are inputs. The per-sequence estimators run HERE on the light
+    reward matrix (``compute_advantages``); GAE runs on the numeric group over
+    the per-token values lane and additionally emits the returns lane (an
+    optional output channel).
+
+    ``old_logps`` carries the SAMPLER's per-token logps off the samples
+    (``rollout_logprobs``) -- the importance-sampling denominator the loss
+    consumes next; it is ``None`` when any sample lacks it (a non-rollout
+    batch), and the loss then runs its on-policy form. The ``adv`` channel is
+    the BARE per-sample value sequence -- the shape the loss's ``advantages``
+    kwarg takes."""
 
     type = 'advantage'
 
@@ -176,19 +212,28 @@ class AdvantageStage(StageComponent):
         # kwargs keeps its old pop so a stray num_generations there never leaks into the estimator.
         kwargs.pop('num_generations', None)
         num_generations = int(self.params.get('num_generations', 8) or 8)
-        worker = get_numeric_worker()
-        result = worker.advantage(
-            samples, reward, inputs.get('values'), num_generations, estimator,
-            float(self.params.get('gamma', 1.0) or 1.0),
-            float(self.params.get('lam', 1.0) or 1.0), kwargs)
-        # The adv port carries the VALUE sequence only (the loss's per-sample
-        # lane -- the worker returns it bare); estimator metadata stays a node
-        # param, not payload. The old_logps lane rides along for the loss's
-        # importance sampling: the sampler's own logps, projected worker-side
-        # like every other channel.
-        return {'adv': worker.project(result, 'adv'),
-                'returns': worker.project(result, 'returns'),
-                'old_logps': worker.project(result, 'old_logps')}
+        rollout_rows = [list(sample.get('rollout_logprobs') or ()) if isinstance(sample, dict) else []
+                        for sample in samples]
+        old_logps = rollout_rows if rollout_rows and all(rollout_rows) else None
+        reward = deref(reward) if not isinstance(reward, dict) else reward
+        lane = reward.get('values') if isinstance(reward, dict) else reward
+        if estimator == 'gae':
+            from twinkle.advantage import GAEAdvantage
+
+            if inputs.get('values') is None:
+                raise ComponentError(f'{self.node_id}: gae needs a wired values lane')
+            # a score matrix folds to one terminal reward per row; a process lane (per-token rows,
+            # still a reference) is consumed as-is
+            rewards = _row_scalars(lane) if isinstance(lane, list) else lane
+            # read back HERE like every lane train_step consumes
+            adv, returns = deref(numeric_component(GAEAdvantage)(
+                rewards, inputs['values'], gamma=float(self.params.get('gamma', 1.0) or 1.0),
+                gae_lambda=float(self.params.get('lam', 1.0) or 1.0)))
+            return {'adv': adv, 'returns': returns, 'old_logps': old_logps}
+        from twinkle.advantage import compute_advantages
+
+        adv = compute_advantages(deref(lane), num_generations, advantage_estimator=estimator, **kwargs)
+        return {'adv': adv, 'returns': None, 'old_logps': old_logps}
 
 
 class SignalCombineStage(StageComponent):
@@ -212,10 +257,7 @@ class SignalCombineStage(StageComponent):
         weights = [float(raw_weights.get(slot, 1.0 / len(lanes))) for slot in slots]
         if any(w < 0 for w in weights) or sum(weights) <= 0:
             raise ComponentError(f'{self.node_id}: weights must be non-negative and sum > 0')
-        worker = get_numeric_worker()
-        result = worker.signal_combine(list(lanes), mode, weights)
-        # The out port carries the VALUE sequence only; the combine mode stays
-        # a node param, not payload (a dict with a str field fails the loss's
-        # per-sample flatten downstream).
-        out = worker.project(result, 'out')
-        return {'out': out.get('values') if isinstance(out, dict) else out}
+        from twinkle.signals import SignalCombine
+        # The out port carries the VALUE sequence only; the combine mode stays a node param.
+        return {'out': numeric_component(SignalCombine)(
+            [value for _slot, value in lanes], weights=weights, mode=mode)}

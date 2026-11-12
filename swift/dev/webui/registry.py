@@ -110,11 +110,6 @@ SANDBOX_ENV = D('sandbox_env', '沙箱环境', 'Resource', '原生环境池与 l
             Q('api_key_env', '凭据环境变量名', '',
               doc='仅 agentenv：构造期读取该环境变量作为 api_key；留空则由 SDK 读 E2B_API_KEY')),
     owner_kind='ENV')
-POLICY_ENDPOINT = D('policy_endpoint', '本地推理服务', 'Resource', '复用常驻 sampler；只管理本会话拥有的应用。',
-    ports_in=(P('sampler', 'SAMPLER', '服务引擎'),),
-    ports_out=(P('endpoint', 'ENDPOINT', '就绪端点'),),
-    params=(Q('port', '端口', 8000, type='int', minimum=1, maximum=65535),
-            Q('server_config', '服务配置', {}, type='dict')), effects=('serve',), owner_kind='ENDPOINT')
 API_ENDPOINT = D('api_endpoint', '外部 API', 'Resource', '明确外部连接；凭据仅从运行环境读取。',
     ports_out=(P('endpoint', 'ENDPOINT', '外部 API 连接'),),
     params=(Q('base_url', '服务地址', '', required=True), Q('model', '服务模型', '', required=True),
@@ -143,7 +138,7 @@ STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准�
               P('episode', 'ROLLOUT', '多轮来源', optional=True),
               P('groups', 'GROUP_RULE', '完整组规则', optional=True),
               P('after', 'CTRL', '下一批反馈', optional=True)),
-    ports_out=(P('samples', 'TRAJ', '当前轨迹', ('rollout',)), P('source', 'SOURCE', '发布与确认控制', control=True)),
+    ports_out=(P('samples', 'TRAJ', '当前轨迹', ('rollout',)), P('source', 'SOURCE', '批次确认控制', control=True)),
     params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与采样器一致）', '', required=True),
             Q('model_config', '模型加载配置', {}, type='dict',
               doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与采样器节点自身一致'),
@@ -291,7 +286,7 @@ TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward �
             Q('gradient_accumulation_steps', '梯度累积步数', 1, type='int', minimum=1, phase='call'),
             Q('max_grad_norm', '梯度裁剪', 1.0, type='float', minimum=0, phase='call')),
     effects=('train',))
-WEIGHT_SYNC = D('weight_sync', '权重同步', 'Stage', '经原生分桶传输；流式发布登记、commit 后确认，不虚报 pending 完成。',
+WEIGHT_SYNC = D('weight_sync', '权重同步', 'Stage', '经原生分桶传输；同步完成后才确认，不虚报 pending 完成。',
     ports_in=(P('model', 'MODEL', '权重来源；未接线时沿连线共享的作用域唯一解析', scope=True),
               P('targets', 'SAMPLER', '明确接收者', many=True, access='write'),
               P('source', 'SOURCE', '流式控制句柄，不触发 take', optional=True, control=True),
@@ -355,7 +350,7 @@ HUB_PUSH = D('hub_push', '发布模型', 'Task', '明确授权后调用公共 Hu
 
 REGISTRY = {descriptor.type: descriptor for descriptor in (
     MODEL, DATASET, SAMPLER, ROLLOUT, GROUP_RULE, LOSS_COMP, SCORER_COMP,
-    TOOLSET, SANDBOX_ENV, POLICY_ENDPOINT, API_ENDPOINT, CODE_COMPONENT,
+    TOOLSET, SANDBOX_ENV, API_ENDPOINT, CODE_COMPONENT,
     DATALOADER, STREAMING_DRIVER, CHALLENGER, GENERATE, SCORE,
     MODEL_FORWARD, REDUCE, REWARD_SHAPE, ADVANTAGE, SIGNAL_COMBINE, SELECT,
     TRAIN_STEP, WEIGHT_SYNC, WEIGHT_AVERAGE, CHECKPOINT, MERGE, QUANTIZE,

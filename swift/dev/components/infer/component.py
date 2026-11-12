@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 import numpy as np
 
 from swift.dev.utils.logger import get_logger
+from swift.dev.utils.scoring import collect
 from swift.dev.components.base import RecipeComponent
 
 if TYPE_CHECKING:
@@ -32,6 +33,9 @@ logger = get_logger()
 
 #: The DeviceGroup name the sampling engine occupies under ray (matches the training assembly).
 SAMPLER_GROUP = 'sampler'
+
+#: The prompt-row column carrying each driven prompt's row index (it rides the trajectory back).
+_ROW_INDEX = '_infer_row_index'
 
 #: How many top logprobs to request when scoring a generative reranker off generation. The positive
 #: and negative tokens must both land in this window or the score cannot be read; 20 is within the
@@ -216,38 +220,32 @@ class InferComponent(RecipeComponent):
             infer_config, reward_config, orm_plan, prm_plan, sampler=sampler, model_config=model_config,
             template_config=self.template_config, backend=self.backend, engine_args=self.engine_args,
             distributed_config=distributed_config, quantize_config=self.quantize_config)
-        # The worker yields the ONE matrix both channels land in; the channel arithmetic stays on
-        # the caller's side -- the same split run_grpo uses, where the worker yields the matrix and
-        # the recipe combines it.
-        from swift.dev.rewards.advantage import build_reward_weights
-        from twinkle_agentic.async_rl.score_worker import ScoreWorker
+        # Every scorer yields one column of the matrix both channels land in; the channel arithmetic
+        # stays on this side (see _combined).
+        from swift.dev.utils.scoring import build_reward_weights
 
-        scorers = [*orm_funcs, *prm_funcs]
-        self._scorer = ScoreWorker(orm_scorers=scorers) if scorers else None
+        self._scorers = [*orm_funcs, *prm_funcs]
         self._orm_count = len(orm_funcs)
         self._orm_weights = build_reward_weights(
             getattr(reward_config, 'orm_weights', None), len(orm_funcs)).tolist()
         self._prm_weights = build_reward_weights(
             getattr(reward_config, 'prm_weights', None), len(prm_funcs)).tolist()
 
-        # One engine for every generation entry: single-turn is the one-turn degenerate. Tools are
-        # opt-in through RolloutConfig.tools (the engine builds its own sandbox env pool in-process
-        # wherever it runs); infer drives the engine locally, so no remote group is declared.
+        # One rollout for every generation entry: single-turn is the one-turn degenerate. Tools are
+        # opt-in through RolloutConfig.tools; infer drives the rollout in this process.
         rollout = None
         if sampler is not None:
-            from swift.dev.builders.sandbox import tools_factory
+            from swift.dev.builders.streaming import build_rollout
+            from swift.dev.config import RolloutConfig
 
-            from twinkle_agentic.rollout import MultiTurnRollout
+            rollout = build_rollout(
+                sampler, template, self.rollout_config or RolloutConfig(),
+                sampling_params=asdict(to_sampling_params(self.generation_config)), adapter_path=adapter_path)
 
-            rollout = MultiTurnRollout(
-                sampler, template, sampling_params=to_sampling_params(self.generation_config),
-                max_turns=((self.rollout_config.max_turns or 1) if self.rollout_config else 1),
-                max_trajectory_tokens=(getattr(self.rollout_config, 'max_trajectory_tokens', None)
-                                       if self.rollout_config else None),
-                tools_factory=tools_factory, tools_config=self.rollout_config)
-
-        batches = _plan_batches(len(rows), infer_config.batch_size, infer_config.max_batches)
-        params = to_sampling_params(self.generation_config, num_samples=num_return)
+        if infer_config.batch_size < 1:
+            raise ValueError(f'InferConfig.batch_size must be >= 1, got {infer_config.batch_size}.')
+        if infer_config.max_batches:
+            rows = rows[:infer_config.max_batches * infer_config.batch_size]
         from swift.dev.dataset.storage import open_store_writer
 
         writer = open_store_writer(
@@ -263,67 +261,26 @@ class InferComponent(RecipeComponent):
                 self.output_path + '.rollout_tokens', base_dir=os.path.dirname(self.output_path) or 'output',
                 enabled=True)
 
-        if output_format == 'grpo' and self._scorer is None:
+        if output_format == 'grpo' and not self._scorers:
             # No reward channel is a valid GRPO dump -- the group's trajectories, masks and
             # old_logps are the corpus, and training scores/advantages them later.
             logger.info("output_format='grpo' with no reward channel (--orm / --prm) stores each prompt's "
                         'group trajectories + rollout logps with null scores; reward is left to the '
                         'training step.')
 
-        results: List[Dict[str, Any]] = []
         # Throughput/token summary, the dev counterpart of legacy's InferStats: prompts and
-        # generated tokens are counted as batches complete, then reported once at the end.
-        num_prompts = 0
-        num_generated_tokens = 0
+        # generated tokens are counted as groups complete, then reported once at the end.
         start_time = time.perf_counter()
         emit = {'dpo': _emit_dpo, 'grpo': _emit_grpo}.get(output_format, _emit_all)
-        # Two dataset routes, chosen by SAMPLER CAPABILITY (not backend name): vLLM/SGLang run a
-        # background engine loop (PartialRolloutMixin, marked by pause_generation) and ride the SAME
-        # per-sample StreamingDriver online RL uses (null ledger); transformers or the cache-only 'no'
-        # backend keeps the batch loop.
-        async_route = sampler is not None and callable(getattr(sampler, 'pause_generation', None))
         try:
-            if async_route:
-                # A deterministic seed makes the dataloader's shuffle replayable, which is what
-                # resume relies on to skip the already-emitted prefix in the same draw order.
-                seed = getattr(self.dataset_config, 'data_seed', 0) or 0
-                async_results, async_prompts, async_tokens = self._drive_per_sample(
-                    rows=rows, rollout=rollout, cache=cache, writer=writer,
-                    recorder=recorder, emit=emit, num_return=num_return,
-                    multi_turn_enabled=multi_turn_enabled, adapter_path=adapter_path,
-                    sampling_params=asdict(to_sampling_params(self.generation_config)), seed=seed)
-                results.extend(async_results)
-                num_prompts += async_prompts
-                num_generated_tokens += async_tokens
-            else:
-                for index, (start, end) in enumerate(batches):
-                    if writer.skip(index):
-                        continue
-                    batch = rows[start:end]
-                    logger.info(f'run_infer: batch {index + 1}/{len(batches)} ({len(batch)} prompts)')
-                    trajectories, ground_truths, groups = _sample_candidates(
-                        sampler, rollout, batch, params, self.template_config, infer_config, cache,
-                        adapter_path, multi_turn_enabled)
-                    batch_rows: List[Dict[str, Any]] = []
-                    for row, trajectory, ground_truth, group in zip(batch, trajectories, ground_truths,
-                                                                    groups):
-                        group = [candidate for candidate in group if candidate.decoded]
-                        if not group:
-                            continue
-                        num_prompts += 1
-                        num_generated_tokens += sum(len(candidate.response_token_ids) for candidate in group)
-                        scores = self._score_group(group, row, trajectory, ground_truth)
-                        batch_rows.extend(emit(row, trajectory, ground_truth, group, scores, infer_config,
-                                               recorder, multi_turn=multi_turn_enabled))
-                    results.extend(batch_rows)
-                    writer.write(batch_rows)
-                    writer.checkpoint(index)
+            results, num_prompts, num_generated_tokens = self._drive(
+                rows=rows, rollout=rollout, cache=cache, writer=writer, recorder=recorder, emit=emit,
+                num_return=num_return, multi_turn_enabled=multi_turn_enabled)
         finally:
-            if self._scorer is not None:
-                for func in self._scorer.orm_scorers:
-                    shutdown = getattr(func, 'shutdown', None)
-                    if shutdown is not None:
-                        shutdown()
+            for scorer in self._scorers:
+                shutdown = getattr(scorer, 'shutdown', None)
+                if shutdown is not None:
+                    shutdown()
             if rollout is not None:
                 rollout.close()
             if self.shutdown and sampler is not None:
@@ -378,151 +335,109 @@ class InferComponent(RecipeComponent):
                 "no tool trajectory to score against the candidates'. Turn off score_ground_truth, or "
                 'run single-turn.')
         if infer_config.generation_strict is False:
-            # Honoured nowhere, and the old message claimed the engine has no strictness knob --
-            # it does (TransformersSampler.sample's per-row strict tolerance); what is missing is
-            # the MultiTurnRollout.generate pass-through, so the knob is unreachable from config.
+            # Honoured nowhere: TransformersSampler.sample has a per-row strict tolerance, but the
+            # rollout does not thread it through, so the knob is unreachable from config.
             logger.warning('generation_strict=False has no effect on this path: the rollout engine '
                            'does not thread the sampler-side per-row strictness through generate, '
                            'so it cannot be reached from config. The flag is accepted only for CLI '
                            'compatibility.')
 
-    def _drive_per_sample(self, *, rows: List[Dict[str, Any]], rollout: Any,
-                          cache: '_CandidateCache', writer: Any, recorder: Any, emit: Any,
-                          num_return: int, multi_turn_enabled: bool, adapter_path: Optional[str],
-                          sampling_params: Dict[str, Any], seed: int) -> Tuple[List[Dict[str, Any]], int, int]:
-        """The async dataset route: the SAME per-sample StreamingDriver online RL rides, infer regime.
+    def _drive(self, *, rows: List[Dict[str, Any]], rollout: Any, cache: '_CandidateCache', writer: Any,
+               recorder: Any, emit: Any, num_return: int,
+               multi_turn_enabled: bool) -> Tuple[List[Dict[str, Any]], int, int]:
+        """Emit every prompt's candidate group: cached ones first, the rest streamed through a driver.
 
-        Each prompt's ``num_return`` candidates are admitted independently and emitted the instant
-        its group completes -- no batch lock-step; the infer regime (no version control) pins the
-        version at 0. Groups
-        are emitted in DRAW order (see ``_assembly_ready``), so a resume skips exactly the emitted
-        prefix; torchrun drives one shard per rank (gather merges), ray one process.
+        The driver (no checkpoint manager: the weights never change) runs each prompt's
+        ``num_return`` episodes and hands the group out as soon as it completes; groups are emitted
+        in DRAW order, so the checkpoint's count equals the prompts consumed and a resume skips
+        exactly the emitted prefix. torchrun drives one shard per rank (gather merges), ray one
+        process. Returns ``(rows, prompts emitted, generated tokens)``.
         """
         from swift.dev.builders import build_prompt_dataloader, split_prompt_and_reference
-        from twinkle_agentic.async_rl.streaming_driver import StreamingDriver
+        from swift.dev.builders.streaming import build_streaming_driver
+        from swift.dev.config import RolloutConfig
 
         infer_config = self.infer_config
-        template_config = self.template_config
         results: List[Dict[str, Any]] = []
         # Resume point: the count of prompts a prior run already wrote (its checkpoint), or 0 for a
-        # fresh run (no checkpoint writer, or no state file). The emit order below is deterministic,
-        # so "the first N prompts" is stable across runs and a resume can skip exactly that prefix.
+        # fresh run (no checkpoint writer, or no state file).
         resume_from = max(0, getattr(writer, '_resume_from', -1))
-        state: Dict[str, Any] = {'prompts': 0, 'tokens': 0, 'processed': 0, 'next_ordinal': 0}
+        state = {'prompts': 0, 'tokens': 0, 'processed': 0}
         # Split once: the trajectory is what the sampler generates from, the reference is emit's
         # label anchor.
-        trajectories, ground_truths = split_prompt_and_reference(rows, template_config)
+        trajectories, ground_truths = split_prompt_and_reference(rows, self.template_config)
+
+        def emit_group(index: Optional[int], candidates: List[Dict[str, Any]]) -> None:
+            out_rows: List[Dict[str, Any]] = []
+            candidates = [candidate for candidate in candidates if _decoded(candidate)]
+            if index is not None and candidates:
+                state['prompts'] += 1
+                state['tokens'] += sum(len(candidate.get('response_token_ids') or []) for candidate in candidates)
+                scores = self._score_group(candidates, rows[index], trajectories[index], ground_truths[index])
+                out_rows = emit(rows[index], trajectories[index], ground_truths[index], candidates, scores,
+                                infer_config, recorder, multi_turn=multi_turn_enabled)
+                results.extend(out_rows)
+            # Written even when the group came back empty: under a torchrun gather every rank must
+            # enter the same number of writer calls (one per drawn group), or the all_gather inside
+            # the writer mismatches across ranks and the run hangs.
+            writer.write(out_rows)
+            state['processed'] += 1
+            writer.checkpoint(state['processed'])
+
         # Cache short-circuit: a prompt already covered by cache_files is emitted verbatim, never
-        # driven (the batch path's _sample_candidates does the same lookup), so only the rest pay
-        # for generation.
+        # driven, so only the rest pay for generation.
         to_sample: List[int] = []
-        processed = 0
-        cached_total = 0
         for index, trajectory in enumerate(trajectories):
             hit = cache.lookup(trajectory, num_return, multi_turn=multi_turn_enabled)
             if hit is None:
                 to_sample.append(index)
-                continue
-            cached_total += 1
-            already_done = processed < resume_from
-            processed += 1
-            if already_done:
-                continue  # a prior run emitted it; the restored tmp file already holds its rows
-            group = [candidate for candidate in hit if candidate.decoded]
-            if group:
-                state['prompts'] += 1
-                scores = self._score_group(group, rows[index], trajectory, ground_truths[index])
-                out_rows = emit(rows[index], trajectory, ground_truths[index], group, scores,
-                                infer_config, recorder, multi_turn=multi_turn_enabled)
-                results.extend(out_rows)
-                writer.write(out_rows)
-            writer.checkpoint(processed)
-        # The draws a prior run already emitted are exactly the first (resume_from - cached_total)
-        # of the seeded stream, so fast-forward the dataloader there: the driver's ordinal 0 becomes
-        # the first draw not yet emitted.
-        draw_skip = max(0, resume_from - cached_total)
-        state['processed'] = cached_total + draw_skip
-        if to_sample and draw_skip < len(to_sample):
-            sample_rows = [rows[index] for index in to_sample]
-            prompt_dataloader = build_prompt_dataloader(
-                [row['messages'] for row in sample_rows],
-                [{key: value for key, value in row.items() if key != 'messages'} for row in sample_rows],
-                seed=seed, batch_size=_prompt_batch_size(infer_config.batch_size))
-            if draw_skip:
-                prompt_dataloader.skip_consumed_samples(draw_skip)
-            # Per-draw metadata the driver's ordinal keys: the row it drew, its split trajectory
-            # and reference.
-            meta: Dict[int, Tuple[Dict[str, Any], Dict[str, Any], Optional[str]]] = {}
-
-            def _submit(prompt_ref: Any, trajectory_idx: int, policy: Any) -> Any:
-                ordinal = prompt_ref.ordinal
-                if ordinal not in meta:
-                    traj, gt = split_prompt_and_reference([prompt_ref.row], template_config)
-                    meta[ordinal] = (prompt_ref.row, traj[0], gt[0])
-                extras = {key: value for key, value in prompt_ref.row.items() if key != 'messages'}
-                # The row's trailing assistant turn is the reference, stripped above so the engine
-                # sees the prompt alone; ``adapter_path`` selects the LoRA the engine reserved
-                # slots for. A null-ledger policy carries no adapter, so nothing else is threaded.
-                return rollout.admit(
-                    meta[ordinal][1]['messages'], trajectory_idx, prompt_idx=ordinal,
-                    sampling_params=sampling_params, prompt_extras=(extras or None),
-                    adapter_path=adapter_path, policy_version=0)
-
-            def _ordinal_of(record: Any) -> int:
-                # group_key is f'{ordinal}#{group_seq}' (StreamingDriver.run); the ordinal is the
-                # draw id.
-                return int(record.group_key.split('#')[0])
-
-            def _assembly_ready(buffer: List[Any]) -> Optional[List[Any]]:
-                # Pull the contiguous run of COMPLETE groups starting at the next ordinal to emit --
-                # draw order, not completion order, so the checkpoint's count equals the draws
-                # consumed and a resume skips exactly the emitted prefix.
-                by_ordinal: Dict[int, List[Any]] = {}
-                for record in buffer:
-                    by_ordinal.setdefault(_ordinal_of(record), []).append(record)
-                pulled: List[Any] = []
-                ordinal = state['next_ordinal']
-                while len(by_ordinal.get(ordinal, ())) >= num_return:
-                    pulled.extend(by_ordinal[ordinal])
-                    ordinal += 1
-                return pulled or None
-
-            def _consume(records: List[Any]) -> None:
-                by_ordinal: Dict[int, List[Any]] = {}
-                for record in records:
-                    by_ordinal.setdefault(_ordinal_of(record), []).append(record)
-                for ordinal in sorted(by_ordinal):
-                    group_records = by_ordinal[ordinal]
-                    row, trajectory, ground_truth = meta[ordinal]
-                    candidates = [record.sample for record in group_records]
-                    candidates = [candidate for candidate in candidates if candidate.decoded]
-                    out_rows: List[Dict[str, Any]] = []
-                    if candidates:
-                        state['prompts'] += 1
-                        state['tokens'] += sum(
-                            len(candidate.response_token_ids) for candidate in candidates)
-                        scores = self._score_group(candidates, row, trajectory, ground_truth)
-                        out_rows = emit(row, trajectory, ground_truth, candidates, scores, infer_config,
-                                        recorder, multi_turn=multi_turn_enabled)
-                        results.extend(out_rows)
-                    # Written even when the group came back empty: under a torchrun gather every
-                    # rank must enter the same number of writer calls (one per drawn group), or the
-                    # all_gather inside the writer mismatches across ranks and the run hangs.
-                    writer.write(out_rows)
-                    # Advance past this draw and record the cumulative count: every drawn group
-                    # (even one whose candidates all came back empty) is a consumed prompt, so the
-                    # checkpoint stays equal to the number of draws a resume must skip.
-                    state['next_ordinal'] = ordinal + 1
-                    state['processed'] += 1
-                    writer.checkpoint(state['processed'])
-                return None
-
-            StreamingDriver(
-                prompt_stream=prompt_dataloader, num_train_epochs=1.0, max_staleness=0,
-                num_generations=num_return, groups_per_partition=1,
-                buffer_depth=max(num_return * 4, 8),
-                rollout=rollout, submit=_submit, assembly_ready=_assembly_ready,
-                consume=_consume).run()
+            elif state['processed'] < resume_from:
+                state['processed'] += 1  # a prior run emitted it; the restored tmp file holds its rows
+            else:
+                emit_group(index, hit)
+        # The draws a prior run already emitted are the first ones of the in-order stream.
+        draw_skip = max(0, resume_from - state['processed'])
+        state['processed'] += min(draw_skip, len(to_sample))
+        pending = to_sample[draw_skip:]
+        if not pending:
+            return results, state['prompts'], state['tokens']
+        if rollout is None:
+            raise ValueError("sampler='no' requires cache_files to cover every input prompt.")
+        # Per-prompt side inputs: the dataset row's non-message columns merged with the
+        # trajectory's, so a reward func / tool sees the same extras whether or not the prompt was
+        # cached; _ROW_INDEX finds the row again when the group comes back.
+        extras = []
+        for index in pending:
+            extra = {key: copy.deepcopy(value) for key, value in rows[index].items() if key != 'messages'}
+            extra.update({key: copy.deepcopy(value) for key, value in trajectories[index].items()
+                          if key != 'messages'})
+            extra[_ROW_INDEX] = index
+            extras.append(extra)
+        dataloader = build_prompt_dataloader(
+            [trajectories[index]['messages'] for index in pending], extras, seed=0, shuffle=False,
+            batch_size=_prompt_batch_size(infer_config.batch_size))
+        # One group per batch, about _GROUPS_AHEAD rows of episodes running ahead of the emitter.
+        driver = build_streaming_driver(
+            dataloader=dataloader, rollout=rollout, rollout_config=(self.rollout_config or RolloutConfig()),
+            batch_size=num_return, num_generations=num_return, num_train_epochs=1,
+            max_staleness=max(0, math.ceil(max(num_return * 4, 8) / num_return) - 1))
+        done: Dict[int, List[Dict[str, Any]]] = {}
+        next_ordinal = 0
+        try:
+            for trajs, samples in driver:
+                # group_key is the driver's draw ordinal of the group's prompt
+                done[int(samples[0].group_key)] = trajs
+                while next_ordinal in done:
+                    group = done.pop(next_ordinal)
+                    emit_group(group[0][_ROW_INDEX], group)
+                    next_ordinal += 1
+        finally:
+            driver.close()
+        # A group the driver dropped (an episode failed) never arrived; it counts as consumed, so
+        # the groups behind it are emitted now, in order.
+        for ordinal in range(next_ordinal, max(done, default=next_ordinal - 1) + 1):
+            group = done.get(ordinal)
+            emit_group(group[0][_ROW_INDEX] if group else None, group or [])
         return results, state['prompts'], state['tokens']
 
     def _forward_pass(self, task_type: str) -> List[Dict[str, Any]]:
@@ -604,31 +519,25 @@ class InferComponent(RecipeComponent):
                      trajectory: Dict[str, Any], ground_truth: Optional[str]) -> Optional[List[float]]:
         """Score one prompt's candidates -> one float each, or None when no channel is configured.
 
-        Shared by both dataset routes so scoring happens once per group and is orthogonal to
+        Shared by the cached and the driven groups so scoring happens once per group and is orthogonal to
         storage. The ground truth, when scored, is appended so per-group normalisation sees it as
         the anchor, then trimmed back off -- it is never emitted as a candidate because the model
         did not produce it.
         """
-        if self._scorer is None:
+        if not self._scorers:
             return None
         columns = {key: value for key, value in row.items() if key != 'messages'}
-        scored = []
-        for candidate in candidates:
-            if not candidate.extra:
-                candidate.extra = columns
-            scored.append(candidate)
+        scored = [{**columns, **candidate} for candidate in candidates]
         if self.infer_config.score_ground_truth and ground_truth:
             # trajectory['messages'] is the prompt with the reference turn already stripped (see
             # split_prompt_and_reference), so rebuilding prompt + ground_truth-as-assistant is the
             # correct single-turn conversation; __call__ rejects this in a multi-turn rollout.
-            from twinkle_agentic.rollout import RolloutSample
+            scored.append({**columns, 'messages': copy.deepcopy(trajectory['messages'])
+                           + [{'role': 'assistant', 'content': ground_truth}]})
+        from swift.dev.utils.scoring import collect
 
-            scored.append(RolloutSample(
-                decoded=ground_truth,
-                messages=copy.deepcopy(trajectory['messages'])
-                + [{'role': 'assistant', 'content': ground_truth}],
-                extra=dict(columns)))
-        return self._combined(self._scorer.score_group(scored))[:len(candidates)]
+        matrix = [list(values) for values in zip(*(collect(scorer(scored)) for scorer in self._scorers))]
+        return self._combined(matrix)[:len(candidates)]
 
     def _combined(self, matrix: List[List[Optional[float]]]) -> List[float]:
         """The matrix's two channel blocks -> one score per candidate (weight, normalise, sum).
@@ -639,7 +548,7 @@ class InferComponent(RecipeComponent):
         larger raw range cannot dominate regardless of the weights.
         """
         scores = [0.0] * len(matrix)
-        total = len(self._scorer.orm_scorers)
+        total = len(self._scorers)
         blocks = ((0, self._orm_count, self._orm_weights, self.infer_config.orm_channel_weight),
                   (self._orm_count, total, self._prm_weights, 1.0))
         for start, end, weights, scale in blocks:
@@ -765,6 +674,8 @@ def _build_scorers(infer_config: 'InferConfig', reward_config: Optional['RewardC
     owning its own engine), or an API judge -- through the shared single-spec builder. A generative
     judge that reuses the sampler is why this runs AFTER the sampler is built.
     """
+    from twinkle.reward import FunctionWorker
+
     from swift.dev.builders import build_reward_model
     from swift.dev.config import DistributedConfig, RolloutConfig
     from swift.dev.rewards.reward import get_reward_funcs
@@ -775,6 +686,8 @@ def _build_scorers(infer_config: 'InferConfig', reward_config: Optional['RewardC
 
     def _channel_funcs(plan: Any, name: str) -> Tuple[List[Any], List[str]]:
         funcs, names = get_reward_funcs(plan.rules, reward_config)
+        funcs = [FunctionWorker(func) for func in funcs]
+        names = list(names)
         for spec in plan.specs:
             remote_group = name if ray and spec.kind in ('scalar', 'generative_independent') else None
             funcs.append(build_reward_model(
@@ -784,7 +697,7 @@ def _build_scorers(infer_config: 'InferConfig', reward_config: Optional['RewardC
                 judge_template=getattr(reward_config, 'judge_template', None),
                 quantize_config=quantize_config))
             names.append(spec.display_name)
-        return list(funcs), names
+        return funcs, names
 
     orm_funcs, orm_names = _channel_funcs(orm_plan, 'orm')
     prm_funcs, prm_names = _channel_funcs(prm_plan, 'prm')
@@ -815,71 +728,16 @@ def _min_max(scores: List[float]) -> List[float]:
     return [value if value != value else (value - low) / (high - low + 1e-5) for value in scores]
 
 
-def _sample_candidates(sampler: Any, rollout: Any, batch: List[Dict[str, Any]], params: Any,
-                       template_config: 'TemplateConfig', infer_config: 'InferConfig',
-                       cache: '_CandidateCache', adapter_path: Optional[str],
-                       multi_turn_enabled: bool) -> Tuple[List[Dict[str, Any]], List[Optional[str]],
-                                                          List[List[Any]]]:
-    """One batch of prompts -> ``(trajectories, ground_truths, candidate groups)``, sampling only.
+def _decoded(candidate: Dict[str, Any]) -> str:
+    """The candidate's answer: its last assistant turn's text."""
+    from twinkle.data_format import last_assistant_text
 
-    Scoring and row shaping happen in the caller so both output formats share one sampling call.
-    Prompts already covered by ``cache_files`` skip generation entirely -- they are the expensive
-    part, and their candidates are reused verbatim.
-    """
-    from swift.dev.builders import split_prompt_and_reference
-
-    trajectories, ground_truths = split_prompt_and_reference(batch, template_config)
-    wanted = infer_config.num_return_sequences
-    cached = [cache.lookup(trajectory, wanted, multi_turn=multi_turn_enabled) for trajectory in trajectories]
-    # to_sample: the prompts the cache did NOT cover -- only these pay for generation, the rest
-    # reuse their cached candidates verbatim. Fresh candidates are written back to their original
-    # index below.
-    to_sample = [index for index, hit in enumerate(cached) if hit is None]
-    candidates: List[List[Any]] = [hit or [] for hit in cached]
-    if to_sample:
-        if sampler is None:
-            raise ValueError("sampler='no' requires cache_files to cover every input prompt.")
-        if rollout is None:
-            raise RuntimeError('sampling was requested but no rollout engine was built.')
-        selected_trajectories = [trajectories[index] for index in to_sample]
-        prompt_extras = []
-        # Per-prompt side inputs for the rollout: the dataset row's non-message columns merged with
-        # the trajectory's, so a reward func / tool sees the same extras whether or not the prompt
-        # was cached.
-        for index, trajectory in zip(to_sample, selected_trajectories):
-            extra = {key: copy.deepcopy(value) for key, value in batch[index].items() if key != 'messages'}
-            extra.update({key: copy.deepcopy(value) for key, value in trajectory.items()
-                          if key != 'messages'})
-            prompt_extras.append(extra)
-        # One generation call for single- and multi-turn alike: the engine dispatches on its own
-        # configuration. logprobs are forced only when the recorder keeps tokens; ``adapter_path``
-        # selects the LoRA the engine reserved slots for (threaded into every per-turn sample).
-        sample_kwargs: Dict[str, Any] = {}
-        if adapter_path is not None:
-            sample_kwargs['adapter_path'] = adapter_path
-        samples, encodings = rollout.generate(
-            [trajectory['messages'] for trajectory in selected_trajectories],
-            num_samples=wanted,
-            sampling_params=asdict(params),
-            prompt_extras=prompt_extras,
-            force_logprobs=infer_config.save_rollout_tokens,
-            **sample_kwargs)
-        for sample, encoded in zip(samples, encodings):
-            sample.encoded = encoded
-        expected = len(to_sample) * wanted
-        if len(samples) != expected:
-            raise RuntimeError(f'rollout returned {len(samples)} samples, expected {expected}.')
-        for offset, index in enumerate(to_sample):
-            candidates[index] = samples[offset * wanted:(offset + 1) * wanted]
-    if len(to_sample) < len(batch):
-        logger.info(f'run_infer: reused cached candidates for {len(batch) - len(to_sample)}/{len(batch)} '
-                    'prompts')
-    return trajectories, ground_truths, candidates
+    return last_assistant_text(candidate)
 
 
-def _candidate_messages(candidate: Any) -> List[Dict[str, Any]]:
+def _candidate_messages(candidate: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The candidate's full conversation (the emit view); a copy so output rows own their messages."""
-    return copy.deepcopy(candidate.messages)
+    return copy.deepcopy(candidate['messages'])
 
 
 def _emit_all(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Optional[str],
@@ -893,18 +751,17 @@ def _emit_all(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Opt
     """
     prompt_id = _prompt_key(trajectory['messages'])
     out: Dict[str, Any] = {key: value for key, value in row.items() if key != 'messages'}
-    out['response'] = candidates[0].decoded
-    out['responses'] = [candidate.decoded for candidate in candidates]
+    out['response'] = _decoded(candidates[0])
+    out['responses'] = [_decoded(candidate) for candidate in candidates]
     out['messages'] = _candidate_messages(candidates[0])
     if multi_turn:
         # Each multi-turn candidate is a distinct trajectory (its own tool calls); ``messages`` keeps
         # only the first, so store every candidate's full trajectory rather than losing all but one.
         out['all_messages'] = [_candidate_messages(candidate) for candidate in candidates]
-    if candidates[0].rollout_logprobs:
-        # Populated only when logprobs were requested (generation_config.logprobs /
-        # save_rollout_tokens); mirrors legacy's per-row ``logprobs`` for the response this row
-        # keeps.
-        out['logprobs'] = list(candidates[0].rollout_logprobs)
+    if candidates[0].get('rollout_logprobs'):
+        # Present for a generated candidate (a cached one has none); mirrors legacy's per-row
+        # ``logprobs`` for the response this row keeps.
+        out['logprobs'] = list(candidates[0]['rollout_logprobs'])
     if ground_truth is not None:
         out['labels'] = ground_truth
     if scores is not None:
@@ -1000,16 +857,12 @@ def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: Any,
         if multi_turn:
             out['rejected_messages'] = _candidate_messages(negative)
         else:
-            out['rejected_response'] = negative.decoded
+            out['rejected_response'] = _decoded(negative)
     if multi_turn:
         out['multi_turn'] = True
-        out['truncated'] = positive.truncated
-        if positive.rollout_infos:
-            out['rollout_infos'] = positive.rollout_infos
+        out['truncated'] = bool(positive.get('truncated'))
         if negative is not None:
-            out['rejected_truncated'] = negative.truncated
-            if negative.rollout_infos:
-                out['rejected_rollout_infos'] = negative.rollout_infos
+            out['rejected_truncated'] = bool(negative.get('truncated'))
     if ground_truth is not None:
         out['ground_truth'] = ground_truth
     # Group id: every row from one prompt shares it, so positives can be traced back to their group.
@@ -1040,7 +893,7 @@ def _emit_grpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Op
     out: Dict[str, Any] = {key: value for key, value in row.items() if key != 'messages'}
     out['id'] = prompt_id
     out['messages'] = copy.deepcopy(trajectory['messages'])
-    out['completions'] = [candidate.decoded for candidate in candidates]
+    out['completions'] = [_decoded(candidate) for candidate in candidates]
     out['all_messages'] = [_candidate_messages(candidate) for candidate in candidates]
     out['num_generations'] = len(candidates)
     if ground_truth is not None:
@@ -1117,29 +970,24 @@ class _RolloutRecorder:
         """Persist one candidate's rollout tokens; return the NPZ path relative to ``base_dir``.
 
         The sidecar holds the payload every dump format shares (``input_ids`` / ``labels`` /
-        ``completion_mask`` / ``response_token_ids`` / ``response_loss_mask`` / ``rollout_logprobs``)
+        ``completion_mask`` / ``response_token_ids`` / ``rollout_logprobs``)
         -- old_logps are the one thing training cannot recompute (the policy has drifted). Multimodal
         tensors are omitted on purpose: reproducible, so training re-encodes them from the row's kept
         media columns and messages, as an online rollout would. None when disabled or token-less.
         """
         if not self.enabled:
             return None
-        encoded = getattr(candidate, 'encoded', None) or {}
-        input_ids = encoded.get('input_ids')
-        labels = encoded.get('labels')
+        input_ids = candidate.get('input_ids')
+        labels = candidate.get('labels')
         if not input_ids or not labels:
             return None
         arrays = {
             'input_ids': np.asarray(input_ids, dtype=np.int64),
             'labels': np.asarray(labels, dtype=np.int64),
-            'response_token_ids': np.asarray(getattr(candidate, 'response_token_ids', None) or [],
-                                             dtype=np.int64),
-            'rollout_logprobs': np.asarray(getattr(candidate, 'rollout_logprobs', None) or [],
-                                           dtype=np.float32),
-            'response_loss_mask': np.asarray(getattr(candidate, 'response_loss_mask', None) or [],
-                                             dtype=np.int8),
+            'response_token_ids': np.asarray(candidate.get('response_token_ids') or [], dtype=np.int64),
+            'rollout_logprobs': np.asarray(candidate.get('rollout_logprobs') or [], dtype=np.float32),
         }
-        completion_mask = encoded.get('completion_mask')
+        completion_mask = candidate.get('completion_mask')
         if completion_mask is not None:
             arrays['completion_mask'] = np.asarray(completion_mask, dtype=np.int8)
         name = f'{prompt_id}_c{candidate_index}.npz'
@@ -1191,8 +1039,6 @@ class _CandidateCache:
             logger.warning(f'cache_files entry {path} could not be read as {storage_format!r} ({e}); '
                            'ignoring it.')
             return
-        from twinkle_agentic.rollout import RolloutSample
-
         for entry in rows:
             messages = entry.get('messages')
             if not messages or messages[-1].get('role') != 'assistant':
@@ -1205,12 +1051,7 @@ class _CandidateCache:
             else:
                 key = _prompt_key(messages[:-1])
             self.by_prompt.setdefault(key, []).append((
-                RolloutSample(
-                    decoded=messages[-1].get('content') or '',
-                    messages=copy.deepcopy(messages),
-                    rollout_infos=copy.deepcopy(entry.get('rollout_infos')) or {},
-                    truncated=bool(entry.get('truncated'))),
-                multi_turn))
+                {'messages': copy.deepcopy(messages), 'truncated': bool(entry.get('truncated'))}, multi_turn))
 
     def lookup(self, trajectory: Dict[str, Any], wanted: int,
                *, multi_turn: bool = False) -> Optional[List[Any]]:
@@ -1223,15 +1064,11 @@ class _CandidateCache:
             # A multi-turn-stored entry still serves as a plain completion, but the row must carry
             # THIS run's single-turn view -- the current prompt plus that completion, never the
             # stored tool-call trajectory.
-            from twinkle_agentic.rollout import RolloutSample
-
             prompt_messages = copy.deepcopy(trajectory['messages'])
-            cached = [RolloutSample(
-                decoded=sample.decoded,
-                messages=prompt_messages + [{'role': 'assistant', 'content': sample.decoded}])
+            cached = [{'messages': prompt_messages + [{'role': 'assistant', 'content': _decoded(sample)}]}
                       for sample, _flag in cached]
         else:
-            cached = [sample for sample, flag in cached if flag and sample.messages is not None]
+            cached = [copy.deepcopy(sample) for sample, flag in cached if flag]
         return cached[:wanted] if len(cached) >= wanted else None
 
 
@@ -1249,15 +1086,6 @@ def _is_too_easy(n_passing: int, n_candidates: int, easy_query_threshold: Option
     if easy_query_threshold is None:
         return False
     return n_passing / n_candidates >= easy_query_threshold
-
-
-def _plan_batches(n_rows: int, batch_size: int, max_batches: Optional[int]) -> List[Tuple[int, int]]:
-    """Fixed ``(start, end)`` slices, computed up front so the resume index means the same thing
-    across runs. A trailing partial batch is kept, unlike legacy's ``n // batch_size`` truncation."""
-    if batch_size < 1:
-        raise ValueError(f'InferConfig.batch_size must be >= 1, got {batch_size}.')
-    batches = [(start, min(start + batch_size, n_rows)) for start in range(0, n_rows, batch_size)]
-    return batches[:max_batches] if max_batches else batches
 
 
 def _initialize_for_forward(distributed_config: 'DistributedConfig') -> None:
@@ -1520,9 +1348,7 @@ def _decision_via_transformers(
     for start in range(0, len(rows), batch_size):
         chunk = rows[start : start + batch_size]
         encoded = [template.encode(row) for row in chunk]
-        outputs = model.forward_only(inputs=encoded, task="decision", return_logits=True)
-        if callable(outputs) and getattr(outputs, "_is_lazy_collect", False):
-            outputs = outputs()
+        outputs = collect(model.forward_only(inputs=encoded, task="decision", return_logits=True))
         preds, _logprobs = template.decode_decision(outputs, top_logprobs=1)
         per_row.extend(preds)
     return per_row
@@ -1536,8 +1362,7 @@ def _per_row_outputs(outputs: Any, num_rows: int) -> List[Any]:
     A lazy remote return is collected here, so the local-mode dict and the ray handle feed the
     same unpacking.
     """
-    if callable(outputs) and getattr(outputs, '_is_lazy_collect', False):
-        outputs = outputs()
+    outputs = collect(outputs)
     tensor = outputs
     if isinstance(outputs, dict):
         # forward_only(task='embedding') returns the pooled vectors under 'embeddings' (plural),
