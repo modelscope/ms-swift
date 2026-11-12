@@ -1,15 +1,11 @@
 """Tests for the multi-teacher ``dataset`` routing tag added by ``load_dataset``.
 
-The tag is a constant column, but ``Dataset.add_column`` materializes the dataset first whenever it
-carries an indices table: it falls back to ``flatten_indices()``, which is a ``map()``. ``map()``
-derives its cache file path from the dataset fingerprint, so every rank computes the same path. When
-the dataset directory lives on a filesystem shared between ranks -- the normal setup for multi-node
-training -- all ranks write that file concurrently and race on the ``shutil.move()`` -> ``os.chmod()``
-at the end of ``Dataset._map_single``, which fails with ``FileNotFoundError`` on the losing ranks.
+Sampling (``dataset#n``) and ``split_dataset_ratio`` both go through ``select()``. Tagging before
+``post_process()`` avoids flattening the resulting indices table and racing on its cache file.
 
-Sampling (``dataset#n``) and ``split_dataset_ratio`` both go through ``select()``, so the indices
-table is present in ordinary training runs. Tagging before ``post_process()`` keeps ``add_column()``
-on the in-memory path, which is what these tests pin down.
+For non-streaming datasets, a batched ``map()`` keeps the new column disk-backed. Mixing an
+in-memory routing column with mmap columns can otherwise inflate dataset shards pickled for
+multiprocess map jobs.
 """
 import contextlib
 import json
@@ -17,6 +13,8 @@ import os
 import tempfile
 import unittest
 from datasets import Dataset as HfDataset
+from datasets import concatenate_datasets, load_from_disk
+from multiprocess.reduction import ForkingPickler
 from unittest import mock
 
 from swift.dataset import DatasetMeta, load_dataset, register_dataset
@@ -103,6 +101,27 @@ class TestDatasetRoutingTag(unittest.TestCase):
                         self.assertEqual(row['dataset'], self.dataset_path)
                         self.assertEqual('row_id' in row, not remove_unused_columns)
                         self.assertEqual(len(row['messages']), 2)
+
+    def test_disk_backed_routing_tag_does_not_inflate_shards(self):
+        root = os.path.join(self._tmp_dir.name, 'arrow')
+        os.makedirs(root)
+        pieces = []
+        for i in range(16):
+            path = os.path.join(root, str(i))
+            HfDataset.from_dict({'text': [f'row-{i}-{j}' for j in range(32)]}).save_to_disk(path)
+            pieces.append(load_from_disk(path, keep_in_memory=False))
+        original = concatenate_datasets(pieces)
+        tag = 'synthetic://' + 'x' * 185
+
+        tagged = _inject_dataset_routing_tag(original, tag)
+
+        self.assertEqual(tagged['text'], original['text'])
+        self.assertEqual(tagged['dataset'], [tag] * len(original))
+        original_shard = original.shuffle(seed=42).shard(num_shards=16, index=0)
+        tagged_shard = tagged.shuffle(seed=42).shard(num_shards=16, index=0)
+        original_size = len(ForkingPickler.dumps(original_shard))
+        tagged_size = len(ForkingPickler.dumps(tagged_shard))
+        self.assertLess(tagged_size, original_size * 4)
 
     def test_replacing_tag_preserves_input_dataset(self):
         original = HfDataset.from_dict({'dataset': ['old-a', 'old-b'], 'value': [1, 2]})
