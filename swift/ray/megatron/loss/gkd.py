@@ -7,7 +7,7 @@ from functools import partial
 from megatron.core import mpu
 from typing import Any, Dict, List, Optional
 
-from swift.megatron.trainers.gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
+from swift.megatron.trainers.gkd_utils import cp_reduce, tp_align_vocab, tp_gather_topk, vocab_parallel_topk
 from swift.megatron.trainers.utils import prepare_batch
 from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
 from swift.megatron.utils import forward_step_helper
@@ -97,7 +97,8 @@ class GKDLoss(Loss):
             self.temperature,
             gather_fn=tp_gather_topk,
             log_softmax_fn=vocab_parallel_log_softmax,
-            kl_div_fn=vocab_parallel_kl_div)
+            kl_div_fn=vocab_parallel_kl_div,
+            align_vocab_fn=tp_align_vocab)
         jsd_loss_val = cp_reduce(jsd_total, jsd_num_valid, cp_size=args.context_parallel_size)
 
         loss = jsd_loss_val
