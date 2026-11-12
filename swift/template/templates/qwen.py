@@ -487,11 +487,18 @@ class Qwen2VLTemplate(Template):
         base_model = self.get_base_model(self._get_model())
         if hasattr(base_model, 'get_rope_index'):
             get_rope_index = base_model.get_rope_index
-        else:
+        elif hasattr(base_model, 'model') and hasattr(base_model.model, 'get_rope_index'):
             get_rope_index = base_model.model.get_rope_index
+        else:
+            # Text-only backbone of the family (e.g. a bare `Qwen3_5TextConfig` / `Qwen3_5ForCausalLM`
+            # checkpoint) has no mrope machinery at all -> fall back to the standard text behavior.
+            return None
         return get_rope_index
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
+        get_rope_index = self._get_get_rope_index()
+        if get_rope_index is None:
+            return {}
         # fix https://github.com/huggingface/transformers/pull/33487
         kwargs = {}
         if self.version == 'v2_5':
@@ -503,7 +510,7 @@ class Qwen2VLTemplate(Template):
         mm_token_type_ids = inputs.get('mm_token_type_ids')
         if mm_token_type_ids is not None:
             kwargs['mm_token_type_ids'] = mm_token_type_ids
-        position_ids, _ = self._get_get_rope_index()(
+        position_ids, _ = get_rope_index(
             input_ids,
             image_grid_thw=inputs.get('image_grid_thw'),
             video_grid_thw=inputs.get('video_grid_thw'),

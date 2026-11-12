@@ -15,8 +15,8 @@ pip install "ms-swift>=4.6.0"
 
 ## 支持模型
 
-1. JEV-27B-VL：Qwen3-VL + PEFT adapter
-  - [ModelScope](https://www.modelscope.cn/models/autotrust/JEV-27B-VL)
+1. JEV：Qwen3.5 骨干 + PEFT adapter（verbalizer 打分头；JEV-27B-VL 为多模态布局，JEV-27B / JEV-9B 为纯文本布局）
+  - [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL) / [JEV-27B](https://www.modelscope.cn/models/autotrust/JEV-27B) / [JEV-9B](https://www.modelscope.cn/models/autotrust/JEV-9B)
 2. Clef：已合并 LoRA 的完整 Qwen3-VL
   - [ModelScope](https://www.modelscope.cn/models/Cloudflare/clef)
 3. OmniJev：Qwen3.5-4B（hybrid gated-deltanet + VL）+ PEFT adapter

@@ -31,6 +31,9 @@ class ScoringModelLoader(ModelLoader):
     def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
                   model_kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, config, processor, model_kwargs)
+        return self._attach_head(model, model_dir, config)
+
+    def _attach_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig) -> PreTrainedModel:
         head = self.build_head(model, model_dir, config)
         self.attach_scoring_head(model, head)
         from swift.model.decision_head import maybe_load_trained_scoring_head
@@ -101,12 +104,31 @@ class ScoringModelLoader(ModelLoader):
 class JevModelLoader(ScoringModelLoader, Qwen3_5Loader):
     head_cls = JevVerbalizerHead
 
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        if str(getattr(config, 'model_type', '')).lower() == 'qwen3_5_text':
+            from transformers import Qwen3_5ForCausalLM, Qwen3_5PreTrainedModel
+
+            from .qwen import (_get_qwen3_5_keep_in_fp32_modules, _patch_qwen3_5_keep_in_fp32_modules,
+                               _patch_qwen3_5_linear_attention_sequence_parallel)
+            self.auto_model_cls = Qwen3_5ForCausalLM
+            _patch_qwen3_5_linear_attention_sequence_parallel()
+            keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+            with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel, keep_in_fp32_modules):
+                model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+            return self._attach_head(model, model_dir, config)
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
 
 register_model(
     ModelMeta(
-        MLLMModelType.jev, [ModelGroup([
-            Model('autotrust/JEV-27B-VL', 'autotrust/JEV-27B-VL'),
-        ], TemplateType.jev)],
+        MLLMModelType.jev, [
+            ModelGroup([
+                Model('autotrust/JEV-9B', 'autotrust/JEV-9B'),
+                Model('autotrust/JEV-27B', 'autotrust/JEV-27B'),
+                Model('autotrust/JEV-27B-VL', 'autotrust/JEV-27B-VL'),
+            ], TemplateType.jev)
+        ],
         JevModelLoader,
         model_arch=ModelArch.qwen2_vl,
         task_type='decision',
