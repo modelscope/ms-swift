@@ -4,6 +4,7 @@ import statistics
 import time
 import torch
 
+from swift.sequence_parallel.zigzag_ring_attn import get_half_index
 from swift.sequence_parallel.zigzag_ring_attn_npu import _get_second_half_lse
 
 
@@ -104,15 +105,15 @@ def test_second_half_lse_rejects_invalid_rank():
         _get_second_half_lse(torch.randn(2, 1, 4, 1), cu_seqlens)
 
 
-def _measure_npu(fn, lse, cu_seqlens, warmup=10, repeats=30):
+def _measure_npu(fn, *args, warmup=10, repeats=30):
     for _ in range(warmup):
-        fn(lse, cu_seqlens)
+        fn(*args)
     torch.npu.synchronize()
     samples = []
     for _ in range(repeats):
         torch.npu.synchronize()
         start = time.perf_counter()
-        fn(lse, cu_seqlens)
+        fn(*args)
         torch.npu.synchronize()
         samples.append((time.perf_counter() - start) * 1e6)
     return statistics.median(samples), statistics.quantiles(samples, n=20)[18]
@@ -137,6 +138,48 @@ def test_second_half_lse_matches_reference_on_npu(lengths, dtype):
     expected.backward(output_grad)
     torch.testing.assert_close(lse.grad, expected_lse.grad, rtol=0, atol=0)
     torch.npu.synchronize()
+
+
+def test_get_half_index_benchmark():
+    if os.environ.get('SWIFT_RUN_NPU_BENCHMARK') != '1':
+        pytest.skip('Set SWIFT_RUN_NPU_BENCHMARK=1 to run the NPU benchmark')
+    if not _npu_available():
+        pytest.skip('Ascend NPU is not available')
+
+    def reference_get_half_index(cu_seqlens, *, front=False):
+        if len(cu_seqlens) == 2:
+            if front:
+                return slice(None, cu_seqlens[-1] // 2)
+            return slice(cu_seqlens[-1] // 2, None)
+
+        index = torch.zeros((cu_seqlens[-1].item(), ), dtype=torch.bool)
+        for i in range(len(cu_seqlens) - 1):
+            start, end = cu_seqlens[i], cu_seqlens[i + 1]
+            if front:
+                end = (start + end) // 2
+            else:
+                start = (start + end) // 2
+            index[start:end] = True
+        return index
+
+    def reference_chain(source, cu_seqlens):
+        return source[reference_get_half_index(cu_seqlens)]
+
+    def optimized_chain(source, cu_seqlens):
+        return source[get_half_index(cu_seqlens, front=False)]
+
+    total_len = 4096
+    device = torch.device('npu:0')
+    source = torch.randn((total_len, 8, 128), dtype=torch.bfloat16, device=device)
+    for num_sequences in (1, 2, 4, 8, 32, 128, 512, 1024):
+        sequence_len = total_len // num_sequences
+        cu_seqlens = torch.arange(0, total_len + 1, sequence_len, dtype=torch.int32, device=device)
+        baseline_median, baseline_p95 = _measure_npu(reference_chain, source, cu_seqlens)
+        optimized_median, optimized_p95 = _measure_npu(optimized_chain, source, cu_seqlens)
+        print(f'{num_sequences} sequences x {sequence_len} tokens: '
+              f'baseline={baseline_median:.1f}/{baseline_p95:.1f} us, '
+              f'optimized={optimized_median:.1f}/{optimized_p95:.1f} us, '
+              f'speedup={baseline_median / optimized_median:.2f}x')
 
 
 def test_second_half_lse_benchmark():
