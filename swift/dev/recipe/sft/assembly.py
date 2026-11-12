@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+_KERNEL_PROCESSORS = {"qwen3_tts": "TTSInputProcessor"}
+
 
 def _require_task_type(recipe: str, model_config: "ModelConfig", task: str) -> str:
     """Default ``ModelConfig.task_type`` to this recipe's ``task``, and refuse a conflicting one.
@@ -204,8 +206,13 @@ def build_supervised_objects(
             # Full-parameter path: consume the freeze/trainable knobs BEFORE configure_optimizer reads
             # requires_grad to build its param groups; an adapter run selects through target_modules.
             apply_full_param_freeze(model, train_config)
+        from swift.dev.model.loader import resolve_loader_cls
+        from twinkle import processor as kernel_processors
+
+        loader = resolve_loader_cls(model_config.model_type, model_config.model)
+        kernel = _KERNEL_PROCESSORS.get(getattr(loader, "model_type", None))
         model.set_processor(
-            InputProcessor,
+            getattr(kernel_processors, kernel) if kernel else InputProcessor,
             padding_free=template_config.padding_free,
             # The collator must pad on the same side as the Template (builders/template.py forwards
             # padding_side to it), or a training-time --padding_side left reaches the Template only.
@@ -214,7 +221,12 @@ def build_supervised_objects(
             **processor_kwargs(template),
         )
         model.set_template(template)
-        configure_loss(model)
+        model_loss = getattr(loader, "loss_type", None)
+        if kernel and model_loss and not train_config.loss:
+            from twinkle.loss import torch_loss_mapping
+            model.set_loss(torch_loss_mapping[model_loss]())
+        else:
+            configure_loss(model)
     # Shared by both modes: the transformers branch of configure_optimizer is already a
     # description ("set_optimizer(name, scalar kwargs)"), which the client handle accepts verbatim.
     configure_optimizer(
