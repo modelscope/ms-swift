@@ -64,6 +64,8 @@ cd ms-swift
 pip install -e '.[eval]'
 ```
 
+Native 评测支持移除了旧 `SERVICE` 别名的 EvalScope 1.11.0，并保留对旧版服务模式常量的兼容。现有 `--eval_url` 使用方式保持不变。
+
 ## 评测
 
 支持纯文本评测、多模态评测、url评测、自定义数据集评测四种方式

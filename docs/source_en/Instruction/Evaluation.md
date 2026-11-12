@@ -64,6 +64,8 @@ cd ms-swift
 pip install -e '.[eval]'
 ```
 
+Native evaluation supports EvalScope 1.11.0, which removed the legacy `SERVICE` alias, while retaining compatibility with the service-mode constant used by older versions. The existing `--eval_url` workflow is unchanged.
+
 ## Evaluation
 
 Supports four methods of evaluation: pure text evaluation, multimodal evaluation, URL evaluation, and custom dataset evaluation.
