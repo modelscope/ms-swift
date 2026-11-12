@@ -138,8 +138,7 @@ class TrainConfig:
     full_determinism: bool = False
     use_liger_kernel: bool = False
     neftune_noise_alpha: Optional[float] = None
-    # Reorder each Ray slice_dp batch so the DP ranks get similar workloads (transformers backend);
-    # sample-mean losses train the same, only the wait for the slowest rank shrinks.
+    # Shared TrainableModel DP balancing (Transformers / Megatron); unsafe loss/layout configurations skip.
     dp_balance: bool = True
 
     # === Training Strategy ===

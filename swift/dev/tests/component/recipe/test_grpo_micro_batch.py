@@ -115,9 +115,8 @@ def ids(call):
 
 @pytest.mark.parametrize("padding_free", [False, True])
 @pytest.mark.parametrize("dynamic", [False, True])
-def test_length_balance_reduces_rank_load_and_keeps_all_signals_aligned(padding_free, dynamic):
+def test_recipe_delegates_balance_and_keeps_all_signals_aligned(padding_free, dynamic):
     state = make_state(ga=2)
-    state.balance_batch = True
     config = RLConfig(
         rl_type="grpo",
         enable_sampling_replay=True,
@@ -142,23 +141,20 @@ def test_length_balance_reduces_rank_load_and_keeps_all_signals_aligned(padding_
     (call,) = state.model.calls
     order = ids(call)
     assert sorted(order) == list(range(8))
-    assert order != list(range(8))
+    assert order == list(range(8))
     assert call["advantages"] == [i * 10.0 for i in order]
     for key, delta in [("rollout_logps", 0.1), ("old_logps", 0.2), ("ref_logps", 0.3), ("teacher_logps", 0.4)]:
         assert call[key] == [[i + delta] for i in order]
     assert call["sampling_masks"] == [f"mask-{i}" for i in order]
     assert call["truncated"] == [i % 2 == 0 for i in order]
     assert [row["routed_experts"] for row in call["inputs"]] == [[i] for i in order]
-    metrics = state.balance_metrics[0]
-    assert metrics["dp_balance/workload_imbalance_after"] < metrics["dp_balance/workload_imbalance_before"]
-    assert ("dp_balance/padding_ratio_after" in metrics) == (not padding_free)
+    assert state.balance_metrics == [None]  # Metrics now come from model.calculate_metric.
     assert state.global_step == state.model.steps == 1
     assert "padding_free" not in call  # This is the processor layout, not a model RPC option.
 
 
 def test_balance_preserves_replay_update_membership_and_dropped_tail():
     state = make_state(ga=1)
-    state.balance_batch = True
     state.padding_free = False
     config = RLConfig(rl_type="grpo", num_iterations=2)
     assert train(state, 7, config=config, lengths=[2000, 1900, 300, 200, 1800, 1700, 100]) == 3

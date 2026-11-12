@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 
-from swift.dev.recipe.batching import apply_rollout_plan, plan_rollout_batch, record_rollout_step
+from swift.dev.utils.scoring import batch_input_lengths
 from swift.dev.recipe.streaming import publish_rollout_weights
 from swift.dev.utils.logger import get_logger
 
@@ -113,35 +113,29 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
         if state.reached_max() or state.should_stop():
             break
         indices = [index % len(samples) for index in range(lo, hi)]
-        inputs = [samples[index].encoded for index in indices]
-        batching = {'micro_batch_size': micro_batch_size}
-        update_samples = [samples[index] for index in indices]
-        policy_plan = plan_rollout_batch(state, inputs, samples=update_samples, micro_batch_kwargs=batching)
-        value_plan = plan_rollout_batch(
-            state, inputs, samples=update_samples, model=value_model, micro_batch_kwargs=batching,
-            metric_prefix='dp_balance/value')
-        policy_indices = apply_rollout_plan(policy_plan, indices)
-        value_indices = apply_rollout_plan(value_plan, indices)
+        lengths = batch_input_lengths([samples[index] for index in indices])
         state.micro_step += (hi - lo) // train_batch_size
         model.forward_backward(
-            inputs=[samples[index].encoded for index in policy_indices],
+            inputs=[samples[index].encoded for index in indices],
+            input_lengths=lengths,
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             temperature=temperature,
-            advantages=[advantages[index] for index in policy_indices],
-            old_logps=[old_logps[index] for index in policy_indices],
+            advantages=[advantages[index] for index in indices],
+            old_logps=[old_logps[index] for index in indices],
         )
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         value_model.forward_backward(
-            inputs=[samples[index].encoded for index in value_indices],
+            inputs=[samples[index].encoded for index in indices],
+            input_lengths=lengths,
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             task='value',
-            returns=[returns[index] for index in value_indices],
-            old_values=[values[index] for index in value_indices],
+            returns=[returns[index] for index in indices],
+            old_values=[values[index] for index in indices],
         )
         value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        record_rollout_step(state, policy_plan, value_plan)
+        state.record()
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
             ema_manager.sync_ema(rl_config.ref_model_mixup_alpha)
@@ -400,7 +394,6 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     state = StepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
-        balance_batch=rl_config.balance_batch,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

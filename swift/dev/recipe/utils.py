@@ -556,14 +556,13 @@ class StepState:
                  empty_cache_steps: Optional[int] = None,
                  extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None,
                  log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None,
-                 padding_free: bool = False, balance_batch: bool = False):
+                 padding_free: bool = False):
         # The tracker initializes its reporters as a construction side effect (validation ran above).
 
         from swift.dev.callbacks import build_callbacks
         from swift.dev.callbacks.handler import CallbackHandler
 
         self.model = model
-        self.balance_batch = balance_batch
         self.padding_free = padding_free
         self.ga = gradient_accumulation_steps
         self.max_steps = max_steps

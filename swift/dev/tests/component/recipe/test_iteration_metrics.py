@@ -168,7 +168,6 @@ def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
     state._iteration_started_ns = None
     state._iteration_facts = None
     state._memory_rows = None
-    state.balance_batch = True
     state.model.memory_stats = lambda **kwargs: []
     state.tracker = RunTracker(None, str(tmp_path))
     state.setup_rollout_metrics([('model', [0, 1])], num_generations=8)
@@ -180,8 +179,7 @@ def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
         state.fold_iteration_metrics()
         row = iteration_rows(tmp_path, state)[0]
         assert state.global_step == state.model.steps == 1
-        balance = state.balance_metrics[0]
-        assert balance['dp_balance/workload_imbalance_after'] < balance['dp_balance/workload_imbalance_before']
+        assert state.balance_metrics == [None]  # Recipe no longer owns a separate plan.
         assert row['data']['training/sample_visits'] == row['data']['training/unique_samples_trained'] == 8
         assert row['data']['perf/total_num_tokens'] == sum(lengths)
     finally:

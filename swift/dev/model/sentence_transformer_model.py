@@ -69,6 +69,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         os.environ["TOKENIZERS_PARALLELISM"] = "true"
         self._try_init_process_group()
         super(PreTrainedModel, self).__init__()
+        self._init_dp_balance(kwargs.pop("dp_balance", True))
         self._default_tokenizer = None
         # This __init__ overrides the @remote_class-wrapped base, so it does NOT receive the base's
         # automatic device_mesh injection; resolve the global default here to uphold the same invariant
