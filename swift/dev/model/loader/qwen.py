@@ -1117,9 +1117,8 @@ class Qwen2_5OmniLoader(_QwenOmniLoader):
 
 @register_model
 class Qwen3OmniMoeLoader(_QwenOmniLoader):
-    """Qwen3-Omni-MoE. Legacy forked ``forward`` (``_compat_qwen3_omni_mixed_data``) to inject dummy
-    media under DeepSpeed so the vision/audio towers stay alive on text-only micro-batches; dev does
-    that without forking forward, via the data-side dummy + ``apply_vision_keep_alive`` aligner hooks.
+    """Qwen3-Omni-MoE. Dummy-media injection belongs to the data side; conditional aligner-output
+    hooks are owned by Twinkle rather than this loader.
     The audio-pad token id, which legacy set on the config from the tokenizer, is set in
     ``build_processor`` (the one hook holding both config and processor).
     """
