@@ -750,10 +750,26 @@ swift infer \
 
 Decision 模型携带**可插拔打分头**，与 backbone（或 LoRA adapter）联合训练。头权重**单独存储**，避开「config 声明生成模型但权重含分类器」的不一致问题：
 
-- **存盘**：`ScoringTrainer._save` 先通过标准路径存 adapter（或全量模型），然后在旁边写入头制品。对于 adapter（LoRA）训练，写入 `scoring_head.safetensors`（头参数）和 `scoring_head.json`（头类型 + 标定元数据）。对于全量微调训练，只写入 `scoring_head.json`——头参数已在模型的 safetensors 分片中（`from_pretrained` 因 `scoring_head` 尚未挂载而忽略了它们）。
-- **读回**：`maybe_load_trained_scoring_head(model, adapter_dir)` 在 `Swift.from_pretrained` 之后自动调用，覆盖续训、断点恢复、推理三条路径。处理两种场景：当 `scoring_head.safetensors` 存在时（adapter checkpoint），从中加载权重；当仅 `scoring_head.json` 存在时（全量微调 checkpoint），从模型的 safetensors 分片中提取头权重。对非 decision 模型是**受守卫的空操作**。
+- **存盘**：`ScoringTrainer._save` 先通过标准路径存 adapter（或全量模型），然后在旁边写入头制品。对于 adapter（LoRA）训练，写入 `scoring_head.safetensors`（头参数）和 `scoring_head.json`（头类型 + 标定元数据）。对于全量微调训练，只写入 `scoring_head.json`——头参数已在模型权重中（`from_pretrained` 因 `scoring_head` 尚未挂载而忽略了它们）。
+- **读回**：`maybe_load_trained_scoring_head(model, adapter_dir)` 在 `Swift.from_pretrained` 之后自动调用，覆盖续训、断点恢复、推理三条路径。处理两种场景：当 `scoring_head.safetensors` 存在时（adapter checkpoint），从中加载权重；当仅 `scoring_head.json` 存在时（全量微调 checkpoint），从模型权重中提取头权重，支持 safetensors 和 PyTorch `.bin` 的单文件与分片格式，优先读取 safetensors。对非 decision 模型是**受守卫的空操作**。
 
-训完的 checkpoint 可直接部署——`swift infer` 或 `--adapters <checkpoint>` 会自动读回训好的头。
+加载全量微调 checkpoint 时，将 checkpoint 目录传给 `--model`，并指定对应的 `--model_type`
+（`jev`、`startlux`、`clef`、`omnijev`、`kev`、`thx02` 或 `laya`）。当目录中缺少原始头制品时，
+共享 loader 从 `scoring_head.json` 重建头，再恢复训练后的权重与校准状态。元数据包含
+`head_type` 类型标识和构造参数，包括非默认的头维度；类型不匹配时会报错。原始头制品和环境变量
+覆盖路径仍优先，原始制品不完整或格式错误时仍报错。
+
+新保存的 OmniJev 全量 checkpoint 会在 `config.json` 中记录选项 token ID，并保留训练后的
+embedding，重载时不再用 `new_tok_emb.pt` 重新初始化这些行。新保存的 THX-02 全量 checkpoint
+会在 `config.json` 中保留实际使用的答案编码、注意力模式、温度和图像尺寸限制。仍兼容没有类型
+标识的旧元数据，但缺少结构参数或上述处理器／tokenizer 设置的旧 checkpoint 仍需原始制品。
+若旧全量 checkpoint 将输出 embedding 存在 `scoring_head._output_embeddings.*` 别名下，
+则需要先迁移权重；loader 会明确拒绝该旧布局，避免用随机输出头悄悄替代训练后的权重。
+LoRA checkpoint 使用原基座模型配合 `--adapters <checkpoint>` 加载。
+
+新增 decision head 时，定义 `head_type`、原始制品位置和 `_from_factory` 加载方法。
+`extra_state_for_save()` 应返回可被 `cls(**meta)` 接收的 JSON 可序列化构造参数；基类负责
+元数据保存和 checkpoint 重建。模型专用的处理器或 tokenizer 状态也必须经过正常保存／加载路径保留。
 
 ## OmniJev：`MSO_BRANCH_CKPT` 与 `gradient_checkpointing` 互斥说明
 
