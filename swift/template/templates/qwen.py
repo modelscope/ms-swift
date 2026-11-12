@@ -683,6 +683,18 @@ class Qwen3_8Template(Qwen3_5Template):
                              f'{list(self.reasoning_effort_instructions.keys())}.')
         return self.reasoning_effort_instructions[reasoning_effort]
 
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        encoded = super()._post_encode(model, inputs)
+        if self.is_training:
+            base_model = self.get_base_model(model)
+            config = getattr(base_model, 'config', None)
+            text_config = getattr(config, 'text_config', config)
+            if getattr(text_config, 'ple_layer_ids', None):
+                # Keep the existing shared vision call (including dummy text images),
+                # but never reverse-lookup ids from embeddings containing visual features.
+                encoded['ple_input_ids'] = inputs['input_ids']
+        return encoded
+
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         system = super()._get_system(inputs)
         reasoning_instructions = self._get_reasoning_instructions(inputs)
