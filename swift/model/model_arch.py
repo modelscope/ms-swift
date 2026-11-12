@@ -97,6 +97,7 @@ class MLLMModelArch:
 
     midashenglm = 'midashenglm'
     step_audio2_mini = 'step_audio2_mini'
+    sophon_realtime = 'sophon_realtime'
     hunyuan_vl = 'hunyuan_vl'
     step3_vl = 'step3_vl'
     mimo_v2 = 'mimo_v2'
@@ -703,6 +704,14 @@ register_model_arch(
         language_model=['model', 'lm_head'],
         aligner=['adapter'],
         vision_tower=['encoder'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.sophon_realtime,
+        language_model='language_model',
+        aligner='multi_modal_projector',
+        vision_tower='audio_tower',
     ))
 
 register_model_arch(
