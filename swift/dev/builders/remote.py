@@ -98,13 +98,22 @@ def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
             '--mode remote does not support target_parameters / trainable_token_indices: they need '
             'the in-process module graph (parameter objects / embedding tensors) that cannot cross '
             'HTTP. Drop the knobs, or run with mode=local/ray.')
-    # The SAME LoraConfig construction the local path uses (all-linear expansion, DoRA/bias flags,
-    # modules_to_save incl. the seq_cls head injection, init resolution): a hand-rolled narrower
-    # config here silently dropped those knobs and left the default ['all-linear'] list unexpanded,
-    # which peft only expands for the bare string.
+    # The SAME LoraConfig construction the local path uses (all-linear expansion, DoRA/bias flags, init
+    # resolution): a hand-rolled narrower config here silently dropped those knobs and left the default
+    # ['all-linear'] list unexpanded, which peft only expands for the bare string. BUT pass task_type=None
+    # so _lora_common_kwargs skips the seq_cls/reranker head-module injection: the server multi-tenant host
+    # rejects modules_to_save (add_adapter_to_model) because a readout head is a HOST-CONSTRUCTION property
+    # (the deployment YAML's task_type, bound per-tenant through the task= kwarg below), not a peft
+    # modules_to_save injection -- that is the local in-process path. Refuse an explicit modules_to_save
+    # loudly rather than let the server reject it opaquely.
     from swift.dev.builders.adapter import _lora_common_kwargs
 
-    lora_config = LoraConfig(**_lora_common_kwargs(tuner_config, task_type))
+    if tuner_config.modules_to_save:
+        raise ValueError(
+            '--mode remote does not support --modules_to_save: the server multi-tenant host binds a '
+            'seq_cls/reranker readout head from its deployment task_type (the host YAML), not from peft '
+            'modules_to_save. Drop --modules_to_save; the task head rides --task_type + the server host.')
+    lora_config = LoraConfig(**_lora_common_kwargs(tuner_config, task_type=None))
     # No save_dir: the server owns the checkpoint store (a client-side dir would have to exist
     # on the server already). GA rides the adapter because the server's grad-sync gate is
     # per-adapter state, not a forward kwarg. The head kwargs are plain names/ints, so they
