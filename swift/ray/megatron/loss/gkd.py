@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from swift.megatron.trainers.gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
 from swift.megatron.trainers.utils import prepare_batch
-from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
+from swift.megatron.trainers.vocab_parallel_utils import (vocab_parallel_kl_div, vocab_parallel_log_softmax,
+                                                          vocab_parallel_sum)
 from swift.megatron.utils import forward_step_helper
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.utils import get_current_device, to_device
@@ -17,7 +18,7 @@ from .base import Loss
 
 
 class GKDLoss(Loss):
-    """GKD loss: JSD between student and teacher + optional SFT loss."""
+    """GKD loss: the selected distillation objective + optional SFT loss."""
 
     def __init__(self, args):
         self.args = args
@@ -97,7 +98,11 @@ class GKDLoss(Loss):
             self.temperature,
             gather_fn=tp_gather_topk,
             log_softmax_fn=vocab_parallel_log_softmax,
-            kl_div_fn=vocab_parallel_kl_div)
+            kl_div_fn=vocab_parallel_kl_div,
+            loss_type=args.loss_type,
+            abkd_alpha=args.abkd_alpha,
+            abkd_beta=args.abkd_beta,
+            sum_fn=vocab_parallel_sum)
         jsd_loss_val = cp_reduce(jsd_total, jsd_num_valid, cp_size=args.context_parallel_size)
 
         loss = jsd_loss_val
@@ -129,7 +134,8 @@ class GKDLoss(Loss):
 
         metric = {'loss': loss.detach().clone()}
         if sft_loss is not None:
-            metric['jsd_loss'] = jsd_loss_val.detach().clone()
+            loss_name = 'abkd_loss' if args.loss_type == 'abkd' else 'jsd_loss'
+            metric[loss_name] = jsd_loss_val.detach().clone()
             metric['sft_loss'] = sft_loss.detach().clone()
 
         dp_group = mpu.get_data_parallel_group()
