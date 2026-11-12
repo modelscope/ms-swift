@@ -19,12 +19,11 @@ class Trainer(SwiftMixin, DataLoaderMixin, HfTrainer):
 
     def _prepare_inputs(self, inputs):
         inputs = super()._prepare_inputs(inputs)
-        # For tasks whose `labels` are per-sample (e.g. seq_cls/reranker/embedding), we must NOT let
-        # SP code treat them as token labels. We detect that case by `labels.dim() == 1` and temporarily
-        # remove labels during `prepare_inputs`.
+        # Sequence classification labels are per-sample, including 2D multi-label/regression targets.
+        # Keep them and other 1D sample labels out of the token-level shifting and splitting below.
         if self.template.sequence_parallel_size > 1:
             labels = inputs.get('labels', None)
-            pop_labels = isinstance(labels, torch.Tensor) and labels.dim() == 1
+            pop_labels = isinstance(labels, torch.Tensor) and (self.task_type == 'seq_cls' or labels.dim() == 1)
             if pop_labels:
                 labels = inputs.pop('labels', None)
             try:
