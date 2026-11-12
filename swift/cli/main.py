@@ -2,8 +2,10 @@
 import importlib.util
 import json
 import os
+import signal
 import subprocess
 import sys
+import threading
 import yaml
 from typing import Dict, List, Optional
 
@@ -83,6 +85,27 @@ def get_torchrun_args() -> Optional[List[str]]:
     return torchrun_args
 
 
+def run_command(args: List[str]) -> int:
+    """Run `args` in a child process and return its exit code (128 + N if it was killed by signal N).
+
+    The child does the actual work, so it decides how to stop. SIGTERM sent to the CLI alone (Kubernetes,
+    `docker stop`, `kill <pid>`) is forwarded to it. SIGINT is not: Ctrl-C in a terminal already reaches the
+    whole foreground process group, so the CLI keeps waiting instead of killing the child 0.25 s later, as
+    `subprocess.run` does on KeyboardInterrupt.
+    """
+    process = subprocess.Popen(args)
+    old_handlers = {}
+    if threading.current_thread() is threading.main_thread():  # signal handlers can only be set here
+        old_handlers[signal.SIGTERM] = signal.signal(signal.SIGTERM, lambda signum, _: process.send_signal(signum))
+        old_handlers[signal.SIGINT] = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        returncode = process.wait()
+    finally:
+        for signum, handler in old_handlers.items():
+            signal.signal(signum, signal.SIG_DFL if handler is None else handler)
+    return 128 - returncode if returncode < 0 else returncode
+
+
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
@@ -97,9 +120,9 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
     print(f"run sh: `{' '.join(args)}`", flush=True)
-    result = subprocess.run(args)
-    if result.returncode != 0:
-        sys.exit(result.returncode)
+    returncode = run_command(args)
+    if returncode != 0:
+        sys.exit(returncode)
 
 
 if __name__ == '__main__':
