@@ -19,6 +19,7 @@ Swift DOCUMENTATION
 
    Instruction/Command-line-parameters.md
    Instruction/Pre-training-and-Fine-tuning.md
+   Instruction/Profiling.md
    Instruction/GRPO/index.rst
    Instruction/Distillation.md
    Instruction/RLHF.md
