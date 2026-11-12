@@ -60,7 +60,7 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     # Every field name is unique across these Configs (``distill_temperature`` is the RL objective's,
     # ``max_new_tokens``/``temperature`` only on GenerationConfig), so no owner disambiguation is needed.
     configs = parse_configs_strict(classes, effective_argv, command='swift rl')
-    common = configs[:16]
+    common = configs[:len(classes) - 1]
     (model_config, plugin_config, template_config, dataset_config, train_config, distributed_config,
      checkpoint_config, logging_config, tuner_config, generation_config, rollout_config, rl_config, reward_config,
      quantize_config, megatron_config, moe_config) = common
@@ -80,8 +80,10 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
             'family remotely.')
     # The online family rolls out on a separate vLLM/SGLang sampler over Ray and syncs weights into it;
     # on-policy generation must be backend-general (in-process ``model.generate`` is transformers-only).
+    # Default DISAGGREGATED: the sampler gets its own GPUs (no trainer/sampler time-sharing, no
+    # colocate interrupt/restore dance); pass --sampler_mode colocate to fold it onto the trainer's.
     if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}:
-        rollout_config.sampler_mode = rollout_config.sampler_mode or 'colocate'
+        rollout_config.sampler_mode = rollout_config.sampler_mode or 'disaggregated'
         distributed_config.mode = 'ray'
     # The offline RLHF family runs mode='ray' with the policy and a full-param frozen reference as
     # separate actors; it rolls out nothing, so only the mode is forced.
