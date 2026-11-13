@@ -247,7 +247,7 @@ def _build_split_loader(raw: Any,
         max_retries=0 if dataset_config.strict else 20,
         collate_fn=_identity_collate,
         shuffle=dl_shuffle and not dataset_config.streaming,
-        drop_last=_drop_last(distributed_config),
+        drop_last=dataset_config.dataloader_drop_last or _drop_last(distributed_config),
         num_workers=num_workers,
         pin_memory=dataset_config.dataloader_pin_memory,
         **worker_kwargs,
@@ -268,7 +268,9 @@ def _twinkle_loader_layout(distributed_config: DistributedConfig,
     if device_mesh is not None:
         # HF Ulysses SP: the sampler slices by data_world_size (world/ulysses), so SP peers get
         # identical samples and only DP groups differ
-        return per_device_batch_size * device_mesh.data_world_size, device_mesh
+        # Ray dispatch slices the global batch on the model workers, not on the driver.
+        return per_device_batch_size * device_mesh.data_world_size, (
+            None if distributed_config.mode == 'ray' else device_mesh)
     if distributed_config.nproc_per_node is None:
         # plain transformers torchrun (world size lives in the env, not the config): scale by the same
         # source twinkle's local initialize reads; mesh stays None to inherit twinkle's global DP mesh

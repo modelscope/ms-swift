@@ -491,3 +491,49 @@ def test_build_model_torch_dtype_overrides_on_a_copy(monkeypatch, tmp_path):
     assert seen['cfg'].torch_dtype == 'float16'
     # the caller's config is untouched -- the override rode a copy
     assert mc.torch_dtype == 'bfloat16'
+
+
+@pytest.mark.parametrize("mode", ["local", "ray"])
+@pytest.mark.parametrize("world,sp", [(2, 2), (4, 2), (4, 4)])
+def test_fsdp_ulysses_mesh_layout(monkeypatch, mode, world, sp):
+    from swift.dev.builders.model import build_dp_mesh
+    from swift.dev.config import DistributedConfig
+
+    monkeypatch.setattr('twinkle.utils.Platform.get_world_size', staticmethod(lambda: world))
+    config = DistributedConfig(mode=mode, nproc_per_node=world, fsdp='full_shard')
+    mesh = build_dp_mesh(config, sp)
+    assert mesh.ulysses_size == sp
+    assert mesh.fsdp_world_size == world
+    assert mesh.data_world_size == world // sp
+    assert mesh.mesh.size == world
+
+
+@pytest.mark.parametrize("spec", ["dp1fsdp4ul1", "dp1fsdp4ul4"])
+def test_parallel_spec_rejects_mismatched_sp(spec):
+    from swift.dev.builders.model import build_dp_mesh
+    from swift.dev.config import DistributedConfig
+
+    config = DistributedConfig(mode='ray', nproc_per_node=4, parallel_spec=spec, fsdp='full_shard')
+    with pytest.raises(ValueError, match='ulysses_size'):
+        build_dp_mesh(config, 2)
+
+
+def test_parallel_spec_accepts_matching_sp():
+    from swift.dev.builders.model import build_dp_mesh
+    from swift.dev.config import DistributedConfig
+
+    config = DistributedConfig(mode='ray', nproc_per_node=4, parallel_spec='dp1fsdp4ul2', fsdp='full_shard')
+    mesh = build_dp_mesh(config, 2)
+    assert mesh.ulysses_size == 2
+    assert mesh.data_world_size == 2
+
+
+@pytest.mark.parametrize("mode", ["ray", "local"])
+def test_hf_sp_loader_mesh_ownership(mode):
+    from swift.dev.builders.dataset import _twinkle_loader_layout
+    from swift.dev.config import DistributedConfig
+
+    mesh = SimpleNamespace(data_world_size=2)
+    batch, loader_mesh = _twinkle_loader_layout(DistributedConfig(mode=mode), 3, mesh)
+    assert batch == 6
+    assert loader_mesh is (None if mode == 'ray' else mesh)
