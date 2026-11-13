@@ -499,6 +499,18 @@ swift sft \
 
 
 
+训练后可合并 adapter，供官方决策服务器使用：
+
+```bash
+swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
+```
+
+StartLux 合并后的底座权重不再包含 vLLM 无法加载的 `scoring_head.*`。导出会把训练后的 read-out 写入
+`decision_config.json`：`letter_bias` 按 A–Z 顺序保存 26 个偏置，`temperature_by_type` 包含全局和 per-kind
+校准温度的乘积，同时保留原目录的 prompt 和 AutoThink 设置。**请保留导出的配置；用原始配置覆盖它会丢失
+训练后的 read-out。** 推理需要支持 `letter_bias` 的 `startlux-decide` 版本；旧版本会忽略这些偏置。
+计算时先将偏置加到对应字母的 log-probability 上，再除以该问题类型的温度。
+
 ### 从零训练任意 CausalLM
 
 `generic_decision` 模型类型允许将任意文本 CausalLM 转为决策模型。与各模型专属路径不同，此路径从 tokenizer 构建随机初始化的 `JevVerbalizerHead`，无需预置头权重：
@@ -752,6 +764,14 @@ Decision 模型携带**可插拔打分头**，与 backbone（或 LoRA adapter）
 
 - **存盘**：`ScoringTrainer._save` 先通过标准路径存 adapter（或全量模型），然后在旁边写入头制品。对于 adapter（LoRA）训练，写入 `scoring_head.safetensors`（头参数）和 `scoring_head.json`（头类型 + 标定元数据）。对于全量微调训练，只写入 `scoring_head.json`——头参数已在模型权重中（`from_pretrained` 因 `scoring_head` 尚未挂载而忽略了它们）。
 - **读回**：`maybe_load_trained_scoring_head(model, adapter_dir)` 在 `Swift.from_pretrained` 之后自动调用，覆盖续训、断点恢复、推理三条路径。处理两种场景：当 `scoring_head.safetensors` 存在时（adapter checkpoint），从中加载权重；当仅 `scoring_head.json` 存在时（全量微调 checkpoint），从模型权重中提取头权重，支持 safetensors 和 PyTorch `.bin` 的单文件与分片格式，优先读取 safetensors。对非 decision 模型是**受守卫的空操作**。
+
+- **LoRA 合并导出**：`swift export --merge_lora true` 对 JEV、StartLux、Clef、THX-02、OmniJev、Kev、
+  Laya 七类头统一处理：骨干权重文件及分片索引不含 `scoring_head.*`，训练后的头参数写入
+  `scoring_head/scoring_head.safetensors`，构造参数与校准元数据写入 `scoring_head.json`。请保留这两个文件，
+  在 Swift 中以 `--model <合并目录>` 和对应的 `--model_type` 加载，无需再传 adapter。
+  头权重放在子目录中，避免被扫描顶层权重文件的推理引擎误加载。
+  仅加载骨干模型的推理引擎不会自动执行这些打分头；原生决策服务仍需要各自的头格式和推理支持。
+  StartLux 还会将训练后的字母偏置及有效温度导出到 `decision_config.json`，其推理版本要求见上文。
 
 加载全量微调 checkpoint 时，将 checkpoint 目录传给 `--model`，并指定对应的 `--model_type`
 （`jev`、`startlux`、`clef`、`omnijev`、`kev`、`thx02` 或 `laya`）。当目录中缺少原始头制品时，
