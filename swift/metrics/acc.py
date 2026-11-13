@@ -53,6 +53,12 @@ def compute_acc(preds,
 class AccMetrics(EvalMetrics):
 
     def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
+        heads = getattr(self.trainer.template.config, 'seq_cls_heads', None)
+        if heads:
+            from swift.model.seq_cls_head import multi_head_metrics
+            metrics = multi_head_metrics(
+                torch.as_tensor(eval_prediction.predictions), torch.as_tensor(eval_prediction.label_ids), heads)
+            return {name: values.mean().item() for name, values in metrics.items()}
         metric = compute_acc(
             eval_prediction.predictions,
             eval_prediction.label_ids,
@@ -65,5 +71,7 @@ class AccMetrics(EvalMetrics):
     def preprocess_logits_for_metrics(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         if isinstance(logits, (list, tuple)):
             logits = logits[0]
+        if getattr(self.trainer.template.config, 'seq_cls_heads', None):
+            return logits
         preds = logits.argmax(dim=-1)
         return preds
