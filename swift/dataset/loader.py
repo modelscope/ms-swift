@@ -242,12 +242,17 @@ def init_decision_augment(
 
 
 def _inject_dataset_routing_tag(dataset: DATASET_TYPE, ds_name: str) -> DATASET_TYPE:
-    """Inject ``dataset`` column for multi-teacher routing (constant per source dataset)."""
+    """Inject a constant ``dataset`` routing column, keeping non-streaming data disk-backed."""
     if isinstance(dataset, HfIterableDataset):
         return dataset.map(lambda example: {**example, 'dataset': ds_name})
-    if 'dataset' in dataset.column_names:
-        dataset = dataset.remove_columns('dataset')
-    return dataset.add_column('dataset', [ds_name] * len(dataset))
+    with safe_ddp_context(None, True):
+        if 'dataset' in dataset.column_names:
+            dataset = dataset.remove_columns('dataset')
+        return dataset.map(
+            lambda batch: {'dataset': [ds_name] * len(next(iter(batch.values())))},
+            batched=True,
+            keep_in_memory=False,
+        )
 
 
 def load_dataset(
@@ -384,11 +389,8 @@ def load_dataset(
         init_decision_augment(dataset_meta, decision_augment_config, get_seed(seed))
         train_dataset = loader.load(dataset_syntax, dataset_meta, use_hf=use_hf)
         # Inject dataset_syntax.dataset as routing tag for multi-teacher.
-        # Tag before post_process: sampling/splitting go through select(), and add_column() on a
-        # dataset that has an indices table falls back to flatten_indices(). That is a map() whose
-        # cache file path is derived from the fingerprint, so it is identical on every rank; on a
-        # shared filesystem the ranks then race to write the same file. The tag is constant per
-        # dataset, so tagging first is equivalent and keeps add_column() in memory.
+        # Tag before post_process to avoid another map over the indices table created by
+        # sampling/splitting. The tag is constant per dataset, so tagging first is equivalent.
         train_dataset = _inject_dataset_routing_tag(train_dataset, dataset_syntax.dataset)
         train_dataset, val_dataset = loader.post_process(
             train_dataset,
