@@ -39,6 +39,9 @@ def _build_meta_model(config, model_type: Optional[str], model_dir: str):
         elif config.model_type in MODEL_MAPPING:
             model_type = config.model_type
     model_cls = get_model_loader(model_type).resolve_model_cls() if model_type else AutoModelForCausalLM
+    expected_config_cls = getattr(model_cls, "config_class", None)
+    if expected_config_cls is not None and not isinstance(config, expected_config_cls):
+        model_cls = AutoModelForCausalLM
     config = deepcopy(config)  # HF construction may mutate attention/dtype fields.
     # set_quantized_state: under DeepSpeed ZeRO-3 transformers' ``_from_config`` runs
     # ``initialize_weights_zero3``, which gathers-and-copies into parameters -- on this meta model

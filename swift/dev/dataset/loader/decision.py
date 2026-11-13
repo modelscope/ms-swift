@@ -1,12 +1,19 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Loaders for the ``open_jev_*`` decision-distillation corpora.
+"""Loaders for the decision corpora: the ``open_jev_*`` hub releases and the offline mini samples.
 
 One family per typed-decision model family: the corpus row shape is model-specific, so each
-loader pairs the hub repo with the matching ``ScoringPreprocessor`` subclass, which fans a raw
+loader pairs the data source with the matching ``ScoringPreprocessor`` subclass, which fans a raw
 record out into the standard decision row (``messages`` + ``questions``/``kinds``/``options``/
 ``target_probs``). The ``_v11`` families read the smaller Open-Jev-v1.1 release, which publishes
 a single subset.
+
+The ``<family>_decision`` loaders read the OFFLINE mini corpora shipped with swift under
+``swift/dev/dataset/decision_data`` (a mirror of ``examples/train/decision/data``): a few rows per
+family, loadable with ``--dataset jev_decision`` (no ``--external_plugins``, no network) for smoke
+runs and the example scripts.
 """
+import os
+
 from .base import DatasetLoader, register_dataset
 from ..preprocessor import (
     ClefPreprocessor,
@@ -15,7 +22,68 @@ from ..preprocessor import (
     LayaPreprocessor,
     OmniJevPreprocessor,
     StartLuxPreprocessor,
+    Thx02Preprocessor,
 )
+
+_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'decision_data')
+
+
+@register_dataset
+class JevDecisionLoader(DatasetLoader):
+    dataset_type = 'jev_decision'
+    dataset_paths = [os.path.join(_DATA_DIR, 'jev.jsonl')]
+    preprocessor = JevPreprocessor
+    tags = ['decision', 'jev']
+
+
+@register_dataset
+class ClefDecisionLoader(DatasetLoader):
+    dataset_type = 'clef_decision'
+    dataset_paths = [os.path.join(_DATA_DIR, 'clef.jsonl')]
+    preprocessor = ClefPreprocessor
+    tags = ['decision', 'clef']
+
+
+@register_dataset
+class KevDecisionLoader(DatasetLoader):
+    dataset_type = 'kev_decision'
+    dataset_paths = [os.path.join(_DATA_DIR, 'kev.jsonl')]
+    preprocessor = KevPreprocessor
+    tags = ['decision', 'kev']
+
+
+@register_dataset
+class LayaDecisionLoader(DatasetLoader):
+    dataset_type = 'laya_decision'
+    dataset_paths = [os.path.join(_DATA_DIR, 'laya.jsonl')]
+    preprocessor = LayaPreprocessor
+    tags = ['decision', 'laya']
+
+
+@register_dataset
+class OmniJevDecisionLoader(DatasetLoader):
+    dataset_type = 'omnijev_decision'
+    dataset_paths = [os.path.join(_DATA_DIR, 'omnijev.jsonl')]
+    preprocessor = OmniJevPreprocessor
+    tags = ['decision', 'omnijev']
+
+
+@register_dataset
+class StartLuxDecisionLoader(DatasetLoader):
+    dataset_type = 'startlux_decision'
+    dataset_paths = [os.path.join(_DATA_DIR, 'startlux.jsonl')]
+    preprocessor = StartLuxPreprocessor
+    tags = ['decision', 'startlux']
+
+
+@register_dataset
+class Thx02DecisionLoader(DatasetLoader):
+    # thx02 is not in the controlled tag vocabulary; the family tag is deliberately omitted.
+    dataset_type = 'thx02_decision'
+    dataset_paths = [os.path.join(_DATA_DIR, 'thx02.jsonl')]
+    preprocessor = Thx02Preprocessor
+    tags = ['decision']
+
 
 _OPEN_JEV_SUBSETS = [
     'release-v2-redistributable',

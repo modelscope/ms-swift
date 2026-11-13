@@ -529,8 +529,10 @@ class Qwen2VLTemplate(Template):
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
-        input_ids = inputs["input_ids"]
         base_model = self.get_base_model(model)
+        if not hasattr(base_model, "visual"):
+            return inputs
+        input_ids = inputs["input_ids"]
         if hasattr(base_model.model, "embed_tokens"):
             inputs_embeds = base_model.model.embed_tokens(input_ids)
             visual = base_model.visual
@@ -551,12 +553,17 @@ class Qwen2VLTemplate(Template):
         base_model = self.get_base_model(self._get_model())
         if hasattr(base_model, "get_rope_index"):
             get_rope_index = base_model.get_rope_index
-        else:
+        elif hasattr(base_model, "model") and hasattr(base_model.model, "get_rope_index"):
             get_rope_index = base_model.model.get_rope_index
+        else:
+            return None
         return get_rope_index
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
         # fix https://github.com/huggingface/transformers/pull/33487
+        get_rope_index = self._get_get_rope_index()
+        if get_rope_index is None:
+            return {}
         kwargs = {}
         if self.version == "v2_5":
             kwargs = {"second_per_grid_ts": inputs.get("second_per_grid_ts")}
@@ -567,7 +574,7 @@ class Qwen2VLTemplate(Template):
         mm_token_type_ids = inputs.get("mm_token_type_ids")
         if mm_token_type_ids is not None:
             kwargs["mm_token_type_ids"] = mm_token_type_ids
-        position_ids, _ = self._get_get_rope_index()(
+        position_ids, _ = get_rope_index(
             input_ids,
             image_grid_thw=inputs.get("image_grid_thw"),
             video_grid_thw=inputs.get("video_grid_thw"),
