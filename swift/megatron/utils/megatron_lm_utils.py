@@ -702,9 +702,17 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     if not ddp_config.overlap_grad_reduce:
         ddp_config.bucket_size = None
 
-    # Setup stream for DDP initialization with proper synchronization.
-    ddp_stream = torch.cuda.Stream()
-    ddp_stream.wait_stream(torch.cuda.current_stream())
+    current_stream = torch.cuda.current_stream()
+    if getattr(config, 'cuda_graph_impl', 'none') == 'none':
+        # Eager initialization is serialized with the current stream. A one-shot side stream
+        # can leave cached blocks unavailable to later allocations on the current stream, and
+        # binds the AccumulateGrad nodes that DDP keeps to a stream that backward does not use.
+        ddp_stream = current_stream
+    else:
+        # Preserve a dedicated initialization stream when CUDA graphs are enabled.
+        ddp_stream = torch.cuda.Stream()
+    if ddp_stream is not current_stream:
+        ddp_stream.wait_stream(current_stream)
     if getattr(args, 'use_megatron_fsdp', False):
         DP = megatron_FSDP
     else:
@@ -720,8 +728,9 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
                 disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
             ) for (model_chunk_idx, model_chunk) in enumerate(models)
         ]
-    # Ensure DDP initialization completes before proceeding on the default stream.
-    torch.cuda.current_stream().wait_stream(ddp_stream)
+    # Ensure side-stream initialization completes before touching params on the current stream.
+    if ddp_stream is not current_stream:
+        current_stream.wait_stream(ddp_stream)
 
     # Broadcast params from data parallel src rank to other data parallel ranks.
     if args.data_parallel_random_init:
