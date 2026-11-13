@@ -2,7 +2,6 @@
 """Honor Q/K normalization in MegatronAdaptor's packed GDN fallback."""
 
 import inspect
-import torch.nn.functional as F
 
 _ORIGINAL_CHUNK_GATED_DELTA_RULE = None
 
@@ -20,8 +19,10 @@ def chunk_gated_delta_rule(query,
                            cu_seqlens=None,
                            head_first=False):
     if cu_seqlens is not None and use_qk_l2norm_in_kernel:
-        query = F.normalize(query.float(), dim=-1, eps=1e-6).to(query.dtype)
-        key = F.normalize(key.float(), dim=-1, eps=1e-6).to(key.dtype)
+        # Match FLA's additive epsilon, including near-zero vectors.
+        query_fp32, key_fp32 = query.float(), key.float()
+        query = (query_fp32 * (query_fp32.square().sum(-1, keepdim=True) + 1e-6).rsqrt()).to(query.dtype)
+        key = (key_fp32 * (key_fp32.square().sum(-1, keepdim=True) + 1e-6).rsqrt()).to(key.dtype)
         use_qk_l2norm_in_kernel = False
     return _ORIGINAL_CHUNK_GATED_DELTA_RULE(
         query,
