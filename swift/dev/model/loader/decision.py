@@ -37,8 +37,13 @@ from swift.dev.model.decision_head import (
     maybe_load_trained_scoring_head,
 )
 from swift.model.patcher import patch_module_forward  # v5's own patcher lacks get_original_forward
-from .base import ModelLoader, register_model
+from .base import ModelArch, ModelLoader, register_model
 from .qwen import Qwen3_5Loader
+
+
+def _is_text_layout(config: PretrainedConfig) -> bool:
+    """True for the family's text-only checkpoints (a bare ``Qwen3_5TextConfig``)."""
+    return str(getattr(config, "model_type", "")).lower() == "qwen3_5_text"
 
 
 def _register_thx02_autoconfig() -> None:
@@ -89,10 +94,19 @@ class ScoringLoader(ModelLoader):
     head_cls = None  # subclasses declare
 
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
-        model = super().build_model(model_dir, config, processor, **kwargs)
+        model = self.build_backbone(model_dir, config, processor, **kwargs)
         head = self.build_head(model, model_dir, config, processor)
         self._attach_and_load(model, head, model_dir)
         return model
+
+    def build_backbone(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
+        """The backbone construction alone; families with a second checkpoint layout override this.
+
+        Split out of :meth:`build_model` so a family that ships both a multimodal and a text-only
+        layout (e.g. JEV) can substitute the model class for one layout while the head build /
+        attach / trained-head reload tail stays shared.
+        """
+        return super().build_model(model_dir, config, processor, **kwargs)
 
     def build_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
         if self.head_cls is None:
@@ -168,11 +182,16 @@ class ScoringLoader(ModelLoader):
 
 @register_model
 class JevLoader(ScoringLoader, Qwen3_5Loader):
-    """JEV: Qwen3.5-27B-VL backbone + a verbalizer head reading option-token logits."""
+    """JEV: Qwen3.5 backbone + a verbalizer head reading option-token logits.
+
+    One family, two checkpoint layouts: JEV-27B-VL ships the full multimodal layout (``qwen3_5``),
+    while JEV-9B / JEV-27B ship the text-only one (``qwen3_5_text``, a bare ``Qwen3_5ForCausalLM``
+    checkpoint with no visual tower); the layout is detected from the loaded config.
+    """
 
     model_type = "jev"
     head_cls = JevVerbalizerHead
-    models = ["autotrust/JEV-27B-VL"]
+    models = ["autotrust/JEV-9B", "autotrust/JEV-27B", "autotrust/JEV-27B-VL"]
     # A decision family is a template/behaviour variant of its backbone, so it stays reachable by
     # id match or an explicit `--model_type` only: reverse lookup from the backbone's architecture
     # class name must keep landing on the one base family (qwen3_5).
@@ -180,6 +199,25 @@ class JevLoader(ScoringLoader, Qwen3_5Loader):
     architectures = ()
     requires = ["transformers>=5.2.0", "qwen_vl_utils>=0.0.14", "decord"]
     tags = ["vision", "decision"]
+
+    @property
+    def model_arch(self) -> ModelArch:
+        if self.model_info is not None and _is_text_layout(self.model_info.config):
+            return ModelArch()
+        if getattr(self, "_text_layout", False):
+            return ModelArch()
+        return super().model_arch
+
+    def process_config(self, config: PretrainedConfig) -> PretrainedConfig:
+        self._text_layout = _is_text_layout(config)
+        return config
+
+    def build_backbone(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
+        if not _is_text_layout(config):
+            return super().build_backbone(model_dir, config, processor, **kwargs)
+        from transformers import Qwen3_5ForCausalLM
+
+        return Qwen3_5ForCausalLM.from_pretrained(model_dir, config=config, **kwargs)
 
 
 @register_model

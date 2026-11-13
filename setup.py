@@ -146,7 +146,7 @@ if __name__ == '__main__':
         # pattern to every package), so the dev tree's built-in dataset registry ships in the wheel.
         package_data={
             '': ['utils/*', 'dataset/data/*.*', 'config/*.json', 'loss_scale/config/*.json',
-                 'loader/dataset_info.json'],
+                 'loader/dataset_info.json', 'decision_data/*.jsonl'],
         },
         python_requires='>=3.9.0',
         classifiers=[
