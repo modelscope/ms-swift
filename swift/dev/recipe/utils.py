@@ -1207,6 +1207,24 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         sampler_engine_args['enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'] = True
     if enable_sampling_replay:
         sampler_engine_args['enable_sampling_replay'] = True
+    if rollout_config.weight_sync_backend == 'delta_sharded':
+        # The delta lane needs its engine-side registration in place before the sampler starts:
+        # vLLM builds a weight-transfer engine per worker from weight_transfer_config, and SGLang
+        # resolves the delta loader (registered in custom_weight_loader) by per-request
+        # load_format. The KV-release lane additionally needs the sleep/memory-saver knob on.
+        if backend == 'vllm':
+            from twinkle import Platform
+            wt_backend = ('twinkle_delta_hccl' if Platform.get_platform().__name__ == 'NPU'
+                          else 'twinkle_delta_ipc')
+            sampler_engine_args.setdefault('weight_transfer_config', {'backend': wt_backend})
+            sampler_engine_args.setdefault('enable_sleep_mode', True)
+        else:
+            from twinkle.checkpoint_engine.delta.rollout.sglang_loader import LOADER_FQN
+            loaders = list(sampler_engine_args.get('custom_weight_loader') or [])
+            if LOADER_FQN not in loaders:
+                loaders.append(LOADER_FQN)
+            sampler_engine_args['custom_weight_loader'] = loaders
+            sampler_engine_args.setdefault('enable_memory_saver', True)
     if resource_plan is not None:
         return build_sampler(
             model_config, backend=backend, engine_args=dict(sampler_engine_args),

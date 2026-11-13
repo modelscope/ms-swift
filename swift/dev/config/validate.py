@@ -392,10 +392,10 @@ def _check_weight_sync_backend(rollout_config: Optional['RolloutConfig'],
             '--weight_sync_backend delta_sharded needs disjoint trainer/rollout GPUs: a colocated sampler '
             'time-shares one device group with the trainer, while the delta transport addresses the rollout '
             'ranks as their own worker set. Set --sampler_mode disaggregated (or server) instead.')
-    if rollout_config.rollout_sampler != 'vllm':
+    if rollout_config.rollout_sampler not in ('vllm', 'sglang'):
         raise ValueError(
-            f"--weight_sync_backend delta_sharded currently reaches only vllm rollout samplers; got "
-            f"rollout_sampler={rollout_config.rollout_sampler!r}. Keep the full backend or switch to vllm.")
+            f"--weight_sync_backend delta_sharded currently reaches only vllm and sglang rollout samplers; "
+            f"got rollout_sampler={rollout_config.rollout_sampler!r}. Keep the full backend or switch.")
     if rollout_config.resource_mode == 'adaptive':
         raise ValueError(
             '--weight_sync_backend delta_sharded is not wired through the adaptive resource controller\'s '
