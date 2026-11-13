@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import torch
 
-from swift.dev.recipe.batching import plan_rollout_batch, record_rollout_step
+from swift.dev.recipe.batching import balance_update
 from swift.dev.recipe.grpo.assembly import build_driver, grpo_group_requests, initialize_cluster
 from twinkle.perf import span as perf_span
 
@@ -201,13 +201,10 @@ def _train_mini_batches(
             return optimizer_steps
         # Repeat the traversal, including across update boundaries, without copying all replays.
         indices = [index % len(trajs) for index in range(lo, hi)]
-        plan = plan_rollout_batch(
-            state, [trajs[index] for index in indices],
-            lengths=[lengths[index] for index in indices],
+        update, balance_metrics = balance_update(
+            state, [trajs[index] for index in indices], [lengths[index] for index in indices],
             micro_batch_kwargs={'micro_batch_size': train_batch_size // dp_size, **(batching_kwargs or {})})
-        if plan is not None:
-            indices = plan.apply(indices)
-        kwargs = _forward_kwargs(rl_config, [trajs[index] for index in indices], temperature,
+        kwargs = _forward_kwargs(rl_config, update, temperature,
                                  micro_batch_size=train_batch_size // dp_size)
         kwargs.update(batching_kwargs or {})
         micro_batches = (hi - lo) // train_batch_size  # Nominal count; DBS schedules physical batches internally.
@@ -221,7 +218,7 @@ def _train_mini_batches(
         # worker-side failure fails THIS step at the call site.
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.micro_step += micro_batches
-        record_rollout_step(state, plan)
+        state.record(extra_metrics=balance_metrics)
         state.record_rollout_training(indices)
         # Sample worker memory for THIS iteration before step_tail can run a periodic
         # checkpoint (rows are cached on the state; later reads reuse them).
@@ -564,7 +561,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     state = RolloutStepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
-        balance_batch=rl_config.balance_batch,
+        dp_balance=train_config.dp_balance,
         gradient_accumulation_steps=ga,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

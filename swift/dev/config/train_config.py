@@ -138,6 +138,9 @@ class TrainConfig:
     full_determinism: bool = False
     use_liger_kernel: bool = False
     neftune_noise_alpha: Optional[float] = None
+    # Reorder post-rollout training batches so DP ranks get even workloads (online RL /
+    # distillation / RFT; the PPO value model keeps its original order).
+    dp_balance: bool = False
 
     # === Training Strategy ===
     router_aux_loss_coef: float = 0.0

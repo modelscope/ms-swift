@@ -117,7 +117,7 @@ def ids(call):
 @pytest.mark.parametrize("dynamic", [False, True])
 def test_length_balance_reduces_rank_load_and_keeps_all_signals_aligned(padding_free, dynamic):
     state = make_state(ga=2)
-    state.balance_batch = True
+    state.dp_balance = True
     config = RLConfig(
         rl_type="grpo",
         enable_sampling_replay=True,
@@ -158,7 +158,7 @@ def test_length_balance_reduces_rank_load_and_keeps_all_signals_aligned(padding_
 
 def test_balance_preserves_replay_update_membership_and_dropped_tail():
     state = make_state(ga=1)
-    state.balance_batch = True
+    state.dp_balance = True
     state.padding_free = False
     config = RLConfig(rl_type="grpo", num_iterations=2)
     assert train(state, 7, config=config, lengths=[2000, 1900, 300, 200, 1800, 1700, 100]) == 3

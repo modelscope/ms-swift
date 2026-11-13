@@ -168,7 +168,7 @@ def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
     state._iteration_started_ns = None
     state._iteration_facts = None
     state._memory_rows = None
-    state.balance_batch = True
+    state.dp_balance = True
     state.model.memory_stats = lambda **kwargs: []
     state.tracker = RunTracker(None, str(tmp_path))
     state.setup_rollout_metrics([('model', [0, 1])], num_generations=8)
