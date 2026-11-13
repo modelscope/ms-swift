@@ -49,8 +49,9 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
             logger.info('Saving merged weights...')
             head = get_scoring_head(model) if getattr(args, 'task_type', None) == 'decision' else None
             state_dict = None
-            if isinstance(head, StartLuxLetterHead):
-                # vLLM loads the Qwen backbone; the letter read-out belongs to the decision server.
+            if head is not None:
+                # Backbone loaders do not know scoring_head. Save its trained weights separately,
+                # using the shared head checkpoint format for all decision model families.
                 state_dict = {k: v for k, v in model.state_dict().items() if not k.startswith('scoring_head.')}
 
             save_checkpoint(
@@ -63,8 +64,8 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
                 additional_saved_files=model.model_meta.additional_saved_files,
                 state_dict=state_dict)
             if head is not None:
-                head.save_pretrained(output_dir, save_weights=False)
-                logger.info(f'decision: saved scoring_head meta ({head.HEAD_META_NAME}) to {output_dir}.')
+                head.save_pretrained(output_dir)
+                logger.info(f'decision: saved scoring_head weights and meta to {output_dir}.')
                 if isinstance(head, StartLuxLetterHead):
                     head.save_decision_config(model.model_dir, output_dir)
                     logger.info('StartLux export requires a startlux-decide version that supports letter_bias.')

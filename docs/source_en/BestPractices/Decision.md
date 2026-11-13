@@ -738,6 +738,16 @@ Decision models carry a **pluggable scoring head** (`ScoringHead`) that is train
 - **Save**: `ScoringTrainer._save` first saves the adapter (or full model) via the standard path, then writes the head artifacts beside it. For adapter (LoRA) training, it writes both `scoring_head.safetensors` (head parameters) and `scoring_head.json` (head type + calibration metadata). For full-finetune training, it writes only `scoring_head.json` — the head parameters are already inside the model weights (ignored by `from_pretrained` because `scoring_head` was not yet attached).
 - **Load**: `maybe_load_trained_scoring_head(model, adapter_dir)` is called automatically after `Swift.from_pretrained` on all three loading paths (`--adapters` continue-training, `--resume_from_checkpoint`, and inference). It handles two scenarios: when `scoring_head.safetensors` exists (adapter checkpoint), it loads weights from it; when only `scoring_head.json` exists (full-finetune checkpoint), it extracts head weights from the model checkpoint. Both single-file and sharded safetensors and PyTorch `.bin` formats are supported, with safetensors taking precedence. It is a **guarded no-op** for non-decision models.
 
+- **Merged LoRA export**: `swift export --merge_lora true` keeps `scoring_head.*` out of the
+  backbone weight files (including shard indexes) for all seven heads: JEV, StartLux, Clef,
+  THX-02, OmniJev, Kev and Laya. It saves the trained head in `scoring_head.safetensors` and
+  its constructor/calibration metadata in `scoring_head.json`. Retain both files and load the
+  export through Swift with `--model <merged-directory>` and the corresponding `--model_type`;
+  no adapter is needed. A backbone-only inference engine does not execute these heads automatically.
+  Native decision servers still need their model-specific head format and inference support.
+  StartLux additionally exports its trained letter biases and effective temperatures to
+  `decision_config.json`; see the StartLux inference-version requirement above.
+
 For full-finetuned checkpoints, pass the checkpoint directory as `--model` with the corresponding
 `--model_type` (`jev`, `startlux`, `clef`, `omnijev`, `kev`, `thx02`, or `laya`). When factory head
 artifacts are absent, the shared loader rebuilds the head from `scoring_head.json`, then restores
