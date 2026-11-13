@@ -91,10 +91,9 @@ def test_sp_on_megatron_backend_is_rejected():
         )
 
 
-@pytest.mark.parametrize("rl_type", ["dpo", "kto"])
+@pytest.mark.parametrize("rl_type", ["kto"])
 def test_sp_with_unwired_rl_type_is_rejected(rl_type):
-    """Only the online-RL recipes (grpo/rft) wire the Ulysses SP mesh; other RLHF types must fail
-    fast instead of silently training with SP=1 (legacy's grpo/dpo allowance did exactly that)."""
+    """Reject RL recipes that do not wire the policy Ulysses mesh."""
     with pytest.raises(ValueError, match="does not support sequence_parallel_size"):
         _validate(
             rl_type=rl_type,
@@ -118,10 +117,9 @@ def test_sp_with_ppo_is_rejected_for_the_critic_slicing_reason():
         )
 
 
-@pytest.mark.parametrize("rl_type", ["grpo", "rft"])
-def test_sp_with_wired_online_rl_types_is_accepted(rl_type):
-    """grpo/rft ARE wired for Ulysses SP (plan_sp_mesh + ray dp x ulysses mesh): with nproc>=2
-    the validation passes and the run reaches the real SP path."""
+@pytest.mark.parametrize("rl_type", ["dpo", "grpo", "rft"])
+def test_sp_with_wired_rl_types_is_accepted(rl_type):
+    """DPO, GRPO and RFT accept a policy Ulysses mesh with at least two ranks."""
     _validate(
         rl_type=rl_type,
         **{
@@ -142,15 +140,42 @@ def test_sp_in_ray_mode_is_rejected():
         )
 
 
-def test_sp_with_fsdp_is_rejected():
-    """The FSDP x ulysses composition in twinkle is unvalidated."""
+def test_sft_sp_with_fsdp_is_accepted(monkeypatch):
+    """Local SFT accepts FSDP+SP when the launcher provides enough ranks."""
+    monkeypatch.setattr('twinkle.utils.Platform.get_world_size', staticmethod(lambda: 2))
+    _validate(**{
+        "template_config.sequence_parallel_size": 2,
+        "distributed_config.fsdp": "full_shard",
+    })
+
+
+def test_sft_sp_with_fsdp_requires_multiple_ranks(monkeypatch):
+    monkeypatch.setattr('twinkle.utils.Platform.get_world_size', staticmethod(lambda: 1))
+    with pytest.raises(ValueError, match="WORLD_SIZE>=2"):
+        _validate(**{
+            "template_config.sequence_parallel_size": 2,
+            "distributed_config.fsdp": "full_shard",
+        })
+
+
+@pytest.mark.parametrize("rl_type", ["dpo", "grpo"])
+def test_wired_rl_fsdp_sp_is_accepted(rl_type):
+    _validate(rl_type=rl_type, **{
+        "template_config.sequence_parallel_size": 2,
+        "distributed_config.mode": "ray",
+        "distributed_config.nproc_per_node": 2,
+        "distributed_config.fsdp": "full_shard",
+    })
+
+
+def test_rft_fsdp_sp_is_rejected():
     with pytest.raises(NotImplementedError, match="fsdp"):
-        _validate(
-            **{
-                "template_config.sequence_parallel_size": 2,
-                "distributed_config.fsdp": "full_shard",
-            }
-        )
+        _validate(rl_type="rft", **{
+            "template_config.sequence_parallel_size": 2,
+            "distributed_config.mode": "ray",
+            "distributed_config.nproc_per_node": 2,
+            "distributed_config.fsdp": "full_shard",
+        })
 
 
 def test_sp_with_left_padding_is_rejected():

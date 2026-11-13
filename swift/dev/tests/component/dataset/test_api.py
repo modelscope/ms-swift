@@ -472,10 +472,11 @@ class TestDropLast:
         # Unchanged on the transformers path: legacy defers to dataloader_drop_last (default False).
         assert _drop_last(self._dc(backend='hf', mode='local')) is False  # eval keeps the remainder too
 
+    @pytest.mark.parametrize("drop_last", [False, True])
     @patch('twinkle.dataloader.DataLoader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
-    def test_build_dataset_forwards_drop_last_per_split(self, mock_load, _enc, mock_dl):
+    def test_build_dataset_forwards_drop_last_per_split(self, mock_load, _enc, mock_dl, drop_last):
         """The policy is worthless if build_dataset does not actually pass it down.
 
         Guards the wiring, which is exactly what was missing before: the factory default (False)
@@ -490,12 +491,12 @@ class TestDropLast:
             # nproc_per_node is mandatory on the Megatron path (build_device_mesh fails fast without
             # it); harmless on hf, so pass it for both to keep the two cases symmetric.
             build_dataset(
-                DatasetConfig(dataset=['d']), make_mock_template(), TrainConfig(),
+                DatasetConfig(dataset=['d'], dataloader_drop_last=drop_last), make_mock_template(), TrainConfig(),
                 DistributedConfig(backend=backend, mode='local', nproc_per_node=1),
             )
             train_call, eval_call = mock_dl.call_args_list
-            assert train_call.kwargs['drop_last'] is (backend == "megatron")
-            assert eval_call.kwargs["drop_last"] is (backend == "megatron")
+            assert train_call.kwargs['drop_last'] is (drop_last or backend == "megatron")
+            assert eval_call.kwargs["drop_last"] is (drop_last or backend == "megatron")
 
     @pytest.mark.parametrize(
         "backend,mode,dp,count",
