@@ -15,8 +15,8 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 
 ## Supported Models
 
-1. JEV-27B-VL: Qwen3-VL + PEFT adapter
-   - [ModelScope](https://www.modelscope.cn/models/autotrust/JEV-27B-VL)
+1. JEV: Qwen3.5 backbone + PEFT adapter (verbalizer scoring head; JEV-27B-VL ships the full multimodal layout, JEV-27B / JEV-9B ship the text-only layout)
+   - [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL) / [JEV-27B](https://www.modelscope.cn/models/autotrust/JEV-27B) / [JEV-9B](https://www.modelscope.cn/models/autotrust/JEV-9B)
 2. Clef: Full Qwen3-VL with LoRA already merged
    - [ModelScope](https://www.modelscope.cn/models/Cloudflare/clef)
 3. OmniJev: Qwen3.5-4B (hybrid gated-deltanet + VL) + PEFT adapter
@@ -735,10 +735,31 @@ The computation takes the argmax of `target_probs` as the gold answer and the `i
 
 Decision models carry a **pluggable scoring head** (`ScoringHead`) that is trained jointly with the backbone (or LoRA adapter). The head is stored **separately** from the backbone weights to avoid the "config says generative model but weights contain a classifier" mismatch:
 
-- **Save**: `ScoringTrainer._save` first saves the adapter (or full model) via the standard path, then writes the head artifacts beside it. For adapter (LoRA) training, it writes both `scoring_head.safetensors` (head parameters) and `scoring_head.json` (head type + calibration metadata). For full-finetune training, it writes only `scoring_head.json` — the head parameters are already inside the model's safetensors shards (ignored by `from_pretrained` because `scoring_head` was not yet attached).
-- **Load**: `maybe_load_trained_scoring_head(model, adapter_dir)` is called automatically after `Swift.from_pretrained` on all three loading paths (`--adapters` continue-training, `--resume_from_checkpoint`, and inference). It handles two scenarios: when `scoring_head.safetensors` exists (adapter checkpoint), it loads weights from it; when only `scoring_head.json` exists (full-finetune checkpoint), it extracts head weights from the model's safetensors shards. It is a **guarded no-op** for non-decision models.
+- **Save**: `ScoringTrainer._save` first saves the adapter (or full model) via the standard path, then writes the head artifacts beside it. For adapter (LoRA) training, it writes both `scoring_head.safetensors` (head parameters) and `scoring_head.json` (head type + calibration metadata). For full-finetune training, it writes only `scoring_head.json` — the head parameters are already inside the model weights (ignored by `from_pretrained` because `scoring_head` was not yet attached).
+- **Load**: `maybe_load_trained_scoring_head(model, adapter_dir)` is called automatically after `Swift.from_pretrained` on all three loading paths (`--adapters` continue-training, `--resume_from_checkpoint`, and inference). It handles two scenarios: when `scoring_head.safetensors` exists (adapter checkpoint), it loads weights from it; when only `scoring_head.json` exists (full-finetune checkpoint), it extracts head weights from the model checkpoint. Both single-file and sharded safetensors and PyTorch `.bin` formats are supported, with safetensors taking precedence. It is a **guarded no-op** for non-decision models.
 
-This means a trained decision checkpoint can be deployed immediately — `swift infer` or `--adapters <checkpoint>` will automatically reload the trained head.
+For full-finetuned checkpoints, pass the checkpoint directory as `--model` with the corresponding
+`--model_type` (`jev`, `startlux`, `clef`, `omnijev`, `kev`, `thx02`, or `laya`). When factory head
+artifacts are absent, the shared loader rebuilds the head from `scoring_head.json`, then restores
+its trained weights and calibration. The metadata includes a `head_type` tag and constructor
+arguments, including non-default head dimensions. A mismatched type is rejected. Factory artifacts
+and environment-variable overrides retain precedence; incomplete or malformed factory artifacts
+still raise an error.
+
+New OmniJev full checkpoints also record the option-token IDs in `config.json` and retain their
+trained embeddings, so reloading does not reinitialize them from `new_tok_emb.pt`. New THX-02 full
+checkpoints retain the effective answer codes, attention mode, temperature and image bounds in
+`config.json`. Older metadata without a type tag remains supported, but checkpoints missing
+structural metadata or these processor/tokenizer settings still need the original artifacts.
+Older full checkpoints that stored the output embeddings under a
+`scoring_head._output_embeddings.*` alias require weight migration and are explicitly rejected;
+the loader does not silently replace those trained weights with a random output head.
+LoRA checkpoints are loaded with their base model and `--adapters <checkpoint>`.
+
+To add a decision head, define its `head_type`, factory artifact locations and `_from_factory`
+loader. Its `extra_state_for_save()` must return JSON-serializable arguments accepted by
+`cls(**meta)`; the base class supplies metadata saving and checkpoint construction. Model-specific
+processor or tokenizer state must also survive the normal checkpoint save/load path.
 
 ## OmniJev: `MSO_BRANCH_CKPT` and Gradient Checkpointing
 
