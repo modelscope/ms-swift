@@ -10,8 +10,9 @@ from typing import Any, Dict, Optional
 from swift.model.decision_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
                                          is_hybrid, kev_branch_enabled, kev_forward_branch, prefix_inputs,
                                          rope_positions, rows_from_ids)
-from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, LayaHead, OmniJevHead,
-                                       ScoringHead, StartLuxLetterHead, Thx02ReadoutHead, load_thx02_decision_config)
+from swift.model.decision_head import (ClefJointSchemaHead, H2OReadoutHead, JevVerbalizerHead, KevPointerHead, LayaHead,
+                                       OmniJevHead, ScoringHead, StartLuxLetterHead, Thx02ReadoutHead, load_h2o_labels,
+                                       load_thx02_decision_config)
 from swift.model.patcher import get_original_forward, patch_module_forward
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
@@ -400,27 +401,42 @@ register_model(
         tags=['decision']))
 
 
-def enable_thx02_noncausal_attention(language_model) -> None:
-    """THX-02 reads every question at its own marker inside ONE sequence, so its full-attention layers
-    attend bidirectionally over the non-padding tokens; the gated-deltanet (linear-attention) layers stay
-    causal. Installed as a forward pre-hook on the text model, converting the 2D padding mask into the
-    per-layer-type mask mapping that Qwen3.5 accepts."""
+def noncausal_full_attention_mask(padding_mask: torch.Tensor, seq_len: int, device_type: Optional[str] = None):
+    """2D padding mask -> the per-layer `full_attention` mask.
+
+    The broadcastable `[B, 1, 1, S]` view is enough on GPU, but Ascend FlashAttention only accepts
+    `[B, N, Sq, Skv]` / `[B, 1, Sq, Skv]` / `[1, 1, Sq, Skv]` / `[Sq, Skv]`, so on NPU the query axis
+    is materialised into `[B, 1, S, S]`.
+    """
+    device_type = device_type or padding_mask.device.type
+    full_mask = padding_mask[:, None, None, :].bool()
+    if device_type == 'npu':
+        full_mask = full_mask.expand(-1, -1, seq_len, -1).contiguous()
+    return full_mask
+
+
+def enable_noncausal_full_attention(language_model) -> None:
+    """Bidirectional full attention, causal gated-deltanet: THX-02 and H2O read their markers inside ONE
+    sequence, so the full-attention layers attend over the non-padding tokens in both directions while
+    the linear-attention layers stay causal. Installed as a forward pre-hook on the text model, converting
+    the 2D padding mask into the per-layer-type mask mapping that Qwen3.5 accepts."""
     from transformers.masking_utils import create_recurrent_attention_mask
 
     def mask_inputs(module, args, kwargs):
         if kwargs.get('past_key_values') is not None or kwargs.get('use_cache'):
-            raise ValueError('THX-02 noncausal decision forward does not support a KV cache.')
+            raise ValueError('Noncausal decision forward does not support a KV cache.')
         attention_mask = kwargs.get('attention_mask')
         if isinstance(attention_mask, dict):
             return args, kwargs
         embeddings = kwargs.get('inputs_embeds')
         if embeddings is None:
             embeddings = module.embed_tokens(kwargs['input_ids'])
+        seq_len = embeddings.shape[1]
         if attention_mask is None:
             attention_mask = torch.ones(embeddings.shape[:2], device=embeddings.device, dtype=torch.bool)
         kwargs['attention_mask'] = {
             'full_attention':
-            attention_mask[:, None, None, :].bool(),
+            noncausal_full_attention_mask(attention_mask, seq_len, embeddings.device.type),
             'linear_attention':
             create_recurrent_attention_mask(
                 config=module.config, inputs_embeds=embeddings, attention_mask=attention_mask),
@@ -428,6 +444,10 @@ def enable_thx02_noncausal_attention(language_model) -> None:
         return args, kwargs
 
     language_model.register_forward_pre_hook(mask_inputs, with_kwargs=True)
+
+
+# THX-02's original entry point (kept as an alias for external plugins).
+enable_thx02_noncausal_attention = enable_noncausal_full_attention
 
 
 class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
@@ -463,7 +483,7 @@ class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
     def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
                   model_kwargs) -> PreTrainedModel:
         model = Qwen3_5Loader.get_model(self, model_dir, config, processor, model_kwargs)
-        enable_thx02_noncausal_attention(model.model.language_model)
+        enable_noncausal_full_attention(model.model.language_model)
         # The forward never applies lm_head. THX-02 ties it to embed_tokens (no extra memory, gets gradients
         # through the embeddings); should a config ever untie it, freeze the copy so full fine-tuning under DDP
         # does not see a parameter without gradients.
@@ -505,6 +525,79 @@ register_model(
         model_arch=ModelArch.qwen2_vl,
         task_type='decision',
         architectures=['THXDecisionModel'],
+        requires=['transformers>=5.13.0', 'qwen_vl_utils>=0.0.14'],
+        tags=['vision', 'decision']))
+
+
+def _require_h2o_two_way_support() -> None:
+    """Two-way needs Qwen3.5's per-layer mask mapping, added in transformers 5.13.0."""
+    try:
+        from transformers.masking_utils import create_recurrent_attention_mask  # noqa: F401
+    except ImportError as exc:
+        import transformers
+        raise RuntimeError(f'H2O_TWO_WAY=1 requires transformers>=5.13.0; installed {transformers.__version__}. '
+                           'transformers<5.13 has no create_recurrent_attention_mask and its Qwen3.5 forward does not '
+                           'accept the {full_attention, linear_attention} mask mapping. Upgrade transformers or unset '
+                           'H2O_TWO_WAY.') from exc
+
+
+class H2OModelLoader(Thx02ModelLoader):
+    """H2O-4B: Qwen3.5 hybrid backbone + a FIXED 255-row readout loaded from `label_rows.safetensors`.
+
+    One question per sequence, read at the final prompt token (`Answer:` prefill). The released weights
+    already contain H2O's LoRA, so the checkpoint is loaded as a plain model (never via `--adapters`).
+    """
+    head_cls = H2OReadoutHead
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        # Skip Thx02ModelLoader.get_processor: H2O ships serve_config.json, not decision_config.json.
+        processor = Qwen3_5Loader.get_processor(self, model_dir, config)
+        processor.h2o_labels = load_h2o_labels(model_dir)
+        return processor
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        model = Qwen3_5Loader.get_model(self, model_dir, config, processor, model_kwargs)
+        if os.environ.get('H2O_TWO_WAY', '0') == '1':
+            _require_h2o_two_way_support()
+            language_model = getattr(model.model, 'language_model', None) or model.model
+            enable_noncausal_full_attention(language_model)
+        # The decision forward never applies lm_head. H2O ties lm_head to embed_tokens, so freezing an
+        # untied copy avoids a no-gradient parameter under DDP; LoRA does not touch either.
+        lm_head, embeddings = model.get_output_embeddings(), model.get_input_embeddings()
+        if lm_head is not None and embeddings is not None and lm_head.weight.data_ptr() != embeddings.weight.data_ptr():
+            lm_head.weight.requires_grad_(False)
+        head = self.build_head(model, model_dir, config)
+        self.attach_scoring_head(model, head)
+        from swift.model.decision_head import maybe_load_trained_scoring_head
+        maybe_load_trained_scoring_head(model, model_dir)
+        return model
+
+    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
+        # _h2o_forward calls the backbone (self.model) directly; origin_forward is not needed.
+        return {'head': head}
+
+    @staticmethod
+    def _h2o_forward(self, *args, head: ScoringHead, **kwargs):
+        meta = kwargs.pop('decision_meta', None)
+        if meta is None:
+            raise ValueError('H2O forward requires decision_meta from H2OTemplate._encode.')
+        for key in ('labels', 'logits_to_keep', 'output_hidden_states', 'return_dict', 'text_position_ids'):
+            kwargs.pop(key, None)
+        kwargs['use_cache'] = False
+        output = self.model(*args, **kwargs)
+        return head(output.last_hidden_state, None, meta)
+
+    _scoring_dispatcher = staticmethod(_h2o_forward)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.h2o, [ModelGroup([Model('h2oai/h2o-lightning-4b', 'h2oai/h2o-lightning-4b')], TemplateType.h2o)],
+        H2OModelLoader,
+        model_arch=ModelArch.qwen2_vl,
+        task_type='decision',
+        architectures=[],
         requires=['transformers>=5.13.0', 'qwen_vl_utils>=0.0.14'],
         tags=['vision', 'decision']))
 

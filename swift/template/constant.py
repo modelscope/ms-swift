@@ -171,6 +171,7 @@ class MLLMTemplateType:
     kev = 'kev'
     thx02 = 'thx02'
     startlux = 'startlux'
+    h2o = 'h2o'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
