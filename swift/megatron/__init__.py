@@ -16,10 +16,12 @@ try:
     # Preserve Swift's initialization import order before loading model patches.
     from .init import init_megatron_env
     if is_torch_npu_available():
+        from swift.model.npu_patch.megatron_gdn import patch_megatron_gdn
         from swift.model.npu_patch.megatron_moe import patch_megatron_moe
         from swift.model.npu_patch.megatron_norm import patch_megatron_norm
         from swift.model.npu_patch.megatron_optimizer import patch_megatron_optimizer
 
+        patch_megatron_gdn()
         patch_megatron_optimizer()
         patch_megatron_moe()
         patch_megatron_norm()

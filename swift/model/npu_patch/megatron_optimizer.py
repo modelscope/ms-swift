@@ -2,7 +2,7 @@
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
 #
 # See LICENSE for license information.
-"""NPU gradient norm and scaling optimizations."""
+"""NPU optimizer updates, gradient norm and scaling optimizations."""
 
 import importlib
 import inspect
@@ -112,13 +112,75 @@ def get_grad_norm_fp32(grads_for_norm, norm_type=2, grad_stats_parallel_group=No
     return _ORIGINAL_GET_NORM(grads_for_norm, norm_type, grad_stats_parallel_group)
 
 
+@torch.no_grad()
+def fused_adam_step(self, closure=None, grad_scaler=None):
+    """Use fused AdamW for contiguous FP32 master parameters and moments."""
+    if (closure is not None or grad_scaler is not None or not self.adam_w_mode or self.master_weights
+            or self.use_decoupled_grad or self.capturable or self.exp_avg_dtype != torch.float32
+            or self.exp_avg_sq_dtype != torch.float32):
+        return _ORIGINAL_ADAM_STEP(self, closure, grad_scaler)
+    for group in self.param_groups:
+        if not group['bias_correction'] or group.get('amsgrad', False):
+            return _ORIGINAL_ADAM_STEP(self, closure, grad_scaler)
+        for param in group['params']:
+            grad = param.grad
+            states = self.state.get(param, {})
+            if (type(param) not in (torch.Tensor, torch.nn.Parameter) or param.device.type != 'npu'
+                    or param.dtype != torch.float32 or param.layout != torch.strided or not param.is_contiguous()
+                    or (grad is not None and (grad.dtype != torch.float32 or grad.layout != torch.strided
+                                              or not grad.is_contiguous() or not param.numel()))
+                    or any(
+                        value is not None and
+                        (type(value) not in (torch.Tensor, torch.nn.Parameter) or value.dtype != torch.float32
+                         or value.device != param.device or value.layout != torch.strided or not value.is_contiguous())
+                        for value in (states.get('exp_avg'), states.get('exp_avg_sq')))):
+                return _ORIGINAL_ADAM_STEP(self, closure, grad_scaler)
+
+    step_tensors = self.__dict__.setdefault('_swift_adam_steps', {})
+    for group in self.param_groups:
+        if not group['params']:
+            continue
+        step = self._advance_group_step(group)
+        lr = self._scalar_to_float(group['lr'], 'lr')
+        beta1, beta2 = (self._scalar_to_float(beta, 'beta') for beta in group['betas'])
+        weight_decay = self._scalar_to_float(group['weight_decay'], 'weight_decay')
+        eps = self._scalar_to_float(group['eps'], 'eps')
+        batches = {}
+        for param in group['params']:
+            if param.grad is None:
+                continue
+            state = self.state[param]
+            if state.get('exp_avg') is None or state.get('exp_avg_sq') is None:
+                self._init_or_fix_state(param)
+            batch = batches.setdefault(param.device, ([], [], [], []))
+            for tensors, tensor in zip(batch, (param, param.grad, state['exp_avg'], state['exp_avg_sq'])):
+                tensors.append(tensor)
+        for device, (params, grads, exp_avgs, exp_avg_sqs) in batches.items():
+            if device not in step_tensors:
+                step_tensors[device] = torch.empty((), dtype=torch.int64, device=device)
+            step_tensors[device].fill_(step)
+            torch._fused_adamw_(
+                params,
+                grads,
+                exp_avgs,
+                exp_avg_sqs, [], [step_tensors[device]] * len(params),
+                amsgrad=False,
+                lr=lr,
+                beta1=beta1,
+                beta2=beta2,
+                weight_decay=weight_decay,
+                eps=eps,
+                maximize=False)
+
+
 _APPLIED = False
 _ORIGINAL_GET_NORM = None
+_ORIGINAL_ADAM_STEP = None
 
 
 def patch_megatron_optimizer():
     """Patch TENPU exports and MCore gradient-clipping aliases."""
-    global _APPLIED, _ORIGINAL_GET_NORM
+    global _APPLIED, _ORIGINAL_GET_NORM, _ORIGINAL_ADAM_STEP
     if _APPLIED:
         return
     from megatron.core.optimizer import clip_grads
@@ -156,4 +218,7 @@ def patch_megatron_optimizer():
     clip_grads.l2_norm_impl = multi_tensor_l2norm
     clip_grads.multi_tensor_scale_impl = multi_tensor_scale
     clip_grads.multi_tensor_scale_tensor_impl = multi_tensor_scale_tensor
+    if hasattr(optimizers.FusedAdam, '_init_or_fix_state'):
+        _ORIGINAL_ADAM_STEP = optimizers.FusedAdam.step
+        optimizers.FusedAdam.step = fused_adam_step
     _APPLIED = True
