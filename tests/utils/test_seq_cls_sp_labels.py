@@ -2,6 +2,10 @@
 import collections
 import copy
 import inspect
+import os
+import signal
+import subprocess
+import sys
 import tempfile
 import torch
 import torch.distributed as dist
@@ -17,13 +21,22 @@ from transformers import TrainingArguments
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from swift.metrics import MeanMetric
-from swift.model import get_llm_model
-from swift.model.model_meta import ModelInfo
-from swift.model.register import MODEL_MAPPING
-from swift.sequence_parallel import sequence_parallel
-from swift.template import get_template
-from swift.trainers import Trainer
+_CPU_TEST_SOURCE = 'SWIFT_TEST_SEQ_CLS_SP_CPU_SOURCE'
+_cpu_source = os.environ.get(_CPU_TEST_SOURCE)
+# NPU model patches are applied at the first Swift import and cannot be undone.
+# Disable them only inside the isolated CPU test process (including spawn workers).
+_import_argv = [sys.argv[0], '--enable_npu_model_patch', 'false', *sys.argv[1:]] if _cpu_source else sys.argv
+with patch.object(sys, 'argv', _import_argv):
+    from swift.metrics import MeanMetric
+    from swift.model import get_llm_model
+    from swift.model.model_meta import ModelInfo
+    from swift.model.register import MODEL_MAPPING
+    from swift.sequence_parallel import sequence_parallel
+    from swift.template import get_template
+    from swift.trainers import Trainer
+
+if _cpu_source:
+    assert Path(inspect.getfile(Trainer)).resolve().parents[2] == Path(_cpu_source)
 
 
 def _make_template(config, parallel_size):
@@ -222,7 +235,37 @@ class TestSequenceClassificationLabels(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def _run_in_cpu_process(self):
+        if _cpu_source:
+            return False
+        env = os.environ.copy()
+        source = str(Path(inspect.getfile(Trainer)).resolve().parents[2])
+        env[_CPU_TEST_SOURCE] = source
+        env['PYTHONPATH'] = os.pathsep.join(filter(None, (source, env.get('PYTHONPATH'))))
+        command = [sys.executable, str(Path(__file__).resolve()), f'{type(self).__name__}.{self._testMethodName}']
+        process = subprocess.Popen(
+            command,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=os.name == 'posix')
+        try:
+            output, _ = process.communicate(timeout=180)
+        except subprocess.TimeoutExpired:
+            # Include the Gloo workers in cleanup if their parent is stuck.
+            if os.name == 'posix':
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+            output, _ = process.communicate()
+            self.fail(f'CPU test subprocess timed out:\n{output}')
+        self.assertEqual(process.returncode, 0, output)
+        return True
+
     def test_multilabel_targets(self):
+        if self._run_in_cpu_process():
+            return
         for parallel_size in (1, 2):
             for num_labels in (1, 3, 4, 6, 8):
                 _check_multilabel_targets(self.tmp_path, self._patch_attribute, parallel_size, num_labels)
@@ -236,6 +279,8 @@ class TestSequenceClassificationLabels(unittest.TestCase):
 
     @unittest.skipUnless(dist.is_available() and dist.is_gloo_available(), 'Gloo is not available')
     def test_multilabel_loss_with_two_sequence_parallel_ranks(self):
+        if self._run_in_cpu_process():
+            return
         mp.spawn(
             _check_distributed_multilabel,
             args=((self.tmp_path / 'rendezvous').as_uri(), str(self.tmp_path), inspect.getfile(Trainer)),
