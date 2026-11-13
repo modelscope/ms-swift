@@ -740,10 +740,11 @@ Decision models carry a **pluggable scoring head** (`ScoringHead`) that is train
 
 - **Merged LoRA export**: `swift export --merge_lora true` keeps `scoring_head.*` out of the
   backbone weight files (including shard indexes) for all seven heads: JEV, StartLux, Clef,
-  THX-02, OmniJev, Kev and Laya. It saves the trained head in `scoring_head.safetensors` and
+  THX-02, OmniJev, Kev and Laya. It saves the trained head in `scoring_head/scoring_head.safetensors` and
   its constructor/calibration metadata in `scoring_head.json`. Retain both files and load the
   export through Swift with `--model <merged-directory>` and the corresponding `--model_type`;
   no adapter is needed. A backbone-only inference engine does not execute these heads automatically.
+  The head weights live in a subdirectory so engines that scan top-level weight files do not load them.
   Native decision servers still need their model-specific head format and inference support.
   StartLux additionally exports its trained letter biases and effective temperatures to
   `decision_config.json`; see the StartLux inference-version requirement above.

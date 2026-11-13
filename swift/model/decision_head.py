@@ -257,6 +257,7 @@ class ScoringHead(nn.Module):
 
     HEAD_WEIGHTS_NAME = 'scoring_head.safetensors'
     HEAD_META_NAME = 'scoring_head.json'
+    HEAD_EXPORT_SUBDIR = 'scoring_head'
 
     def head_state_dict(self) -> Dict[str, torch.Tensor]:
         """The head's OWN state (params + persistent buffers), EXCLUDING the injected live
@@ -284,9 +285,11 @@ class ScoringHead(nn.Module):
             json.dump({**self.extra_state_for_save(), 'head_type': self.head_type}, f, indent=2, ensure_ascii=False)
 
     def load_pretrained(self, load_directory: str) -> bool:
-        """Two scenarios:
+        """Supported checkpoint layouts:
         - Adapter checkpoint (LoRA): ``HEAD_WEIGHTS_NAME`` exists → load weights from it (the head
           is NOT inside the LoRA adapter).
+        - Merged export: the same head weights are under ``HEAD_EXPORT_SUBDIR`` so backbone-only
+          loaders do not include them when scanning the top-level weight files.
         - Full-finetune checkpoint: ``HEAD_WEIGHTS_NAME`` is absent → extract the head's parameters
           from the model weight files. The backbone loader has not restored these parameters,
           because the scoring head was not attached yet.
@@ -297,6 +300,9 @@ class ScoringHead(nn.Module):
         """
         from safetensors.torch import load_file
         weights_file = os.path.join(load_directory, self.HEAD_WEIGHTS_NAME)
+        if not os.path.exists(weights_file):
+            # Merged exports isolate auxiliary weights from backbone loaders' top-level globs.
+            weights_file = os.path.join(load_directory, self.HEAD_EXPORT_SUBDIR, self.HEAD_WEIGHTS_NAME)
         meta_file = os.path.join(load_directory, self.HEAD_META_NAME)
         has_weights = os.path.exists(weights_file)
         has_meta = os.path.exists(meta_file)

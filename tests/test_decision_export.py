@@ -161,13 +161,15 @@ class TestDecisionExport(unittest.TestCase):
 
                 backbone_files = list(out.glob('model*.safetensors'))
                 self.assertTrue(backbone_files)
+                # A backbone loader that globs *.safetensors must never see auxiliary head tensors.
+                self.assertEqual(set(out.glob('*.safetensors')), set(backbone_files))
                 for weights in backbone_files:
                     with safe_open(weights, framework='pt') as f:
                         self.assertFalse(any(k.startswith('scoring_head.') for k in f.keys()))
                 if shard_size == '1KB':
                     index = json.loads((out / 'model.safetensors.index.json').read_text())
                     self.assertFalse(any(k.startswith('scoring_head.') for k in index['weight_map']))
-                self.assertTrue((out / head.HEAD_WEIGHTS_NAME).is_file())
+                self.assertTrue((out / head.HEAD_EXPORT_SUBDIR / head.HEAD_WEIGHTS_NAME).is_file())
                 restored, info = model_cls.from_pretrained(str(out), output_loading_info=True)
                 self.assertFalse(info['unexpected_keys'])
                 self.assertFalse(info['missing_keys'])

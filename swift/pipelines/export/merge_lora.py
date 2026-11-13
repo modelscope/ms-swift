@@ -65,6 +65,11 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
                 state_dict=state_dict)
             if head is not None:
                 head.save_pretrained(output_dir)
+                # vLLM scans all top-level *.safetensors, including non-backbone files.
+                head_dir = os.path.join(output_dir, head.HEAD_EXPORT_SUBDIR)
+                os.makedirs(head_dir, exist_ok=True)
+                os.replace(
+                    os.path.join(output_dir, head.HEAD_WEIGHTS_NAME), os.path.join(head_dir, head.HEAD_WEIGHTS_NAME))
                 logger.info(f'decision: saved scoring_head weights and meta to {output_dir}.')
                 if isinstance(head, StartLuxLetterHead):
                     head.save_decision_config(model.model_dir, output_dir)

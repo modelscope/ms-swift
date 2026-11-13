@@ -767,8 +767,9 @@ Decision 模型携带**可插拔打分头**，与 backbone（或 LoRA adapter）
 
 - **LoRA 合并导出**：`swift export --merge_lora true` 对 JEV、StartLux、Clef、THX-02、OmniJev、Kev、
   Laya 七类头统一处理：骨干权重文件及分片索引不含 `scoring_head.*`，训练后的头参数写入
-  `scoring_head.safetensors`，构造参数与校准元数据写入 `scoring_head.json`。请保留这两个文件，
+  `scoring_head/scoring_head.safetensors`，构造参数与校准元数据写入 `scoring_head.json`。请保留这两个文件，
   在 Swift 中以 `--model <合并目录>` 和对应的 `--model_type` 加载，无需再传 adapter。
+  头权重放在子目录中，避免被扫描顶层权重文件的推理引擎误加载。
   仅加载骨干模型的推理引擎不会自动执行这些打分头；原生决策服务仍需要各自的头格式和推理支持。
   StartLux 还会将训练后的字母偏置及有效温度导出到 `decision_config.json`，其推理版本要求见上文。
 
