@@ -227,6 +227,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             If set to a positive integer, only top-k teacher logits are used (more efficient).
             When using `teacher_model_server`, this is limited by the server's `max_logprobs` setting
             (vLLM default is 20, can be increased with `--max-logprobs`). Defaults to None.
+        gkd_loss_type (str): GKD divergence: 'jsd' (default) or temperature-1 top-k 'mopd' (HF only).
         max_new_tokens (Optional[int]): A backward-compatibility argument. Please use `max_completion_length` instead.
             Defaults to None.
     """
@@ -263,6 +264,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     lmbda: float = 0.5
     seq_kd: bool = False  # Deprecated
     gkd_logits_topk: Optional[int] = None
+    gkd_loss_type: Literal['jsd', 'mopd'] = 'jsd'
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead
 
@@ -749,6 +751,13 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _check_gkd(self):
         if self.rlhf_type != 'gkd':
             return
+        if self.gkd_loss_type not in ('jsd', 'mopd'):
+            raise ValueError(f'Unsupported gkd_loss_type: {self.gkd_loss_type}')
+        if self.gkd_loss_type == 'mopd':
+            if self.gkd_logits_topk is None:
+                raise ValueError('gkd_loss_type=mopd requires gkd_logits_topk.')
+            if self.use_liger_kernel or self.sequence_parallel_size > 1:
+                raise ValueError('MOPD requires the HF GKD loss path without Liger or sequence parallelism.')
         if is_mp() and self.use_vllm:
             raise ValueError('GKD with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')

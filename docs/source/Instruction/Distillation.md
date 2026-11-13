@@ -243,6 +243,21 @@ loss = D(P_teacher(·|x, y), P_student(·|x, y))
 | `--lmbda` | float | 0.5 | 在线采样概率：0=离线，1=纯在线 |
 | `--sft_alpha` | float | 0 | 混合 SFT loss 比例，最终 `loss = gkd_loss + sft_alpha * sft_loss`（仅对**非学生生成**的数据生效） |
 | `--gkd_logits_topk` | int | None | 仅用教师 top-K logits 计算 KL；使用 `teacher_model_server` 时为必填 |
+| `--gkd_loss_type` | str | jsd | `jsd` 使用现有 beta 插值散度；`mopd` 使用温度为 1 的 top-k MOPD 损失（仅 HF 后端） |
+
+**Top-K MOPD 损失**
+
+设置 `--gkd_loss_type mopd --gkd_logits_topk 64`，使用 [MOPD 公式 5](https://arxiv.org/abs/2606.30406)：
+
+`sum_topk(p_student * (log(p_student) - log(p_teacher)) - p_student + p_teacher)`。
+
+两侧概率先在**完整词表**上归一化，再选取教师 top-k token；不在 top-k 支持集上重新归一化。
+仅响应位置参与计算，教师目标不参与反向传播。本地教师和外部教师返回的 logprobs 使用同一损失。
+学生和教师必须使用语义一致的 token ID。
+
+该选项要求 `gkd_logits_topk` 为正数，首版支持不使用 Liger 或序列并行的 HF GKD 后端。
+MOPD 始终在温度 1 下计算概率，不使用 `beta`；`temperature` 仍控制 rollout 采样。
+默认 `jsd` 保留现有温度及 beta 行为。现有 `lmbda`、教师路由及 `sft_alpha` 选项继续生效。
 
 **Top-K 蒸馏（省显存）**
 
