@@ -234,27 +234,29 @@ def _record_reward_metric(batch_facts: Dict[str, Any], *, orm_weights: Any,
                           reward_metric: Any) -> None:
     """Feed one consumed batch's named ORM rewards into the driver-side reward aggregate.
 
-    The values are the batch summary's ``orm_scores`` column (scorer name -> one float-or-None
-    per row, as the driver stamped them; ``None`` is an unparseable judge verdict and rides as
-    nan). The metric resets per call, so the ``train/<col>_reward`` keys describe exactly the
-    batch the upcoming optimizer steps train on (the same CompletionRewardMetric contract PPO's
-    loop uses). A no-scorer run (teacher-only OPD-RL) accumulates nothing and the keys simply
-    stay absent.
+    The values are the delivery facts' ``scores`` rows -- one row-shaped entry per trajectory,
+    its ``rewards.orm`` named map exactly as the driver stamped it (``None`` is an unparseable
+    judge verdict and rides as nan). The metric resets per call, so the ``train/<col>_reward``
+    keys describe exactly the batch the upcoming optimizer steps train on (the same
+    CompletionRewardMetric contract PPO's loop uses). A no-scorer run (teacher-only OPD-RL)
+    accumulates nothing and the keys simply stay absent.
     """
-    orm_scores = batch_facts.get('orm_scores') or {}
-    if not orm_scores or reward_metric is None:
+    orm_rows = [((row.get('rewards') or {}).get('orm') or {}) for row in (batch_facts.get('scores') or ())]
+    if not orm_rows or not orm_rows[0] or reward_metric is None:
         return
     from swift.dev.utils.scoring import build_reward_weights
 
-    orm_names = list(orm_scores)
-    column_lengths = {len(column) for column in orm_scores.values()}
-    if len(column_lengths) != 1:
-        raise ValueError(f'the batch carries different ORM row counts {sorted(column_lengths)}; every row of '
-                         'a batch is scored by the same scorer set (a missing score is None, not a shorter column).')
+    # Every row carries the driver's same scorer set in the same order: a missing score is None,
+    # never a shorter row.
+    shapes = {tuple(row) for row in orm_rows}
+    if len(shapes) != 1:
+        raise ValueError(f'the batch carries different ORM scorer sets {sorted(shapes)}; every row of a '
+                         'batch is scored by the same scorer set (a missing score is None, not a shorter row).')
+    orm_names = list(orm_rows[0])
     column_weights = build_reward_weights(orm_weights, len(orm_names))
     matrix = torch.tensor(
-        [[float('nan') if value is None or value != value else float(value) for value in row]
-         for row in zip(*(orm_scores[name] for name in orm_names))], dtype=torch.float32).T
+        [[float('nan') if value is None or value != value else float(value) for value in row.values()]
+         for row in orm_rows], dtype=torch.float32).T
     rewards = {
         name: [float(v) for v in column if v == v]
         for name, column in zip(orm_names, matrix)
@@ -311,14 +313,13 @@ def _train_loop(
     batches = 0
     try:
         state.begin_rollout_iteration()
-        for batch_index, trajs in enumerate(driver):
+        for trajs, batch_facts in driver:
             if cluster.colocate:
                 sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                 cluster.model.reload_to_gpu()
                 lent = False
             # the light facts of THIS batch, as captured at its hand-out: rollout metrics read
             # them without materialising a single trajectory.
-            batch_facts = driver.batch_summary(batch_index)
             state.observe_rollout_batch(batch_facts)
             _record_reward_metric(batch_facts, orm_weights=reward_config.orm_weights,
                                   reward_metric=reward_metric)
@@ -327,7 +328,8 @@ def _train_loop(
                 if completion_log is not None:
                     rows = completion_log(
                         trajs, step=state.global_step + 1,
-                        path=os.path.join(output_dir, 'completions.jsonl') if rl_config.log_completions else None)
+                        path=os.path.join(output_dir, 'completions.jsonl') if rl_config.log_completions else None,
+                        scores=batch_facts.get('scores'))
                     if state.tracker.logs_prompts:
                         state.tracker.log_prompts(rows, state.global_step + 1)
             if last_batch_versions is not None:
@@ -359,12 +361,13 @@ def _train_loop(
                 old_out = cluster.model.forward_only(
                     inputs=trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
                     **batching)
-            # ONE advantage call: reads the named score columns the driver wrote, returns the
-            # trajectories with the training-target columns attached (references) plus a light
-            # numeric summary; the caller replaces its old references.
+            # ONE advantage call: reads the rows plus the batch's row-aligned score rows
+            # (``facts['scores']``, meeting here inside the worker), returns the trajectories with
+            # the training-target columns attached (references) plus a light numeric summary; the
+            # caller replaces its old references.
             trajs, adv_summary = cluster.advantage(
                 trajs, ref_out=ref_out, teacher_out=teacher_out, old_out=old_out,
-                global_step=state.global_step)
+                global_step=state.global_step, scores=batch_facts['scores'])
             if correction_out is not None and adv_summary.get('rollout_correction'):
                 # The legacy-compatible off-policy diagnostics, from the training-side forward and
                 # the sampler's own log-probs BEFORE any optimizer step this batch.

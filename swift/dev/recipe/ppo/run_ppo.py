@@ -136,17 +136,18 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
     try:
         # the initial publication: a resumed policy differs from the weights the sampler loaded
         sync()
-        for batch_index, trajs in enumerate(driver):
+        for trajs, batch_facts in driver:
             if cluster.colocate:
                 reclaim()
-            batch_facts = driver.batch_summary(batch_index)
             versions_cell[:] = batch_facts.get('version_spans') or []
             # the nonempty-response rule runs in the worker on the real rows; the kept rows'
-            # summary replaces the batch facts (its metrics describe exactly what trains).
+            # summary replaces the batch facts (its metrics describe exactly what trains), and its
+            # kept ``indices`` slice the row-aligned score column to the rows that train.
             trajs, kept_facts = cluster.traj_filter.select(
                 trajs, where=lambda traj: bool(traj.get('response_token_ids')))
             if not trajs:
                 raise RuntimeError('the pulled batch has no response tokens to train on.')
+            scores = [batch_facts['scores'][index] for index in kept_facts['indices']]
             lengths = [p + r for p, r in zip(kept_facts.get('prompt_lengths') or (),
                                             kept_facts.get('response_lengths') or ())]
             # the critic's values (``task='value'``) and the reference's logps: two whole-batch
@@ -161,7 +162,8 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
             # ONE advantage call (estimator=gae, kl=k1): token rewards ``r - kl_coef*KL`` with the
             # weighted ORM score on the last token, GAE over the pre-update critic values; the
             # trajectories come back carrying advantages / returns / old_logps / old_values.
-            trajs, gae_summary = cluster.advantage(trajs, ref_out=ref_out, value_out=values_out)
+            trajs, gae_summary = cluster.advantage(
+                trajs, ref_out=ref_out, value_out=values_out, scores=scores)
             # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
             reward_metric.reset()
             reward_metric.accumulate(

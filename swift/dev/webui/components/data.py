@@ -197,7 +197,7 @@ class StreamingDriverComponent(IteratorComponent):
         max_steps = int(self.params.get('max_steps', 0) or 0)
         # The admission scoring binding (W5): wired scorers run per episode inside
         # the driver under their slot names, so the group verdict rules on real
-        # scores and every delivered batch already carries its named columns -- the
+        # scores and every delivered batch's facts carry its named score columns -- the
         # same scorer identity a downstream score node reuses instead of rescoring.
         scorers = inputs.get('scorers') or []
         orm_names = [str(slot) for slot, _scorer in scorers]
@@ -214,14 +214,30 @@ class StreamingDriverComponent(IteratorComponent):
             orm_names=orm_names or None)
 
     def take_batch(self) -> Any:
-        # The single-return contract: one next() hands the batch's trajectories -- the
-        # rollout's ledger-merged dicts with the named score columns and identity facts
-        # merged in; the light facts ride the driver's own batch_summary instead.
-        trajs = next(self._iterator)
+        # The single-return contract: one next() hands the batch as the driver delivers it --
+        # the rows plus the light facts carrying the row-aligned score column. The webui
+        # runs the driver IN-PROCESS, so its rows are plain dicts this component owns: the
+        # admission scores are merged onto row copies HERE (the write-back post sits with
+        # the executor holding the row bodies) and the downstream row-shaped stages -- the
+        # score stage's no-rescore reuse, select's criterion, the advantage seam -- keep
+        # reading the named columns off the rows.
+        rows, facts = next(self._iterator)
+        scores = facts.get('scores') or ()
+        if scores:
+            merged = [dict(row) if isinstance(row, dict) else row for row in rows]
+            for row, score in zip(merged, scores):
+                if not isinstance(row, dict):
+                    continue
+                rewards = dict(row.get('rewards') or {})
+                rewards.update(score.get('rewards') or {})
+                row['rewards'] = rewards
+                if score.get('prm_segments') is not None:
+                    row['prm_segments'] = score['prm_segments']
+            rows = merged
         # The traj port projects the LAST delivered batch: downstream stages
         # wired to this port read batch data, not the control-plane object.
-        self._current = trajs
-        return trajs
+        self._current = rows
+        return rows
 
     def port_value(self, key: str) -> Any:
         """The iterator's lanes: traj = the last delivered batch, source =

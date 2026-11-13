@@ -155,9 +155,12 @@ class AdvantageStage(StageComponent):
     The estimator is twinkle's :class:`Advantage` family member (one remote
     instance per node, built under the node's knobs -- a knob the estimator
     does not read is rejected at construction, not silently ignored). It reads
-    the named score columns off the trajectories and the four optional forward
-    lanes (``ref_out`` / ``teacher_out`` / ``old_out`` / ``value_out``, each a
-    whole ModelOutput or its handle), and writes advantages / returns /
+    the named score columns off the row-aligned ``scores`` argument -- the webui's
+    lanes are row-shaped dicts, so the columns the score stage (or the driver
+    component's admission merge) wrote onto the rows are lifted onto the score
+    entries here -- and the four optional forward lanes (``ref_out`` /
+    ``teacher_out`` / ``old_out`` / ``value_out``, each a whole ModelOutput or its
+    handle), and writes advantages / returns /
     old_logps / ref_logps / teacher_logps onto copies of the rows: the ``traj``
     port carries the updated rows for training, the ``metric`` port the light
     numeric summary. No model is held and no forward runs here."""
@@ -188,7 +191,14 @@ class AdvantageStage(StageComponent):
         estimator = getattr(self, '_estimator_instance', None)
         if estimator is None:
             estimator = self._estimator_instance = self._estimator()
-        result = estimator(trajs,
+        # The score seam: the estimator takes the named reward maps from the row-aligned
+        # ``scores`` argument. The webui's rows are plain dicts (its lanes are row-shaped,
+        # never references), so the columns living on the rows are lifted onto the score
+        # entries here -- orm / baseline off ``rewards``, the PRM segment facts off their
+        # own column.
+        scores = [{'rewards': (row.get('rewards') or {}), 'prm_segments': row.get('prm_segments')}
+                  for row in trajs]
+        result = estimator(trajs, scores=scores,
                            ref_out=inputs.get('ref_out'), teacher_out=inputs.get('teacher_out'),
                            old_out=inputs.get('old_out'), value_out=inputs.get('value_out'))
         # The tuple (new_trajs, summary) resolves HERE: the rows feed the session-local

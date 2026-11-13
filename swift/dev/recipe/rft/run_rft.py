@@ -191,9 +191,10 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
 def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloader, num_samples, window):
     """Generate and score one round, returning the kept trajectories (references) and row lengths.
 
-    The driver hands each batch out with its named score column already on the rows; the round
-    collects the references plus the batch summaries' numeric columns (score rows, response
-    lengths), so rejection sampling and the reward metric never materialise a trajectory.
+    The driver hands each batch out as it travels (references) with its row-aligned score
+    column riding the facts; the round collects the references plus the facts' numeric columns
+    (score rows, response lengths), so rejection sampling and the reward metric never materialise
+    a trajectory.
     The round's policy is the one the previous round trained: one sync first (colocated, it hands
     the devices to the sampler), then one driver over the whole prompt set; the devices come back
     on every exit.
@@ -208,16 +209,12 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
                               num_samples=num_samples, window=window)
     trajs, orm_rows, lengths = [], [], []
     try:
-        for batch_index, batch in enumerate(driver):
-            batch_facts = driver.batch_summary(batch_index)
+        for batch, batch_facts in driver:
             trajs.extend(batch)
-            names = list(batch_facts.get('orm_scores') or {})
-            if names:
-                orm_rows.extend(list(row) for row in zip(*(batch_facts['orm_scores'][name] for name in names)))
-            else:
-                # a no-scorer round: every row is a [nan] placeholder, exactly the old reading of a
-                # null orm_reward column.
-                orm_rows.extend([None] for _ in batch)
+            for score in batch_facts.get('scores') or ():
+                # the named ORM column of one row, in the scorer order the driver stamped it; a
+                # no-scorer round leaves it empty and the matrix fold below reads [nan] per row.
+                orm_rows.append(list(((score.get('rewards') or {}).get('orm') or {}).values()))
             lengths.extend(batch_facts.get('response_lengths') or ())
             if len(trajs) % (window * num_samples) == 0:
                 logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')

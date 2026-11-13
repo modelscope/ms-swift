@@ -138,10 +138,11 @@ def build_streaming_driver(*,
                            remote: bool = False) -> Any:
     """One ``StreamingDriver`` handing out trajectory batches of ``batch_size`` rows.
 
-    Each batch arrives with its named score columns already written (``rewards.orm`` / ``env`` /
-    ``baseline``, ``prm_segments``) and its identity facts; the light batch facts ride
-    ``driver.batch_summary``. ``orm_names`` / ``prm_names`` name the scorers in those columns
-    (``None`` falls back to the driver's positional names).
+    Each batch arrives as ``(rows, facts)``: the rows exactly as they travel (references under
+    ray -- the driver never opens one; the identity facts were stamped at admission) and the
+    light facts carrying the row-aligned score column beside the row lengths. ``orm_names`` /
+    ``prm_names`` name the scorers in that column (``None`` falls back to the driver's
+    positional names).
 
     Staleness follows ``async_mode`` (:func:`max_staleness_of`) unless ``max_staleness`` is given
     (without a checkpoint manager it only sets how many batches run ahead), the sync interval is

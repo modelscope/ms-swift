@@ -424,7 +424,7 @@ class InferComponent(RecipeComponent):
         done: Dict[int, List[Dict[str, Any]]] = {}
         next_ordinal = 0
         try:
-            for batch in driver:
+            for batch, _facts in driver:
                 # group_key is the driver's draw ordinal of the group's prompt (stamped on every row)
                 done[int(batch[0]['group_key'])] = batch
                 while next_ordinal in done:

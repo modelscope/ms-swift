@@ -385,8 +385,8 @@ def grpo_on_group(rl_config: "RLConfig", reward_config: "RewardConfig", sampling
     A zero-variance group (its advantage is degenerate) is replaced by ``num_generations`` fresh
     trajectories of the same row, up to ``max_resample_times`` (the driver's regeneration cap);
     remax returns one greedy baseline of the row, run once the group is final. ``None`` when
-    neither is on. The verdict reads the named ``rewards.orm`` scores the driver has already
-    written onto the group's trajectories.
+    neither is on. The verdict reads the group's ``RolloutSample.orm_reward`` rows -- the light
+    sample records the driver stamps when it scores, never the trajectories themselves.
     """
     dynamic = bool(rl_config.dynamic_sample)
     remax = rl_config.advantage_estimator == "remax"
@@ -400,10 +400,10 @@ def grpo_on_group(rl_config: "RLConfig", reward_config: "RewardConfig", sampling
     num_generations = rl_config.num_generations
     greedy = greedy_params(sampling_params)
 
-    def on_group(row: Any, scored_trajs: List[Any], attempt: int) -> List[Any]:
+    def on_group(row: Any, samples: List[Any], attempt: int) -> List[Any]:
         trajectories: List[Any] = []
-        if dynamic and group_variance([list((traj.get("rewards") or {}).get("orm") or {}).values()
-                                       for traj in scored_trajs], weights) <= 0.0:
+        if dynamic and group_variance([list(sample.orm_reward or ()) for sample in samples],
+                                      weights) <= 0.0:
             trajectories = [copy.deepcopy(row) for _ in range(num_generations)]
         if remax:
             # the greedy sampling override rides user_data (the driver's per-episode sampling read);
@@ -421,8 +421,9 @@ def build_driver(*, cluster: Cluster, rl_config: "RLConfig", rollout_config: "Ro
                  num_train_epochs: float, max_steps: Optional[int]) -> Any:
     """Assemble twinkle's StreamingDriver over the cluster; GRPO's own face is the group verdict.
 
-    The driver hands out named score columns (``orm_names`` / ``prm_names`` name the scorers) and
-    its light batch summary; the group verdict reads the named ``rewards.orm`` scores.
+    The driver hands out its rows (references under ray -- it never opens one) plus the light
+    batch facts carrying the row-aligned score column (``orm_names`` / ``prm_names`` name the
+    scorers); the group verdict reads the samples' ``orm_reward`` rows.
     """
     from swift.dev.builders.streaming import build_streaming_driver
 

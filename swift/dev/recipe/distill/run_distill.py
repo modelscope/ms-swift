@@ -98,12 +98,11 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig', rollout_co
         # the initial publication: a resumed policy differs from the weights the sampler loaded
         cluster.engine.sync_weights()
         lent = cluster.colocate
-        for batch_index, batch in enumerate(driver):
+        for batch, batch_facts in driver:
             if cluster.colocate:
                 sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                 cluster.model.reload_to_gpu()
                 lent = False
-            batch_facts = driver.batch_summary(batch_index)
             lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
                                             batch_facts.get('response_lengths') or ())]
             _train_rows(cluster, state, batch, lengths, True, train_batch_size=train_batch_size, save=save)
