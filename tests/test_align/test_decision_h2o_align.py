@@ -274,6 +274,16 @@ def _tiny_device():
         return 'cpu'
 
 
+def _train_device_available() -> bool:
+    if torch.cuda.is_available():
+        return True
+    try:
+        import torch_npu  # noqa: F401
+    except ImportError:
+        return False
+    return bool(torch_npu.npu.is_available())
+
+
 def _two_way_available() -> bool:
     try:
         from transformers.masking_utils import create_recurrent_attention_mask  # noqa: F401
@@ -483,7 +493,7 @@ class _DummyTrainer:
 
 class TestStageFSftRoundTrip:
 
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA required for the training round-trip')
+    @pytest.mark.skipif(not _train_device_available(), reason='CUDA/NPU required for the training round-trip')
     def test_sft_lora_calibration_and_reload(self, tiny_dir, tmp_path, monkeypatch):
         from swift import InferArguments, SftArguments, sft_main
         from swift.dataset import DatasetMeta, register_dataset
