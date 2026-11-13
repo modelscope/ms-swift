@@ -114,8 +114,11 @@ class TestDatasetCacheSafety(unittest.TestCase):
 
         result = preprocessor(dataset, num_proc=1)
 
-        versioned_path = os.path.join(self._map_cache_dir(),
-                                      f'{dataset._fingerprint}_{preprocessor.cache_format_version}.arrow')
+        # The cache name also carries the map arguments (strict/enable_auto_mapping),
+        # so ask the preprocessor for the name it would write with these arguments.
+        expected_name = os.path.basename(
+            preprocessor._get_map_cache_file_name(dataset, strict=False, enable_auto_mapping=False))
+        versioned_path = os.path.join(self._map_cache_dir(), expected_name)
         self.assertTrue(os.path.exists(versioned_path))
         self.assertEqual(_md5(stale_path), stale_md5)
         self.assertIn('messages', result.column_names)
