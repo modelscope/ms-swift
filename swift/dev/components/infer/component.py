@@ -424,9 +424,9 @@ class InferComponent(RecipeComponent):
         done: Dict[int, List[Dict[str, Any]]] = {}
         next_ordinal = 0
         try:
-            for trajs, samples in driver:
-                # group_key is the driver's draw ordinal of the group's prompt
-                done[int(samples[0].group_key)] = trajs
+            for batch in driver:
+                # group_key is the driver's draw ordinal of the group's prompt (stamped on every row)
+                done[int(batch[0]['group_key'])] = batch
                 while next_ordinal in done:
                     group = done.pop(next_ordinal)
                     emit_group(group[0][_ROW_INDEX], group)
@@ -758,10 +758,10 @@ def _emit_all(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Opt
         # Each multi-turn candidate is a distinct trajectory (its own tool calls); ``messages`` keeps
         # only the first, so store every candidate's full trajectory rather than losing all but one.
         out['all_messages'] = [_candidate_messages(candidate) for candidate in candidates]
-    if candidates[0].get('rollout_logprobs'):
+    if candidates[0].get('rollout_logps'):
         # Present for a generated candidate (a cached one has none); mirrors legacy's per-row
         # ``logprobs`` for the response this row keeps.
-        out['logprobs'] = list(candidates[0]['rollout_logprobs'])
+        out['logprobs'] = list(candidates[0]['rollout_logps'])
     if ground_truth is not None:
         out['labels'] = ground_truth
     if scores is not None:
@@ -970,7 +970,7 @@ class _RolloutRecorder:
         """Persist one candidate's rollout tokens; return the NPZ path relative to ``base_dir``.
 
         The sidecar holds the payload every dump format shares (``input_ids`` / ``labels`` /
-        ``completion_mask`` / ``response_token_ids`` / ``rollout_logprobs``)
+        ``completion_mask`` / ``response_token_ids`` / ``rollout_logps``)
         -- old_logps are the one thing training cannot recompute (the policy has drifted). Multimodal
         tensors are omitted on purpose: reproducible, so training re-encodes them from the row's kept
         media columns and messages, as an online rollout would. None when disabled or token-less.
@@ -985,7 +985,7 @@ class _RolloutRecorder:
             'input_ids': np.asarray(input_ids, dtype=np.int64),
             'labels': np.asarray(labels, dtype=np.int64),
             'response_token_ids': np.asarray(candidate.get('response_token_ids') or [], dtype=np.int64),
-            'rollout_logprobs': np.asarray(candidate.get('rollout_logprobs') or [], dtype=np.float32),
+            'rollout_logps': np.asarray(candidate.get('rollout_logps') or [], dtype=np.float32),
         }
         completion_mask = candidate.get('completion_mask')
         if completion_mask is not None:

@@ -58,7 +58,10 @@ def ppo_group_requests(
 class Cluster(NamedTuple):
     """Every actor PPO's visible loop drives (a plain handle bundle, not a layer).
 
-    The signal components (``scores`` ... ``reduce``) read the per-token lanes where they live.
+    ``advantage`` is the GAE estimator + its formula knobs (kl=k1, the token-reward KL coef, gamma /
+    lambda / whitening): it owns the per-token math inside its call, reading the named score
+    columns the driver wrote. ``traj_filter`` runs the row-selection rules in the worker where the
+    trajectories live (the nonempty-response rule, and any user rule).
     """
 
     model: Any
@@ -72,11 +75,8 @@ class Cluster(NamedTuple):
     orm_names: List[str]
     sampling_params: Dict[str, Any]
     colocate: bool
-    scores: Any
-    kl: Any
-    reward_shape: Any
-    gae: Any
-    reduce: Any
+    advantage: Any
+    traj_filter: Any
 
 
 def initialize_ppo_cluster(
@@ -127,8 +127,7 @@ def initialize_ppo_cluster(
     )
     from swift.dev.processor import InputProcessor, processor_kwargs
     from twinkle.advantage import GAEAdvantage
-    from twinkle.reward import RewardShape
-    from twinkle.signals import KLEstimator, Reduce, ResponseScores
+    from twinkle.processor import TrajectoryFilter
 
     sp = template_config.sequence_parallel_size
     sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
@@ -298,11 +297,9 @@ def initialize_ppo_cluster(
         orm_names=orm_names,
         sampling_params=params,
         colocate=colocate,
-        scores=ResponseScores(**group),
-        kl=KLEstimator(**group),
-        reward_shape=RewardShape(**group),
-        gae=GAEAdvantage(gamma=rl_config.gamma, gae_lambda=rl_config.lam, normalize=rl_config.whiten_rewards, **group),
-        reduce=Reduce(**group),
+        advantage=GAEAdvantage(kl_kind='k1', gamma=rl_config.gamma, gae_lambda=rl_config.lam,
+                               normalize=rl_config.whiten_rewards, kl_coef=rl_config.kl_coef, **group),
+        traj_filter=TrajectoryFilter(**group),
     )
 
 
@@ -312,7 +309,8 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
     """Assemble twinkle's StreamingDriver for PPO: ORM-scored episodes, no group verdict.
 
     PPO has no group contract (per-token GAE scores each trajectory on its own); every async_mode
-    rides this one stream.
+    rides this one stream. The driver hands out named score columns (``orm_names`` name the
+    scorers) and its light batch summary.
     """
     from swift.dev.builders.streaming import build_streaming_driver
 
@@ -326,6 +324,7 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
         max_steps=max_steps,
         checkpoint_manager=cluster.engine,
         orms=cluster.orm_scorers,
+        orm_names=cluster.orm_names,
         cluster_adapter=cluster.adapter,
         remote=True,
     )

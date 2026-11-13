@@ -157,7 +157,7 @@ def encode_rows(template: Any, data: Any) -> list:
     arrives as a row list (a twinkle DataLoader batch) or as a dict exposing
     ``rows``. A rollout trajectory already carries its encoding (``input_ids``
     / ``labels``) -- that IS the authority (labels already shifted, aligned
-    with ``rollout_logprobs``), so it is returned verbatim: re-encoding its
+    with ``rollout_logps``), so it is returned verbatim: re-encoding its
     messages would rebuild the labels from scratch and count turn-boundary
     tokens the ledger never put in the response, misaligning every token-level
     lane downstream. Anything unrecognised fails loudly."""

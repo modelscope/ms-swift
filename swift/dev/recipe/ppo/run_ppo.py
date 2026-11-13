@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import math
 import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
-
-import torch
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from swift.dev.recipe.batching import apply_rollout_plan, plan_rollout_batch, record_rollout_step
 from swift.dev.utils.logger import get_logger
@@ -14,7 +12,7 @@ from swift.dev.utils.logger import get_logger
 from swift.dev.recipe.ppo.assembly import (
     Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
 from swift.dev.recipe.utils import (
-    StepState, build_save_knobs, collect, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
+    StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
     resolve_rollout_max_steps, resume_training, rollout_step_budget, resolve_generation_batch_size,
     save_training_step, snapshot_initial_adapter, stream_batch_size)
 
@@ -41,64 +39,16 @@ def _check_policy_value_step_alignment(global_step: int, value_state: Optional[D
         raise ValueError('PPO policy and value checkpoints contain different completed-step counts.')
 
 
-def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'RLConfig',
-                  trajs: List[Any], samples: List[Any], train_batch_size: int, reward_metric: Any
-                  ) -> Tuple[List[Any], List[List[float]], List[List[float]], List[List[float]], List[List[float]]]:
-    """The shared GAE anchors: forwards and signal components called HERE, in order.
-
-    Only the episodes with a response train (``token_lengths`` off the light samples). The critic's
-    values and the reference's logps are two whole-batch ``forward_only`` calls over them (the
-    dispatch splits each per rank; ``micro_batch_size`` keeps each rank's forward at one per-device
-    block); the per-token steps -- response alignment, the k1 KL, the token rewards ``-kl_coef * KL``
-    with the weighted ORM score on the last token, GAE -- run on their signal components over
-    references. Returns ``(kept trajectories, advantages, returns, values, old_logps)``.
-    """
-    from twinkle_agentic.async_rl import weighted_score
-
-    kept = [index for index, sample in enumerate(samples) if sample.token_lengths and sample.token_lengths[1]]
-    if not kept:
-        raise RuntimeError('the pulled batch has no response tokens to train on.')
-    trajs = [trajs[index] for index in kept]
-    samples = [samples[index] for index in kept]
-    # one per-device block per rank: train_batch_size (per_device x dp) spread over the dp ranks
-    micro_batch_size = max(1, train_batch_size // cluster.model.device_mesh.data_world_size)
-    # The reference's logps must be taken at the SAMPLING temperature, like every logps the ratio
-    # math compares against (the sampler's own logps are T-scaled; a T=1 forward skews them).
-    temperature = float(cluster.sampling_params.get('temperature', 1.0))
-    ref_shared = cluster.reference is cluster.model
-    # the critic's values (the value head via task='value') and the reference's logps; the policy
-    # actor chains its own disable_lora pass when the reference IS the policy object.
-    values_out = cluster.value_model.forward_only(
-        inputs=trajs, micro_batch_size=micro_batch_size, task='value', return_logits=True)
-    ref_out = cluster.reference.forward_only(
-        inputs=trajs, micro_batch_size=micro_batch_size, temperature=temperature,
-        **({'disable_lora': True} if ref_shared else {}))
-    scores = cluster.scores
-    values = scores(trajs, values_out, output_key='logits')
-    old_logps = scores(trajs, output_key='rollout_logprobs')
-    kl = cluster.kl(old_logps, scores(trajs, ref_out), kind='k1', reduce='none')
-    rm_scores = [weighted_score(sample.orm_reward, reward_config.orm_weights) for sample in samples]
-    token_rewards = cluster.reward_shape(rm_scores, kl, beta=rl_config.kl_coef, profile='token')
-    advantages, returns = collect(cluster.gae(token_rewards, values))
-    # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
-    reward_metric.reset()
-    reward_metric.accumulate(
-        rewards={'total': collect(cluster.reduce(token_rewards, op='sum', axis='token'))},
-        completion_lengths=[sample.token_lengths[1] for sample in samples])
-    return trajs, advantages, returns, collect(values), collect(old_logps)
-
-
 def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', trajs: List[Any],
-                     advantages: List[List[float]], returns: List[List[float]],
-                     values: List[List[float]], old_logps: List[List[float]], *,
-                     train_batch_size: int, temperature: float, ema_manager: Any,
+                     lengths: List[int], *, train_batch_size: int, temperature: float, ema_manager: Any,
                      save: Callable[[str], Any]) -> int:
     """Repeat one batch continuously, then drop only the final incomplete optimizer batch.
 
-    Each update steps the policy (the clipped surrogate: advantages + old_logps) and then the
-    critic (the clipped value loss: ``task='value'`` + returns + old_values) within the SAME
-    update; the GAE anchors stay fixed across every replay (PPO's batch re-use). Returns the
-    optimizer steps actually run.
+    The trajectories carry every GAE anchor as top-level response-framed fields, so each update
+    steps the policy (the clipped surrogate: ``advantages`` / ``old_logps`` off its inputs) and
+    then the critic (the clipped value loss: ``task='value'`` over ``returns`` / ``old_values``)
+    within the SAME update; the anchors stay fixed across every replay (PPO's batch re-use).
+    Returns the optimizer steps actually run.
     """
     model = cluster.model
     value_model = cluster.value_model
@@ -117,31 +67,30 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
             break
         indices = [index % len(trajs) for index in range(lo, hi)]
         inputs = [trajs[index] for index in indices]
+        row_lengths = [lengths[index] for index in indices]
         batching = {'micro_batch_size': micro_batch_size}
-        policy_plan = plan_rollout_batch(state, inputs, micro_batch_kwargs=batching)
+        policy_plan = plan_rollout_batch(state, inputs, lengths=row_lengths, micro_batch_kwargs=batching)
         value_plan = plan_rollout_batch(
-            state, inputs, model=value_model, micro_batch_kwargs=batching, metric_prefix='dp_balance/value')
+            state, inputs, lengths=row_lengths, model=value_model, micro_batch_kwargs=batching,
+            metric_prefix='dp_balance/value')
         policy_indices = apply_rollout_plan(policy_plan, indices)
         value_indices = apply_rollout_plan(value_plan, indices)
         state.micro_step += (hi - lo) // train_batch_size
-        # collect: a worker-side failure inside forward_backward must fail THIS step
-        collect(model.forward_backward(
+        # forward_backward is declared sync=True on the model: a worker-side failure raises
+        # at this call, failing THIS step instead of riding an unread handle.
+        model.forward_backward(
             inputs=[trajs[index] for index in policy_indices],
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             temperature=temperature,
-            advantages=[advantages[index] for index in policy_indices],
-            old_logps=[old_logps[index] for index in policy_indices],
-        ))
+        )
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        collect(value_model.forward_backward(
+        value_model.forward_backward(
             inputs=[trajs[index] for index in value_indices],
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             task='value',
-            returns=[returns[index] for index in value_indices],
-            old_values=[values[index] for index in value_indices],
-        ))
+        )
         value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         record_rollout_step(state, policy_plan, value_plan)
         optimizer_steps += 1
@@ -151,7 +100,7 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
     return optimizer_steps
 
 
-def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig', reward_config: 'RewardConfig',
+def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
                 rollout_config: 'RolloutConfig', state: StepState, reward_metric: Any, *,
                 train_batch_size: int, ema_manager: Any, save: Callable[[str], Any],
                 versions_cell: List[List[int]]) -> None:
@@ -165,6 +114,11 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig', reward_con
     from swift.dev.recipe.offload import sleep_for_rollout
 
     temperature = float(cluster.sampling_params.get('temperature', 1.0))
+    # one per-device block per rank: train_batch_size (per_device x dp) spread over the dp ranks
+    micro_batch_size = max(1, train_batch_size // cluster.model.device_mesh.data_world_size)
+    # The reference's logps must be taken at the SAMPLING temperature, like every logps the ratio
+    # math compares against (the sampler's own logps are T-scaled; a T=1 forward skews them).
+    ref_shared = cluster.reference is cluster.model
     lent = False
 
     def sync() -> None:
@@ -185,14 +139,39 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig', reward_con
     try:
         # the initial publication: a resumed policy differs from the weights the sampler loaded
         sync()
-        for trajs, samples in driver:
+        for batch_index, trajs in enumerate(driver):
             if cluster.colocate:
                 reclaim()
-            versions_cell[:] = [sample.version_span for sample in samples]
-            kept, advantages, returns, values, old_logps = _gae_pipeline(
-                cluster, reward_config, rl_config, trajs, samples, train_batch_size, reward_metric)
+            batch_facts = driver.batch_summary(batch_index)
+            versions_cell[:] = batch_facts.get('version_spans') or []
+            # the nonempty-response rule runs in the worker on the real rows; the kept rows'
+            # summary replaces the batch facts (its metrics describe exactly what trains).
+            trajs, kept_facts = cluster.traj_filter.select(
+                trajs, where=lambda traj: bool(traj.get('response_token_ids')))
+            if not trajs:
+                raise RuntimeError('the pulled batch has no response tokens to train on.')
+            lengths = [p + r for p, r in zip(kept_facts.get('prompt_lengths') or (),
+                                            kept_facts.get('response_lengths') or ())]
+            # the critic's values (``task='value'``) and the reference's logps: two whole-batch
+            # response-framed forwards over the kept rows; the policy actor chains its own
+            # disable_lora pass when the reference IS the policy object.
+            values_out = cluster.value_model.forward_only(
+                inputs=trajs, output_frame='response', output_fields=('values',),
+                micro_batch_size=micro_batch_size, task='value')
+            ref_out = cluster.reference.forward_only(
+                inputs=trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
+                micro_batch_size=micro_batch_size, **({'disable_lora': True} if ref_shared else {}))
+            # ONE advantage call (estimator=gae, kl=k1): token rewards ``r - kl_coef*KL`` with the
+            # weighted ORM score on the last token, GAE over the pre-update critic values; the
+            # trajectories come back carrying advantages / returns / old_logps / old_values.
+            trajs, gae_summary = cluster.advantage(trajs, ref_out=ref_out, value_out=values_out)
+            # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
+            reward_metric.reset()
+            reward_metric.accumulate(
+                rewards={'total': list(gae_summary.get('reward_totals') or ())},
+                completion_lengths=list(kept_facts.get('response_lengths') or ()))
             _train_ppo_batch(
-                cluster, state, rl_config, kept, advantages, returns, values, old_logps,
+                cluster, state, rl_config, trajs, lengths,
                 train_batch_size=train_batch_size, temperature=temperature, ema_manager=ema_manager, save=save)
             batches += 1
             if state.reached_max() or state.should_stop():
@@ -423,7 +402,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     state.handler.on_train_begin()
     try:
         if not (state.reached_max() or state.should_stop()):
-            _train_loop(cluster, driver, rl_config, reward_config, rollout_config, state, reward_metric,
+            _train_loop(cluster, driver, rl_config, rollout_config, state, reward_metric,
                         train_batch_size=train_batch_size, ema_manager=ema_manager, save=save,
                         versions_cell=_versions_cell)
     finally:

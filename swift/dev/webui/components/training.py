@@ -109,6 +109,49 @@ def _aligned_slice(value: Any, start: int, stop: int) -> Any:
     return value
 
 
+def _loss_lane(slot: str, value: Any) -> Any:
+    """One MODEL_OUTPUT lane's bare row sequence, resolved HERE under the lane's slot name.
+
+    The lane is a whole ModelOutput (or its handle): the slot names the channel when it
+    matches (``ref_logps`` reads the ``ref_logps`` channel), otherwise the value must carry
+    exactly one data channel -- its rows become the loss kwarg (the loss's pad-and-align
+    iterates SAMPLES; a dict would iterate the dict's KEYS)."""
+    value = deref(value)
+    if not isinstance(value, dict):
+        return value
+    if slot in value:
+        return value[slot]
+    from .signals import output_channels
+
+    channels = output_channels(value)
+    if len(channels) == 1:
+        return next(iter(channels.values()))
+    if 'values' in channels and len(channels) == 1:
+        return channels['values']
+    raise ComponentError(
+        f'a loss lane must name one channel; slot {slot!r} got {sorted(channels) or "none"}')
+
+
+def _reference_lane(value: Any) -> Any:
+    """The reference forward's logps channel (the DPO/KTO reference signal)."""
+    return _loss_lane('logps', value)
+
+
+def _teacher_lane(value: Any) -> tuple:
+    """The teacher forward's channel as ``(loss kwarg, rows)``: logits bind GKD-style
+    distillation, logps the SDAR/RLSD signal."""
+    value = deref(value)
+    from .signals import output_channels
+
+    channels = output_channels(value)
+    if 'logits' in channels:
+        return 'teacher_logits', channels['logits']
+    if 'logps' in channels:
+        return 'teacher_logps', channels['logps']
+    raise ComponentError(
+        f'a teacher lane carries a logits or logps channel; got {sorted(channels) or "none"}')
+
+
 class TrainStepStage(StageComponent):
     """train_step: real forward_backward + optimizer step.
 
@@ -117,12 +160,14 @@ class TrainStepStage(StageComponent):
     The loss instance is registered ONCE per node on the model's own loss
     registry under ``train:<node_id>`` (the same registry any model_forward
     probe uses with its own key), and the optimizer is configured ONCE on
-    the wired model with the total horizon. Loss kwargs come from the
-    arguments port's slots (the real loss parameter names). The input is
-    raw data / trajectories -- encoded here under the node's own tokenizer
-    param, exactly the per-round re-encode the dev recipes run. The
-    ``model`` output carries the trained model reference forward (an
-    identity downstream effects consume instead of an actor fan-out)."""
+    the wired model with the total horizon. The training targets lift off
+    the trajectories themselves (the model's own rollout-feature lift); the
+    wired reference / teacher forwards and the explicit ``lanes`` slots are
+    the only supplementary loss kwargs. The input is raw data / trajectories
+    -- encoded here under the node's own tokenizer param, exactly the
+    per-round re-encode the dev recipes run. The ``model`` output carries
+    the trained model reference forward (an identity downstream effects
+    consume instead of an actor fan-out)."""
 
     type = 'train_step'
 
@@ -177,29 +222,37 @@ class TrainStepStage(StageComponent):
         # port projection is the flattened lane) or projects its last batch
         # (the streaming driver); the positional batch is the loader shape,
         # whose port value is the resident DataLoader object itself. A LIST
-        # port value wins, anything else falls back to the positional batch --
-        # the same port-first convention score and advantage apply.
+        # port value wins; a remote handle resolves HERE (the training loop
+        # encodes the rows under the node's own tokenizer); anything else
+        # falls back to the positional batch -- the same port-first
+        # convention score and advantage apply.
         port_batch = inputs.get('batch')
-        data = port_batch if isinstance(port_batch, list) else batch
+        if port_batch is None:
+            data = batch
+        elif isinstance(port_batch, list):
+            data = port_batch
+        else:
+            data = deref(port_batch)
         features = self._features(data)
         if not isinstance(features, list):
             features = [features]
         if not features:
             raise ComponentError(f'{self.node_id}: the encoded batch is empty')
+        # The supplementary loss kwargs: the standard training targets (advantages /
+        # returns / old_logps / ...) ride the trajectories and lift in the model's
+        # forward -- only the reference / teacher forwards and the EXPLICIT lane
+        # slots (custom-formula losses) become kwargs here.
         loss_kwargs: Dict[str, Any] = {}
-        for slot, value in (inputs.get('arguments') or []):
+        for slot, value in (inputs.get('lanes') or []):
             if value is not None:
-                # A small numeric lane (advantages / returns / old_logps / a
-                # blended teacher-logps lane) read back HERE, exactly the way
-                # the recipes consume the estimator output; the heavy forward
-                # channels stay references end to end. A lane a combine or
-                # reduce node produced wraps its rows under 'values' -- the
-                # loss takes the BARE row sequence (its pad-and-align
-                # iterates SAMPLES; a dict would iterate the dict's KEYS).
-                value = deref(value)
-                if isinstance(value, dict) and isinstance(value.get('values'), (list, tuple)):
-                    value = value['values']
-                loss_kwargs[str(slot)] = value
+                loss_kwargs[str(slot)] = _loss_lane(str(slot), value)
+        reference = inputs.get('reference')
+        if reference is not None:
+            loss_kwargs['ref_logps'] = _reference_lane(reference)
+        teacher = inputs.get('teacher')
+        if teacher is not None:
+            key, lane = _teacher_lane(teacher)
+            loss_kwargs[key] = lane
         ga = _int_value(self.params.get('gradient_accumulation_steps'), 1)
         micro = _int_value(self.params.get('micro_batch_size'), 1)
         max_grad_norm = _float_value(self.params.get('max_grad_norm'), 1.0)
@@ -230,11 +283,11 @@ class TrainStepStage(StageComponent):
             # is the micro-batch plan (GA = its length), so one call is one
             # optimizer step; loss kwargs are sliced worker-side by the loss's
             # own micro_batch_kwargs.
-            deref(model.forward_backward(inputs=features, loss_key=loss_key,
-                                          micro_batch_size=micro or None,
-                                          **({'task': forward_task} if forward_task else {}),
-                                          **loss_kwargs))
-            deref(model.clip_grad_and_step(max_grad_norm=max_grad_norm))
+            model.forward_backward(inputs=features, loss_key=loss_key,
+                                    micro_batch_size=micro or None,
+                                    **({'task': forward_task} if forward_task else {}),
+                                    **loss_kwargs)
+            model.clip_grad_and_step(max_grad_norm=max_grad_norm)
             optimizer_steps = 1
         else:
             for start in range(0, len(features), micro):
@@ -242,16 +295,15 @@ class TrainStepStage(StageComponent):
                 mini_kwargs = {key: _aligned_slice(value, start, stop)
                                for key, value in loss_kwargs.items()}
                 self._micro_step = getattr(self, '_micro_step', 0) + 1
-                # The remote calls return lazy handles; collecting them HERE is
-                # what makes a worker-side loss error fail this stage loudly --
-                # a dropped handle leaves the step silently no-op (ray prints
-                # "Unhandled error" but the driver never sees the exception).
-                deref(model.forward_backward(inputs=features[start:stop], loss_key=loss_key,
-                                              gradient_accumulation_steps=ga,
-                                              **({'task': forward_task} if forward_task else {}),
-                                              **mini_kwargs))
-                deref(model.clip_grad_and_step(max_grad_norm=max_grad_norm,
-                                                gradient_accumulation_steps=ga))
+                # forward_backward / clip_grad_and_step are declared sync=True on both
+                # backends: a worker-side failure raises at the call itself -- a step
+                # never silently no-ops behind an unread handle.
+                model.forward_backward(inputs=features[start:stop], loss_key=loss_key,
+                                        gradient_accumulation_steps=ga,
+                                        **({'task': forward_task} if forward_task else {}),
+                                        **mini_kwargs)
+                model.clip_grad_and_step(max_grad_norm=max_grad_norm,
+                                         gradient_accumulation_steps=ga)
                 if is_grad_sync_boundary(self._micro_step, ga):
                     optimizer_steps += 1
         metric_row = None

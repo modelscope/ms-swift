@@ -28,12 +28,12 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], samples: Optional[List[Any]],
+def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], lengths: Optional[List[int]],
                 use_student: bool, *, train_batch_size: int, save: Optional[Callable[[str], Any]]) -> int:
     """Submit full GA updates, dropping the tail; both models split micro-batches internally.
 
-    ``trajs`` are the driver's trajectories (on-policy, with their ``samples``) or encoded dataset
-    rows (off-policy, ``samples`` None).
+    ``trajs`` are the driver's trajectories (on-policy, with the batch summary's row lengths) or
+    encoded dataset rows (off-policy, ``lengths`` None).
     """
     update_batch_size = train_batch_size * state.ga
     dropped = len(trajs) % update_batch_size
@@ -48,9 +48,9 @@ def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], samples: O
             break
         update = trajs[lo:hi]
         state.micro_step += (hi - lo) // train_batch_size
-        plan = (plan_rollout_batch(state, update, samples=samples[lo:hi],
+        plan = (plan_rollout_batch(state, update, lengths=lengths[lo:hi],
                                    micro_batch_kwargs={'micro_batch_size': micro_batch_size})
-                if samples is not None else None)
+                if lengths is not None else None)
         update = apply_rollout_plan(plan, update)
         # The worker runs the teacher forward -- the driver never sees the full-vocab logits or the
         # logps, only the light kwargs carrying them as refs.
@@ -99,12 +99,15 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig', rollout_co
         # the initial publication: a resumed policy differs from the weights the sampler loaded
         cluster.engine.sync_weights()
         lent = cluster.colocate
-        for trajs, samples in driver:
+        for batch_index, batch in enumerate(driver):
             if cluster.colocate:
                 sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                 cluster.model.reload_to_gpu()
                 lent = False
-            _train_rows(cluster, state, trajs, samples, True, train_batch_size=train_batch_size, save=save)
+            batch_facts = driver.batch_summary(batch_index)
+            lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
+                                            batch_facts.get('response_lengths') or ())]
+            _train_rows(cluster, state, batch, lengths, True, train_batch_size=train_batch_size, save=save)
             batches += 1
             if not train_off_policy():
                 break

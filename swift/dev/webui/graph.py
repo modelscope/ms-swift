@@ -394,13 +394,18 @@ class Graph:
                 raise GraphValidationError(f'{node.id}.model: 采样器模型来源必须明确')
             if node.type == 'streaming_driver' and (('engine' in keys) == ('episode' in keys)):
                 raise GraphValidationError(f'{node.id}: engine 与 episode 必须恰接入一种来源')
-            if node.type == 'advantage' and node.params['estimator'] == 'gae' and node.params['profile'] != 'token':
-                raise GraphValidationError(f'{node.id}.profile: GAE 必须输出 token 优势')
-            if node.type == 'reward_shape' and node.params['beta'] and node.params['kl'] == 'none':
-                raise GraphValidationError(f'{node.id}.kl: 非零 beta 必须选择两路 KL 估计')
             if node.type == 'signal_combine' and node.params['mode'] == 'probability_mixture':
-                if self.output_port(node.id, 'out').profiles != ('logps',):
-                    raise GraphValidationError(f'{node.id}: 概率混合只能消费 logps')
+                # MODEL_OUTPUT 的通道在 worker 侧解析；这里只校验确定的部分——
+                # model_forward 的 outputs 参数声明了确切字段，非纯 logps 的
+                # 前向进不了概率混合（logsumexp），其余来源交给运行期 fail-loudly。
+                for edge in self.incoming(node.id):
+                    if edge.target_port != 'signals':
+                        continue
+                    source = self.node(edge.source)
+                    if source.type == 'model_forward' \
+                            and list(source.params.get('outputs') or []) != ['logps']:
+                        raise GraphValidationError(
+                            f'{node.id}: 概率混合只能消费 logps（{edge.source}.outputs 需为 ["logps"]）')
 
     def _scope_sources(self, node_id: str) -> Dict[str, List[Tuple[str, str]]]:
         """沿身份边可达的 Resource 节点导出变量（kind -> [(节点, 输出口)]）。
@@ -724,13 +729,23 @@ class GraphUpgrade:
         self.choices = []
         self._uses = {}
         version = self.original.get('version', 2)
-        if type(version) is not int or version not in (2, 3, 4):
+        if type(version) is not int or version not in (2, 3, 4, 5):
             self._issue('version', '未知版本，保留原声明并禁止运行')
             return self._result()
+        if version == 5:
+            return self._result()
         if version == 4:
+            try:
+                self._upgrade_v4_to_v5()
+            except (KeyError, TypeError, ValueError) as exc:
+                self._issue('graph', f'旧声明无法确定迁移：{exc}')
             return self._result()
         if version == 3:
-            self._upgrade_v3_to_v4()
+            try:
+                self._upgrade_v3_to_v4()
+                self._upgrade_v4_to_v5()
+            except (KeyError, TypeError, ValueError) as exc:
+                self._issue('graph', f'旧声明无法确定迁移：{exc}')
             return self._result()
         if type(self.original.get('nodes')) is not list or type(self.original.get('edges', [])) is not list:
             self._issue('graph', '旧图节点或边结构畸形，不能静默过滤')
@@ -748,6 +763,7 @@ class GraphUpgrade:
             self._migrate_edges()
             self._migrate_frames(selections)
             self._upgrade_v3_to_v4()
+            self._upgrade_v4_to_v5()
         except (KeyError, TypeError, ValueError) as exc:
             self._issue('graph', f'旧声明无法确定迁移：{exc}')
         return self._result()
@@ -791,6 +807,193 @@ class GraphUpgrade:
                                        {'kind': kind, 'scorer_kwargs': kwargs})
             self._add_edge(scorer_id, 'scorer', scored['id'], 'scorers', slot=scorer_id)
         self.candidate['version'] = 4
+
+    def _strip_frames(self, node_id: str) -> None:
+        for frame in self.candidate.get('frames') or []:
+            for key in ('members', 'sources', 'consumers'):
+                frame[key] = [item for item in frame.get(key, []) if item != node_id]
+
+    def _fold_reward_shapes(self) -> None:
+        """v4 reward_shape 的确定等价折叠：beta/kl 收进下游估计器 kwargs，
+        参考前向改接 ref_out；被比较 logps 与显式基线在 v5 分别由轨迹与估计器
+        内部承载。去处不确定（多消费者或非估计器）时保留为待确认项。"""
+        for node in list(self.candidate['nodes']):
+            if node['type'] != 'reward_shape':
+                continue
+            params = node.setdefault('params', {})
+            outgoing = [edge for edge in self.candidate['edges'] if edge['source'] == node['id']]
+            consumers = {edge['target'] for edge in outgoing}
+            sole = next(iter(consumers), '')
+            if len(consumers) != 1 or self._nodes().get(sole, {}).get('type') != 'advantage':
+                self._issue(node['id'],
+                            'reward shaping 数学已并入优势估计器；此处去处不确定，需手动迁移 beta/kl 后删除')
+                continue
+            advantage = self._nodes()[sole]
+            kwargs = dict(advantage.setdefault('params', {}).get('kwargs') or {})
+            if params.get('beta') not in (None, 0.0):
+                kwargs['beta'] = params['beta']
+            if params.get('kl') not in (None, 'none'):
+                kwargs['kl'] = params['kl']
+            advantage['params']['kwargs'] = kwargs
+            self.changes.append({'node': advantage['id'], 'action': 'fold',
+                                 'from': node['id'], 'params': ['beta', 'kl']})
+            incoming = self._incoming(node['id'])
+            reward_in = [edge for edge in incoming if edge['target_port'] == 'reward']
+            for edge in outgoing:
+                # 评分出边改由上游评分来源直连估计器的 traj 口（源口随后统一汇成 traj）。
+                if edge['target_port'] == 'reward' and len(reward_in) == 1:
+                    origin = reward_in[0]
+                    edge.update(source=origin['source'], source_port=origin['source_port'],
+                                 target=advantage['id'], target_port='traj')
+                else:
+                    self.candidate['edges'].remove(edge)
+                    self.changes.append({'edge': edge['id'], 'action': 'remove',
+                                         'reason': 'reward shaping 输出随估计器内部化'})
+            for edge in list(incoming):
+                if edge['target_port'] == 'reference':
+                    # 比较基准前向直接估计器 ref_out（源口随后统一汇成 out）。
+                    edge.update(target=advantage['id'], target_port='ref_out')
+                elif edge['target_port'] != 'reward':  # reward 来源已被直连消费
+                    self.candidate['edges'].remove(edge)
+                    self.changes.append({'edge': edge['id'], 'action': 'remove',
+                                         'reason': '被比较 logps/基线在 v5 由轨迹与估计器内部承载'})
+            self._remove_node(node['id'])
+            self._strip_frames(node['id'])
+
+    _V5_FORWARD_FIELDS = ('logps', 'values', 'logits', 'embeddings')
+
+    def _replay_v4_ports(self) -> None:
+        """v4 端口到 v5 契约的一次性重放：samples→traj、评分与训练目标写回
+        轨迹、前向字段口汇成单一 MODEL_OUTPUT、arguments 按用途分流
+        lanes/reference/teacher。无确定等价的边丢弃并记入 changes/choices。"""
+        batch_rewires: Dict[str, str] = {}
+        for edge in list(self.candidate['edges']):
+            source = self._nodes().get(edge['source'], {})
+            target = self._nodes().get(edge['target'], {})
+            st, tt = source.get('type'), target.get('type')
+            drop_reason = ''
+            # 源端口重放
+            if st in ('streaming_driver', 'generate') and edge['source_port'] == 'samples':
+                edge['source_port'] = 'traj'
+                self.changes.append({'edge': edge['id'], 'action': 'rename',
+                                     'port': 'samples', 'to': 'traj'})
+            elif st == 'score' and edge['source_port'] in ('reward', 'process'):
+                if tt == 'advantage':
+                    edge['source_port'] = 'traj'  # 具名列写回轨迹，估计器从 traj 消费
+                else:
+                    drop_reason = '评分列随轨迹交付，REWARD 出口已除名'
+            elif st == 'model_forward' and edge['source_port'] in self._V5_FORWARD_FIELDS + ('topk',):
+                if edge['source_port'] == 'topk':
+                    self._issue(edge['id'], 'topk 输出从未实现，v5 拒绝该请求')
+                    drop_reason = 'topk 前向输出从未实现'
+                else:
+                    edge['source_port'] = 'out'
+            elif st == 'advantage' and edge['source_port'] in ('adv', 'returns', 'old_logps'):
+                if tt == 'train_step' and edge['target_port'] == 'arguments':
+                    batch_rewires[edge['target']] = edge['source']
+                    drop_reason = '训练目标随轨迹交付：估计器输出直接接管训练批'
+                else:
+                    self._issue(edge['id'], '优势结果随轨迹交付：消费方改接 advantage.traj 或改用 metric 摘要')
+                    drop_reason = '优势/returns/old_logps 列随轨迹交付'
+            elif st == 'select' and edge['source_port'] == 'reward':
+                if tt == 'advantage':
+                    edge['source_port'] = 'batch'
+                else:
+                    drop_reason = '筛选后的评分随轨迹交付'
+            if drop_reason:
+                self.candidate['edges'].remove(edge)
+                self.changes.append({'edge': edge['id'], 'action': 'remove', 'reason': drop_reason})
+                continue
+            # 目标端口重放（源侧规则不改目标口，此时读到的仍是 v4 原始口）
+            if tt == 'score' and edge['target_port'] == 'samples':
+                edge['target_port'] = 'traj'
+            elif tt == 'advantage':
+                if edge['target_port'] == 'values':
+                    edge['target_port'] = 'value_out'
+                elif edge['target_port'] == 'baseline':
+                    self._issue(edge['id'], '显式基线口已除名：remax 基线在估计器内部，需重新接线')
+                    self.candidate['edges'].remove(edge)
+                    self.changes.append({'edge': edge['id'], 'action': 'remove',
+                                         'reason': 'baseline 口在 v5 契约中不存在'})
+                    continue
+                elif edge['target_port'] == 'reward' and st in ('score', 'select'):
+                    edge['target_port'] = 'traj'
+                elif edge['target_port'] == 'traj' and st in ('streaming_driver', 'generate', 'select', 'dataloader'):
+                    # v4 的补充身份口：评分/筛选链的 traj 边已接管估计器输入。
+                    self.candidate['edges'].remove(edge)
+                    self.changes.append({'edge': edge['id'], 'action': 'remove',
+                                         'reason': '估计器的轨迹口由评分/筛选链提供'})
+                    continue
+            elif tt == 'select' and edge['target_port'] == 'reward':
+                self.candidate['edges'].remove(edge)
+                self.changes.append({'edge': edge['id'], 'action': 'remove',
+                                     'reason': '筛选判据改读轨迹具名评分列'})
+                continue
+            elif tt == 'train_step' and edge['target_port'] == 'arguments':
+                slot = edge.get('slot', '')
+                if st == 'model_forward' and slot == 'ref_logps':
+                    edge.update(target_port='reference')
+                    edge.pop('slot', None)
+                elif st == 'model_forward' and slot == 'teacher_logps':
+                    edge.update(target_port='teacher')
+                    edge.pop('slot', None)
+                elif st in ('model_forward', 'signal_combine'):
+                    edge['target_port'] = 'lanes'
+                elif st == 'reduce':
+                    pass  # reduce 本身保留为待确认项，边随节点一起等待处置
+                else:
+                    self._issue(edge['id'], f'arguments 来源 {st!r} 无确定的 lane 等价，需重新接线')
+        # 优势链接管训练批：写完训练目标的轨迹就是训练输入。
+        for step_id, advantage_id in batch_rewires.items():
+            for edge in list(self.candidate['edges']):
+                if edge['target'] == step_id and edge['target_port'] == 'batch':
+                    self.candidate['edges'].remove(edge)
+                    self.changes.append({'edge': edge['id'], 'action': 'remove',
+                                         'reason': '训练批改由优势估计链提供'})
+            self._add_edge(advantage_id, 'traj', step_id, 'batch')
+
+    def _upgrade_v4_to_v5(self) -> None:
+        """v4 -> v5：轨迹成为唯一样本载荷。samples 口改名 traj；评分与训练
+        目标写回轨迹本身；前向汇成单一 MODEL_OUTPUT 出口；REWARD/SIGNAL/ADV
+        包装通道随声明一起消失。折叠只在等价确定时执行——reward_shape 的
+        beta/kl 收进下游估计器 kwargs；reduce 没有确定等价，保留为待确认项。"""
+        self._fold_reward_shapes()
+        self._replay_v4_ports()
+        for node in self.candidate['nodes']:
+            params = node.setdefault('params', {})
+            if node['type'] == 'model_forward':
+                outputs = list(params.get('outputs') or [])
+                if 'topk' in outputs:
+                    self._issue(f'{node["id"]}.outputs', 'topk 输出从未实现，已从声明移除')
+                    params['outputs'] = [key for key in outputs if key != 'topk'] or ['logps']
+                if params.pop('top_k', None) is not None:
+                    self.changes.append({'node': node['id'], 'param': 'top_k', 'action': 'remove'})
+            if node['type'] == 'advantage':
+                kwargs = dict(params.get('kwargs') or {})
+                if 'gamma' in params:
+                    kwargs.setdefault('gamma', params.pop('gamma'))
+                    self.changes.append({'node': node['id'], 'param': 'gamma', 'action': 'fold'})
+                if 'lam' in params:
+                    kwargs.setdefault('gae_lambda', params.pop('lam'))
+                    self.changes.append({'node': node['id'], 'param': 'lam', 'action': 'fold',
+                                         'to': 'kwargs.gae_lambda'})
+                profile = params.pop('profile', None)
+                if profile not in (None, 'token'):
+                    self.changes.append({'node': node['id'], 'param': 'profile', 'action': 'remove',
+                                         'reason': 'v5 优势统一 token 帧；row 标量由估计器广播'})
+                params['kwargs'] = kwargs
+            if node['type'] == 'reduce':
+                self._issue(node['id'],
+                            'reduce 无默认画布等价：观测归约并入 metric 摘要；自定义归约改写为 code_component 后重连')
+            descriptor = REGISTRY.get(node['type'])
+            if descriptor is None:
+                self._issue(node['id'], f'未知类型 {node["type"]!r}，需要 v5 契约下的真实节点')
+                continue
+            declared = {param.name for param in descriptor.params}
+            for key in list(params):
+                if key not in declared:
+                    self._issue(f'{node["id"]}.{key}', '旧参数没有确定的新构造字段，不静默删除')
+        self.candidate['version'] = 5
 
     def _expand_views(self, selections: dict) -> None:
         for node in list(self.candidate['nodes']):
@@ -926,7 +1129,12 @@ class GraphUpgrade:
                 self._uses[node['id']] = params.pop('use', None)
                 params.pop('compute_loss', None)
                 fields = [edge['source_port'] for edge in self.candidate['edges'] if edge['source'] == node['id']]
-                if any(key not in ('logps', 'values', 'logits', 'topk', 'embeddings') for key in fields):
+                if 'topk' in fields:
+                    # topk 从未实现（宣称的截断 logits 降级）：v5 拒绝该请求，
+                    # 升级指出它而不是伪造一个输出通道。
+                    self._issue(node['id'], 'topk 输出从未实现，请从 outputs 中移除该请求')
+                    fields = [key for key in fields if key != 'topk']
+                if any(key not in ('logps', 'values', 'logits', 'embeddings') for key in fields):
                     self._issue(node['id'], '旧前向输出缺少明确数值 profile')
                 params['outputs'] = list(dict.fromkeys(fields or ['logps']))
             if node['type'] in ('forward_signal', 'train_step') and not params.get('tokenizer'):

@@ -204,7 +204,8 @@ def build_rft_driver(*, cluster: RFTCluster, rollout_config: "RolloutConfig", pr
 
     No checkpoint manager: the policy is frozen for the round (synced once before it), so nothing is
     stale and every group is handed out, the last one included; about ``window`` groups run ahead.
-    The orm channel scores every finished episode.
+    The orm channel scores every finished episode; ``orm_scorer_names`` name the scores the
+    batches' summaries carry.
     """
     import math
 
@@ -218,6 +219,7 @@ def build_rft_driver(*, cluster: RFTCluster, rollout_config: "RolloutConfig", pr
         num_generations=num_samples,
         num_train_epochs=1,
         orms=cluster.orm_scorers,
+        orm_names=cluster.orm_scorer_names,
         max_staleness=max(0, math.ceil(window / rollout_config.parameter_sync_step) - 1),
         remote=True,
     )

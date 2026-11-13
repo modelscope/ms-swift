@@ -21,6 +21,15 @@ KIND_CATEGORY_SCOPE = 'scope'
 KIND_CATEGORY_DATA = 'data'
 KIND_CATEGORY_FLOW = 'flow'
 
+#: 展示归属面（W2）：算法面是可解释可替换的计算动作；资源面是常驻资源与绑定；
+#: 运行面是游标/同步/保存等工程执行设置；产物面是导出与发布。前端只用该
+#: metadata 分类与投影，不复制第二套图。
+SURFACE_ALGORITHM = 'algorithm'
+SURFACE_RESOURCE = 'resource'
+SURFACE_RUNTIME = 'runtime'
+SURFACE_ARTIFACT = 'artifact'
+SURFACES = (SURFACE_ALGORITHM, SURFACE_RESOURCE, SURFACE_RUNTIME, SURFACE_ARTIFACT)
+
 KIND_CATEGORIES: dict[str, str] = {
     'MODEL': KIND_CATEGORY_SCOPE,
     'SAMPLER': KIND_CATEGORY_SCOPE,
@@ -35,9 +44,7 @@ KIND_CATEGORIES: dict[str, str] = {
     'DATA': KIND_CATEGORY_DATA,
     'BATCH': KIND_CATEGORY_DATA,
     'TRAJ': KIND_CATEGORY_DATA,
-    'REWARD': KIND_CATEGORY_DATA,
-    'SIGNAL': KIND_CATEGORY_DATA,
-    'ADV': KIND_CATEGORY_DATA,
+    'MODEL_OUTPUT': KIND_CATEGORY_DATA,
     'LOSS': KIND_CATEGORY_DATA,
     'SCORER': KIND_CATEGORY_DATA,
     'STEP': KIND_CATEGORY_DATA,
@@ -54,7 +61,6 @@ KIND_CATEGORIES: dict[str, str] = {
 KIND_ALLOWS: dict[str, tuple[str, ...]] = {
     'DATA': ('TRAJ',),
     'BATCH': ('TRAJ',),
-    'ADV': ('SIGNAL',),
 }
 
 
@@ -199,12 +205,16 @@ class ComponentDescriptor:
     #: 计算执行位：driver（session 进程）或 remote（数值 worker，重载荷以
     #: 引用进出，session 只持句柄与小控制标量）。
     execution: str = 'driver'
+    #: 展示归属面（算法/资源/运行/产物）：前端分类与投影的唯一来源。
+    surface: str = SURFACE_ALGORITHM
 
     def __post_init__(self) -> None:
         if self.lifecycle not in LIFECYCLES:
             raise ValueError(f'{self.type}: 非法生命周期 {self.lifecycle!r}')
         if self.execution not in ('driver', 'remote'):
             raise ValueError(f'{self.type}: 非法执行位 {self.execution!r}')
+        if self.surface not in SURFACES:
+            raise ValueError(f'{self.type}: 非法展示归属面 {self.surface!r}')
         for key in ('ports_in', 'ports_out', 'params', 'effects', 'exclusive_inputs', 'required_when'):
             if not isinstance(getattr(self, key), tuple):
                 raise TypeError(f'{self.type}.{key}: 需要 tuple')
@@ -247,4 +257,4 @@ class ComponentDescriptor:
                 'client_factory': self.client_factory, 'effects': list(self.effects),
                 'exclusive_inputs': [list(group) for group in self.exclusive_inputs],
                 'required_when': [[key, value, list(ports)] for key, value, ports in self.required_when],
-                'owner_kind': self.owner_kind, 'execution': self.execution}
+                'owner_kind': self.owner_kind, 'execution': self.execution, 'surface': self.surface}

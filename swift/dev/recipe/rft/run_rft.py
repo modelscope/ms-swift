@@ -109,18 +109,20 @@ class RFTSelector:
         #: The round reward metric, fed once per round and read back by :meth:`step_telemetry`.
         self._reward_metric = None
 
-    def accumulate_metric(self, samples: List[Any], rewards_per_func: Any) -> None:
+    def accumulate_metric(self, rewards_matrix: Any, completion_lengths: List[int]) -> None:
         """Feed one round's WHOLE generated rollout into the reward metric (reset-then-accumulate).
 
         Called before rejection so the logged reward tracks the policy's improving sample quality --
-        filtering first would make the metric read only the kept winners and hide the trend.
+        filtering first would make the metric read only the kept winners and hide the trend. The
+        matrix is the round's collected ORM score rows (straight off the driver's batch summaries,
+        so no trajectory is materialised for it).
         """
         from swift.dev.utils.scoring import accumulate_reward_metric
         from twinkle.metric import CompletionRewardMetric
 
         if self._reward_metric is None:
             self._reward_metric = CompletionRewardMetric()
-        accumulate_reward_metric(self._reward_metric, samples, rewards_per_func,
+        accumulate_reward_metric(self._reward_metric, rewards_matrix, completion_lengths,
                                  scorer_names=self.reward_scorer_names, reward_weights=self.reward_weights)
 
     def step_telemetry(self) -> dict:
@@ -147,22 +149,22 @@ class RFTSelector:
             keep = keep[:self.rft_max_samples_per_prompt]
         return keep
 
-    def select(self, samples: List[Any], rewards: List[float]) -> List[Any]:
-        """Apply the rejection filter across every prompt group, returning the kept samples.
+    def select(self, num_rows: int, rewards: List[float]) -> List[int]:
+        """Apply the rejection filter across every prompt group, returning the kept row indices.
 
-        The kept completions train with plain cross-entropy, so only the sample list is consumed
-        downstream -- no advantage / log-prob columns exist in RFT.
+        Pure numeric rule over the collected score rows: the caller slices its reference list with
+        the returned indices (kept best-first), so the completions stay references end to end --
+        no advantage / log-prob columns exist in RFT.
         """
         n = self.num_generations
-        if len(samples) % n != 0:
-            raise RuntimeError(f'{len(samples)} samples is not a multiple of num_generations={n}; '
+        if num_rows % n != 0:
+            raise RuntimeError(f'{num_rows} rows is not a multiple of num_generations={n}; '
                                'group-wise rejection sampling is impossible.')
-        selected: List[Any] = []
-        for start in range(0, len(samples), n):
-            group = samples[start:start + n]
+        selected: List[int] = []
+        for start in range(0, num_rows, n):
             group_rewards = rewards[start:start + n]
             for local in self._select_keep(group_rewards):
-                selected.append(group[local])
+                selected.append(start + local)
         return selected
 
 
@@ -187,8 +189,11 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
 
 
 def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloader, num_samples, window):
-    """Generate and score one round, returning the kept ``(trajs, samples)``.
+    """Generate and score one round, returning the kept trajectories (references) and row lengths.
 
+    The driver hands each batch out with its named score column already on the rows; the round
+    collects the references plus the batch summaries' numeric columns (score rows, response
+    lengths), so rejection sampling and the reward metric never materialise a trajectory.
     The round's policy is the one the previous round trained: one sync first (colocated, it hands
     the devices to the sampler), then one driver over the whole prompt set; the devices come back
     on every exit.
@@ -201,37 +206,45 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
     cluster.engine.sync_weights()
     driver = build_rft_driver(cluster=cluster, rollout_config=rollout_config, prompt_dataloader=dataloader,
                               num_samples=num_samples, window=window)
-    trajs, samples = [], []
+    trajs, orm_rows, lengths = [], [], []
     try:
-        for batch_trajs, batch_samples in driver:
-            trajs.extend(batch_trajs)
-            samples.extend(batch_samples)
-            if len(samples) % (window * num_samples) == 0:
-                logger.info(f'[rft] round generation: {len(samples) // num_samples} prompts done.')
+        for batch_index, batch in enumerate(driver):
+            batch_facts = driver.batch_summary(batch_index)
+            trajs.extend(batch)
+            names = list(batch_facts.get('orm_scores') or {})
+            if names:
+                orm_rows.extend(list(row) for row in zip(*(batch_facts['orm_scores'][name] for name in names)))
+            else:
+                # a no-scorer round: every row is a [nan] placeholder, exactly the old reading of a
+                # null orm_reward column.
+                orm_rows.extend([None] for _ in batch)
+            lengths.extend(batch_facts.get('response_lengths') or ())
+            if len(trajs) % (window * num_samples) == 0:
+                logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')
     finally:
         driver.close()
         if cluster.colocate:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
-    if not samples:
+    if not trajs:
         raise RuntimeError('the RFT round produced no scored group (every episode failed).')
     # None (an unparseable judge verdict) rides as nan: the metric fold and the weighted sum below
     # consume the same nan-normalized sample-major matrix.
     rewards_matrix = torch.tensor(
-        [[float("nan") if value is None or value != value else float(value) for value in sample.orm_reward]
-         for sample in samples],
+        [[float("nan") if value is None or value != value else float(value) for value in (row or ())]
+         or [float("nan")] for row in orm_rows],
         dtype=torch.float32,
     )
     # Feed the whole generated rollout (before rejection) into the reward metric, so the logged
     # train/total_reward tracks the policy's improving sample quality -- the SFT loss on the kept
     # subset alone hides it.
-    selector.accumulate_metric(samples, rewards_matrix)
+    selector.accumulate_metric(rewards_matrix, lengths)
     rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
-    kept = selector.select(list(range(len(samples))), rewards)
-    return [trajs[i] for i in kept], [samples[i] for i in kept]
+    kept = selector.select(len(trajs), rewards)
+    return [trajs[i] for i in kept], [lengths[i] for i in kept]
 
 
-def _train_selected_samples(cluster, state, trajs, samples, train_batch_size, save_steps):
+def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, save_steps):
     """Train full GA groups, dropping the tail; defer saves to the round boundary."""
     from swift.dev.utils.scoring import copy_inputs
 
@@ -246,7 +259,7 @@ def _train_selected_samples(cluster, state, trajs, samples, train_batch_size, sa
             break
         update = trajs[start:end]
         plan = plan_rollout_batch(
-            state, update, samples=samples[start:end], micro_batch_kwargs={'micro_batch_size': micro_batch_size})
+            state, update, lengths=lengths[start:end], micro_batch_kwargs={'micro_batch_size': micro_batch_size})
         update = apply_rollout_plan(plan, update)
         state.micro_step += (end - start) // train_batch_size
         cluster.model.forward_backward(
@@ -405,9 +418,10 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         for round_index in range(start_round, rl_config.rft_iterations):
             if state.reached_max():
                 break
-            trajs, samples = _sample_and_select(
+            kept_trajs, kept_lengths = _sample_and_select(
                 cluster, rollout_config, reward_config, selector, dataloader, num_samples, generation_batch_size)
-            round_save_due = _train_selected_samples(cluster, state, trajs, samples, train_batch_size, save_steps)
+            round_save_due = _train_selected_samples(
+                cluster, state, kept_trajs, kept_lengths, train_batch_size, save_steps)
             # Commit the round only after its SFT pass has completed (or max_steps deliberately
             # truncated it), then persist at this safe boundary.
             rft_state.next_round = round_index + 1

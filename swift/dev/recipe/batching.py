@@ -6,14 +6,15 @@ from typing import Any
 
 
 def plan_rollout_batch(
-    state: Any, inputs, *, samples=None, model=None, micro_batch_kwargs=None, metric_prefix="dp_balance"
+    state: Any, inputs, *, lengths=None, model=None, micro_batch_kwargs=None, metric_prefix="dp_balance"
 ):
     """Plan one complete optimizer batch after generation has revealed sequence lengths.
 
     Callers apply the same permutation to every per-sample training signal, or reorder whole
     records before building teacher signals. Dataset completions and auxiliary SFT bypass this.
-    Streaming samples carry token_lengths alongside the trajectory references; plan from that
-    metadata without fetching the trajectories. Local/synthesized features fall back to their length.
+    The row lengths come from the driver's light batch summary (prompt + response, per row) so
+    reference trajectories are never materialised for their lengths; local features fall back
+    to their own sequence_length.
     """
     if not getattr(state, "balance_batch", False) or not inputs:
         return None
@@ -23,19 +24,19 @@ def plan_rollout_batch(
 
     model = state.model if model is None else model
     config = MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {}))
-    if samples is not None and len(samples) != len(inputs):
-        raise ValueError("Rollout samples and encoded inputs must have the same length for batch balancing.")
-    lengths = []
+    if lengths is not None and len(lengths) != len(inputs):
+        raise ValueError("Rollout row lengths and encoded inputs must have the same length for batch balancing.")
+    row_lengths = []
     for index, feature in enumerate(inputs):
-        counts = getattr(samples[index], "token_lengths", None) if samples is not None else None
-        if counts is None and not isinstance(feature, dict):
+        count = lengths[index] if lengths is not None else None
+        if count is None and not isinstance(feature, dict):
             raise ValueError(
-                "balance_batch needs token_lengths on samples whose trajectories are references "
-                f"(missing metadata at batch index {index})."
+                "balance_batch needs the batch summary's row lengths for reference trajectories "
+                f"(missing at batch index {index})."
             )
-        lengths.append(sum(counts) if counts is not None else sequence_length(feature))
+        row_lengths.append(count if count is not None else sequence_length(feature))
     plan = plan_dp_balance_for_lengths(
-        lengths, model.device_mesh.data_world_size, padding_free=state.padding_free, micro_batch_config=config
+        row_lengths, model.device_mesh.data_world_size, padding_free=state.padding_free, micro_batch_config=config
     )
     metrics = {key.replace("dp_balance/", metric_prefix + "/", 1): value for key, value in plan.metrics.items()}
     return DPBalancePlan(order=plan.order, strategy=plan.strategy, metrics=metrics)

@@ -127,14 +127,21 @@ def build_streaming_driver(*,
                            max_steps: Optional[int] = None,
                            checkpoint_manager: Any = None,
                            orms: Sequence[Any] = (),
+                           orm_names: Optional[Sequence[str]] = None,
                            prms: Sequence[Any] = (),
+                           prm_names: Optional[Sequence[str]] = None,
                            on_sample: Optional[Callable[[Any], Optional[bool]]] = None,
                            on_group: Optional[Callable[[Any, List[Any], int], List[Any]]] = None,
                            max_group_regenerations: int = 0,
                            cluster_adapter: Any = None,
                            max_staleness: Optional[int] = None,
                            remote: bool = False) -> Any:
-    """One ``StreamingDriver`` handing out ``(trajs, samples)`` batches of ``batch_size`` rows.
+    """One ``StreamingDriver`` handing out trajectory batches of ``batch_size`` rows.
+
+    Each batch arrives with its named score columns already written (``rewards.orm`` / ``env`` /
+    ``baseline``, ``prm_segments``) and its identity facts; the light batch facts ride
+    ``driver.batch_summary``. ``orm_names`` / ``prm_names`` name the scorers in those columns
+    (``None`` falls back to the driver's positional names).
 
     Staleness follows ``async_mode`` (:func:`max_staleness_of`) unless ``max_staleness`` is given
     (without a checkpoint manager it only sets how many batches run ahead), the sync interval is
@@ -153,7 +160,9 @@ def build_streaming_driver(*,
         sync_interval=rollout_config.parameter_sync_step,
         checkpoint_manager=checkpoint_manager,
         orms=orms,
+        orm_names=orm_names,
         prms=prms,
+        prm_names=prm_names,
         on_sample=on_sample,
         on_group=on_group,
         max_group_regenerations=max_group_regenerations,

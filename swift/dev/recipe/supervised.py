@@ -8,7 +8,6 @@ from swift.dev.recipe.utils import (
     StepState,
     build_generative_eval,
     build_save_knobs,
-    collect,
     evaluate_generate,
     evaluate_loss,
     fit_supervised,
@@ -280,12 +279,11 @@ def run_supervised(
         state.publish_state()
         handler.on_step_begin()
         # forward_backward / clip_grad_and_step carry @timed at their twinkle definition
-        # site, so the span is recorded on the rank that actually runs them.
-        # Collect: an actor-side failure in forward_backward must fail THIS step, not surface later
-        # as a Ray background error while the driver keeps recording loss=0 and reports a fully
-        # failed run as success.
-        collect(model.forward_backward(
-            **micro_step_fn(samples, micro_batch_size=train_config.per_device_train_batch_size)))
+        # site, so the span is recorded on the rank that actually runs them. forward_backward is
+        # declared sync=True on the model: an actor-side failure raises at this call, failing THIS
+        # step instead of riding an unread handle into a green-looking failed run.
+        model.forward_backward(
+            **micro_step_fn(samples, micro_batch_size=train_config.per_device_train_batch_size))
         handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         handler.on_optimizer_step()

@@ -96,9 +96,9 @@ def begin_rollout_iteration(state):
     state.begin_rollout_iteration()
 
 
-def observe_rollout_samples(state, samples, *, length_fn=None):
-    """Back-compat shim: see :meth:`RolloutStepState.observe_rollout_samples`."""
-    state.observe_rollout_samples(samples, length_fn=length_fn)
+def observe_rollout_batch(state, summary):
+    """Back-compat shim: see :meth:`RolloutStepState.observe_rollout_batch`."""
+    state.observe_rollout_batch(summary)
 
 
 def record_rollout_training(state, indices):
@@ -759,28 +759,21 @@ class RolloutStepState(StepState):
                                      'trained_indices': set(), 'sample_visits': 0}
             self._memory_rows = None
 
-    def observe_rollout_samples(self, samples, *, length_fn=None) -> None:
-        """Attach this iteration's rollout-specific sample facts (lengths / truncation / turns)."""
+    def observe_rollout_batch(self, summary: Dict[str, Any]) -> None:
+        """Attach this iteration's rollout facts (lengths / truncation / turns), off the light summary.
+
+        The facts are the driver's row-level batch summary -- reading them off the trajectories
+        would mean materialising a whole rollout batch for its metadata. """
         from twinkle.perf import default_recorder
 
         batch = self._iteration_facts
         if batch is None:
             return
-        samples = list(samples)
-        # The rollout counts (prompt, response) tokens when it builds the trajectory, so the heavy
-        # trajectory is never fetched for this; only synthesised samples need a length_fn.
-        lengths = []
-        for sample in samples:
-            counts = getattr(sample, 'token_lengths', None)
-            if counts is None:
-                if length_fn is None:
-                    raise ValueError('rollout metrics need token_lengths on every sample (or a length_fn).')
-                counts = length_fn(sample)
-            lengths.append(tuple(counts))
-        batch['lengths'] = lengths
-        batch['truncated'] = [bool(getattr(sample, 'truncated', False)) for sample in samples]
-        batch['turns'] = [getattr(sample, 'turns', None) for sample in samples]
-        # When the samples arrived -- the 'gen' fallback window end when no gen span exists.
+        batch['lengths'] = list(zip(summary.get('prompt_lengths') or (),
+                                     summary.get('response_lengths') or ()))
+        batch['truncated'] = [bool(flag) for flag in (summary.get('truncated') or ())]
+        batch['turns'] = list(summary.get('turns') or ())
+        # When the batch arrived -- the 'gen' fallback window end when no gen span exists.
         batch['received_ns'] = default_recorder.now_ns()
 
     def record_rollout_training(self, indices) -> None:

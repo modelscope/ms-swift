@@ -15,16 +15,16 @@ class CompletionLog:
 
     The trajectories carry the messages (references under ray), so the rows are read where they
     live and only the text comes back. Each JSONL line holds the step, the prompt, the completion
-    and its reasoning, the full messages, the completion length and the sample's ``truncated`` /
-    ``orm_reward``.
+    and its reasoning, the full messages, the completion length and the trajectory's ``truncated``
+    flag and named ``rewards.orm`` column.
     """
 
     @remote_function(dispatch='all', collect='first', lazy_collect=False)
-    def __call__(self, trajs: Sequence[Dict[str, Any]], samples: Sequence[Any], *, step: int,
+    def __call__(self, trajs: Sequence[Dict[str, Any]], *, step: int,
                  path: Optional[str] = None, **kwargs) -> List[Tuple[List[dict], str]]:
         rows = []
         lines = []
-        for traj, sample in zip(trajs, samples):
+        for traj in trajs:
             messages = list(traj.get('messages') or [])
             first = next((i for i, m in enumerate(messages) if m.get('role') == 'assistant'), len(messages))
             completion = last_assistant_text(traj)
@@ -38,8 +38,8 @@ class CompletionLog:
                     'reasoning_content': assistant.get('reasoning_content'),
                     'messages': messages,
                     'completion_length': len(traj.get('response_token_ids') or []),
-                    'truncated': bool(sample.truncated),
-                    'rewards': sample.orm_reward,
+                    'truncated': bool(traj.get('truncated')),
+                    'rewards': ((traj.get('rewards') or {}).get('orm') or {}),
                 }, ensure_ascii=False, default=str))
         if path is not None:
             os.makedirs(os.path.dirname(path), exist_ok=True)

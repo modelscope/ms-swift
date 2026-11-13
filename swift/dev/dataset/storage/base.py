@@ -29,7 +29,7 @@ CORE_STORE_FIELDS = ('input_ids', 'labels', 'lengths')
 KNOWN_STORE_FIELDS = frozenset(CORE_STORE_FIELDS) | frozenset({
     'attention_mask',
     # rollout-token payload (infer recorder) and semantic row fields (infer emit)
-    'completion_mask', 'response_token_ids', 'response_loss_mask', 'rollout_logprobs',
+    'completion_mask', 'response_token_ids', 'response_loss_mask', 'rollout_logps',
     'messages', 'all_messages', 'completions', 'responses', 'response',
     'rejected_messages', 'rejected_response', 'rejected_rollout_tokens', 'rejected_reward_score',
     'rollout_tokens', 'multi_turn', 'truncated', 'rollout_infos', 'rejected_truncated',

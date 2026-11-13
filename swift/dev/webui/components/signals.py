@@ -1,62 +1,57 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Signal-side bindings: forward reads, reductions, shaping, advantage, fusion.
+"""Signal-side bindings: the model forward, the privileged view, advantage, fusion.
 
 Every stage here is an independent, general math/functional meaning -- no
-algorithm name decides behaviour. All five are remote-execution stages: the
-binding only wires inputs and parameters and hands references to twinkle's
-signal components on the numeric group, so heavy forward payloads never
-materialise in the session process.
+algorithm name decides behaviour. All are remote-execution stages: the
+binding wires inputs and parameters and hands references to twinkle
+components on the numeric group, so heavy forward payloads never materialise
+in the session process.
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from twinkle.loss import Loss
-
 from ..component import ComponentError, StageComponent
 from ..numeric import deref, numeric_component
+from ..placement import NUMERIC_GROUP
+
+#: ModelOutput 的元字段：通道解析时排除，剩下的才是数据通道。
+_OUTPUT_META_KEYS = ('field_frames', 'episode_ids', 'response_token_ids', 'tokenizer_fingerprint',
+                     'model_id', 'parameter_version')
 
 
-def _row_scalars(rows: Any) -> List[float]:
-    """A score matrix ``values[B, C]`` (or flat ``[B]``) folded to one scalar per row; None / nan count 0."""
-    from twinkle_agentic.async_rl import weighted_score
-    return [weighted_score(row, None) if isinstance(row, (list, tuple)) else float(row) for row in rows]
+def output_channels(value: Any) -> Dict[str, Any]:
+    """One MODEL_OUTPUT value's data channels, resolved HERE (never on the producer's side).
 
-
-class _ForwardProbeLoss(Loss):
-    """Field-selection lens for ONE independent forward call -- never an objective.
-
-    The require_* flags ride the existing ``set_loss`` registry so the native
-    forward path computes exactly the requested channels. The call body must
-    never execute: the transformers ``forward_only`` never calls the loss, and
-    the Megatron path is handed ``compute_loss=False``.
+    A port value is a whole ModelOutput (or its lazy handle); a channel is one
+    field's per-row sequence. Resolution is by name -- never by container shape.
     """
+    value = deref(value)
+    if isinstance(value, dict):
+        return {key: item for key, item in value.items() if key not in _OUTPUT_META_KEYS}
+    return {'values': value}
 
-    def __init__(self, *, require_logps: bool = False, require_logits: bool = False,
-                 require_values: bool = False):
-        self.require_logps = require_logps
-        self.require_logits = require_logits
-        self.require_values = require_values
 
-    def __call__(self, inputs: Any, outputs: Any, **kwargs: Any) -> Any:
-        raise RuntimeError(
-            'the forward probe loss selects output fields; it is never an objective')
+def single_channel(value: Any, *, what: str) -> Any:
+    """One MODEL_OUTPUT value's data channel: exactly one, the names in the error otherwise."""
+    channels = output_channels(value)
+    if len(channels) != 1:
+        raise ComponentError(f'{what} needs a single data channel; got {sorted(channels) or "none"}')
+    return next(iter(channels.values()))
 
 
 class ModelForwardStage(StageComponent):
     """model_forward: one independent forward call with an explicit field set.
 
-    A probe loss is registered ONCE per node on the model's own loss registry
-    under a stable key (``forward:<node_id>``); ``forward_only`` then selects
-    that key explicitly. The training loss keeps its own separate key and the
-    optimizer is never touched -- this call never changes what training uses.
-    Each declared output port carries ONE channel of the native return, read
-    on the numeric group (``ResponseScores``): ``logps`` / ``values`` aligned to
-    each row's response tokens, ``logits`` / ``embeddings`` as the native frame.
-    Under Ray the other channels never cross the boundary, and a channel the
-    model does not produce fails loudly there. The input is raw data /
-    trajectories: encoding happens HERE under the node's own tokenizer param
-    (a construction fact, not a wire)."""
+    The forward consumes the node-encoded rows and requests its channels
+    explicitly: ``logps`` / ``values`` come back response-framed, ``logits`` /
+    ``embeddings`` keep their full input frame -- ONE whole ModelOutput rides
+    the ``out`` port, and the forward role (ref / teacher / old / value) is
+    the consumer's business, not a payload property. The training loss and
+    optimizer are never touched (``compute_loss=False``: no probe loss is
+    installed, the explicit request is honoured by the model's own forward).
+    The input is raw data / trajectories: encoding happens HERE under the
+    node's own tokenizer param (a construction fact, not a wire)."""
 
     type = 'model_forward'
 
@@ -79,14 +74,11 @@ class ModelForwardStage(StageComponent):
         forward = getattr(model, 'forward_only', None)
         if not callable(forward):
             raise ComponentError(f'{self.node_id}: model exposes no forward_only()')
-        # Port-first: the wired traj lane is the data THIS forward scores
-        # (the generated trajectories); the positional batch is the frame
-        # SOURCE's batch -- the loader's prompts. Encoding the positional one
-        # silently scores the prompt instead of the episode, and every
-        # downstream lane (KL, teacher, values) is wrong with no shape alarm.
+        # Port-first: the wired traj lane is the data THIS forward scores; the positional
+        # batch is the frame SOURCE's batch. Encoding the positional one silently scores
+        # the wrong rows with no shape alarm.
         data = inputs.get('traj')
-        if data is None:
-            data = batch
+        data = deref(data) if data is not None else batch
         features = self._features(data)
         if not isinstance(features, list):
             features = [features]
@@ -97,6 +89,8 @@ class ModelForwardStage(StageComponent):
         if not fields:
             raise ComponentError(f'{self.node_id}: model_forward needs at least one output field')
         if 'topk' in fields:
+            # The topk request was never implemented (a truncated-logits degradation): it is
+            # rejected rather than silently faked; the old knob is gone from the registry.
             raise ComponentError(
                 f'{self.node_id}: the native forward path returns no global top-k channel; '
                 'a topk output is rejected rather than silently degraded to truncated logits')
@@ -105,7 +99,11 @@ class ModelForwardStage(StageComponent):
                 f'{self.node_id}: values come from the value head (task=value) while '
                 'logps/logits/embeddings use the language-model task; wire one '
                 'model_forward node per task')
-        kwargs: Dict[str, Any] = {'compute_loss': False, 'return_logits': 'logits' in fields}
+        kwargs: Dict[str, Any] = {'compute_loss': False, 'output_fields': tuple(fields)}
+        if {'logps', 'values'} & set(fields):
+            # Response projection for the token-score channels; logits/embeddings keep
+            # their own declared frame inside the same ModelOutput.
+            kwargs['output_frame'] = 'response'
         if self.params.get('disable_lora'):
             kwargs['disable_lora'] = True
         temperature = self.params.get('temperature')
@@ -116,132 +114,100 @@ class ModelForwardStage(StageComponent):
             kwargs['micro_batch_size'] = int(micro)
         if 'values' in fields:
             kwargs['task'] = 'value'
-        loss_key = f'forward:{self.node_id}'
-        if not getattr(self, '_probe_registered', False):
-            set_loss = getattr(model, 'set_loss', None)
-            if not callable(set_loss):
-                raise ComponentError(f'{self.node_id}: model exposes no set_loss()')
-            set_loss(_ForwardProbeLoss(
-                require_logps='logps' in fields,
-                require_logits='logits' in fields,
-                require_values='values' in fields), loss_key=loss_key)
-            self._probe_registered = True
-        result = forward(inputs=features, loss_key=loss_key, **kwargs)
-        from twinkle.signals import ResponseScores
-        scores = numeric_component(ResponseScores)
-        return {field: scores(features if field in ('logps', 'values') else None, result, output_key=field)
-                for field in fields}
+        return {'out': forward(inputs=features, **kwargs)}
 
 
-class ReduceStage(StageComponent):
-    """A named reduction over an explicit axis: pure math on the numeric group (``Reduce``)."""
+class PrivilegedViewStage(StageComponent):
+    """privileged_view: re-encode each row under its ``teacher_prompt`` column.
 
-    type = 'reduce'
+    A thin binding over twinkle's :class:`PrivilegedView` -- the SAME transform
+    the recipes' teacher branch uses. A row without a ``teacher_prompt`` passes
+    through unchanged; a row with one is re-encoded with the policy's exact
+    sampled response token ids pinned, so the teacher forward grades the same
+    answer hint-augmented. The policy's own trajectories are never touched and
+    nothing is written back: this is the teacher branch's input builder."""
 
-    def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
-        signal = inputs.get('signal')
-        if signal is None:
-            raise ComponentError(f'{self.node_id}: reduce needs a wired signal')
-        from twinkle.signals import Reduce
-        return {'out': numeric_component(Reduce)(
-            signal, op=str(self.params.get('op', 'mean')), axis=str(self.params.get('axis', 'token')))}
+    type = 'privileged_view'
 
+    def _view(self) -> Any:
+        view = getattr(self, '_view_instance', None)
+        if view is None:
+            from .resources import build_template_from
 
-class RewardShapeStage(StageComponent):
-    """r' = r - baseline - beta*KL: combine the wired reward, baseline and the
-    two explicit KL forward lanes. Absent inputs are absent terms -- never
-    hidden defaults. The reward's scorer columns are summed per row; the
-    ``outcome`` profile shapes one scalar per row (``values[B, 1]``), the
-    ``process`` profile one reward per response token (``KLEstimator`` +
-    ``RewardShape`` on the numeric group)."""
-
-    type = 'reward_shape'
+            from twinkle.processor import PrivilegedView
+            template = build_template_from(
+                str(self.params.get('tokenizer') or ''),
+                dict(self.params.get('template_config') or {}), self.node_id,
+                model_kv=dict(self.params.get('model_config') or {}))
+            view = self._view_instance = PrivilegedView(template=template, remote_group=NUMERIC_GROUP)
+        return view
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
-        from twinkle.reward import RewardShape
-        from twinkle.signals import KLEstimator
-
-        reward = inputs.get('reward')
-        if reward is None:
-            raise ComponentError(f'{self.node_id}: reward_shape needs a wired reward')
-        beta = float(self.params.get('beta', 0.0) or 0.0)
-        kl = str(self.params.get('kl', 'none') or 'none')
-        outcome = str(self.params.get('profile', 'outcome') or 'outcome') == 'outcome'
-        reward = deref(reward)
-        rewards = _row_scalars(reward.get('values') if isinstance(reward, dict) else reward)
-        kl_lane = None
-        if kl != 'none':
-            if inputs.get('logps') is None or inputs.get('reference') is None:
-                raise ComponentError(f'{self.node_id}: a {kl} KL term needs both logps and reference lanes')
-            kl_lane = numeric_component(KLEstimator)(
-                inputs['logps'], inputs['reference'], kind=kl, reduce='mean' if outcome else 'none')
-        base = deref(inputs.get('baseline'))
-        shaped = numeric_component(RewardShape)(
-            rewards, kl_lane, base.get('scalar') if isinstance(base, dict) else base,
-            beta=beta, profile='outcome' if outcome else 'token')
-        # the outcome rows are one scalar each (read back here, the score lane's [B, C] shape);
-        # the per-token process rows stay a reference.
-        values = [[value] for value in deref(shaped)] if outcome else shaped
-        return {'reward': {'values': values, 'scorer_ids': ['shaped']}}
+        data = inputs.get('traj') if inputs.get('traj') is not None else batch
+        if data is None:
+            raise ComponentError(f'{self.node_id}: privileged_view needs a wired traj input')
+        return {'traj': self._view()(data)}
 
 
 class AdvantageStage(StageComponent):
-    """A = baseline-relative credit over rewards / values. Never touches a
-    model: those are inputs. The per-sequence estimators run HERE on the light
-    reward matrix (``compute_advantages``); GAE runs on the numeric group over
-    the per-token values lane and additionally emits the returns lane (an
-    optional output channel).
+    """advantage: trajectories and forward lanes in, training-target columns out.
 
-    ``old_logps`` carries the SAMPLER's per-token logps off the samples
-    (``rollout_logprobs``) -- the importance-sampling denominator the loss
-    consumes next; it is ``None`` when any sample lacks it (a non-rollout
-    batch), and the loss then runs its on-policy form. The ``adv`` channel is
-    the BARE per-sample value sequence -- the shape the loss's ``advantages``
-    kwarg takes."""
+    The estimator is twinkle's :class:`Advantage` family member (one remote
+    instance per node, built under the node's knobs -- a knob the estimator
+    does not read is rejected at construction, not silently ignored). It reads
+    the named score columns off the trajectories and the four optional forward
+    lanes (``ref_out`` / ``teacher_out`` / ``old_out`` / ``value_out``, each a
+    whole ModelOutput or its handle), and writes advantages / returns /
+    old_logps / ref_logps / teacher_logps onto copies of the rows: the ``traj``
+    port carries the updated rows for training, the ``metric`` port the light
+    numeric summary. No model is held and no forward runs here."""
 
     type = 'advantage'
 
-    def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
-        estimator = str(self.params.get('estimator', 'grpo'))
-        reward = inputs.get('reward')
-        samples = inputs.get('traj') if inputs.get('traj') is not None else batch
-        if not isinstance(samples, list):
-            samples = []
-        kwargs = dict(self.params.get('kwargs') or {})
-        # Declared param (registry), matching generate/select -- the estimator's grouping width.
-        # kwargs keeps its old pop so a stray num_generations there never leaks into the estimator.
-        kwargs.pop('num_generations', None)
-        num_generations = int(self.params.get('num_generations', 8) or 8)
-        rollout_rows = [list(sample.get('rollout_logprobs') or ()) if isinstance(sample, dict) else []
-                        for sample in samples]
-        old_logps = rollout_rows if rollout_rows and all(rollout_rows) else None
-        reward = deref(reward) if not isinstance(reward, dict) else reward
-        lane = reward.get('values') if isinstance(reward, dict) else reward
-        if estimator == 'gae':
+    def _estimator(self) -> Any:
+        name = str(self.params.get('estimator', 'grpo') or 'grpo')
+        if name == 'gae':
             from twinkle.advantage import GAEAdvantage
 
-            if inputs.get('values') is None:
-                raise ComponentError(f'{self.node_id}: gae needs a wired values lane')
-            # a score matrix folds to one terminal reward per row; a process lane (per-token rows,
-            # still a reference) is consumed as-is
-            rewards = _row_scalars(lane) if isinstance(lane, list) else lane
-            # read back HERE like every lane train_step consumes
-            adv, returns = deref(numeric_component(GAEAdvantage)(
-                rewards, inputs['values'], gamma=float(self.params.get('gamma', 1.0) or 1.0),
-                gae_lambda=float(self.params.get('lam', 1.0) or 1.0)))
-            return {'adv': adv, 'returns': returns, 'old_logps': old_logps}
-        from twinkle.advantage import compute_advantages
+            cls = GAEAdvantage
+        else:
+            from twinkle.advantage.estimate import ESTIMATORS
 
-        adv = compute_advantages(deref(lane), num_generations, advantage_estimator=estimator, **kwargs)
-        return {'adv': adv, 'returns': None, 'old_logps': old_logps}
+            if name not in ESTIMATORS:
+                raise ComponentError(
+                    f'{self.node_id}: unknown estimator {name!r}; one of {sorted(ESTIMATORS)} or gae')
+            cls = ESTIMATORS[name]
+        kwargs = dict(num_generations=int(self.params.get('num_generations', 8) or 8),
+                      **dict(self.params.get('kwargs') or {}))
+        return cls(**kwargs, remote_group=NUMERIC_GROUP)
+
+    def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
+        trajs = inputs.get('traj') if inputs.get('traj') is not None else batch
+        if not isinstance(trajs, list) or not trajs:
+            raise ComponentError(f'{self.node_id}: advantage needs a wired traj batch')
+        estimator = getattr(self, '_estimator_instance', None)
+        if estimator is None:
+            estimator = self._estimator_instance = self._estimator()
+        result = estimator(trajs,
+                           ref_out=inputs.get('ref_out'), teacher_out=inputs.get('teacher_out'),
+                           old_out=inputs.get('old_out'), value_out=inputs.get('value_out'))
+        # The tuple (new_trajs, summary) resolves HERE: the rows feed the session-local
+        # training loop (train_step encodes them under its own tokenizer), the summary
+        # is the light metric port's payload.
+        new_trajs, summary = deref(result)
+        metric = {'values': {key: float(value) for key, value in summary.items()
+                             if isinstance(value, (int, float)) and not isinstance(value, bool)},
+                  'invalid_count': 0}
+        return {'traj': new_trajs, 'metric': metric}
 
 
 class SignalCombineStage(StageComponent):
     """An explicit combination over named, aligned lanes: weighted sum or
     probability mixture. logps lanes mix in probability space --
     logsumexp_k(log w_k + logp_k) -- never as an arithmetic mean of logps.
-    Weights are non-negative with a positive sum; a lane without an explicit
-    per-slot weight defaults to uniform."""
+    A lane is one MODEL_OUTPUT value with exactly ONE data channel (the
+    explicit field); weights are non-negative with a positive sum; a lane
+    without an explicit per-slot weight defaults to uniform."""
 
     type = 'signal_combine'
 
@@ -257,7 +223,8 @@ class SignalCombineStage(StageComponent):
         weights = [float(raw_weights.get(slot, 1.0 / len(lanes))) for slot in slots]
         if any(w < 0 for w in weights) or sum(weights) <= 0:
             raise ComponentError(f'{self.node_id}: weights must be non-negative and sum > 0')
+        rows = [single_channel(value, what=f'{self.node_id} lane {slot!r}') for slot, value in lanes]
         from twinkle.signals import SignalCombine
+
         # The out port carries the VALUE sequence only; the combine mode stays a node param.
-        return {'out': numeric_component(SignalCombine)(
-            [value for _slot, value in lanes], weights=weights, mode=mode)}
+        return {'out': numeric_component(SignalCombine)(rows, weights=weights, mode=mode)}

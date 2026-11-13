@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""通用组件 v4 注册表：数学职责、真实端口与类型化配置的唯一声明。"""
+"""通用组件 v5 注册表：数学职责、真实端口与类型化配置的唯一声明。"""
 from __future__ import annotations
 
 from .descriptor import KIND_ALLOWS, KIND_CATEGORIES, ComponentDescriptor, ParamSpec, PortSpec
 
-REGISTRY_VERSION = 4
+REGISTRY_VERSION = 5
 ADVANTAGE_OPTIONS = ('grpo', 'grpo_passk', 'gae', 'rloo', 'remax', 'gpg', 'opo',
                      'reinforce_plus_plus', 'reinforce_pp_baseline')
 # Every name here must be resolvable by twinkle's torch_loss_mapping -- the loss component's
@@ -48,12 +48,12 @@ MODEL = D('model', '模型', 'Resource', '唯一参数化函数 f_theta；独立
               doc='仅 backend=megatron 时生效的 MegatronConfig 字段'),
             Q('moe_config', 'MoE 配置', {}, type='dict',
               doc='仅 backend=megatron 时生效的 MoEConfig 字段')),
-    owner_kind='MODEL')
+    owner_kind='MODEL', surface='resource')
 
 DATASET = D('dataset', '数据集', 'Resource', '原始数据分布与预处理配置，不进入循环。',
     ports_out=(P('data', 'DATASET', '原生数据来源'),),
     params=(Q('dataset', '数据来源', [], type='list', item_type='str', required=True),
-            Q('dataset_config', '预处理配置', {}, type='dict')))
+            Q('dataset_config', '预处理配置', {}, type='dict')), surface='resource')
 
 SAMPLER = D('sampler', '采样器', 'Resource', '常驻生成引擎；权重初始来源与编码配置是参数，同步由 weight_sync 表达。',
     ports_out=(P('sampler', 'SAMPLER', '生成引擎'),),
@@ -64,7 +64,7 @@ SAMPLER = D('sampler', '采样器', 'Resource', '常驻生成引擎；权重初�
             *GPU_PARAMS,
             Q('engine_args', '引擎参数', {}, type='dict'),
             Q('model_config', '模型加载配置', {}, type='dict'),
-            Q('template_config', '编码配置', {}, type='dict')), owner_kind='SAMPLER')
+            Q('template_config', '编码配置', {}, type='dict')), owner_kind='SAMPLER', surface='resource')
 
 ROLLOUT = D('rollout', '多轮生成器', 'Resource', '在环境 lease 内执行多轮生成，不包含评分与优势估计。',
     ports_in=(P('sampler', 'SAMPLER', '生成 backend'), P('tools', 'TOOL', '工具插件与声明', optional=True),
@@ -76,30 +76,32 @@ ROLLOUT = D('rollout', '多轮生成器', 'Resource', '在环境 lease 内执行
             Q('template_config', '编码配置', {}, type='dict'),
             Q('max_turns', '最大轮数', 8, type='int', minimum=1),
             Q('generation_config', '生成参数', {}, type='dict'),
-            Q('rollout_config', '多轮配置', {}, type='dict')))
+            Q('rollout_config', '多轮配置', {}, type='dict')), surface='resource')
 
 GROUP_RULE = D('group_rule', '分组采样规则', 'Resource', '完整组准入规则，不执行基线前向。',
     ports_out=(P('rule', 'GROUP_RULE', '准入规则'),),
     params=(Q('resample', '重采规则', 'none', options=('none', 'zero_variance')),
-            Q('kwargs', '准入参数', {}, type='dict')))
+            Q('kwargs', '准入参数', {}, type='dict')), surface='algorithm')
 
 LOSS_COMP = D('loss', '损失函数', 'Resource', 'L(theta)：策略更新目标；注册名或自定义公式的损失对象。',
     ports_out=(P('loss', 'LOSS', '损失对象'),),
     params=(Q('kind', '损失函数', 'cross_entropy', options=LOSS_OPTIONS),
             Q('loss_kwargs', '损失构造参数', {}, type='dict'),
             Q('code', '自定义公式', '',
-              doc='用户公式 def loss(**lanes)->float；设置时忽略注册名')))
+              doc='用户公式 def loss(**lanes)->float；设置时忽略注册名')),
+    surface='algorithm')
 SCORER_COMP = D('scorer', '评分函数', 'Resource', 'r(tau)：规则评分函数；注册名或自定义代码的评分器。',
     ports_out=(P('scorer', 'SCORER', '评分器对象'),),
     params=(Q('kind', '注册评分函数名', 'math',
               doc='orms 插件注册表中的名字（math/format/accuracy 等；插件可运行时扩充，故不静态枚举）'),
             Q('scorer_kwargs', '评分构造参数', {}, type='dict'),
             Q('code', '自定义评分代码', '',
-              doc='用户代码 def score(rows)->list[float]；设置时忽略注册名')))
+              doc='用户代码 def score(rows)->list[float]；设置时忽略注册名')),
+    surface='algorithm')
 
 TOOLSET = D('toolset', '工具集', 'Resource', '实际插件来源；运行实现按环境 lease 绑定，声明即插件模块内的实例。',
     ports_out=(P('tools', 'TOOL', '工具插件'),),
-    params=(Q('plugins', '插件来源', [], type='list', item_type='str'),))
+    params=(Q('plugins', '插件来源', [], type='list', item_type='str'),), surface='resource')
 SANDBOX_ENV = D('sandbox_env', '沙箱环境', 'Resource', '原生环境池与 lease 生命周期；后端可换，消费面不变。',
     ports_out=(P('env', 'ENV', '环境池'),),
     params=(Q('kind', '沙箱后端', 'local', options=('local', 'agentenv', 'openenv', 'openenv_client'),
@@ -109,19 +111,19 @@ SANDBOX_ENV = D('sandbox_env', '沙箱环境', 'Resource', '原生环境池与 l
               doc='所选后端构造器的真实字段；未知名构造期拒绝'),
             Q('api_key_env', '凭据环境变量名', '',
               doc='仅 agentenv：构造期读取该环境变量作为 api_key；留空则由 SDK 读 E2B_API_KEY')),
-    owner_kind='ENV')
+    owner_kind='ENV', surface='resource')
 API_ENDPOINT = D('api_endpoint', '外部 API', 'Resource', '明确外部连接；凭据仅从运行环境读取。',
     ports_out=(P('endpoint', 'ENDPOINT', '外部 API 连接'),),
     params=(Q('base_url', '服务地址', '', required=True), Q('model', '服务模型', '', required=True),
             Q('api_key_env', '凭据环境变量名', ''),
-            Q('timeout', '超时秒数', 60.0, type='float', minimum=0)), owner_kind='ENDPOINT')
+            Q('timeout', '超时秒数', 60.0, type='float', minimum=0)), owner_kind='ENDPOINT', surface='resource')
 CODE_COMPONENT = D('code_component', '自定义组件', 'Stage', '显式声明端口、生命周期与副作用的用户组件。',
     params=(Q('entry', '入口名', 'fn', required=True),
             Q('lifecycle', '生命周期', 'Stage', options=('Resource', 'Iterator', 'Stage', 'Task')),
             Q('ports_in', '输入声明', [], type='list', item_type='dict'),
             Q('ports_out', '输出声明', [], type='list', item_type='dict'),
             Q('effects', '副作用', [], type='list', item_type='str', unique_items=True),
-            Q('config', '用户配置', {}, type='dict')), effects=('code',))
+            Q('config', '用户配置', {}, type='dict')), effects=('code',), surface='algorithm')
 
 DATALOADER = D('dataloader', '数据加载器', 'Iterator', '常驻游标、epoch 与 RNG；完整消费后推进当前批次。',
     ports_in=(P('data', 'DATASET', '数据来源'), P('after', 'CTRL', '反馈后取下一批', optional=True)),
@@ -131,14 +133,16 @@ DATALOADER = D('dataloader', '数据加载器', 'Iterator', '常驻游标、epoc
               doc='prompts=提示面（剥掉末轮 assistant，生成侧用）；rows=完整训练行（监督训练用）'),
             Q('shuffle', '打乱', True, type='bool'), Q('seed', '随机种子', 42, type='int', minimum=0),
             Q('num_workers', '加载进程数', 0, type='int', minimum=0),
-            Q('drop_last', '丢弃尾批', False, type='bool')))
-STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准入、滞后、背压和批次确认控制面。',
+            Q('drop_last', '丢弃尾批', False, type='bool')), surface='runtime')
+STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准入、滞后、背压和批次确认控制面；接线评分器时逐 episode 打分，交付合并具名列。',
     ports_in=(P('prompts', 'SOURCE', '提示流来源（dataloader 的 source 控制口；原生 loader 在其上）', control=True),
               P('engine', 'SAMPLER', '具名采样资源', many=True, optional=True),
               P('episode', 'ROLLOUT', '多轮来源', optional=True),
+              P('scorers', 'SCORER', '准入前评分绑定：组规则与交付列共用同一 scorer 身份', many=True, optional=True),
               P('groups', 'GROUP_RULE', '完整组规则', optional=True),
               P('after', 'CTRL', '下一批反馈', optional=True)),
-    ports_out=(P('samples', 'TRAJ', '当前轨迹', ('rollout',)), P('source', 'SOURCE', '批次确认控制', control=True)),
+    ports_out=(P('traj', 'TRAJ', '当前轨迹（评分器接线时携带具名评分列）', ('rollout', 'scored')),
+               P('source', 'SOURCE', '批次确认控制', control=True)),
     params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与采样器一致）', '', required=True),
             Q('model_config', '模型加载配置', {}, type='dict',
               doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与采样器节点自身一致'),
@@ -152,7 +156,7 @@ STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准�
             Q('train_batch_size', '训练批大小', 8, type='int', minimum=1),
             Q('gradient_accumulation_steps', '梯度累积', 1, type='int', minimum=1),
             Q('num_train_epochs', '训练轮数', 1.0, type='float'),
-            Q('max_steps', '总步数', 0, type='int', minimum=0)))
+            Q('max_steps', '总步数', 0, type='int', minimum=0)), surface='runtime')
 CHALLENGER = D('challenger', '自动出题器', 'Iterator', '显式出题/解题来源； 一次提取同批两路训练轨迹。',
     ports_in=(P('backend', 'SAMPLER', '出题 backend'),
               P('solver_rollout', 'ROLLOUT', '解题多轮机制', optional=True),
@@ -166,93 +170,76 @@ CHALLENGER = D('challenger', '自动出题器', 'Iterator', '显式出题/解题
             Q('model_config', '模型加载配置', {}, type='dict',
               doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与采样器节点自身一致'),
             Q('template_config', '编码配置', {}, type='dict'),
-            Q('challenger_config', '出题机制配置', {}, type='dict')))
+            Q('challenger_config', '出题机制配置', {}, type='dict')), surface='algorithm')
 
 GENERATE = D('generate', '批量生成', 'Stage', '仅生成 episode，评分与筛选独立执行。',
     ports_in=(P('prompts', 'DATA', '原始提示批次', ('batch',)),
               P('engine', 'SAMPLER', '生成引擎', optional=True),
               P('episode', 'ROLLOUT', '多轮引擎', optional=True)),
-    ports_out=(P('samples', 'TRAJ', '生成轨迹', ('rollout',)),),
+    ports_out=(P('traj', 'TRAJ', '生成轨迹', ('rollout',)),),
     params=(Q('num_generations', '组宽', 8, type='int', minimum=1, phase='call'),
             Q('generation_config', '生成参数', {}, type='dict', phase='call')),
-    exclusive_inputs=(('engine', 'episode'),))
-SCORE = D('score', '评分', 'Stage', '按接线声明的评分器对齐打分列；缺失不截断也不补零。',
-    ports_in=(P('samples', 'TRAJ', '待评分轨迹', ('rollout',)),
+    exclusive_inputs=(('engine', 'episode'),), surface='algorithm')
+SCORE = D('score', '评分', 'Stage', '对接线的具名评分器打分，具名列写回轨迹；缺失不截断也不补零。',
+    ports_in=(P('traj', 'TRAJ', '待评分轨迹', ('rollout', 'scored')),
               P('scorers', 'SCORER', '具名评分器', many=True)),
-    ports_out=(P('reward', 'REWARD', '结果评分', ('outcome',)),
-               P('process', 'REWARD', '过程评分', ('process',), optional=True)),
-    params=())
-MODEL_FORWARD = D('model_forward', '模型前向', 'Stage', '按显式字段集合返回原生模型输出，调用方式不改变模型身份。',
+    ports_out=(P('traj', 'TRAJ', '携带具名评分列的轨迹', ('scored',)),
+               P('metric', 'METRIC', '本批评分摘要', ('summary',))),
+    params=(), surface='algorithm')
+MODEL_FORWARD = D('model_forward', '模型前向', 'Stage', '按显式字段集合的一次独立前向；输出是完整 ModelOutput，logps/values 走响应 frame。',
     ports_in=(P('model', 'MODEL', '前向模型'),
               P('traj', 'TRAJ', '前向数据；内部按 tokenizer 参数编码', accepted_kinds=('DATA', 'BATCH'))),
-    ports_out=tuple(P(key, 'SIGNAL', key, (key,), optional=True, enabled_by='outputs')
-                    for key in ('logps', 'values', 'logits', 'topk', 'embeddings')),
+    ports_out=(P('out', 'MODEL_OUTPUT', '完整前向结果；字段由 outputs 参数声明'),),
     params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与模型一致）', '', required=True),
             Q('model_config', '模型加载配置', {}, type='dict',
               doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与模型节点自身一致'),
             Q('template_config', '编码配置', {}, type='dict'),
             Q('outputs', '输出字段', ['logps'], type='list', item_type='str',
-              item_options=('logps', 'values', 'logits', 'topk', 'embeddings'), required=True, unique_items=True, phase='call'),
+              item_options=('logps', 'values', 'logits', 'embeddings'), required=True, unique_items=True, phase='call',
+              doc='logps/values 请求响应 frame；logits/embeddings 保持完整输入 frame'),
             Q('disable_lora', '禁用 LoRA', False, type='bool', phase='call'),
             Q('temperature', '温度', 1.0, type='float', minimum=1e-12, phase='call'),
-            Q('top_k', 'Top-k 宽度', 32, type='int', minimum=1, phase='call'),
             Q('micro_batch_size', '前向微批大小', 1, type='int', minimum=1, phase='call')),
-    execution='remote')
-REDUCE = D('reduce', '归约', 'Stage', '按显式轴、mask 和权重做数值归约，不访问模型。',
-    ports_in=(P('signal', 'SIGNAL', '数值输入', accepted_kinds=('ADV',)),
-              P('mask', 'SIGNAL', '明确 mask', optional=True), P('weights', 'SIGNAL', '数值权重', optional=True)),
-    ports_out=(P('out', 'SIGNAL', '数学归约结果', profile_param='output_profile'),),
-    params=(Q('op', '算子', 'mean', options=('sum', 'mean', 'variance', 'logsumexp'), phase='call'),
-            Q('axis', '归约轴', 'token', options=('token', 'row', 'group'), phase='call'),
-            Q('output_profile', '结果 Profile', 'row', options=('row', 'scalar'), phase='call')),
-    execution='remote')
-REWARD_SHAPE = D('reward_shape', '奖励整形', 'Stage', 'r - baseline - beta*KL；KL 必须两路前向或显式已计算数值。',
-    ports_in=(P('reward', 'REWARD', '原评分', ('outcome', 'process')),
-              P('logps', 'SIGNAL', '被比较 logps', ('logps',), optional=True),
-              P('reference', 'SIGNAL', '比较基准 logps', ('logps',), optional=True),
-              P('baseline', 'SIGNAL', '明确基线', ('row', 'scalar'), optional=True)),
-    ports_out=(P('reward', 'REWARD', '整形奖励', profile_param='profile'),),
-    params=(Q('beta', 'KL 系数', 0.0, type='float', minimum=0, phase='call'),
-            Q('kl', 'KL 估计', 'none', options=('none', 'k1', 'k2', 'k3'), phase='call'),
-            Q('profile', '结果 Profile', 'outcome', options=('outcome', 'process'), phase='call')),
-    required_when=tuple(('kl', method, ('logps', 'reference')) for method in ('k1', 'k2', 'k3')),
-    execution='remote')
-ADVANTAGE = D('advantage', '优势估计', 'Stage', '仅消费奖励、分组身份与显式 values/baseline；不执行前向。',
-    ports_in=(P('reward', 'REWARD', '实际奖励', ('outcome', 'process')),
-              P('values', 'SIGNAL', '值函数估计', ('values',), optional=True),
-              P('baseline', 'SIGNAL', '显式基线', ('row', 'scalar'), optional=True),
-              P('traj', 'TRAJ', '批次分组与 token 身份', ('rollout',))),
-    ports_out=(P('adv', 'ADV', '优势', profile_param='profile'),
-               P('returns', 'SIGNAL', '独立 returns', ('values',), optional=True),
-               P('old_logps', 'SIGNAL', '采样侧 logps（重要性采样基线）', optional=True)),
+    execution='remote', surface='algorithm')
+PRIVILEGED_VIEW = D('privileged_view', '特权提示', 'Stage', '按行内 teacher_prompt 重编码教师视图；无该列的行原样传递，策略主轨迹不回写。',
+    ports_in=(P('traj', 'TRAJ', '携带 teacher_prompt 列的轨迹', ('rollout', 'scored')),),
+    ports_out=(P('traj', 'TRAJ', '教师前向视图', ('rollout', 'scored')),),
+    params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与教师一致）', '', required=True),
+            Q('model_config', '模型加载配置', {}, type='dict',
+              doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）'),
+            Q('template_config', '编码配置', {}, type='dict')),
+    execution='remote', surface='algorithm')
+ADVANTAGE = D('advantage', '优势估计', 'Stage', '轨迹与前向 lane 进、训练目标列回轨迹；不持模型、不执行前向。',
+    ports_in=(P('traj', 'TRAJ', '携带具名评分列的轨迹', ('scored',)),
+              P('ref_out', 'MODEL_OUTPUT', '参考前向（kl_in_reward/损失所需）', optional=True),
+              P('teacher_out', 'MODEL_OUTPUT', '教师前向（重加权/SDAR）', optional=True),
+              P('old_out', 'MODEL_OUTPUT', '更新前策略前向（重要性采样/诊断）', optional=True),
+              P('value_out', 'MODEL_OUTPUT', '更新前 critic 前向（gae）', optional=True)),
+    ports_out=(P('traj', 'TRAJ', '携带训练目标列的轨迹', ('train_ready',)),
+               P('metric', 'METRIC', '估计摘要', ('summary',))),
     params=(Q('estimator', '估计器', 'grpo', options=ADVANTAGE_OPTIONS, phase='call'),
-            Q('profile', '结果 Profile', 'row', options=('row', 'token'), phase='call'),
-            Q('gamma', '折扣', 1.0, type='float', minimum=0, maximum=1, phase='call'),
-            Q('lam', 'GAE lambda', 1.0, type='float', minimum=0, maximum=1, phase='call'),
-            # Declared like select's: the estimator's grouping needs the run's real width, and the
-            # old read (kwargs.pop('num_generations', 8)) was an undeclared key pinned at 8 that
-            # silently mis-grouped any wider/narrower generate node. Must match it.
-            Q('num_generations', '分组宽度', 8, type='int', minimum=1, phase='call'),
-            Q('kwargs', '估计参数', {}, type='dict', phase='call')),
-    required_when=(('estimator', 'gae', ('values',)), ('estimator', 'remax', ('baseline',))),
-    execution='remote')
+            Q('num_generations', '分组宽度', 8, type='int', minimum=1, phase='call',
+              doc='必须与上游生成/驱动节点一致；组内估计按完整组进行'),
+            Q('kwargs', '估计器构造参数', {}, type='dict', phase='call',
+              doc='Advantage 构造旋钮（gamma/gae_lambda/normalize/kl_coef/beta/kl_in_reward 等）；未被该估计器读取的旋钮会被拒绝')),
+    required_when=(('estimator', 'gae', ('value_out',)),),
+    execution='remote', surface='algorithm')
 # 'weighted_sum' is a weighted MEAN -- the implementation divides by the total weight, so the
 # weights act as mixture coefficients (scale-invariant) the way the sibling probability_mixture
 # mode's are. The descriptor text says so; the option key keeps its name (it is the graph
 # parameter surface, and mixture semantics is what existing pinned behavior expects).
 SIGNAL_COMBINE = D('signal_combine', '数值组合', 'Stage', '对齐通道的加权平均（权重为混合系数，同比缩放结果不变）或概率混合；logps 概率混合使用 logsumexp。',
-    ports_in=(P('signals', 'SIGNAL', '具名对齐数值', many=True, accepted_kinds=('ADV',)),),
-    ports_out=(P('out', 'SIGNAL', '与输入数学类型一致', mirror_input='signals'),),
+    ports_in=(P('signals', 'MODEL_OUTPUT', '具名对齐数值', many=True),),
+    ports_out=(P('out', 'MODEL_OUTPUT', '与输入数学类型一致', mirror_input='signals'),),
     params=(Q('mode', '运算', 'weighted_sum', options=('weighted_sum', 'probability_mixture'), phase='call'),
             Q('weights', '逐 slot 权重', {}, type='dict', phase='call')),
-    execution='remote')
-SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对齐载荷；成对与完整组不拆散。',
+    execution='remote', surface='algorithm')
+SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对齐载荷；成对与完整组不拆散，奖励随轨迹保留。',
     ports_in=(P('batch', 'TRAJ', '原始对齐数据', optional=False, accepted_kinds=('DATA', 'BATCH')),
-              P('reward', 'REWARD', '筛选评分', ('outcome',)),
-              P('signals', 'SIGNAL', '具名同步筛选输入', many=True, optional=True, accepted_kinds=('ADV',))),
+              P('signals', 'MODEL_OUTPUT', '具名同步筛选输入', many=True, optional=True)),
     ports_out=(P('batch', 'TRAJ', '同一次选择后的数据', mirror_input='batch'),
-               P('reward', 'REWARD', '同一次选择后的评分', mirror_input='reward'),
-               P('signals', 'SIGNAL', '逐 slot 同步输出', optional=True, mirror_input='signals')),
+               P('signals', 'MODEL_OUTPUT', '逐 slot 同步输出', optional=True, mirror_input='signals'),
+               P('metric', 'METRIC', '选择摘要（保留/丢弃计数）', ('summary',))),
     params=(Q('select', '选择规则', 'threshold', options=('threshold', 'top_k', 'best_of_n'), phase='call'),
             Q('threshold', '阈值', 0.0, type='float', phase='call'),
             Q('top_k', '保留数', 1, type='int', minimum=1, phase='call'),
@@ -260,13 +247,16 @@ SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对
             # reads it, but an undeclared key is rejected by validate_params -- the grouping was
             # pinned at the default 8 and silently mis-grouped any wider/narrower generate node.
             # Must match the upstream generate/driver num_generations.
-            Q('num_generations', '分组宽度', 8, type='int', minimum=1, phase='call')))
-TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward 与 optimizer step；优化器与编码是参数，不负责保存和发布 cadence。',
+            Q('num_generations', '分组宽度', 8, type='int', minimum=1, phase='call',
+              doc='必须与上游生成/驱动节点一致')),
+    surface='algorithm')
+TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward 与 optimizer step；训练目标从轨迹 lift，显式 lane 只作补充绑定。',
     ports_in=(P('model', 'MODEL', '实际更新模型；未接线时沿连线共享的作用域唯一解析', access='write', scope=True),
               P('loss', 'LOSS', '损失对象'),
-              P('batch', 'TRAJ', '待训练数据；轨迹在内部按 tokenizer 参数编码', accepted_kinds=('DATA', 'BATCH')),
-              P('arguments', 'SIGNAL', 'slot 是 loss 实际参数名', many=True, optional=True,
-                accepted_kinds=('ADV', 'SIGNAL')),
+              P('batch', 'TRAJ', '待训练数据；标准字段由模型侧 lift', accepted_kinds=('DATA', 'BATCH')),
+              P('reference', 'MODEL_OUTPUT', '参考前向（DPO/KTO 参考信号）', optional=True),
+              P('teacher', 'MODEL_OUTPUT', '教师前向（蒸馏教师信号）', optional=True),
+              P('lanes', 'MODEL_OUTPUT', '显式字段绑定：slot 是字段名，自定义公式 loss 的补充 lane', many=True, optional=True),
               P('after', 'CTRL', '正向完成依赖', optional=True)),
     ports_out=(P('step', 'STEP', '真实训练回执', ('step',)), P('model', 'MODEL', '训练后的模型引用'),
                P('metric', 'METRIC', '小型摘要', ('summary',)),
@@ -285,7 +275,7 @@ TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward �
             Q('micro_batch_size', '微批大小', 1, type='int', minimum=1, phase='call'),
             Q('gradient_accumulation_steps', '梯度累积步数', 1, type='int', minimum=1, phase='call'),
             Q('max_grad_norm', '梯度裁剪', 1.0, type='float', minimum=0, phase='call')),
-    effects=('train',))
+    effects=('train',), surface='algorithm')
 WEIGHT_SYNC = D('weight_sync', '权重同步', 'Stage', '经原生分桶传输；同步完成后才确认，不虚报 pending 完成。',
     ports_in=(P('model', 'MODEL', '权重来源；未接线时沿连线共享的作用域唯一解析', scope=True),
               P('targets', 'SAMPLER', '明确接收者', many=True, access='write'),
@@ -294,14 +284,15 @@ WEIGHT_SYNC = D('weight_sync', '权重同步', 'Stage', '经原生分桶传输�
               P('after', 'CTRL', '完成依赖', optional=True)),
     ports_out=(P('sync', 'SYNC', '完成确认', ('outcome',)), P('then', 'CTRL', '同步已完成')),
     params=(Q('cadence', '同步间隔', 1, type='int', minimum=1, phase='call'),
-            Q('sync_config', '原生同步配置', {}, type='dict')), effects=('sync',))
+            Q('sync_config', '原生同步配置', {}, type='dict')), effects=('sync',), surface='runtime')
 WEIGHT_AVERAGE = D('weight_average', '参数平均', 'Stage', 'source/target 的 copy 或 EMA；目标角色不写死，原生设备间传输。',
     ports_in=(P('source', 'MODEL', '来源模型；未接线时沿连线共享的作用域唯一解析', scope=True),
               P('target', 'MODEL', '目标模型', access='write'),
               P('step', 'STEP', '明确更新来源', ('step',))),
     ports_out=(P('sync', 'SYNC', '实际传输确认', ('outcome',)),),
     params=(Q('mode', '方式', 'ema', options=('copy', 'ema'), phase='call'),
-            Q('alpha', 'EMA 系数', 0.9, type='float', minimum=0, maximum=1, phase='call')), effects=('sync',))
+            Q('alpha', 'EMA 系数', 0.9, type='float', minimum=0, maximum=1, phase='call')), effects=('sync',),
+    surface='runtime')
 CHECKPOINT = D('checkpoint', '保存检查点', 'Stage', '实际模型导出与完整训练快照分 profile；完整快照仅在安全边界保存。',
     ports_in=(P('model', 'MODEL', '快照模型；未接线时沿连线共享的作用域唯一解析', scope=True),
               P('step', 'STEP', '训练状态来源', ('step',), optional=True),
@@ -312,22 +303,24 @@ CHECKPOINT = D('checkpoint', '保存检查点', 'Stage', '实际模型导出与�
             Q('profile', '保存内容', 'model', options=('model', 'training'), phase='call'),
             Q('output_dir', '输出目录', 'output/checkpoints', phase='call'),
             Q('cadence', '保存间隔', 1, type='int', minimum=1, phase='call')),
-    required_when=(('profile', 'training', ('step', 'source')),), effects=('save',))
+    required_when=(('profile', 'training', ('step', 'source')),), effects=('save',), surface='runtime')
 
 MERGE = D('merge', '权重合并', 'Task', '复用实体 MergeComponent，输出真实模型产物。',
     ports_in=(P('artifact', 'ARTIFACT', '原权重', ('model',)),), ports_out=(P('model', 'ARTIFACT', '合并权重', ('model',)),),
-    params=(Q('output_dir', '输出目录', 'output/merged'), Q('merge_config', '合并配置', {}, type='dict')), effects=('save',))
+    params=(Q('output_dir', '输出目录', 'output/merged'), Q('merge_config', '合并配置', {}, type='dict')), effects=('save',),
+    surface='artifact')
 QUANTIZE = D('quantize', '权重量化', 'Task', '复用实体 QuantizeComponent，校准来源明确。',
     ports_in=(P('artifact', 'ARTIFACT', '原权重', ('model',)), P('calib', 'DATASET', '校准来源', optional=True)),
     ports_out=(P('model', 'ARTIFACT', '量化权重', ('model',)),),
-    params=(Q('output_dir', '输出目录', 'output/quantized'), Q('quantize_config', '量化配置', {}, type='dict')), effects=('save',))
+    params=(Q('output_dir', '输出目录', 'output/quantized'), Q('quantize_config', '量化配置', {}, type='dict')), effects=('save',),
+    surface='artifact')
 INFER = D('infer', '批量推理', 'Task', '从权重来源重建推理引擎，推理数据必须明确。',
     ports_in=(P('model', 'MODEL', '会话模型（回读其权重来源）', optional=True),
               P('artifact', 'ARTIFACT', '权重来源', ('model',), optional=True),
               P('data', 'DATASET', ' 实际推理数据')),
     ports_out=(P('predictions', 'DATA', '预测行', ('raw',)), P('artifact', 'ARTIFACT', '预测产物', ('dataset',), optional=True)),
     params=(Q('infer_config', '推理配置（sampler 为引擎，含 template_config 等）', {}, type='dict'),),
-    exclusive_inputs=(('model', 'artifact'),), effects=('save',))
+    exclusive_inputs=(('model', 'artifact'),), effects=('save',), surface='artifact')
 EVAL = D('eval', '评测', 'Task', '复用 Evaluator 与公共 runner，不关闭借用的会话采样资源。',
     ports_in=(P('sampler', 'SAMPLER', '采样来源', optional=True), P('endpoint', 'ENDPOINT', 'API 来源', optional=True),
               P('data', 'DATASET', '明确评测数据')),
@@ -335,10 +328,12 @@ EVAL = D('eval', '评测', 'Task', '复用 Evaluator 与公共 runner，不关�
     params=(Q('tokenizer', 'Tokenizer 来源（id/路径，与模型一致）', '', required=True),
             Q('model_config', '模型加载配置', {}, type='dict',
               doc='tokenizer 加载所需的身份字段（如本地目录的 model_type）；与模型节点自身一致'),
-            Q('task_config', 'Evaluator 配置', {}, type='dict')), exclusive_inputs=(('sampler', 'endpoint'),))
+            Q('task_config', 'Evaluator 配置', {}, type='dict')), exclusive_inputs=(('sampler', 'endpoint'),),
+    surface='artifact')
 DEPLOY = D('deploy', '部署服务', 'Task', '经明确授权启动服务并等待就绪，命令线程不被阻塞。',
     ports_in=(P('model', 'ARTIFACT', '权重来源', ('model',)),), ports_out=(P('endpoint', 'ENDPOINT', '就绪服务'),),
-    params=(Q('deploy_config', '服务配置', {}, type='dict'),), effects=('external', 'serve'), owner_kind='ENDPOINT')
+    params=(Q('deploy_config', '服务配置', {}, type='dict'),), effects=('external', 'serve'), owner_kind='ENDPOINT',
+    surface='artifact')
 HUB_PUSH = D('hub_push', '发布模型', 'Task', '明确授权后调用公共 Hub API，返回实际发布结果。',
     ports_in=(P('model', 'ARTIFACT', '权重来源', ('model',)),),
     ports_out=(P('artifact', 'ARTIFACT', '实际发布结果', ('publication',)),),
@@ -346,13 +341,13 @@ HUB_PUSH = D('hub_push', '发布模型', 'Task', '明确授权后调用公共 Hu
             Q('hub', 'Hub', 'ModelScope', options=('ModelScope', 'HuggingFace')),
             Q('private', '私有仓库', True, type='bool'), Q('revision', '版本', 'main'),
             Q('commit_message', '提交说明', 'webui workflow push'), Q('token_env', '凭据环境变量名', '')),
-    effects=('external',))
+    effects=('external',), surface='artifact')
 
 REGISTRY = {descriptor.type: descriptor for descriptor in (
     MODEL, DATASET, SAMPLER, ROLLOUT, GROUP_RULE, LOSS_COMP, SCORER_COMP,
     TOOLSET, SANDBOX_ENV, API_ENDPOINT, CODE_COMPONENT,
     DATALOADER, STREAMING_DRIVER, CHALLENGER, GENERATE, SCORE,
-    MODEL_FORWARD, REDUCE, REWARD_SHAPE, ADVANTAGE, SIGNAL_COMBINE, SELECT,
+    MODEL_FORWARD, PRIVILEGED_VIEW, ADVANTAGE, SIGNAL_COMBINE, SELECT,
     TRAIN_STEP, WEIGHT_SYNC, WEIGHT_AVERAGE, CHECKPOINT, MERGE, QUANTIZE,
     INFER, EVAL, DEPLOY, HUB_PUSH)}
 
