@@ -670,6 +670,21 @@ class H2OTemplate(Thx02Template):
     are never truncated and packing is not supported.
     """
 
+    def _get_model(self):
+        if self.model is not None:
+            return self.model
+        # The Qwen3.5-VL collator rebuilds a dummy model to read `get_rope_index`. Without an explicit
+        # model_type that rebuild resolves from the directory name and then from config.architectures;
+        # the released config carries Qwen3_5ForConditionalGeneration, which `qwen3_5` AND `ovis_ocr2`
+        # both register, so a renamed/copied checkpoint raises "Multiple possible types found".
+        if self.dummy_model is None:
+            import torch
+            from swift.model import get_model_processor
+            with torch.device('meta'):
+                self.dummy_model = get_model_processor(
+                    self.model_info.model_dir, model_type='h2o', return_dummy_model=True)[0]
+        return self.dummy_model
+
     @staticmethod
     def _h2o_instructions(value: Any) -> str:
         # Same serialization as the reference shim (render_instr): json.dumps(value, indent=1).

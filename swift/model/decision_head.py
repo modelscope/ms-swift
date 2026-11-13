@@ -852,9 +852,55 @@ def load_h2o_labels(model_dir: str) -> List[str]:
     return list(labels)
 
 
-def load_h2o_serve_temperatures(model_dir: str) -> Dict[str, float]:
-    """Per-kind readout temperatures from the released serve_config.json (choice/noul/score)."""
-    temps = load_h2o_serve_config(model_dir).get('temperature') or {}
+H2O_TWO_WAY_ENV = 'H2O_TWO_WAY'
+_H2O_TWO_WAY_VALUES = {'1', 'true', 'yes', 'on', 'bidirectional', 'two_way', 'two-way'}
+_H2O_ONE_WAY_VALUES = {'0', 'false', 'no', 'off', 'unidirectional', 'causal', 'one_way', 'one-way'}
+
+
+def _parse_h2o_two_way(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in _H2O_TWO_WAY_VALUES:
+        return True
+    if text in _H2O_ONE_WAY_VALUES:
+        return False
+    return None
+
+
+def load_h2o_two_way_default(model_dir: str) -> bool:
+    """The attention mode the released checkpoint serves with.
+
+    `serve_config.json` declares `two_way.default = bidirectional`, so the checkpoint's own default is
+    followable; a config without a `two_way` block (older layouts, test fixtures) means one-way.
+    """
+    block = load_h2o_serve_config(model_dir).get('two_way') or {}
+    if not isinstance(block, dict):
+        return False
+    return bool(_parse_h2o_two_way(block.get('default')))
+
+
+def resolve_h2o_two_way(model_dir: str) -> bool:
+    """Effective mode: `H2O_TWO_WAY` (1/0, true/false, ...) overrides the checkpoint's default."""
+    override = _parse_h2o_two_way(os.environ.get(H2O_TWO_WAY_ENV, ''))
+    if override is not None:
+        return override
+    return load_h2o_two_way_default(model_dir)
+
+
+def load_h2o_serve_temperatures(model_dir: str, two_way: Optional[bool] = None) -> Dict[str, float]:
+    """Per-kind readout temperatures for the active mode (choice/noul/score).
+
+    The released config calibrates each mode separately: `two_way.temperature` for bidirectional
+    attention and the top-level `temperature` for one-way. Mixing them (two-way attention with the
+    one-way constants) silently shifts every probability, so the block is chosen by the same
+    resolution the model loader uses.
+    """
+    config = load_h2o_serve_config(model_dir)
+    if two_way is None:
+        two_way = resolve_h2o_two_way(model_dir)
+    temps = (config.get('two_way') or {}).get('temperature') if two_way else None
+    temps = temps or config.get('temperature') or {}
     return {str(k): float(v) for k, v in temps.items() if isinstance(v, (int, float))}
 
 

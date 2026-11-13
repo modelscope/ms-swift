@@ -10,12 +10,14 @@ diffing against a reference implementation:
   B  head         -- `H2OReadoutHead` gathers the hidden state at each readout position (right and left
                      padding), dots it with the fixed label rows and applies the head/per-kind
                      temperatures (random weights, CPU, no checkpoint).
+  B2 serve config -- `two_way.default` selects the attention mode, and the per-kind temperatures come from
+                     that mode's own calibration block.
   C  loader       -- a tiny H2O checkpoint (Qwen3.5 hybrid backbone + `label_rows.safetensors` +
                      `serve_config.json`) loads through `H2OModelLoader`: labels/temperatures come from
                      the checkpoint, the readout has no trainable parameters and `lm_head` is frozen.
   D  forward      -- the released prompt layout with the readout at the final prompt token, padding
-                     invariance, `H2O_TWO_WAY=1` making full attention bidirectional, no truncation and
-                     one-question-per-row enforcement.
+                     invariance, `H2O_TWO_WAY=1` making full attention bidirectional, no truncation,
+                     one-question-per-row enforcement, and the dummy-model rebuild used by DataLoader workers.
   E  loss         -- `scoring` loss back-propagates into the hidden states while the label rows stay fixed.
   F  sft          -- (CUDA) a short LoRA `swift sft` round-trip restores `head_temperature`/`temperatures`.
 
@@ -36,7 +38,8 @@ _swift_ok = True
 _swift_err: list = []
 try:
     from swift.dataset.preprocessor.decision import H2OPreprocessor
-    from swift.model.decision_head import KIND_NAMES, H2OReadoutHead, masked_softmax
+    from swift.model.decision_head import (KIND_NAMES, H2OReadoutHead, load_h2o_serve_temperatures,
+                                           load_h2o_two_way_default, masked_softmax, resolve_h2o_two_way)
 except Exception as exc:  # pragma: no cover
     _swift_ok = False
     _swift_err.append(repr(exc))
@@ -116,6 +119,61 @@ class TestStageAPreprocessor:
         assert pre.preprocess({**base, 'questions': [dict(noul, answer=False)]})[0]['target_probs'] == [[0.0, 1.0]]
         with pytest.raises(ValueError, match='matches no option name'):
             pre.preprocess({**base, 'questions': [dict(choice, gold='zzz')]})
+
+
+class TestStageB2ServeConfigMode:
+    """`two_way.default` decides the attention mode AND which calibration block is used."""
+
+    @staticmethod
+    def _serve_config(tmp_path, config):
+        (tmp_path / 'serve_config.json').write_text(json.dumps(config))
+        return str(tmp_path)
+
+    @pytest.mark.skipif(not _swift_ok, reason='swift import failed')
+    def test_released_default_is_bidirectional(self, tmp_path):
+        one_way = {'noul': 0.9, 'choice': 0.9, 'score': 0.9}
+        root = self._serve_config(
+            tmp_path, {
+                'labels': TINY_LABELS,
+                'temperature': one_way,
+                'two_way': {
+                    'default': 'bidirectional',
+                    'temperature': TINY_TEMPERATURES
+                },
+            })
+        assert load_h2o_two_way_default(root) is True
+        assert resolve_h2o_two_way(root) is True
+        # the calibration block must follow the mode, not the top-level (one-way) constants
+        assert load_h2o_serve_temperatures(root) == TINY_TEMPERATURES
+        assert load_h2o_serve_temperatures(root, two_way=False) == one_way
+
+    @pytest.mark.skipif(not _swift_ok, reason='swift import failed')
+    def test_missing_block_is_one_way(self, tmp_path):
+        root = self._serve_config(tmp_path, {'labels': TINY_LABELS, 'temperature': TINY_TEMPERATURES})
+        assert load_h2o_two_way_default(root) is False
+        assert resolve_h2o_two_way(root) is False
+        assert load_h2o_serve_temperatures(root) == TINY_TEMPERATURES
+
+    @pytest.mark.skipif(not _swift_ok, reason='swift import failed')
+    def test_env_override_wins(self, tmp_path, monkeypatch):
+        root = self._serve_config(
+            tmp_path, {
+                'labels': TINY_LABELS,
+                'temperature': TINY_TEMPERATURES,
+                'two_way': {
+                    'default': 'bidirectional',
+                    'temperature': {
+                        'noul': 0.5,
+                        'choice': 0.5,
+                        'score': 0.5
+                    },
+                },
+            })
+        monkeypatch.setenv('H2O_TWO_WAY', '0')
+        assert resolve_h2o_two_way(root) is False
+        assert load_h2o_serve_temperatures(root) == TINY_TEMPERATURES
+        monkeypatch.setenv('H2O_TWO_WAY', '1')
+        assert resolve_h2o_two_way(root) is True
 
 
 class TestStageBHead:

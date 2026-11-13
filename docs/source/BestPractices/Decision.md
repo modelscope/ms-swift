@@ -369,7 +369,7 @@ THX-02 在**单次非因果前向中联合读取一条记录的全部问题**，
 
 ### H2O
 
-H2O 使用自己的请求格式：`questions` 是**列表**，一次前向只读一个问题，readout 取 `Answer:` 前一个 token 的隐状态，与固定的 255 行 label 矩阵做点积。
+H2O 使用自己的请求格式：`questions` 是**列表**，一次前向只读一个问题，readout 取 `Answer:` 预填前缀最后一个 token（即下一个待生成位置）的隐状态，与固定的 255 行 label 矩阵做点积。
 
 ```json lines
 {"state": "I was charged twice for the same order.", "questions": [{"type": "choice", "instructions": "Which team should handle this?", "criteria": {"billing": "Charges and refunds", "support": "Technical problems"}}, {"type": "noul", "instructions": "Does the customer ask for a refund?"}], "answers": {"0": "billing", "1": false}}
@@ -521,7 +521,8 @@ swift sft \
 - `--loss_type scoring` — 255 个答案码上的 masked soft cross-entropy
 - 发布权重**已包含** H2O 的 LoRA，不要再把模型目录里的 adapter 传给 `--adapters`，否则会叠加两次
 - 不支持 packing / `--padding_free`（单题单序列）；记录永不截断，超过 `--max_length` 抛 `MaxLengthError`
-- `H2O_TWO_WAY=1` 把 full attention 层切换为双向（需 `transformers>=5.13.0`），gated-deltanet 层保持因果
+- 注意力模式跟随 checkpoint 自带的 `serve_config.json`（`two_way.default = bidirectional`），即**默认双向**，gated-deltanet 层保持因果；`H2O_TWO_WAY=1/0` 可显式覆盖（`1` 双向、`0` 单向）
+- 双向需要 `transformers>=5.13.0`，低版本只能用 `H2O_TWO_WAY=0` 走单向；两种模式的 per-kind 温度分别取自 `two_way.temperature` 与顶层 `temperature`，不要混用
 - 训练输出目录包含 adapter、`scoring_head.safetensors`（255 行 readout）与 `scoring_head.json`（`head_temperature` + per-kind `temperatures`）
 
 ### StartLux
@@ -891,7 +892,8 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 - **`startlux` 仅单遍 read-out**：AutoThink 门控/思考循环不在范围内（需要时请用官方 `startlux-decide` 包）；choice 单次至多 26 个选项（官方服务器的淘汰赛轮次未实现）；Instant（prompt 双向）目录会被拒绝；记录永不截断（超长记录抛 `MaxLengthError`）。
 - **`h2o` 单题单序列**：每次前向只读一个问题，`--packing` / `--padding_free` 会被拒绝；记录永不截断（超长记录抛 `MaxLengthError`）。
 - **`h2o` 读头固定**：`label_rows` 以 buffer 保存，不参与训练；`serve_config.json`（255 个标签 + per-kind 温度）必须随 checkpoint 一起提供。
-- **`h2o` 双向注意力**：需 `H2O_TWO_WAY=1` 且 `transformers>=5.13.0`；Ascend NPU 上 full-attention mask 展开为 `[B,1,S,S]`。
+- **`h2o` 双向注意力**：默认跟随 `serve_config.json` 的 `two_way.default`（bidirectional），可用 `H2O_TWO_WAY=0` 回退单向；双向需 `transformers>=5.13.0`，Ascend NPU 上 full-attention mask 展开为 `[B,1,S,S]`。
+- **`h2o` 暂不支持图像输入**：模板层已能透传图像，但数据集侧尚未从记录中抽取图片，当前仅支持文本 `state`；后续补充。
 - `tie_word_embeddings=True` **adapter 合并**：仅影响合并/转格式，训练与推理不受影响。
 
 

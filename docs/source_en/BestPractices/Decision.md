@@ -347,7 +347,8 @@ schema as a Decisions API request. Images are optional and can be combined with 
 ### H2O
 
 H2O uses its own request format: `questions` is a **list**, one question is read per forward, and the
-readout dots the last hidden state before `Answer:` with the fixed 255-row label matrix.
+readout dots the last hidden state of the `Answer:` prefill (the next position to be generated) with the
+fixed 255-row label matrix.
 
 ```json lines
 {"state": "I was charged twice for the same order.", "questions": [{"type": "choice", "instructions": "Which team should handle this?", "criteria": {"billing": "Charges and refunds", "support": "Technical problems"}}, {"type": "noul", "instructions": "Does the customer ask for a refund?"}], "answers": {"0": "billing", "1": false}}
@@ -520,8 +521,11 @@ Key parameters:
   `--adapters`, or it is applied twice
 - Packing / `--padding_free` is not supported (one question per sequence); records are never truncated and
   raise `MaxLengthError` beyond `--max_length`
-- `H2O_TWO_WAY=1` makes the full-attention layers bidirectional (needs `transformers>=5.13.0`); the
-  gated-deltanet layers stay causal
+- The attention mode follows the checkpoint's `serve_config.json` (`two_way.default = bidirectional`), i.e.
+  **bidirectional by default**, while the gated-deltanet layers stay causal; `H2O_TWO_WAY=1/0` overrides it
+  explicitly (`1` two-way, `0` one-way)
+- Two-way needs `transformers>=5.13.0`; older versions can only run `H2O_TWO_WAY=0`. The per-kind temperatures
+  come from `two_way.temperature` and the top-level `temperature` respectively -- never mix them
 - The output dir contains the adapter, `scoring_head.safetensors` (255-row readout) and `scoring_head.json`
   (`head_temperature` + per-kind `temperatures`)
 
@@ -876,7 +880,8 @@ When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirector
 - **`startlux` one-pass read-out only**: the AutoThink gate/thought loop is out of scope (use the official `startlux-decide` package for it); choice lists are capped at 26 options in one pass (the official server's knockout rounds are not implemented); Instant (prompt-bidirectional) folders are rejected; records are never truncated (over-long records raise `MaxLengthError`).
 - **`h2o` one question per sequence**: each forward reads a single question, so `--packing` / `--padding_free` are rejected; records are never truncated (over-long records raise `MaxLengthError`).
 - **`h2o` fixed readout**: `label_rows` is stored as a buffer and is not trained; `serve_config.json` (255 labels + per-kind temperatures) must ship with the checkpoint.
-- **`h2o` bidirectional attention**: requires `H2O_TWO_WAY=1` and `transformers>=5.13.0`; on Ascend NPU the full-attention mask is materialised as `[B,1,S,S]`.
+- **`h2o` bidirectional attention**: follows `two_way.default` in `serve_config.json` (bidirectional) by default and can fall back with `H2O_TWO_WAY=0`; two-way requires `transformers>=5.13.0`, and on Ascend NPU the full-attention mask is materialised as `[B,1,S,S]`.
+- **`h2o` image input is not supported yet**: the template already passes images through, but the preprocessor does not lift them from the record, so only textual `state` works for now; planned as a follow-up.
 - **`tie_word_embeddings=True` adapter merge**: Only affects "merge adapter / convert format"; training and inference are unaffected.
 
 ## Verification Report

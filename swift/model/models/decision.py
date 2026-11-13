@@ -12,7 +12,7 @@ from swift.model.decision_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens,
                                          rope_positions, rows_from_ids)
 from swift.model.decision_head import (ClefJointSchemaHead, H2OReadoutHead, JevVerbalizerHead, KevPointerHead, LayaHead,
                                        OmniJevHead, ScoringHead, StartLuxLetterHead, Thx02ReadoutHead, load_h2o_labels,
-                                       load_thx02_decision_config)
+                                       load_thx02_decision_config, resolve_h2o_two_way)
 from swift.model.patcher import get_original_forward, patch_module_forward
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
@@ -490,10 +490,11 @@ def _require_h2o_two_way_support() -> None:
         from transformers.masking_utils import create_recurrent_attention_mask  # noqa: F401
     except ImportError as exc:
         import transformers
-        raise RuntimeError(f'H2O_TWO_WAY=1 requires transformers>=5.13.0; installed {transformers.__version__}. '
+        raise RuntimeError(f'H2O runs bidirectional full attention by default (serve_config.json two_way.default), '
+                           f'which requires transformers>=5.13.0; installed {transformers.__version__}. '
                            'transformers<5.13 has no create_recurrent_attention_mask and its Qwen3.5 forward does not '
-                           'accept the {full_attention, linear_attention} mask mapping. Upgrade transformers or unset '
-                           'H2O_TWO_WAY.') from exc
+                           'accept the {full_attention, linear_attention} mask mapping. Upgrade transformers or set '
+                           'H2O_TWO_WAY=0 to run the one-way path.') from exc
 
 
 class H2OModelLoader(Thx02ModelLoader):
@@ -501,6 +502,9 @@ class H2OModelLoader(Thx02ModelLoader):
 
     One question per sequence, read at the final prompt token (`Answer:` prefill). The released weights
     already contain H2O's LoRA, so the checkpoint is loaded as a plain model (never via `--adapters`).
+
+    Attention mode follows `serve_config.json` (`two_way.default = bidirectional`) and can be overridden
+    with `H2O_TWO_WAY=1/0`; the per-kind temperatures are read from the matching calibration block.
     """
     head_cls = H2OReadoutHead
 
@@ -513,7 +517,11 @@ class H2OModelLoader(Thx02ModelLoader):
     def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
                   model_kwargs) -> PreTrainedModel:
         model = Qwen3_5Loader.get_model(self, model_dir, config, processor, model_kwargs)
-        if os.environ.get('H2O_TWO_WAY', '0') == '1':
+        if self.return_dummy_model:
+            # Template._get_model() rebuilds a meta-device stand-in inside DataLoader workers just to read
+            # `get_rope_index`; patching attention hooks or freezing weights on it is meaningless.
+            return model
+        if resolve_h2o_two_way(model_dir):
             _require_h2o_two_way_support()
             language_model = getattr(model.model, 'language_model', None) or model.model
             enable_noncausal_full_attention(language_model)
