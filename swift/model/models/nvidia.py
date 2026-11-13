@@ -125,6 +125,15 @@ def patch_nemotron_omni_media(model):
     return model
 
 
+class NemoSpeechLMLoader(ModelLoader):
+    default_trust_remote_code = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from transformers import AutoModelForMultimodalLM
+        self.auto_model_cls = self.auto_model_cls or AutoModelForMultimodalLM
+
+
 class NemotronHLoader(ModelLoader):
     default_trust_remote_code = False
 
@@ -172,4 +181,21 @@ register_model(
         architectures=['NemotronH_Omni_Reasoning_V3'],
         requires=['transformers>=5.16.1', 'mamba-ssm', 'causal-conv1d>=1.2.0'],
         tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.nemo_speechlm,
+        [
+            ModelGroup([
+                Model('nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B',
+                      'nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B'),
+            ]),
+        ],
+        NemoSpeechLMLoader,
+        template=TemplateType.nemo_speechlm,
+        model_arch=ModelArch.nemo_speechlm,
+        architectures=['Nemotron3_5TranscribeForConditionalGeneration'],
+        requires=['transformers>5.21', 'mamba-ssm', 'causal-conv1d>=1.2.0'],
+        tags=['audio'],
     ))

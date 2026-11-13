@@ -62,7 +62,6 @@ class TestAsyncSaveSymlink(unittest.TestCase):
              mock.patch.object(M, 'get_sharded_sd_metadata', lambda args: {}), \
              mock.patch.object(M, '_generate_state_dict', lambda *args, **kwargs: {'weight': 1}), \
              mock.patch.object(M, '_filter_adapter_state_dict', lambda state_dict, peft_format: None), \
-             mock.patch.object(M, 'mcore_017', True), \
              mock.patch.object(M, 'TorchDistSaveShardedStrategy', object, create=True), \
              mock.patch.object(M, 'FullyParallelSaveStrategyWrapper', lambda strategy, group: strategy), \
              mock.patch.object(M, 'mpu', mock.MagicMock()), \

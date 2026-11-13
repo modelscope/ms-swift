@@ -469,11 +469,10 @@ class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
 register_template(GLM4_5TemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
 
 
-class GLM5NextTemplate(GLM4_5VTemplate, GLM5_2Template):
-    """GLM-5.3-Flash: GLM-4.5V vision tokens, GLM-5.2 reasoning effort (low/high/max), NoPE text tower.
+class GLM5NextTemplate(GLM4_5VTemplate, GLM5_3Template):
+    """GLM-5.3-Flash: GLM-4.5V vision tokens, GLM-5.3 chat semantics, NoPE text tower.
 
-    `init_env_args` / `_get_system` come from GLM5_2Template through the MRO; the vision
-    handling comes from GLM4_5VTemplate.
+    Only the vision handling and `_get_position_ids` differ from GLM5_3Template.
     """
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
@@ -502,6 +501,7 @@ register_template(
         agent_template='glm5_1',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        preserve_thinking=True,
     ))
 
 glm4z1rumination_system = (

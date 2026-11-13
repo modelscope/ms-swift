@@ -96,12 +96,15 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
         if model.model_meta.is_multimodal:
-            return get_multimodal_target_regex(
+            target_regex = get_multimodal_target_regex(
                 model,
                 freeze_llm=args.freeze_llm,
                 freeze_vit=args.freeze_vit,
                 freeze_aligner=args.freeze_aligner,
                 include_embedding='all-embedding' in target_modules)
+            if args.model_type == 'qwen4_exp':
+                target_regex = r'^(?!.*\bindexer\.)' + target_regex
+            return target_regex
         else:
             target_modules.remove('all-linear')
             target_modules += find_all_linears(model)
@@ -109,13 +112,16 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
         target_modules.remove('all-embedding')
         target_modules += find_embedding(model)
     target_modules = _drop_mamba_incompatible_targets(target_modules, model)
+    if args.model_type == 'qwen4_exp' and 'all-linear' in args.target_modules:
+        targets = '|'.join(re.escape(name) for name in target_modules)
+        return rf'^(?!.*\bindexer\.)(?:.*\.)?(?:{targets})$'
     return target_modules
 
 
 # PEFT >= 0.20 hard-rejects LoRA on these Mamba modules
 # (peft/tuners/tuners_utils.py::_check_lora_target_modules_mamba, set: {out_proj, conv1d}).
 # `nemotron_h_omni` is not in PEFT's model-type set yet, so it is stripped here proactively.
-_MAMBA_MODEL_TYPES = {'falcon_h1', 'mamba', 'mamba2', 'falcon_mamba', 'nemotron_h', 'nemotron_h_omni'}
+_MAMBA_MODEL_TYPES = {'falcon_h1', 'mamba', 'mamba2', 'falcon_mamba', 'nemotron_h', 'nemotron_h_omni', 'nemo_speechlm'}
 _MAMBA_INCOMPATIBLE_MODULES = {'out_proj', 'conv1d'}
 
 
@@ -424,4 +430,8 @@ class TunerMixin:
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
         model = apply_model_prepare_hooks(args, model)
+        if (args.model_type == 'qwen4_exp' and args.fsdp and args.fsdp_config.get('fsdp_version', 2) == 2):
+            from swift.model.models.qwen import _pin_qwen4_exp_ple_ngram_on_host
+            from swift.template import Template
+            _pin_qwen4_exp_ple_ngram_on_host(Template.get_base_model(model))
         return model

@@ -20,7 +20,9 @@ class MinimaxM2AgentTemplate(BaseAgentTemplate):
     </minimax:tool_call>
     """
 
-    def get_toolcall(self, response: str) -> List[Function]:
+    supports_tool_schema = True
+
+    def get_toolcall(self, response: str, tools: Optional[List[Union[str, dict]]] = None) -> List[Function]:
         """
         Extract tool calls from MiniMax response format.
 
@@ -32,6 +34,7 @@ class MinimaxM2AgentTemplate(BaseAgentTemplate):
         </minimax:tool_call>
         """
         functions = []
+        tool_schemas = self._get_tool_schemas(tools)
 
         # Find all tool_call blocks
         tool_call_blocks = re.findall(r'<minimax:tool_call>(.*?)</minimax:tool_call>', response, re.DOTALL)
@@ -42,14 +45,8 @@ class MinimaxM2AgentTemplate(BaseAgentTemplate):
 
             for tool_name, params_block in invoke_blocks:
                 # Extract parameters
-                params = {}
                 param_matches = re.findall(r'<parameter name="([^"]+)">(.*?)</parameter>', params_block, re.DOTALL)
-
-                for param_name, param_value in param_matches:
-                    param_value = param_value.strip()
-                    # Try to parse as JSON if it looks like a JSON structure
-                    parsed_value = self._parse_json(param_value)
-                    params[param_name] = parsed_value if parsed_value is not None else param_value
+                params = BaseAgentTemplate._decode_schema_args(param_matches, tool_schemas, tool_name)
 
                 functions.append(Function(name=tool_name, arguments=params))
 

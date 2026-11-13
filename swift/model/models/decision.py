@@ -5,13 +5,14 @@ import torch
 from contextlib import contextmanager
 from functools import wraps
 from transformers import PretrainedConfig, PreTrainedModel
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
+from swift.model.decision_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
+                                         is_hybrid, kev_branch_enabled, kev_forward_branch, prefix_inputs,
+                                         rope_positions, rows_from_ids)
 from swift.model.decision_head import (ClefJointSchemaHead, JevVerbalizerHead, KevPointerHead, LayaHead, OmniJevHead,
-                                       ScoringHead, Thx02ReadoutHead, load_thx02_decision_config)
-from swift.model.omnijev_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
-                                        is_hybrid, prefix_inputs, rope_positions, rows_from_ids)
-from swift.model.patcher import patch_module_forward
+                                       ScoringHead, StartLuxLetterHead, Thx02ReadoutHead, load_thx02_decision_config)
+from swift.model.patcher import get_original_forward, patch_module_forward
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
 from ..constant import LLMModelType, MLLMModelType
@@ -30,6 +31,9 @@ class ScoringModelLoader(ModelLoader):
     def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
                   model_kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, config, processor, model_kwargs)
+        return self._attach_head(model, model_dir, config)
+
+    def _attach_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig) -> PreTrainedModel:
         head = self.build_head(model, model_dir, config)
         self.attach_scoring_head(model, head)
         from swift.model.decision_head import maybe_load_trained_scoring_head
@@ -47,14 +51,18 @@ class ScoringModelLoader(ModelLoader):
         if head.needs_output_embeddings:
             head.set_output_embeddings(model.get_output_embeddings())
 
-        origin_forward = model.forward
+        origin_forward = get_original_forward(model)
+        dispatch = self._forward_dispatch_state(model, head, origin_forward)
+        dispatcher = self._scoring_dispatcher
 
         @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
         def new_forward(self, *args, **kwargs):
-            return ScoringModelLoader._scoring_head_forward(
-                self, *args, head=head, origin_forward=origin_forward, **kwargs)
+            return dispatcher(self, *args, **dispatch, **kwargs)
 
         patch_module_forward(model, new_forward)
+
+    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
+        return {'head': head, 'origin_forward': origin_forward}
 
     @staticmethod
     def _scoring_head_forward(self, *args, head: ScoringHead, origin_forward, **kwargs):
@@ -73,6 +81,9 @@ class ScoringModelLoader(ModelLoader):
             hidden_states = output.hidden_states[-1]
         lm_logits = output.logits if head.needs_lm_logits else None
         return head(hidden_states, lm_logits, meta)
+
+    # The default forward dispatcher; subclasses point this at their own (staticmethod) forward.
+    _scoring_dispatcher = staticmethod(_scoring_head_forward)
 
     @staticmethod
     def _match_head_dtype_device(model: PreTrainedModel, head: ScoringHead) -> ScoringHead:
@@ -93,12 +104,31 @@ class ScoringModelLoader(ModelLoader):
 class JevModelLoader(ScoringModelLoader, Qwen3_5Loader):
     head_cls = JevVerbalizerHead
 
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        if str(getattr(config, 'model_type', '')).lower() == 'qwen3_5_text':
+            from transformers import Qwen3_5ForCausalLM, Qwen3_5PreTrainedModel
+
+            from .qwen import (_get_qwen3_5_keep_in_fp32_modules, _patch_qwen3_5_keep_in_fp32_modules,
+                               _patch_qwen3_5_linear_attention_sequence_parallel)
+            self.auto_model_cls = Qwen3_5ForCausalLM
+            _patch_qwen3_5_linear_attention_sequence_parallel()
+            keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+            with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel, keep_in_fp32_modules):
+                model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+            return self._attach_head(model, model_dir, config)
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
 
 register_model(
     ModelMeta(
-        MLLMModelType.jev, [ModelGroup([
-            Model('autotrust/JEV-27B-VL', 'autotrust/JEV-27B-VL'),
-        ], TemplateType.jev)],
+        MLLMModelType.jev, [
+            ModelGroup([
+                Model('autotrust/JEV-9B', 'autotrust/JEV-9B'),
+                Model('autotrust/JEV-27B', 'autotrust/JEV-27B'),
+                Model('autotrust/JEV-27B-VL', 'autotrust/JEV-27B-VL'),
+            ], TemplateType.jev)
+        ],
         JevModelLoader,
         model_arch=ModelArch.qwen2_vl,
         task_type='decision',
@@ -127,6 +157,33 @@ register_model(
 class OmniJevModelLoader(ScoringModelLoader, Qwen3_5Loader):
     head_cls = OmniJevHead
 
+    @staticmethod
+    def _prepare_option_tokens(model, processor, model_dir: str) -> None:
+        saved_ids = getattr(model.config, 'omnijev_option_token_ids', None)
+        if saved_ids is not None:
+            # A full checkpoint already contains the trained embedding rows. Loading the
+            # factory new_tok_emb.pt here would silently reset them after fine-tuning.
+            tokenizer = processor.tokenizer
+            tokens = [OPT_OPEN, OPT_CLOSE]
+            vocab = tokenizer.get_vocab()
+            actual_ids = [vocab.get(token) for token in tokens]
+            vocab_size = model.get_input_embeddings().weight.shape[0]
+            if (not isinstance(saved_ids, list) or len(saved_ids) != 2 or actual_ids != saved_ids
+                    or any(type(idx) is not int or not 0 <= idx < vocab_size for idx in saved_ids)
+                    or saved_ids[0] == saved_ids[1] or any(
+                        tokenizer(token, add_special_tokens=False)['input_ids'] != [idx]
+                        for token, idx in zip(tokens, saved_ids))):
+                raise ValueError('OmniJev checkpoint option-token IDs do not match its tokenizer and embeddings.')
+            return
+        emb_path = OmniJevHead._locate(model_dir, 'new_tok_emb.pt', 'OMNIJEV_NEW_TOK_EMB')
+        if emb_path is None:
+            raise FileNotFoundError(
+                f'OmniJev new_tok_emb.pt not found under {model_dir!r}. The option-token embeddings are '
+                'not in the LoRA adapter (modules_to_save=None), so they must be restored from '
+                'new_tok_emb.pt; set OMNIJEV_NEW_TOK_EMB to its path (it ships beside head.pt in the '
+                'AI-ModelScope/OmniJev adapter dir).')
+        model.config.omnijev_option_token_ids = add_option_tokens(model, processor, emb_path)
+
     def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
                   model_kwargs) -> PreTrainedModel:
         model = Qwen3_5Loader.get_model(self, model_dir, config, processor, model_kwargs)
@@ -135,14 +192,7 @@ class OmniJevModelLoader(ScoringModelLoader, Qwen3_5Loader):
                              'linear-attention model a block-diagonal mask cannot isolate options, so the branch '
                              'forward is mandatory. The loaded base reports no linear-attention layers '
                              '(config.text_config.layer_types); point --model at the OmniJev base checkpoint.')
-        emb_path = OmniJevHead._locate(model_dir, 'new_tok_emb.pt', 'OMNIJEV_NEW_TOK_EMB')
-        if emb_path is None:
-            raise FileNotFoundError(
-                f'OmniJev new_tok_emb.pt not found under {model_dir!r}. The option-token embeddings are '
-                'not in the LoRA adapter (modules_to_save=None), so they must be restored from '
-                'new_tok_emb.pt; set OMNIJEV_NEW_TOK_EMB to its path (it ships beside head.pt in the '
-                'AI-ModelScope/OmniJev adapter dir).')
-        add_option_tokens(model, processor, emb_path)
+        self._prepare_option_tokens(model, processor, model_dir)
         tokenizer = processor.tokenizer
         self._omnijev_open_ids = tokenizer(OPT_OPEN, add_special_tokens=False)['input_ids']
         self._omnijev_close_ids = tokenizer(OPT_CLOSE, add_special_tokens=False)['input_ids']
@@ -154,11 +204,7 @@ class OmniJevModelLoader(ScoringModelLoader, Qwen3_5Loader):
         maybe_load_trained_scoring_head(model, model_dir)
         return model
 
-    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
-        head = self._match_head_dtype_device(model, head)
-        model.scoring_head = head
-        if head.needs_output_embeddings:
-            head.set_output_embeddings(model.get_output_embeddings())
+    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
         for p in head.parameters():
             p.requires_grad_(True)
         open_ids = getattr(self, '_omnijev_open_ids', None)
@@ -167,22 +213,14 @@ class OmniJevModelLoader(ScoringModelLoader, Qwen3_5Loader):
         if not open_ids or not close_ids or tokenizer is None:
             raise RuntimeError('OmniJevModelLoader.attach_scoring_head needs the option tokens registered first; go '
                                'through get_model (which runs add_option_tokens), not attach_scoring_head directly.')
-        origin_forward = model.forward
-
-        @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
-        def new_forward(self, *args, **kwargs):
-            return OmniJevModelLoader._omnijev_branch_forward(
-                self,
-                *args,
-                head=head,
-                origin_forward=origin_forward,
-                backbone_model=model,
-                tokenizer=tokenizer,
-                open_ids=open_ids,
-                close_ids=close_ids,
-                **kwargs)
-
-        patch_module_forward(model, new_forward)
+        return {
+            'head': head,
+            'origin_forward': origin_forward,
+            'backbone_model': model,
+            'tokenizer': tokenizer,
+            'open_ids': open_ids,
+            'close_ids': close_ids
+        }
 
     @staticmethod
     @contextmanager
@@ -281,6 +319,8 @@ class OmniJevModelLoader(ScoringModelLoader, Qwen3_5Loader):
 
         return head.forward_features(per_question_features, meta)
 
+    _scoring_dispatcher = staticmethod(_omnijev_branch_forward)
+
 
 register_model(
     ModelMeta(
@@ -316,6 +356,31 @@ class KevModelLoader(ScoringModelLoader, Qwen3_5Loader):
                              '(config.text_config.layer_types); point --model at a Qwen3.5-*-Base '
                              'checkpoint.')
         return model
+
+    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
+        return {'head': head, 'origin_forward': origin_forward, 'backbone_model': model}
+
+    @staticmethod
+    def _kev_forward(self, *args, head: ScoringHead, origin_forward, backbone_model, **kwargs):
+        meta = kwargs.pop('decision_meta', None)
+        if meta is None:
+            raise ValueError('Decision forward requires decision_meta from KevTemplate._encode '
+                             '(kinds / n_options / decide_idx / opt_idx); got none.')
+        kwargs.pop('labels', None)
+        kwargs['return_dict'] = True
+        if kev_branch_enabled():
+            tokenizer = getattr(backbone_model, 'processor', None)
+            tokenizer = getattr(tokenizer, 'tokenizer', tokenizer)
+            pad_id = tokenizer.pad_token_id if tokenizer is not None and tokenizer.pad_token_id is not None else 0
+            out = kev_forward_branch(origin_forward, head, backbone_model, kwargs, meta, pad_id=pad_id)
+            if out is not None:
+                return out
+        kwargs['output_hidden_states'] = True
+        output = origin_forward(*args, **kwargs)
+        hidden_states = output.hidden_states[-1]
+        return head(hidden_states, None, meta)
+
+    _scoring_dispatcher = staticmethod(_kev_forward)
 
 
 register_model(
@@ -384,6 +449,9 @@ class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         processor = super().get_processor(model_dir, config)
         decision_config = load_thx02_decision_config(model_dir)
+        # Preserve the effective processor settings (including an environment override)
+        # in full checkpoints, which do not carry the factory decision_config.json.
+        config.thx02_decision_config = decision_config
         # Answer codes (A, B, ..., one token each) and the image pixel bounds THX-02 was trained with. These
         # bounds are the model's own; `--max_pixels` still applies first (the template rescales larger images
         # before the processor), so it can lower the resolution down to 65536 px but not raise it above the bound.
@@ -408,16 +476,9 @@ class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
         maybe_load_trained_scoring_head(model, model_dir)
         return model
 
-    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
-        head = self._match_head_dtype_device(model, head)
-        model.scoring_head = head
-        origin_forward = model.forward
-
-        @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
-        def new_forward(self, *args, **kwargs):
-            return Thx02ModelLoader._thx02_forward(self, *args, head=head, **kwargs)
-
-        patch_module_forward(model, new_forward)
+    def _forward_dispatch_state(self, model: PreTrainedModel, head: ScoringHead, origin_forward) -> Dict[str, Any]:
+        # _thx02_forward calls the backbone (self.model) directly; origin_forward is not needed.
+        return {'head': head}
 
     @staticmethod
     def _thx02_forward(self, *args, head: ScoringHead, **kwargs):
@@ -432,6 +493,8 @@ class Thx02ModelLoader(ScoringModelLoader, Qwen3_5Loader):
         output = self.model(*args, **kwargs)
         return head(output.last_hidden_state, None, meta)
 
+    _scoring_dispatcher = staticmethod(_thx02_forward)
+
 
 register_model(
     ModelMeta(
@@ -443,6 +506,40 @@ register_model(
         task_type='decision',
         architectures=['THXDecisionModel'],
         requires=['transformers>=5.13.0', 'qwen_vl_utils>=0.0.14'],
+        tags=['vision', 'decision']))
+
+
+class StartLuxModelLoader(ScoringModelLoader, Qwen3_5Loader):
+
+    head_cls = StartLuxLetterHead
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        self._startlux_tokenizer = self._get_tokenizer(processor)
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+    def build_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig) -> ScoringHead:
+        return self.head_cls.from_pretrained(
+            model_dir, model=model, config=config, tokenizer=getattr(self, '_startlux_tokenizer', None))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.startlux, [
+            ModelGroup([
+                Model('StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink',
+                      'startlux-models/StartLux-Decision-v1.1-4B-AutoThink'),
+                Model('StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink',
+                      'startlux-models/StartLux-Decision-v1.1-9B-AutoThink'),
+                Model('StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink',
+                      'startlux-models/StartLux-Decision-v1.1-27B-AutoThink'),
+            ], TemplateType.startlux)
+        ],
+        StartLuxModelLoader,
+        model_arch=ModelArch.qwen2_vl,
+        task_type='decision',
+        architectures=[],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'decision']))
 
 

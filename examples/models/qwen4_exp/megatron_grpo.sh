@@ -3,7 +3,7 @@
 
 SYSTEM_PROMPT="Please reason step by step, and put your final answer within \\boxed{}."
 
-NGRAM_EMBEDDING_CPU_OFFLOAD=1 \
+PLE_CPU_OFFLOAD=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \

@@ -24,17 +24,18 @@ def _make_tokenizer():
     return fast
 
 
-def _make_template(max_length=64, head_max_len=None):
-    from swift.template.templates.decision import LayaTemplate
-    tmpl = object.__new__(LayaTemplate)
-    # LayaTemplate only needs a plain tokenizer; assign via `processor` (a plain
-    # attribute) so the ProcessorMixin.tokenizer property getter works without
-    # running the full Template.__init__.
-    tmpl.processor = _make_tokenizer()
-    tmpl.max_length = max_length
-    if head_max_len is not None:
-        tmpl._head_max_len = head_max_len
-    return tmpl
+def _make_template(max_length=64):
+    from swift.model.constant import LLMModelType
+    from swift.model.model_meta import ModelInfo
+    from swift.model.register import MODEL_MAPPING
+    from swift.template import get_template
+
+    fast = _make_tokenizer()
+    # the metadata a Processor carries; the tokenizer itself is a valid Processor instance
+    fast.model_info = ModelInfo(
+        model_type='laya', model_dir='', torch_dtype=torch.float32, max_model_len=8192, quant_method=None, quant_bits=0)
+    fast.model_meta = MODEL_MAPPING[LLMModelType.laya]
+    return get_template(fast, template_type='laya', max_length=max_length)
 
 
 def _inputs(state, kind, question, options):
@@ -80,8 +81,9 @@ def test_laya_template_truncates_state_not_markers():
 
 
 def test_laya_template_option_budget_shrink_keeps_markers():
-    # 40 options cannot fit head budget 192 with 48-token texts -> shrink evenly, keep all markers.
-    tmpl = _make_template(max_length=256, head_max_len=192)
+    # 40 options cannot fit the (class-default 192) head budget with 48-token texts -> shrink
+    # evenly, keep all markers.
+    tmpl = _make_template(max_length=256)
     encoded = tmpl._encode(_inputs('s', 'choice', 'pick', [f'option {i} ' + 'x ' * 40 for i in range(40)]))
     assert len(encoded['decision_meta']['laya_markers'][0]) == 40
 
@@ -177,10 +179,17 @@ def _tiny_modernbert():
 
 
 def test_laya_loader_forward_end_to_end_with_loss():
+    from swift.model.constant import LLMModelType
+    from swift.model.model_meta import ModelInfo
+    from swift.model.register import MODEL_MAPPING
+
     torch.manual_seed(0)
     model = _tiny_modernbert()
     head = LayaHead(hidden_size=64, head_layers=1)
-    loader = object.__new__(LayaModelLoader)
+    model_meta = MODEL_MAPPING[LLMModelType.laya]
+    model_info = ModelInfo(
+        model_type='laya', model_dir='', torch_dtype=torch.float32, max_model_len=8192, quant_method=None, quant_bits=0)
+    loader = LayaModelLoader(model_info, model_meta, model_kwargs={})
     loader.attach_scoring_head(model, head)
     assert model.scoring_head is head
 

@@ -534,7 +534,7 @@ class TestStageETinyModel:
     def test_packing_rejected_before_loading(self, tiny_dir):
         from swift import SftArguments
         for flag in ('packing', 'padding_free'):
-            with pytest.raises(ValueError, match='THX-02 does not support'):
+            with pytest.raises(ValueError, match='does not support padding free or packing'):
                 SftArguments(
                     model=tiny_dir, model_type='thx02', task_type='decision', dataset=['dummy'], **{flag: True})
 

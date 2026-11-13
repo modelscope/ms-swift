@@ -40,12 +40,10 @@ The training backend uses Megatron. For environment preparation, please refer to
 
 The N-gram embedding table holds 51B parameters (~**95GiB** in bf16), and can only be sharded along TP.
 
-Set the `NGRAM_EMBEDDING_CPU_OFFLOAD` environment variable to offload the PLE weights:
-
-The legacy `PLE_CPU_OFFLOAD` remains supported; the new variable takes precedence when set, including `0`.
+Set the `PLE_CPU_OFFLOAD` environment variable to offload the PLE weights:
 
 ```shell
-NGRAM_EMBEDDING_CPU_OFFLOAD=1 megatron sft ...
+PLE_CPU_OFFLOAD=1 megatron sft ...
 ```
 
 Note that once enabled:
@@ -55,7 +53,7 @@ Note that once enabled:
 
 ```shell
 # 8*70G
-NGRAM_EMBEDDING_CPU_OFFLOAD=1 \
+PLE_CPU_OFFLOAD=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
@@ -107,7 +105,7 @@ Measured on 8 GPUs with LoRA (rank 8), TP2/EP4/PP2 (except for the "parallelism"
 | **parallelism** | TP4/EP2/PP2 | 8192 | – | full | – | 105.7 | +39.8% | 2.58× |
 | | TP2/EP4/PP1 | 8192 | – | full | – | 142.5 | +88.5% | **0.80×** |
 
-<sub>PF = padding_free, RC = recompute_granularity, PLE offload = `NGRAM_EMBEDDING_CPU_OFFLOAD=1`; "–" means off/default. **The Time column is the relative single-step duration — higher is slower** (e.g. 1.32× means each step takes 1.32× as long as the baseline).</sub>
+<sub>PF = padding_free, RC = recompute_granularity, PLE offload = `PLE_CPU_OFFLOAD=1`; "–" means off/default. **The Time column is the relative single-step duration — higher is slower** (e.g. 1.32× means each step takes 1.32× as long as the baseline).</sub>
 
 
 ## Reinforcement Learning (GRPO)
@@ -118,7 +116,7 @@ Measured on 8 GPUs with LoRA (rank 8), TP2/EP4/PP2 (except for the "parallelism"
 # 8*135G
 SYSTEM_PROMPT="Please reason step by step, and put your final answer within \\boxed{}."
 
-NGRAM_EMBEDDING_CPU_OFFLOAD=1 \
+PLE_CPU_OFFLOAD=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \

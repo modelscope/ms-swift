@@ -784,8 +784,39 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
         if messages and messages[-1].get('role') == 'assistant':
             data = {**data, 'messages': messages[:-1] + [{**messages[-1], 'content': None}]}
 
-    encoded = template.encode(data, return_length=True)
+    response_ids = sample.response_token_ids
+    if response_ids and isinstance(response_ids[0], int):
+        response_ids = [response_ids]
+    response_len = len(response_ids[-1]) if response_ids else 0
+    # Extend by response_len so the prompt truncates at max_length, matching the engine pre-fill.
+    orig_max_length = getattr(template, 'max_length', None)
+    try:
+        if response_len and orig_max_length is not None:
+            template.max_length = orig_max_length + response_len
+        encoded = template.encode(data, return_length=True)
+    finally:
+        if orig_max_length is not None:
+            template.max_length = orig_max_length
     return encoded
+
+
+def check_rollout_truncation_config(template: Template, server_cfg: Dict[str, Any]) -> None:
+    """Warn when the rollout server's truncation config differs from the training template.
+
+    Training re-encodes with ``max_length + completion_len`` so its prompt truncation should land
+    where the engine pre-filled; a mismatch therefore hints that the two sides may truncate
+    differently (this is only a drift warning, not a hard failure).
+    """
+    if 'max_length' not in server_cfg or 'truncation_strategy' not in server_cfg:
+        return  # older rollout server does not report truncation config; skip the check
+    train_cfg = (template.max_length, template.truncation_strategy)
+    server_cfg_tuple = (server_cfg.get('max_length'), server_cfg.get('truncation_strategy'))
+    if train_cfg != server_cfg_tuple:
+        get_logger().warning_once(
+            f'Rollout truncation config mismatch: train max_length/truncation_strategy={train_cfg}, '
+            f'rollout server={server_cfg_tuple}. Training re-encodes with '
+            'max_length + completion_len; please align max_length/truncation_strategy (and '
+            'mm_processor_kwargs) on both sides.')
 
 
 def replace_assistant_response_with_ids(messages: 'Messages',

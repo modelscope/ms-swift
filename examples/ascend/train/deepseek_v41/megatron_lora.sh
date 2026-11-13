@@ -23,6 +23,18 @@ export MASTER_PORT=${MASTER_PORT:-29500}
 export TOKENIZERS_PARALLELISM=false
 export NGRAM_EMBEDDING_CPU_OFFLOAD=1
 
+# Fail before worker launch if an older bridge would silently ignore CPU offload.
+python - <<'PY_CHECK_BRIDGE'
+try:
+    from mcore_bridge.utils import use_ngram_embedding_cpu_offload
+    from mcore_bridge.model.modules.engram_cpu import CPUEmbeddingTable
+except ImportError as error:
+    raise SystemExit('CPU Engram offload requires mcore-bridge PR #251 '
+                     '(addsubmuldiv/mcore-bridge:dsv41). Install the companion branch first.') from error
+if not use_ngram_embedding_cpu_offload():
+    raise SystemExit('NGRAM_EMBEDDING_CPU_OFFLOAD must be enabled for this example.')
+PY_CHECK_BRIDGE
+
 # The map must match the checkpoint's tokenizer, hash layer IDs and vocabulary.
 # Prepare it with the matching MCore tools/engram/generate_tokenizer_map.py.
 megatron sft \

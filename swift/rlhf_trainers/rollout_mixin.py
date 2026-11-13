@@ -413,7 +413,8 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         if self.vllm_mode == 'server':
             if self.accelerator.is_main_process:
-                self.vllm_client.get_engine_type()
+                from swift.rlhf_trainers.utils import check_rollout_truncation_config
+                check_rollout_truncation_config(self.template, self.vllm_client.get_engine_type())
                 self.vllm_client.reset_mm_cache()
                 vllm_use_async_engine = [self.vllm_client.use_async_engine]
                 enable_multi_turn = [self.vllm_client.enable_multi_turn]

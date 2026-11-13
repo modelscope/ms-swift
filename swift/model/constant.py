@@ -63,6 +63,7 @@ class LLMModelType:
     telechat = 'telechat'
     telechat2 = 'telechat2'
     xing4_0 = 'xing4_0'
+    flint = 'flint'
 
     mistral = 'mistral'
     devstral = 'devstral'
@@ -123,6 +124,7 @@ class LLMModelType:
     bge_reranker = 'bge_reranker'
 
     olmoe = 'olmoe'
+    olmo3 = 'olmo3'
 
     generic_decision = 'generic_decision'
     laya = 'laya'
@@ -169,6 +171,7 @@ class MLLMModelType:
     omnijev = 'omnijev'
     kev = 'kev'
     thx02 = 'thx02'
+    startlux = 'startlux'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -241,6 +244,7 @@ class MLLMModelType:
     minicpmv4_5 = 'minicpmv4_5'
     minicpmv4_6 = 'minicpmv4_6'
     minicpmv4_7 = 'minicpmv4_7'
+    minicpm_ocr = 'minicpm_ocr'
     minicpmo = 'minicpmo'
 
     minimax_vl = 'minimax_vl'
@@ -295,6 +299,7 @@ class MLLMModelType:
     monkeyocrv2 = 'monkeyocrv2'
 
     nemotron_h_omni = 'nemotron_h_omni'
+    nemo_speechlm = 'nemo_speechlm'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):

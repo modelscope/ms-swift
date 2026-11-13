@@ -116,6 +116,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 使用余弦函数平滑地调整奖励值，确保奖励变化在合理范围内。余弦函数的参数包括生成文本的长度、最大长度限制以及奖励的最小值和最大值。
 
+长度按所有 rollout 轮次生成的 token 总数计算。总长度超过 `cosine_max_len` 时，奖励保持为根据答案正确性配置的最大长度奖励值。
+
 参数
 - cosine_min_len_value_wrong（默认值：-0.5）：生成错误答案时，最小长度对应的奖励值。
 - cosine_max_len_value_wrong（默认值：0.0）：生成错误答案时，最大长度对应的奖励值。
@@ -136,6 +138,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 ### 5. **soft overlong punishment**
 定义长度惩罚区间。在这个区间内，给予[-1,0]的线性惩罚。
+
+长度按所有 rollout 轮次生成的 token 总数计算。总长度超过 `soft_max_length` 时，惩罚保持为 -1。
 
 参数
 - soft_max_length: 论文中的L_max，模型的最大生成长度，默认等于max_completion_length

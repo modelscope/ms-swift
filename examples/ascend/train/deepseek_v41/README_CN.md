@@ -21,6 +21,8 @@
 
 MCore 使用上述包含 V4.1 / 原生 Engram 实现的 fork 分支。MegatronAdaptor 和 TransformerEngineNPU 分别使用表中的分支，按各项目的安装说明使用源码 editable 安装，并确认运行时导入的是这些 checkout。
 
+运行前需安装配套 [mcore-bridge PR #251](https://github.com/modelscope/mcore-bridge/pull/251) 的 `addsubmuldiv/mcore-bridge:dsv41` 分支，其中包含统一开关及 CPU Engram 实现。仅满足 `requirements/megatron.txt` 的版本下限并不足够；旧版 bridge 可能忽略新开关。示例脚本会在启动训练前检查该接口，缺少支持时直接报错。
+
 ## 单机减层验证
 
 [示例脚本](megatron_lora.sh)使用 TP=1、PP=1、CP=1、EP=8，在 NPU 上训练注意力投影的 LoRA 参数。`NGRAM_EMBEDDING_CPU_OFFLOAD=1` 将 Engram 词表冻结并按 EP 分片保留在 CPU，其他计算仍在 NPU 上。默认开启 2K packing，保存 Megatron 格式的 adapter checkpoint（不合并完整模型）。
@@ -49,7 +51,7 @@ bash examples/ascend/train/deepseek_v41/megatron_lora.sh
 
 ```bash
 # 节点 0
-NODE_RANK=0 MASTER_ADDR=<节点0的通信IP> \
+NODE_RANK=0 MASTER_ADDR="192.0.2.10" \
 MODEL=/path/to/full-deepseek-v41-checkpoint \
 ENGRAM_TOKENIZER_MAP=/path/to/engram_tokenizer_map.json \
 DATASET=/path/to/train.jsonl \
@@ -57,7 +59,7 @@ OUTPUT_DIR=/path/to/shared-output \
 bash examples/ascend/train/deepseek_v41/megatron_lora_multinode.sh
 
 # 节点 1：MASTER_ADDR、MASTER_PORT、OUTPUT_DIR 与节点 0 相同
-NODE_RANK=1 MASTER_ADDR=<节点0的通信IP> \
+NODE_RANK=1 MASTER_ADDR="192.0.2.10" \
 MODEL=/path/to/full-deepseek-v41-checkpoint \
 ENGRAM_TOKENIZER_MAP=/path/to/engram_tokenizer_map.json \
 DATASET=/path/to/train.jsonl \
@@ -65,6 +67,6 @@ OUTPUT_DIR=/path/to/shared-output \
 bash examples/ascend/train/deepseek_v41/megatron_lora_multinode.sh
 ```
 
-将 `<节点0的通信IP>` 替换为两台机器均可访问的实际地址，并按各自机器设置 `HCCL_SOCKET_IFNAME` 和 `GLOO_SOCKET_IFNAME`。`OUTPUT_DIR` 使用两台机器均可访问的共享目录；脚本关闭自动版本后缀，确保两个节点写入同一次训练的 checkpoint。此前成功运行还使用了按本机 NPU/CPU 拓扑绑定的 NUMA Python launcher，可通过 `PYTHON_EXEC` 指定这类 launcher；需要按实际拓扑配置，不能直接照搬其他机器的 NUMA 编号。CPU 内存需要容纳本机 Engram 分片和加载临时数据。
+将示例 IP `192.0.2.10` 替换为两台机器均可访问的实际地址，并按各自机器设置 `HCCL_SOCKET_IFNAME` 和 `GLOO_SOCKET_IFNAME`。`OUTPUT_DIR` 使用两台机器均可访问的共享目录；脚本关闭自动版本后缀，确保两个节点写入同一次训练的 checkpoint。此前成功运行还使用了按本机 NPU/CPU 拓扑绑定的 NUMA Python launcher，可通过 `PYTHON_EXEC` 指定这类 launcher；需要按实际拓扑配置，不能直接照搬其他机器的 NUMA 编号。CPU 内存需要容纳本机 Engram 分片和加载临时数据。
 
 此前在双机 16 张 Ascend 950DT、完整 40 层文本 checkpoint、256 长度短样本数据下完成 10 步，step 5 和 10 各保存了 16 个 checkpoint 分片，120 个 LoRA B 张量均为有限非零值，并在两个 checkpoint 之间发生更新。这是旧 offload 参数入口下的历史验证；本脚本已换用统一环境变量，尚未在当前代码上重跑双机。长序列、视觉分支、全参训练和完整 HF 导出不在该次验证范围内。
