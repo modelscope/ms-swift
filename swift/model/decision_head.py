@@ -1066,10 +1066,17 @@ class H2OReadoutHead(ScoringHead):
                 expected = getattr(getattr(config, 'text_config', None), 'hidden_size', None)
             if expected is not None and int(expected) != hidden_size:
                 raise ValueError(f'label_rows hidden_size={hidden_size} != config hidden_size={expected}')
+        # `label_rows.safetensors` may come from H2O_LABEL_ROWS while the run reads a fine-tuned output dir;
+        # serve_config.json then lives next to the weights rather than in model_dir.
+        config_dir = model_dir
+        for candidate in (model_dir, os.path.dirname(os.path.abspath(weights_file))):
+            if os.path.isfile(os.path.join(candidate, 'serve_config.json')):
+                config_dir = candidate
+                break
         head = cls(
             hidden_size=hidden_size,
             num_codes=int(label_rows.shape[0]),
-            temperatures=load_h2o_serve_temperatures(model_dir))
+            temperatures=load_h2o_serve_temperatures(config_dir))
         head.label_rows.copy_(label_rows)
         head.label_token_ids.copy_(token_ids)
         return head
