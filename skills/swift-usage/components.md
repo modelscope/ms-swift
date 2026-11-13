@@ -98,15 +98,15 @@ See server-client.md for the full usage pattern.
 
 | Module | What it gives you |
 | --- | --- |
-| `rollout` | `MultiTurnRollout` (turn-by-turn generation with tool calls), `Rollout`/`RolloutSample`/`Round` (the training-side sample contract), `PolicyEndpoint` (an OpenAI-compatible `/v1/chat/completions` server in front of the live policy — zero off-policy drift), `ExternalRollout` (wrap an external CLI agent into trainable trajectories), `LedgerBook` (per-trajectory token bookkeeping) |
-| `envs` | sandbox environments: `Env` ABC (reset/step/run_script/tool_manager/evaluate), `LocalEnv` (in-process subprocess), `AgentEnv` (E2B microVM), `OpenEnv`/`EnvPool` (embedded/server/distributed pools), `EnvLeases` (concurrency = leased envs) |
+| `rollout` | `MultiTurnRollout` (turn-by-turn generation with tool calls; the completed episode is a `Trajectory` dict — the one public sample payload, scores and training targets ride its fields), `PolicyEndpoint` ABC with `ChatEndpoint`/`ResponsesEndpoint` (OpenAI-compatible endpoints in front of the live policy — zero off-policy drift) |
+| `envs` | sandbox environments: `Env` ABC (reset/step/run_script/tool_manager/evaluate) with the four backends — `LocalEnv` (in-process subprocess), `AgentEnv` (E2B microVM), `OpenEnv` (embedded), `OpenEnvClient` (remote server); the same four kinds the webui `sandbox_env` component dispatches on |
 | `tools` | `Tool` ABC (`__call__(name, arguments) -> str` observation + `tool_info()` OpenAI-shaped schema) and `ToolManager`; `EnvTool.from_env(env)` wraps an env's built-in tools |
 | `verifier` | programmatic grading inside the episode's env: `Check`/`Criterion` (file_*/shell/python/answer_*), weighted or all-or-nothing; `rubric_score` for LLM-judge PASS/FAIL |
 | `evaluator` | `Evaluator` + EvalScope adapters: run benchmarks against an in-process sampler or a protocol API — this is what `swift eval` uses |
 | `harness` | `AgentHarness` lifecycle hooks (tool schemas before generation, post-generation/post-tool append-only token chains), `MsAgentHarness` |
 | `agents` | `CliAgent` ABC and `MsAgent` (ms-agent connector) for external agent programs |
 | `challenger` / `summarizer` | auto task generation (RSI) and run summarization |
-| `async_rl` | the fully-async RL data plane and pipeline pieces |
+| `async_rl` | the streaming RL control plane: `StreamingDriver` (iterates `list[Trajectory]` batches; batch summaries via `batch_summary`) and `ClusterAdapter` (colocate/disaggregated handover) |
 
 ## swift.dev subpackages (orchestration)
 

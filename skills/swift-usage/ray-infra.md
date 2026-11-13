@@ -60,7 +60,15 @@ decorators. Never call `ray.get` / `ray.kill` / worker-pool APIs directly from b
 
 ## Load balancing and autoscaling
 
-Two planes, both declarative — you configure, infra routes:
+Three planes, all declarative — you configure, infra routes:
+
+**Training-batch plane (`--dp_balance true`, a `TrainConfig` flag; default off).** For RL
+training batches, every per-sample training signal rides the trajectories, so reordering
+the trajectory list is the whole permutation: with the flag on, the recipe reorders each
+optimizer batch so the DP ranks get even token workloads (metrics land under `dp_balance/*`).
+Off by default — the reordering is a pure wall-clock optimization, gradients are unchanged.
+One exception to remember: the PPO value model always trains in the original order (its
+rank-local token mean is not permutation-invariant).
 
 **In-process / actor plane (WorkerPool, inside twinkle.infra).** Every resident component
 built through the standard path gets this for free, no code of yours involved:
