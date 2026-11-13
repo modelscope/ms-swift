@@ -340,7 +340,8 @@ HUB_PUSH = D('hub_push', '发布模型', 'Task', '明确授权后调用公共 Hu
     params=(Q('hub_model_id', '目标仓库', '', required=True),
             Q('hub', 'Hub', 'ModelScope', options=('ModelScope', 'HuggingFace')),
             Q('private', '私有仓库', True, type='bool'), Q('revision', '版本', 'main'),
-            Q('commit_message', '提交说明', 'webui workflow push'), Q('token_env', '凭据环境变量名', '')),
+            Q('commit_message', '提交说明', 'webui workflow push'),
+            Q('token_env', '凭据环境变量名', '', required=True)),
     effects=('external',), surface='artifact')
 
 REGISTRY = {descriptor.type: descriptor for descriptor in (

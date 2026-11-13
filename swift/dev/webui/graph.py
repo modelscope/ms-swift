@@ -969,7 +969,13 @@ class GraphUpgrade:
                 if params.pop('top_k', None) is not None:
                     self.changes.append({'node': node['id'], 'param': 'top_k', 'action': 'remove'})
             if node['type'] == 'advantage':
-                kwargs = dict(params.get('kwargs') or {})
+                raw_kwargs = params.get('kwargs')
+                if isinstance(raw_kwargs, str):
+                    # v4 presets stored dict-shaped kwargs as JSON text; a plain dict(...) on
+                    # that string dies halfway through the migration. Parse it; anything
+                    # unparseable stays loud.
+                    raw_kwargs = json.loads(raw_kwargs)
+                kwargs = dict(raw_kwargs or {})
                 if 'gamma' in params:
                     kwargs.setdefault('gamma', params.pop('gamma'))
                     self.changes.append({'node': node['id'], 'param': 'gamma', 'action': 'fold'})
@@ -985,6 +991,7 @@ class GraphUpgrade:
             if node['type'] == 'reduce':
                 self._issue(node['id'],
                             'reduce 无默认画布等价：观测归约并入 metric 摘要；自定义归约改写为 code_component 后重连')
+                continue
             descriptor = REGISTRY.get(node['type'])
             if descriptor is None:
                 self._issue(node['id'], f'未知类型 {node["type"]!r}，需要 v5 契约下的真实节点')

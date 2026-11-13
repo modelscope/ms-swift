@@ -64,14 +64,6 @@ KIND_ALLOWS: dict[str, tuple[str, ...]] = {
 }
 
 
-def kind_matrix() -> dict[str, dict[str, list[str]]]:
-    """The wiring contract for export: category plus legal consumer kinds."""
-    return {
-        kind: {'category': category, 'allows': [kind, *KIND_ALLOWS.get(kind, ())]}
-        for kind, category in KIND_CATEGORIES.items()
-    }
-
-
 @dataclass(frozen=True)
 class PortSpec:
     key: str
