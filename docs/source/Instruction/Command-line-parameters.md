@@ -133,6 +133,8 @@
   - 注意：该参数在"ms-swift>=4.3.1"增加。在"ms-swift<4.3.1"需手动添加`--loss_scale ignore_empty_think`。
 - is_binary_loss_scale: 当loss_scale只可能为0/1时，该语义可被labels替代，将loss_scale为0的部分的labels设置为-100，从而兼容liger_kernel降低显存。默认为None，进行自动设置。
 - sequence_parallel_size: 序列并行大小，默认是1。当前支持CPT/SFT/DPO/GRPO。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
+  - v5（`USE_SWIFT_V5=1`）的本地 SFT 支持 FSDP2 + Ulysses SP（`--mode local`，通过 torchrun 启动）；DPO、GRPO 支持 Transformers 后端的 Ray FSDP2 + Ulysses SP。例如两卡 policy 可设置 `--backend hf --mode ray --nproc_per_node 2 --fsdp <配置文件> --parallel_spec dp1fsdp2ul2 --sequence_parallel_size 2`；FSDP 配置文件可使用 `{"fsdp_config": {}}`。FSDP 和 SP 复用这两张卡，同一 SP 组接收相同样本，global batch 按 `world_size / sequence_parallel_size` 个数据 rank 计算。独立 reference 和 sampler 的资源另行配置。
+  - 上述 v5 路径要求 right padding；SDPA 可用于非 packed 输入，packing/padding-free 需要受支持的 FlashAttention 后端。此处不包含 PPO、其他 RL 算法或 HTTP CS 的 FSDP+SP 支持。
 - template_backend: 选择template后端，可选为'swift'、'jinja'，默认为'swift'。如果使用jinja，则使用transformers的`apply_chat_template`。
   - 注意：jinja的template后端只支持推理，不支持训练（无法确定损失计算的tokens范围）。
 - response_prefix: response的前缀字符，该参数只在推理时生效。默认为None，根据enable_thinking参数和模版类型确定。

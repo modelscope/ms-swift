@@ -1103,7 +1103,7 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
         megatron_config=megatron_config, quantize_config=quantize_config, plugin_config=None)
     validate_configs(
         model_config, template_config, dataset_config, train_config, distributed_config,
-        checkpoint_config, tuner_config, reward_config=reward_config,
+        checkpoint_config, tuner_config, rl_config=rl_config, reward_config=reward_config,
         rollout_config=rollout_config, logging_config=logging_config, quantize_config=quantize_config,
         megatron_config=megatron_config, moe_config=moe_config)
     _, processor = load_model_processor(model_config)

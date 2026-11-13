@@ -2380,15 +2380,15 @@ def _check_rl_padding_side(template_config: 'TemplateConfig', rl_config: Optiona
                          'silently mis-align every logp. Remove --padding_side left.')
 
 
-# Online-RL rl_types whose Ulysses SP wiring is in place (run_grpo/run_rft call plan_sp_mesh):
-# PPO's critic cannot follow the policy onto the SP mesh, and the offline family is not "under ray".
-_RL_SP_WIRED_TYPES = ('grpo', 'rft')
+# Recipes that propagate the policy SP mesh through their Ray training path.
+# PPO still needs matching critic data distribution before SP can be enabled.
+_RL_SP_WIRED_TYPES = ('dpo', 'grpo', 'rft')
 
 
 def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                             dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
-                            is_megatron: bool, sp: int) -> None:
-    """Backend/layout feasibility guards shared by the SFT (local) and online-RL (ray) SP paths.
+                            is_megatron: bool, sp: int, *, allow_fsdp: bool = False) -> None:
+    """Backend/layout feasibility guards shared by the SFT (local) and RL (ray) SP paths.
 
     Every branch raises rather than silently training with SP=1; only the world source differs.
     """
@@ -2400,9 +2400,9 @@ def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'Temp
                          'DistributedConfig.sequence_parallel (TP-SP over the tensor-parallel ranks) -- set that '
                          'instead, or switch DistributedConfig.backend.')
 
-    if distributed_config.fsdp:
+    if distributed_config.fsdp and not allow_fsdp:
         raise NotImplementedError(f'sequence_parallel_size={sp} with DistributedConfig.fsdp is not supported yet: '
-                                  'the FSDP x ulysses composition in twinkle is unvalidated. Use DDP/accelerate '
+                                  'this recipe has not wired an FSDP x Ulysses mesh. Use DDP/accelerate '
                                   '(the default strategy), or set sequence_parallel_size=1.')
 
     # Legacy asserts this at collate time (swift/template/base.py); dev fails fast at validation.
@@ -2423,9 +2423,9 @@ def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'Temp
 def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                                  dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
                                  rl_config: Optional['RLConfig'], is_megatron: bool) -> None:
-    """Ulysses SP (TemplateConfig.sequence_parallel_size) for the online-RL recipes under ray.
+    """Validate recipe-specific Ulysses SP support under Ray.
 
-    Only grpo/rft are wired; the world is nproc_per_node, NOT Platform.get_world_size().
+    The world is nproc_per_node, not the single driver process world size.
     """
     if rl_config is None or template_config.sequence_parallel_size <= 1:
         return
@@ -2438,10 +2438,12 @@ def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
                          'data_world_size and starve the critic\'s ranks. Set sequence_parallel_size=1 for PPO.')
     if rl_type not in _RL_SP_WIRED_TYPES:
         raise ValueError(f'rl_type={rl_type!r} does not support sequence_parallel_size={sp} on the dev path: '
-                         f'only the online-RL recipes {"/".join(_RL_SP_WIRED_TYPES)} wire the Ulysses SP mesh '
-                         '(plan_sp_mesh + a ray dp x ulysses device mesh). Set sequence_parallel_size=1.')
+                         f'only the recipes {"/".join(_RL_SP_WIRED_TYPES)} wire the Ulysses SP mesh '
+                         '(a Ray dp x ulysses device mesh). Set sequence_parallel_size=1.')
 
-    _check_sp_hf_feasibility(model_config, template_config, dataset_config, distributed_config, is_megatron, sp)
+    _check_sp_hf_feasibility(
+        model_config, template_config, dataset_config, distributed_config, is_megatron, sp,
+        allow_fsdp=rl_type in ('dpo', 'grpo'))
     nproc = distributed_config.nproc_per_node
     if nproc is None or nproc < 2:
         raise ValueError(f'sequence_parallel_size={sp} requires DistributedConfig.nproc_per_node>=2 (got '
@@ -2465,7 +2467,8 @@ def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
     if rl_config is not None:
         return
 
-    _check_sp_hf_feasibility(model_config, template_config, dataset_config, distributed_config, is_megatron, sp)
+    _check_sp_hf_feasibility(
+        model_config, template_config, dataset_config, distributed_config, is_megatron, sp, allow_fsdp=True)
 
     if distributed_config.mode != 'local':
         raise NotImplementedError(f'sequence_parallel_size={sp} is only wired for mode="local" (torchrun): under '

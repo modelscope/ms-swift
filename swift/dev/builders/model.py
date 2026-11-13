@@ -464,6 +464,11 @@ def build_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size:
                 f"parallel_spec {spec!r} implies {mesh.mesh.size} ranks, but "
                 f"nproc_per_node={world}; size the cards (or the spec) so they agree."
             )
+        if sequence_parallel_size > 1 and (mesh.ulysses_size or 1) != sequence_parallel_size:
+            raise ValueError(
+                f"parallel_spec {spec!r} has ulysses_size={mesh.ulysses_size or 1}, "
+                f"but sequence_parallel_size={sequence_parallel_size}."
+            )
         return mesh
 
     if not is_ray and sequence_parallel_size <= 1:
@@ -477,6 +482,10 @@ def build_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size:
             )
         if world % sequence_parallel_size != 0:
             raise ValueError(f"world_size={world} is not divisible by sequence_parallel_size={sequence_parallel_size}.")
+    if distributed_config.fsdp and sequence_parallel_size > 1:
+        return DeviceMesh.from_sizes(
+            world_size=world, dp_size=1, fsdp_size=world, ulysses_size=sequence_parallel_size
+        )
     return DeviceMesh.from_sizes(world_size=world, dp_size=world, ulysses_size=sequence_parallel_size)
 
 
