@@ -443,6 +443,10 @@ class LLMTrain(BaseUI):
             f'{sft_args.logging_dir}', '--ignore_args_error', 'True'
         ])
         all_envs = {}
+        # transformers>=5.15 reads the TensorBoard dir from this env var instead of `--logging_dir`.
+        # The web UI process is long-lived, so without an explicit value every run after the first
+        # inherits the dir of the first one and its plots stay empty. User-supplied `envs` still win.
+        all_envs['TENSORBOARD_LOGGING_DIR'] = sft_args.logging_dir
         ddp_param = ''
         devices = other_kwargs['gpu_id']
         envs = other_kwargs['envs'] or ''
