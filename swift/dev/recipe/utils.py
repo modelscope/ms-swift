@@ -623,9 +623,9 @@ class StepState:
         record['loss'] = loss
         record.update(_mtp_metrics(self.model))
         if self._extra_metrics_fn is not None:
-            record.update(self._extra_metrics_fn())
+            record.update(normalize_metric_values(self._extra_metrics_fn()))
         if extra_metrics is not None:
-            record.update(extra_metrics)
+            record.update(normalize_metric_values(extra_metrics))
         if should_log:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
@@ -1946,6 +1946,24 @@ def coerce_metric_scalars(metrics: Dict[str, Any]) -> Dict[str, float]:
         number = _coerce_scalar(value)
         if number is not None:
             result[key] = number
+    return result
+
+
+def normalize_metric_values(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """The same numeric normalization as :func:`coerce_metric_scalars`, keeping non-numeric values.
+
+    A recipe's extra metrics are a mixed dict: PPO's critic objective arrives as LossMetric's display
+    string ``'0.89551'`` beside genuinely textual telemetry such as ``speed='0.36 iters/s'``. Dropping
+    the non-numeric half -- which is right for a component's own metric dict, where such an entry is
+    noise -- would silently lose that telemetry, so anything that is not a pure number passes through
+    untouched. Without this the persisted ``metrics.jsonl`` carries the SAME conceptual quantity as a
+    float under one key (the policy's ``loss``, re-pinned by the loop) and as a string under another
+    (``value_loss``), which breaks any consumer that reads the file as a numeric table.
+    """
+    result: Dict[str, Any] = {}
+    for key, value in metrics.items():
+        number = _coerce_scalar(value)
+        result[key] = value if number is None else number
     return result
 
 
