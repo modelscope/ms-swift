@@ -1061,7 +1061,17 @@ def _build_transformers_model(
         # Trainer (trainer_config_process) nor accelerate's dataloader-carrying prepare ever
         # executes on this path, and a raw "auto" string crashes DeepSpeed's batch assertion
         # (in ZeRO-3's zero.Init at model construction, or at Accelerator.prepare).
-        world = distributed_config.nproc_per_node or 1
+        # The world size lives in the config on the ray path and in the environment on the local
+        # torchrun path (NPROC_PER_NODE/WORLD_SIZE), which is the same split build_dp_mesh documents.
+        # Reading only nproc_per_node with an `or 1` fallback sized train_batch_size for a single rank
+        # on every local DeepSpeed run, and DeepSpeed then rejected it against the real world
+        # ("train_batch_size is not equal to micro_batch_per_gpu * gradient_acc_step * world_size
+        # 4 != 1 * 4 * 2"), so ZeRO was unreachable through the standard local launch.
+        world = distributed_config.nproc_per_node
+        if not world:
+            from twinkle.utils import Platform
+
+            world = Platform.get_world_size() if distributed_config.mode != 'ray' else 1
         micro_bs = (train_config.per_device_train_batch_size if train_config is not None else 1) or 1
         ga = (train_config.gradient_accumulation_steps if train_config is not None else 1) or 1
         for key, value in (('train_micro_batch_size_per_gpu', micro_bs),
