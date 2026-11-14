@@ -74,6 +74,23 @@ class _StubModel:
         self.loss_kwargs = kwargs
 
 
+def _constructed(model):
+    """The loss instance ``TransformersModel.set_loss`` would build from what the stub captured.
+
+    ``configure_rl_loss`` hands ``set_loss`` a registry-resolved class NAME plus the loss
+    hyperparameters as keyword arguments -- the serializable form that crosses the ray boundary --
+    so anything needing the loss as an object has to construct it. Asserting against the captured
+    name alone would pass with every hyperparameter dropped on the floor. ``loss_key`` and
+    ``adapter_name`` are excluded because ``set_loss`` pops both before constructing.
+    """
+    import twinkle.loss
+    from twinkle.loss import Loss
+    from twinkle.utils import construct_class
+    kwargs = {k: v for k, v in model.loss_kwargs.items() if k not in ('loss_key', 'adapter_name')}
+    return construct_class(model.loss, Loss, twinkle.loss, **kwargs)
+
+
+
 @pytest.mark.parametrize('rl_type, cls_name', [
     ('dpo', 'DPOLoss'),
     ('kto', 'KTOLoss'),
@@ -93,7 +110,7 @@ def test_configure_rl_loss_maps_type_to_loss(rl_type, cls_name):
 
     model = _StubModel()
     configure_rl_loss(model, RLConfig(rl_type=rl_type))
-    assert type(model.loss).__name__ == cls_name
+    assert type(_constructed(model)).__name__ == cls_name
 
 
 def test_configure_ppo_value_loss_sets_value_loss():
@@ -104,9 +121,10 @@ def test_configure_ppo_value_loss_sets_value_loss():
 
     value_model = _StubModel()
     configure_ppo_value_loss(value_model, RLConfig(rl_type='ppo', cliprange_value=0.3, vf_coef=0.5))
-    assert type(value_model.loss).__name__ == 'PPOValueLoss'
-    assert value_model.loss.cliprange_value == 0.3
-    assert value_model.loss.vf_coef == 0.5
+    value_loss = _constructed(value_model)
+    assert type(value_loss).__name__ == 'PPOValueLoss'
+    assert value_loss.cliprange_value == 0.3
+    assert value_loss.vf_coef == 0.5
 
 
 # REMOVED test_ppo_checkpoint_saves_policy_and_value_and_validates_resume: it drove PPOLoop.save/resume
@@ -140,9 +158,10 @@ def test_gkd_sft_alpha_only_applies_to_dataset_batches():
     labels = torch.tensor([[-100, 1, 2]])
     student_logits = torch.randn(1, 3, 4, requires_grad=True)
     teacher_logits = torch.randn(1, 3, 4)
-    base = model.loss(
+    gkd_loss = _constructed(model)
+    base = gkd_loss(
         {'labels': labels}, {'logits': student_logits}, teacher_logits=teacher_logits, apply_sft_loss=False)['loss']
-    mixed = model.loss(
+    mixed = gkd_loss(
         {'labels': labels}, {'logits': student_logits}, teacher_logits=teacher_logits, apply_sft_loss=True)['loss']
     expected_ce = torch.nn.functional.cross_entropy(
         student_logits.reshape(-1, 4), labels.reshape(-1), ignore_index=-100)
@@ -176,7 +195,7 @@ def _advanced_grpo_loss(**overrides):
     config = RLConfig(rl_type='grpo', **overrides)
     model = _StubModel()
     configure_rl_loss(model, config)
-    return model.loss
+    return _constructed(model)
 
 
 def test_grpo_dual_clip_preserves_unclamped_ppo_branch():
