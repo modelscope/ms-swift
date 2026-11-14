@@ -3,9 +3,12 @@
 
 Two layers live here:
 
-* declaration builders -- the v4 two-loop graph (solver + question loops),
-  its v3 ancestor, and surgical variants (extra model, checkpoint, extra
-  stage). They are plain dicts: the test IS the declaration's oracle.
+* declaration builders -- the two-loop graph (solver + question loops) at the
+  current registry version, its v3 ancestor, and surgical variants (extra model,
+  checkpoint, extra stage). They are plain dicts: the test IS the declaration's
+  oracle. The current graph reads its version from the registry rather than
+  carrying a literal, so a registry bump does not silently turn these fixtures
+  into legacy graphs that the validator refuses.
 * fake components -- ``FakeResource`` / ``FakeIterator`` / ``FakeStage``
   replace the real bindings so the DAGController and GraphSession protocols
   (clicks, circles, pause boundaries, pagination) run without engines while
@@ -19,6 +22,7 @@ import time
 
 from swift.dev.webui.dag import DAGController
 from swift.dev.webui.graph import Graph
+from swift.dev.webui.registry import REGISTRY_VERSION
 from swift.dev.webui.session import GraphSession
 
 MODEL_ID = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -88,7 +92,7 @@ def base_declaration():
          'sources': ['chall'], 'consumers': ['train_q'],
          'budget_owner': 'train_q', 'feedback': ['fq']},
     ]
-    return {'version': 4, 'workflow_id': 'two-loop-test',
+    return {'version': REGISTRY_VERSION, 'workflow_id': 'two-loop-test',
             'resource': {'mode': 'local', 'cards': [0, 1, 2, 3]},
             'nodes': nodes, 'edges': edges, 'frames': frames}
 
