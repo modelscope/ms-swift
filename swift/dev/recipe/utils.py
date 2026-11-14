@@ -1165,6 +1165,12 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     ]
     if SANDBOX in (rollout_config.tools or ()):
         cpu_groups.append(DeviceGroup(name=ENV_GROUP, ranks=rollout_config.sandbox_num_workers, device_type='CPU'))
+    # An inference engine pins NCCL_CUMEM_ENABLE inside the actor process it starts in (sglang writes
+    # 0 unless the variable is already set), while the trainer keeps NCCL's default of 1. A checkpoint
+    # communicator spans both processes, and a cuMem / legacy-IPC mismatch leaves the broadcast source
+    # waiting forever for a shareable fd that the peer never sends. Every actor inherits the driver's
+    # environment, so pinning it here makes the two halves agree; an explicit user value still wins.
+    os.environ.setdefault('NCCL_CUMEM_ENABLE', '0')
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total,
