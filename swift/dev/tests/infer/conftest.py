@@ -22,22 +22,31 @@ def make_candidate(text: str, *, multi_turn: bool = False, messages: Optional[Li
                    rollout_infos: Optional[Dict[str, Any]] = None, truncated: bool = False,
                    response_token_ids: Optional[List[int]] = None,
                    rollout_logprobs: Optional[List[float]] = None) -> Any:
-    """Build a real ``RolloutSample`` so emit tests exercise the production dataclass.
+    """Build one trajectory dict -- the shape emit, the rollout-token recorder and the candidate
+    cache all read.
 
-    (The old ``run_infer._Candidate`` folded into the rollout sample type with the InferComponent
-    refactor; ``multi_turn`` stopped being a candidate field -- the caller passes it to emit.)
+    ``twinkle_agentic.rollout.RolloutSample`` is the light identity/version/score half of a step and
+    carries none of these keys, so the fixture must not build one: emit reads the answer through
+    ``last_assistant_text(candidate['messages'])`` and ``candidate.get('rollout_logps')``, and the
+    recorder persists ``input_ids`` / ``labels`` / ``response_token_ids`` / ``rollout_logps`` /
+    ``completion_mask``. ``rollout_logprobs`` stays the kwarg name at the test boundary and maps onto
+    the trajectory's ``rollout_logps`` column, which is the name the store vocabulary declares.
+    ``multi_turn`` is a row field (the candidate cache keys on it), not an emit argument -- emit takes
+    its own ``multi_turn`` from the caller.
     """
-    from twinkle_agentic.rollout import RolloutSample
     if messages is None:  # the old _Candidate(text) shape: prompt + one assistant turn
         messages = [{'role': 'user', 'content': 'q'},
                     {'role': 'assistant', 'content': text}]
-    return RolloutSample(
-        decoded=text,
-        messages=messages,
-        rollout_infos=rollout_infos or {},
-        truncated=truncated,
-        response_token_ids=list(response_token_ids or []),
-        rollout_logprobs=list(rollout_logprobs or []))
+    trajectory: Dict[str, Any] = {
+        'messages': messages,
+        'rollout_infos': rollout_infos or {},
+        'truncated': truncated,
+        'response_token_ids': list(response_token_ids or []),
+        'rollout_logps': list(rollout_logprobs or []),
+    }
+    if multi_turn:
+        trajectory['multi_turn'] = True
+    return trajectory
 
 
 def write_cache_file(path: str, prompt_responses: List[tuple]) -> str:

@@ -211,10 +211,10 @@ def test_response_token_ids_align_with_sampled_tokens(grpo_run, template):
     rows, out_path = grpo_run
     npz = _load_npz(out_path, rows[0]['rollout_tokens'][0])
     response_token_ids = npz['response_token_ids'].tolist()
-    rollout_logprobs = npz['rollout_logprobs'].tolist()
+    rollout_logps = npz['rollout_logps'].tolist()
 
     assert response_token_ids, 'a generated trajectory must keep its trainable tokens'
-    assert len(response_token_ids) == len(rollout_logprobs), 'one old_logp per response token, exactly'
+    assert len(response_token_ids) == len(rollout_logps), 'one old_logp per response token, exactly'
     # The right tokens, not a run shifted by one: decoding them reproduces the final answer the sampler
     # actually emitted (the tool-call markup decodes to its text, the special markers drop out).
     decoded = template.tokenizer.decode(response_token_ids, skip_special_tokens=True)
@@ -240,24 +240,28 @@ def test_grpo_row_stores_the_group_with_null_scores(grpo_run):
 
 
 def test_npz_sidecar_schema(grpo_run):
-    """The rollout-token sidecar carries the six-field training payload (format-agnostic, not a GRPO
+    """The rollout-token sidecar carries the five-field training payload (format-agnostic, not a GRPO
     special case): full-length ``input_ids`` / ``labels`` / ``completion_mask`` and response-length
-    ``response_token_ids`` / ``rollout_logprobs`` / ``response_loss_mask``. The response arrays are a
-    strict subset of the full sequence (the prompt + observations are masked out)."""
+    ``response_token_ids`` / ``rollout_logps``. The response arrays are a strict subset of the full
+    sequence (the prompt + observations are masked out).
+
+    There is no response-length loss mask in the sidecar: ``completion_mask`` is already the
+    trainable-token mask over the full sequence, so a response-aligned copy would be derivable from
+    it, and nothing reads one back out of an NPZ (``response_loss_mask`` is a dataset-row channel
+    field, not a sidecar field)."""
     rows, out_path = grpo_run
     rel = rows[0]['rollout_tokens'][0]
     assert rel.endswith('_c0.npz') and os.path.exists(os.path.join(os.path.dirname(out_path), rel))
 
     npz = _load_npz(out_path, rel)
     assert set(npz) == {
-        'input_ids', 'labels', 'completion_mask', 'response_token_ids', 'rollout_logprobs',
-        'response_loss_mask'
+        'input_ids', 'labels', 'completion_mask', 'response_token_ids', 'rollout_logps'
     }
     full = npz['input_ids'].shape[0]
     resp = npz['response_token_ids'].shape[0]
     assert npz['labels'].shape == (full, ) and npz['completion_mask'].shape == (full, )
-    assert npz['rollout_logprobs'].shape == (resp, ) and npz['response_loss_mask'].shape == (resp, )
-    assert npz['input_ids'].dtype == np.int64 and npz['rollout_logprobs'].dtype == np.float32
+    assert npz['rollout_logps'].shape == (resp, )
+    assert npz['input_ids'].dtype == np.int64 and npz['rollout_logps'].dtype == np.float32
     assert 0 < resp < full
 
 

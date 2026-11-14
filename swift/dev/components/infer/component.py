@@ -242,10 +242,7 @@ class InferComponent(RecipeComponent):
                 sampler, template, self.rollout_config or RolloutConfig(),
                 sampling_params=asdict(to_sampling_params(self.generation_config)), adapter_path=adapter_path)
 
-        if infer_config.batch_size < 1:
-            raise ValueError(f'InferConfig.batch_size must be >= 1, got {infer_config.batch_size}.')
-        if infer_config.max_batches:
-            rows = rows[:infer_config.max_batches * infer_config.batch_size]
+        rows = _plan_rows(rows, infer_config)
         from swift.dev.dataset.storage import open_store_writer
 
         writer = open_store_writer(
@@ -861,8 +858,12 @@ def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: Any,
     if multi_turn:
         out['multi_turn'] = True
         out['truncated'] = bool(positive.get('truncated'))
+        # The ledger column travels with the trajectory: generated_keys above strips a dataset column
+        # of the same name, so what the row carries must come from the candidate that was kept.
+        out['rollout_infos'] = dict(positive.get('rollout_infos') or {})
         if negative is not None:
             out['rejected_truncated'] = bool(negative.get('truncated'))
+            out['rejected_rollout_infos'] = dict(negative.get('rollout_infos') or {})
     if ground_truth is not None:
         out['ground_truth'] = ground_truth
     # Group id: every row from one prompt shares it, so positives can be traced back to their group.
@@ -909,6 +910,20 @@ def _emit_grpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Op
     else:
         out['scores'] = None
     return [out]
+
+
+def _plan_rows(rows: List[Dict[str, Any]], infer_config: 'InferConfig') -> List[Dict[str, Any]]:
+    """The rows this run will process: ``max_batches`` truncates, a batch below one is fatal.
+
+    Both properties are easy to break silently -- a coerced batch size of zero would make the
+    generate loop plan no batches at all, and rounding the row count down to whole batches would
+    drop the trailing partial batch, i.e. silently skip data the user asked to run.
+    """
+    if infer_config.batch_size < 1:
+        raise ValueError(f'InferConfig.batch_size must be >= 1, got {infer_config.batch_size}.')
+    if infer_config.max_batches:
+        return rows[:infer_config.max_batches * infer_config.batch_size]
+    return rows
 
 
 def _prompt_batch_size(batch_size: Optional[int]) -> int:

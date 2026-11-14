@@ -50,15 +50,21 @@ def test_is_too_easy_threshold_and_disable():
     assert _is_too_easy(2, 4, 0.75) is False
 
 
-def test_plan_batches_keeps_partial_tail_and_respects_max():
-    from swift.dev.components.infer.component import _plan_batches
-    # 7 rows, batch 3 -> [(0,3),(3,6),(6,7)] : the trailing partial batch is KEPT (unlike legacy)
-    assert _plan_batches(7, 3, None) == [(0, 3), (3, 6), (6, 7)]
-    # max_batches truncates
-    assert _plan_batches(7, 3, 2) == [(0, 3), (3, 6)]
+def test_plan_rows_keeps_partial_tail_and_respects_max():
+    from dataclasses import replace
+
+    from swift.dev.components.infer.component import _plan_rows
+    from swift.dev.config import InferConfig
+
+    rows = [{'i': i} for i in range(7)]
+    cfg = InferConfig(batch_size=3)
+    # 7 rows at batch 3 -> the trailing partial batch is KEPT (unlike legacy)
+    assert _plan_rows(rows, cfg) == rows
+    # max_batches truncates to whole batches
+    assert _plan_rows(rows, replace(cfg, max_batches=2)) == rows[:6]
     # batch_size < 1 is fatal, not silently coerced
     with pytest.raises(ValueError, match='batch_size must be >= 1'):
-        _plan_batches(7, 0, None)
+        _plan_rows(rows, replace(cfg, batch_size=0))
 
 
 def test_prompt_key_is_stable_and_order_insensitive_to_dict_keys():
