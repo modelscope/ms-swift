@@ -245,6 +245,7 @@ ENV:
 - 🔥per_device_eval_batch_size: 默认值1。
 - 🔥gradient_accumulation_steps: 梯度累加。**默认为None，即设置gradient_accumulation_steps使得total_batch_size>=16**。total_batch_size等于`per_device_train_batch_size * gradient_accumulation_steps * world_size`。在GRPO训练中，默认为1。
   - 在CPT/SFT训练中，梯度累加的训练效果等价使用更大的batch_size，但在RLHF训练中，训练效果并不等价。
+- label_smoothing_factor: SFT的标签平滑系数，默认为`0`。在不使用序列并行的常规SFT中，若训练器提供整个梯度累积窗口的有效token数，平滑损失按该计数归一化。设置`average_tokens_across_devices=true`时，该计数还包含其他数据并行rank的有效token。
 - weight_decay: weight衰减系数，默认值0.1。
 - adam_beta1: Adam系列优化器中一阶矩估计（动量）的指数衰减率。默认为0.9。
 - adam_beta2: Adam系列优化器中二阶矩估计（方差）的指数衰减率。默认为0.95。
