@@ -19,7 +19,9 @@ from swift.loss.causal_lm import CustomCrossEntropyLoss
 
 
 class _Trainer:
-    pass
+    # CustomCrossEntropyLoss branches on the trainer's sequence-parallel size; 1 is the plain
+    # single-sequence path these loss values exercise.
+    template = types.SimpleNamespace(sequence_parallel_size=1)
 
 
 def _loss():

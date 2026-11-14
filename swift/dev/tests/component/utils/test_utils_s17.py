@@ -93,25 +93,12 @@ def _feature(labels, completion_mask=None):
 def test_response_positions_picks_the_scored_span():
     """Positions are where labels != -100 -- the completion span, hand-computed for a prompt of
     3 masked tokens followed by a 4-token response."""
-    from swift.dev.utils.scoring import response_positions
+    from twinkle.signals import response_positions
 
     feat = _feature([-100, -100, -100, 5, 6, 7, 8])
     assert response_positions(feat) == [3, 4, 5, 6]
     # an all-masked row (prompt-only) has no response at all
     assert response_positions(_feature([-100, -100])) == []
-
-
-def test_row_token_scores_gathers_per_position_values():
-    """One score per response position, taken from the row's per-token column in order."""
-    import torch
-
-    from swift.dev.utils.scoring import row_token_scores
-
-    feat = _feature([-100, -100, -100, 5, 6, 7, 8])
-    row = torch.tensor([1., 2., 3., 4., 5., 6., 7.])  # exact in float32
-    assert row_token_scores(row, [3, 4, 5, 6], feat) == [4.0, 5.0, 6.0, 7.0]
-
-
 def test_resolve_galore_target_variants_and_refusals():
     """GaLore upgrades ONLY the bases that have a variant: AdamW->GaLoreAdamW, the HF Adafactor
     CLASS (what resolve_optim_target returns for 'adafactor') -> GaLoreAdafactor, while Adam /
@@ -135,10 +122,10 @@ def test_resolve_galore_target_variants_and_refusals():
 def test_response_token_scores_aligns_batched_frame():
     """The whole-batch frame -> one score list per feature, each row indexed at its OWN response
     positions so right-padding never shifts a feature's scores; a missing output raises unless
-    allow_missing (PPO's no-KL read), and a row-count mismatch is refused loudly."""
+    and a row-count mismatch is refused loudly."""
     import torch
 
-    from swift.dev.utils.scoring import response_token_scores
+    from twinkle.signals import response_token_scores
 
     # two features: response at [2,3] and [1,2,3]; the frame is right-padded to length 5.
     # values are exact in float32 (the kernel casts through .float())
@@ -156,10 +143,10 @@ def test_response_token_scores_aligns_batched_frame():
     assert response_token_scores(short, equal) == [[1.0, 2.0], [3.0, 4.0]]
     # a 1-D frame is one row for one feature
     assert response_token_scores(torch.tensor([0., 0., 1., 2.]), [feats[0]]) == [[1., 2.]]
-    # missing key: refused by default, [None]*N under allow_missing
+    # a frame with no such channel is refused: every caller that scores a lane asks for one that
+    # the forward must have produced, and PPO's optional reference read takes its own lane instead.
     with pytest.raises(RuntimeError, match="no 'logps'"):
         response_token_scores({}, feats)
-    assert response_token_scores({}, feats, allow_missing=True) == [None, None]
     # wrong row count: alignment is impossible and must not be guessed
     with pytest.raises(RuntimeError, match='rows for'):
         response_token_scores(torch.zeros(3, 5), feats)
@@ -509,7 +496,10 @@ def test_naming_tables_agree_with_the_ecosystem_names():
 def test_score_gather_keeps_disjoint_duplicate_and_reordered_positions():
     import torch
 
-    from swift.dev.utils.scoring import row_token_scores
+    # The row-level gather is reached directly: the public response_token_scores derives each row's
+    # positions from its labels, which are ascending and unique, so it cannot express the duplicate,
+    # reordered and empty position lists this case exists to break.
+    from twinkle.signals.response import _row_scores as row_token_scores
 
     row = torch.arange(8).float()
     feature = {'labels': [0] * 8}
