@@ -6,6 +6,8 @@ bindings are fakes. Preview pagination is driven against a known 10-row lane
 injected through ``record_output`` -- the row list is the oracle."""
 import pytest
 
+from swift.dev.webui.registry import REGISTRY
+
 from ._fakes import base_declaration, build_session, wait_for
 
 
@@ -111,9 +113,13 @@ class TestUpdateAndRelease:
     def test_update_invalidates_changed_residents(self, running_session):  # S20-49
         session, _fakes, _events, _reply = running_session
         declaration = session._declaration
+        # Derived from the registry rather than a literal: writing the declared default would leave
+        # the fingerprint unchanged, the resident would survive, and the case would go red for the
+        # wrong reason (or, once the default moves, pass without touching anything).
+        declared = next(p for p in REGISTRY['advantage'].params if p.name == 'num_generations')
         for entry in declaration['nodes']:
             if entry['id'] == 'adv':
-                entry['params']['num_generations'] = 8
+                entry['params']['num_generations'] = declared.default + 1
         reply = session.command({'op': 'update', 'declaration': declaration})
         assert reply['ok'] and reply['revision'] == 1
         assert 'adv' not in session._residents   # fingerprint changed -> dropped

@@ -20,6 +20,7 @@ import time
 from swift.dev.webui import upgrade
 from swift.dev.webui.dag import DAGController
 from swift.dev.webui.graph import Graph
+from swift.dev.webui.registry import REGISTRY_VERSION
 from swift.dev.webui.session import GraphSession
 
 MODEL_ID = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -40,7 +41,26 @@ def edge(edge_id, source, source_port, target, target_port, slot=''):
 def base_declaration():
     """The two-loop graph: a question loop (chall -> train_q) feeding a solver
     loop (driver -> score -> adv -> train -> sync) through the cross-frame
-    edge x1 -- a round boundary, never a same-round dependency."""
+    edge x1 -- a round boundary, never a same-round dependency.
+
+    v5 contract, and why x1 has this shape. The trajectory is the only sample
+    payload: ``score`` writes its named columns back onto it instead of exporting
+    a REWARD, and ``advantage`` writes the training target back onto it instead of
+    exporting an ADV, so the solver's chain is the single linear pipe
+    driver.traj -> score.traj -> adv.traj -> train.batch with no side channel
+    into ``train.batch``. Cross-frame edges must be DATA edges ("跨环只能是数据
+    边；环间顺序由供数环完成一圈表达"), and every TRAJ input in the solver loop is
+    already owned by that pipe, so the question loop enters through the one data
+    port the pipe leaves free: ``adv.old_out``, the pre-update policy forward the
+    estimator uses for importance sampling. The challenger's answers are forwarded
+    through a frozen ``model_forward`` to produce it. ``fwd_q.model`` comes from
+    ``policy`` rather than ``policy_q`` on purpose -- wiring the question loop's
+    policy into a solver-frame member drags it into ``sync.model``'s scope, and
+    scope resolution then refuses to choose between the two MODEL candidates.
+    This edge list is what ``GraphUpgrade._replay_v4_ports`` produces from the v4
+    ancestor plus that one re-entrant lane; it is written out literally because
+    the test is the declaration's oracle and must not inherit the upgrade path's
+    behavior."""
     nodes = [
         node('ds', 'dataset', {'dataset': ['AI-ModelScope/gsm8k']}),
         node('loader', 'dataloader'),
@@ -54,6 +74,7 @@ def base_declaration():
         node('driver', 'streaming_driver', {'tokenizer': 'tiny/test'}),
         node('score', 'score'),
         node('adv', 'advantage'),
+        node('fwd_q', 'model_forward', {'tokenizer': MODEL_ID, 'outputs': ['logps']}),
         node('train', 'train_step', {'tokenizer': MODEL_ID}),
         node('sync', 'weight_sync'),
         node('chall', 'challenger', {'seed': 'seed task', 'tokenizer': MODEL_ID}),
@@ -64,32 +85,35 @@ def base_declaration():
         edge('e1', 'loader', 'source', 'driver', 'prompts'),
         edge('e3', 'smp', 'sampler', 'driver', 'engine', slot='smp'),
         edge('e_s', 'scorer', 'scorer', 'score', 'scorers', slot='scorer'),
-        edge('e4', 'driver', 'samples', 'score', 'samples'),
-        edge('e5', 'driver', 'samples', 'adv', 'traj'),
-        edge('e6', 'score', 'reward', 'adv', 'reward'),
-        edge('e7', 'adv', 'adv', 'train', 'arguments', slot='advantages'),
+        edge('e4', 'driver', 'traj', 'score', 'traj'),
+        edge('e6', 'score', 'traj', 'adv', 'traj'),
+        edge('e7', 'adv', 'traj', 'train', 'batch'),
         edge('e8', 'loss_n', 'loss', 'train', 'loss'),
         edge('e9', 'policy', 'model', 'train', 'model'),
         edge('e10', 'train', 'then', 'sync', 'after'),
         edge('e11', 'smp', 'sampler', 'sync', 'targets', slot='smp'),
-        edge('x1', 'chall', 'answers', 'train', 'batch'),
         edge('e12', 'chall', 'questions', 'train_q', 'batch'),
         edge('e13', 'loss_q', 'loss', 'train_q', 'loss'),
         edge('e14', 'policy_q', 'model', 'train_q', 'model'),
         edge('e15', 'smp', 'sampler', 'chall', 'backend'),
         edge('e16', 'env_res', 'env', 'chall', 'env'),
+        edge('x0', 'policy', 'model', 'fwd_q', 'model'),
+        edge('x1', 'chall', 'answers', 'fwd_q', 'traj'),
+        edge('x2', 'fwd_q', 'out', 'adv', 'old_out'),
         edge('f1', 'sync', 'then', 'driver', 'after'),
         edge('fq', 'train_q', 'then', 'chall', 'after'),
     ]
     frames = [
-        {'id': 'loop', 'name': 'solver', 'members': ['driver', 'score', 'adv', 'train', 'sync'],
+        {'id': 'loop', 'name': 'solver', 'members': ['driver', 'score', 'adv', 'fwd_q', 'train', 'sync'],
          'sources': ['driver'], 'consumers': ['score', 'adv', 'train', 'sync'],
          'budget_owner': 'train', 'feedback': ['f1']},
         {'id': 'loopq', 'name': 'question', 'members': ['chall', 'train_q'],
          'sources': ['chall'], 'consumers': ['train_q'],
          'budget_owner': 'train_q', 'feedback': ['fq']},
     ]
-    return {'version': 4, 'workflow_id': 'two-loop-test',
+    # Derived, not a literal: a hardcoded version rots the moment REGISTRY_VERSION is bumped, and
+    # every case built on this fixture then fails on the version gate instead of what it targets.
+    return {'version': REGISTRY_VERSION, 'workflow_id': 'two-loop-test',
             'resource': {'mode': 'local', 'cards': [0, 1, 2, 3]},
             'nodes': nodes, 'edges': edges, 'frames': frames}
 
@@ -98,7 +122,10 @@ def with_second_model(declaration):
     """A frozen reference model enters the solver loop through model_forward.
 
     ``sync.model`` stays unwired, so scope resolution must see two MODEL
-    candidates (policy, policy2) and refuse to guess."""
+    candidates (policy, policy2) and refuse to guess. ``model_forward`` exports a
+    single MODEL_OUTPUT port named ``out`` -- the fields it carries are declared
+    by its ``outputs`` param, not by separate ports -- and a supplementary field
+    reaches ``train_step`` through the many-valued ``lanes`` port under its slot."""
     result = copy.deepcopy(declaration)
     result['nodes'] += [
         node('policy2', 'model', {'model': MODEL_ID, 'freeze': True}),
@@ -106,8 +133,8 @@ def with_second_model(declaration):
     ]
     result['edges'] += [
         edge('e17', 'policy2', 'model', 'fwd', 'model'),
-        edge('e18', 'driver', 'samples', 'fwd', 'traj'),
-        edge('e19', 'fwd', 'logps', 'train', 'arguments', slot='old_logps'),
+        edge('e18', 'driver', 'traj', 'fwd', 'traj'),
+        edge('e19', 'fwd', 'out', 'train', 'lanes', slot='old_logps'),
     ]
     for frame in result['frames']:
         if frame['id'] == 'loop':
