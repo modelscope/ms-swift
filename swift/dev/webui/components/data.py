@@ -461,6 +461,13 @@ class ScoreStage(StageComponent):
         port_samples = inputs.get('traj')
         samples = port_samples if isinstance(port_samples, list) else (
             batch if isinstance(batch, list) else [])
+        if not samples:
+            # Refuse rather than return an empty batch: with no rows the per-slot check below is
+            # vacuously true, so every scorer is skipped and the stage reports a clean result.
+            # The sibling stages (advantage, privileged_view) already fail loudly on an unwired
+            # traj, and a silently empty score batch is indistinguishable downstream from a batch
+            # that was legitimately drained.
+            raise ComponentError(f'{self.node_id}: score needs a wired traj batch')
         # Every producer (generate, the streaming driver, the challenger lanes)
         # hands over trajectory dicts -- the scorers' native input, passed verbatim.
         rows = [sample for sample in samples if isinstance(sample, dict)]
