@@ -249,7 +249,10 @@ def test_chord_router_replay_and_sampling_replay():
 def test_prm_channel_and_scorer_knobs():
     """S2-35: PRM scorer knobs without a --prm channel do nothing (refused); prm_orm_mix is the
     convex-combination ratio in [0,1]; PRM cannot stack with RLSD/SDAR (both per-token)."""
-    reward = _explicit(RewardConfig(), 'prm_scorer')
+    # prm_orm_mix is the only knob _check_prm treats as shaping the process reward, and it is
+    # refused even at its default value once the CLI set it explicitly: with no --prm channel there
+    # is nothing for the ratio to blend, so the knob would be silently dead.
+    reward = _explicit(RewardConfig(), 'prm_orm_mix')
     with pytest.raises(ValueError, match='no --prm channel is set'):
         _check_prm(RLConfig(rl_type='grpo'), reward)
 
@@ -355,9 +358,7 @@ def test_multi_turn_and_rollout_basics():
     GRPO-only multi-turn gate and the sandbox guard run through validate_rollout_config."""
     with pytest.raises(ValueError, match='GRPO-only'):
         validate_rollout_config(RolloutConfig(max_turns=4), RLConfig(rl_type='dpo'))
-    # a hand-built RolloutConfig skips process's in_place derivation, so pin it explicitly
-    validate_rollout_config(RolloutConfig(max_turns=4, sampler_mode='colocate',
-                                          weight_sync_strategy='in_place'), RLConfig(rl_type='grpo'))
+    validate_rollout_config(RolloutConfig(max_turns=4, sampler_mode='colocate'), RLConfig(rl_type='grpo'))
     validate_rollout_config(RolloutConfig(max_turns=4))  # sampling (TUI): exempt
     with pytest.raises(ValueError, match='sandbox_num_envs'):
         validate_rollout_config(RolloutConfig(sandbox_num_envs=0))
@@ -410,45 +411,60 @@ def test_resource_mode_and_async_gates(monkeypatch):
     assert _sync_only_feature(RLConfig(rl_type='gkd', lmbda=1.0)) is False
 
 
-def test_streaming_publication_pairs():
-    """S2-40: parameter_sync_step>=1; one_step_off pins staleness 1; colocate requires in_place;
-    adapter_snapshot refuses full-param and partial-rollout; in_place under an overlapping mode
-    requires allow_partial_rollout; an unknown strategy is refused."""
-    grpo = RLConfig(rl_type='grpo', rollout_importance_sampling_mode='token_truncate')
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated', parameter_sync_step=0)
-    with pytest.raises(ValueError, match='parameter_sync_step'):
-        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+# Each case carries exactly ONE publication-guard violation and names the guard that must fire, so
+# neutering any single guard reddens exactly one case rather than stopping the whole test at the
+# first assertion. one_step_off / fully_async train on a stale batch, so they have their own upstream
+# requirement -- off-policy correction -- which the rl_config in the tuple satisfies; without it that
+# gate would fire first and the case would pass for the wrong reason.
+_OFF_POLICY_GRPO = RLConfig(rl_type='grpo', rollout_importance_sampling_mode='token_truncate')
+_ON_POLICY_GRPO = RLConfig(rl_type='grpo')
 
-    rollout = _explicit(RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                                      weight_sync_strategy='adapter_snapshot'), 'max_staleness')
+
+def _disaggregated(**overrides):
+    return RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated', **overrides)
+
+
+def _pinned_staleness_violation():
+    rollout = _explicit(_disaggregated(), 'max_staleness')
     rollout.max_staleness = 2
-    with pytest.raises(ValueError, match='one_step_off'):
-        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+    return rollout
 
-    rollout = RolloutConfig(async_mode='none', sampler_mode='colocate', weight_sync_strategy='adapter_snapshot')
-    with pytest.raises(ValueError, match='colocate'):
-        _check_streaming_publication(rollout, grpo, None, 'none')
 
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                            weight_sync_strategy='adapter_snapshot', allow_partial_rollout=False)
-    with pytest.raises(ValueError, match='no adapter to pin'):
-        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+_STREAMING_VIOLATIONS = [
+    ('sync_step_zero', _disaggregated(parameter_sync_step=0), _OFF_POLICY_GRPO, 'must be >= 1'),
+    ('one_step_off_staleness', _pinned_staleness_violation(), _OFF_POLICY_GRPO,
+     'cannot be set under --async_mode one_step_off'),
+    ('fully_async_staleness',
+     RolloutConfig(async_mode='fully_async', sampler_mode='disaggregated', max_staleness=0),
+     _OFF_POLICY_GRPO, 'must be >= 1 under --async_mode fully_async'),
+    ('colocate_sync_step',
+     RolloutConfig(async_mode='none', sampler_mode='colocate', parameter_sync_step=2),
+     _ON_POLICY_GRPO, 'colocate needs --parameter_sync_step 1'),
+]
 
-    lora = TunerConfig(tuner='lora')
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                            weight_sync_strategy='adapter_snapshot', allow_partial_rollout=True)
-    with pytest.raises(ValueError, match='inert under'):
-        _check_streaming_publication(rollout, grpo, lora, 'one_step_off')
 
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                            weight_sync_strategy='in_place', allow_partial_rollout=False)
-    with pytest.raises(ValueError, match='allow_partial_rollout'):
-        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+@pytest.mark.parametrize('rollout,rl_config,match', [case[1:] for case in _STREAMING_VIOLATIONS],
+                         ids=[case[0] for case in _STREAMING_VIOLATIONS])
+def test_streaming_publication_guard(rollout, rl_config, match):
+    """S2-40: the publication guards, reached through the public entry.
 
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                            weight_sync_strategy='in_place', allow_partial_rollout=True)
-    _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+    ``weight_sync_strategy`` and ``allow_partial_rollout`` are gone (78a1a1c55), and with them the
+    adapter-snapshot and partial-rollout cases; ``_check_streaming_publication`` now takes
+    ``(rollout_config, mode)`` and is reached from ``validate_rollout_config`` via
+    ``_check_async_mode``.
+    """
+    with pytest.raises(ValueError, match=match):
+        validate_rollout_config(rollout, rl_config)
 
+
+def test_streaming_publication_valid_corners():
+    """The valid corners: pinned staleness, a deeper fully_async buffer, colocate syncing every step."""
+    validate_rollout_config(_disaggregated(), _OFF_POLICY_GRPO)
+    validate_rollout_config(
+        RolloutConfig(async_mode='fully_async', sampler_mode='disaggregated', max_staleness=4),
+        _OFF_POLICY_GRPO)
+    validate_rollout_config(RolloutConfig(async_mode='none', sampler_mode='colocate'),
+                            _ON_POLICY_GRPO)
 
 def test_offload_knobs_and_rollout_sampler(caplog):
     """S2-41: colocate honours offload_model on its own; disaggregated sleep_level warns as inert;
