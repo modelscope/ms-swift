@@ -1,10 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from tokenizers import AddedToken, Tokenizer, decoders, models, pre_tokenizers
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
 from types import SimpleNamespace
 
+from swift.dataset import load_dataset
 from swift.template import get_template
 
 
@@ -146,7 +150,11 @@ class TestQwenReasoningFields(unittest.TestCase):
                     'content': 'final'
                 },
             ]
-            encoded = self.template().encode({'messages': messages})
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'tools.jsonl'
+                path.write_text(json.dumps({'messages': messages}, ensure_ascii=False) + '\n')
+                dataset, _ = load_dataset([str(path)], shuffle=False, split_dataset_ratio=0, strict=True)
+                encoded = self.template().encode(dataset[0])
             context = self.decode(encoded['input_ids'])
             supervised = self.decode([i for i in encoded['labels'] if i != -100])
             for value in ('OLD_REASON', 'OLD_BODY', 'RESULT_ONE', 'RESULT_TWO', 'new question'):
