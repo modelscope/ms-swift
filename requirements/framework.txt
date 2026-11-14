@@ -1,4 +1,4 @@
-accelerate
+accelerate>=1.15.0
 addict
 aiohttp
 attrdict
