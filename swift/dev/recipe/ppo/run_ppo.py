@@ -264,7 +264,7 @@ def _ppo_extra_metrics(cluster, reward_metric, _versions_cell) -> Dict[str, Any]
     return extra
 
 
-def run_ppo(model_config: 'ModelConfig',  # noqa: C901 template_config: 'TemplateConfig',
+def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
             dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
             distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
             rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
