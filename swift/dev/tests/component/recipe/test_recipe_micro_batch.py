@@ -60,7 +60,7 @@ def state(model=None, max_steps=100):
     )
     result.tracker = SimpleNamespace(log=lambda *args, **kwargs: None)
 
-    def record():
+    def record(extra_metrics=None):
         result.global_step += 1
 
     result.record = record
@@ -278,18 +278,25 @@ def test_ppo_updates_policy_and_critic_with_aligned_auxiliary_data():
     recipe = import_module("swift.dev.recipe.ppo.run_ppo")
     policy, critic = Model(2), Model(2)
     progress = state(policy)
-    samples = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(44)]
-    signals = [[float(i)] for i in range(44)]
+    # The GAE anchors ride each trajectory as response-framed fields (cluster.advantage writes them
+    # there before the batch is handed in), so the call takes the trajectories plus one length each.
+    samples = [
+        SimpleNamespace(
+            encoded={"input_ids": [i]},
+            advantages=[float(i)],
+            returns=[float(i)],
+            old_logps=[float(i)],
+            old_values=[float(i)],
+        )
+        for i in range(44)
+    ]
     assert (
         recipe._train_ppo_batch(
             SimpleNamespace(model=policy, value_model=critic),
             progress,
             RLConfig(rl_type="ppo", num_ppo_epochs=1),
             samples,
-            signals,
-            signals,
-            signals,
-            signals,
+            [1] * 44,
             train_batch_size=4,
             temperature=0.7,
             ema_manager=None,
@@ -299,8 +306,9 @@ def test_ppo_updates_policy_and_critic_with_aligned_auxiliary_data():
     )
     assert [len(call["inputs"]) for call in policy.calls] == [16, 16]
     assert [call["micro_batch_size"] for call in policy.calls + critic.calls] == [2] * 4
-    assert critic.calls[1]["returns"] == signals[16:32]
-    assert policy.calls[1]["old_logps"] == signals[16:32]
+    # The critic trains the batch in its original order; the policy's is the balanced permutation.
+    assert [traj.returns for traj in critic.calls[1]["inputs"]] == [[float(i)] for i in range(16, 32)]
+    assert [traj.old_logps for traj in policy.calls[1]["inputs"]] == [[float(i)] for i in range(16, 32)]
     assert policy.steps == critic.steps == progress.global_step == 2
     assert progress.micro_step == 8
 
@@ -310,19 +318,18 @@ def test_ppo_continuous_replay_keeps_all_signals_aligned(count, replays):
     recipe = import_module("swift.dev.recipe.ppo.run_ppo")
     policy, critic = Model(2), Model(2)
     progress = state(policy)
-    samples = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(count)]
-    advantages, returns, values, old_logps = [
-        [[float(offset + i)] for i in range(count)] for offset in (100, 200, 300, 400)
+    offsets = {"advantages": 100.0, "returns": 200.0, "old_values": 300.0, "old_logps": 400.0}
+    samples = [
+        SimpleNamespace(encoded={"input_ids": [i]},
+                        **{field: [offset + i] for field, offset in offsets.items()})
+        for i in range(count)
     ]
     steps = recipe._train_ppo_batch(
         SimpleNamespace(model=policy, value_model=critic),
         progress,
         RLConfig(rl_type="ppo", num_ppo_epochs=replays),
         samples,
-        advantages,
-        returns,
-        values,
-        old_logps,
+        [1] * count,
         train_batch_size=4,
         temperature=0.7,
         ema_manager=None,
@@ -331,13 +338,13 @@ def test_ppo_continuous_replay_keeps_all_signals_aligned(count, replays):
     expected = (list(range(count)) * replays)[: count * replays // 16 * 16]
     assert steps == policy.steps == critic.steps == len(expected) // 16
     assert progress.micro_step == steps * 4
-    assert [row["input_ids"][0] for call in policy.calls for row in call["inputs"]] == expected
+    assert [traj.encoded["input_ids"][0] for call in policy.calls for traj in call["inputs"]] == expected
     for policy_call, critic_call in zip(policy.calls, critic.calls):
-        indices = [row["input_ids"][0] for row in policy_call["inputs"]]
-        assert critic_call["inputs"] == policy_call["inputs"]
-        assert policy_call["advantages"] == [advantages[i] for i in indices]
-        assert policy_call["old_logps"] == [old_logps[i] for i in indices]
-        assert critic_call["returns"] == [returns[i] for i in indices]
+        indices = [traj.encoded["input_ids"][0] for traj in policy_call["inputs"]]
+        assert [traj.encoded for traj in critic_call["inputs"]] == [traj.encoded for traj in policy_call["inputs"]]
+        assert [traj.advantages for traj in policy_call["inputs"]] == [[offsets["advantages"] + i] for i in indices]
+        assert [traj.old_logps for traj in policy_call["inputs"]] == [[offsets["old_logps"] + i] for i in indices]
+        assert [traj.returns for traj in critic_call["inputs"]] == [[offsets["returns"] + i] for i in indices]
         assert critic_call["old_values"] == [values[i] for i in indices]
     if count:
         assert (
@@ -693,7 +700,7 @@ def test_rft_keeps_round_saves_deferred_when_dropping_the_tail():
     recipe = import_module("swift.dev.recipe.rft.run_rft")
     progress = state()
     samples = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(47)]
-    due = recipe._train_selected_samples(SimpleNamespace(model=progress.model), progress, samples, 4, 2)
+    due = recipe._train_selected_samples(SimpleNamespace(model=progress.model), progress, samples, [1] * 47, 4, 2)
     assert due is True
     assert [len(call["inputs"]) for call in progress.model.calls] == [16, 16]
     assert [call["micro_batch_size"] for call in progress.model.calls] == [2, 2]
@@ -709,16 +716,12 @@ def test_online_updates_drop_all_samples_outside_full_ga_windows(recipe_name, co
     cluster = SimpleNamespace(model=progress.model, value_model=Model(2), worker=worker)
     if recipe_name == "ppo":
         recipe = import_module("swift.dev.recipe.ppo.run_ppo")
-        signals = [[float(i)] for i in range(count)]
         recipe._train_ppo_batch(
             cluster,
             progress,
             RLConfig(rl_type="ppo", num_ppo_epochs=1),
             rows,
-            signals,
-            signals,
-            signals,
-            signals,
+            [1] * count,
             train_batch_size=4,
             temperature=1.0,
             ema_manager=None,
@@ -726,10 +729,10 @@ def test_online_updates_drop_all_samples_outside_full_ga_windows(recipe_name, co
         )
     elif recipe_name == "distill":
         recipe = import_module("swift.dev.recipe.distill.run_distill")
-        recipe._train_rows(cluster, progress, rows, True, train_batch_size=4, save=None)
+        recipe._train_rows(cluster, progress, rows, [1] * count, True, train_batch_size=4, save=None)
     else:
         recipe = import_module("swift.dev.recipe.rft.run_rft")
-        recipe._train_selected_samples(cluster, progress, rows, 4, 0)
+        recipe._train_selected_samples(cluster, progress, rows, [1] * count, 4, 0)
     expected_sizes = [16] * (count // 16)
     assert [len(call["inputs"]) for call in progress.model.calls] == expected_sizes
     assert progress.model.steps == progress.global_step == len(expected_sizes)
