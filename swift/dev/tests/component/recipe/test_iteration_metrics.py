@@ -102,7 +102,7 @@ def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path, [("model", [0, 1]), ("shared", [0])])
-    state.observe_rollout_samples([sample(), sample(prompt=4, response=3)])
+    state.observe_rollout_batch({'prompt_lengths': [3, 4], 'response_lengths': [2, 3]})
     for _ in range(4):
         state.record_rollout_training([0, 1])
     state.global_step = 4
@@ -121,8 +121,8 @@ def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp
 
 def test_shared_batch_lifecycle_accepts_another_sample_format(tmp_path):
     state = observed_state(tmp_path)
-    rows = [NS(lengths=(3, 2), truncated=False), NS(lengths=(4, 3), truncated=True)]
-    state.observe_rollout_samples(iter(rows), length_fn=lambda row: row.lengths)
+    state.observe_rollout_batch({'prompt_lengths': [3, 4], 'response_lengths': [2, 3],
+                                 'truncated': [False, True]})
     state.global_step = 1
     state.record_rollout_training([0])
     state.fold_iteration_metrics(publications=1)
@@ -144,7 +144,7 @@ def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
     state = make_state(ga=2)
     # Adopt the statistics methods without StepState.__init__ (make_state's namespace is
     # the micro-batch harness under test here): plain unbound-method attachment.
-    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_batch',
                  'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
                  'finish_rollout_metrics'):
         setattr(state, name, getattr(RolloutStepState, name).__get__(state))
@@ -161,8 +161,7 @@ def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
     state.tracker = RunTracker(None, str(tmp_path))
     state.setup_rollout_metrics([('model', [0, 1])], num_generations=8)
     state.begin_rollout_iteration()
-    samples = [NS(encoded={'input_ids': [i] * n, 'labels': [i] * n}) for i, n in enumerate(lengths)]
-    state.observe_rollout_samples(samples)
+    state.observe_rollout_batch({'prompt_lengths': [0] * len(lengths), 'response_lengths': lengths})
     try:
         assert train(state, 8, lengths=lengths) == 1
         state.fold_iteration_metrics()
@@ -182,7 +181,7 @@ def test_batch_completion_can_run_on_a_different_thread(tmp_path, perf_clock):
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path)
-    state.observe_rollout_samples([sample()])
+    state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
     with default_recorder.span('forward_backward'):
         perf_clock.advance(2)
     with ThreadPoolExecutor(max_workers=1) as pool:
@@ -209,7 +208,7 @@ def test_batch_helpers_are_noops_without_initialization():
     state._iteration_facts = None
     state._memory_rows = None
     state.begin_rollout_iteration()
-    state.observe_rollout_samples([NS()])
+    state.observe_rollout_batch({})
     state.record_rollout_training([0])
     assert state.rollout_memory_metrics() == {}
     assert state.fold_iteration_metrics() == {}
@@ -223,7 +222,7 @@ def test_nested_logging_excludes_overlap_once(tmp_path, perf_clock):
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path)
-    state.observe_rollout_samples([sample()])
+    state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
     with default_recorder.span("update_actor"):
         perf_clock.advance(1)
         with default_recorder.span("_logging"):
@@ -246,7 +245,7 @@ def test_publication_counter_deltas_and_terminal_summary_use_existing_tracker(tm
             state.begin_rollout_iteration()
         # one second until the pulled samples arrive: the 'gen' fallback window end
         perf_clock.advance(1)
-        state.observe_rollout_samples([sample()])
+        state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
         perf_clock.advance(1)
         state.global_step = step
         state.fold_iteration_metrics(
@@ -268,7 +267,7 @@ def test_default_worker_recorder_reset_does_not_erase_iteration_observations(tmp
     from twinkle.perf import Perf, default_recorder
 
     state = observed_state(tmp_path)
-    state.observe_rollout_samples([sample()])
+    state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
     with default_recorder.span("gen"):
         perf_clock.advance(2)
     # The logging-cadence dump resets the window aggregates but must not erase the

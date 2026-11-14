@@ -52,7 +52,7 @@ def make_state(ga=4, dp=2, max_steps=100):
     # never sets up metrics, so they only need to exist and be harmless.
     from swift.dev.recipe.utils import RolloutStepState
 
-    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_batch',
                  'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
                  'finish_rollout_metrics'):
         setattr(state, name, getattr(RolloutStepState, name).__get__(state))

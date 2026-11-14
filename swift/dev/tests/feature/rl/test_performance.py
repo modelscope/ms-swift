@@ -16,7 +16,7 @@ def attach_rollout_metrics(state):
     """Bind RolloutStepState's statistics methods onto a SimpleNamespace test state."""
     from swift.dev.recipe.utils import RolloutStepState
 
-    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_batch',
                  'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
                  'finish_rollout_metrics'):
         setattr(state, name, getattr(RolloutStepState, name).__get__(state))
@@ -193,7 +193,7 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
     attach_rollout_metrics(state)
     state.setup_rollout_metrics([("trainer", [0])])
     state.begin_rollout_iteration()
-    state.observe_rollout_samples([sample()])
+    state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
@@ -251,7 +251,7 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
     attach_rollout_metrics(state)
     state.setup_rollout_metrics([("trainer", [0])])
     state.begin_rollout_iteration()
-    state.observe_rollout_samples([sample()] * 3)
+    state.observe_rollout_batch({'prompt_lengths': [3] * 3, 'response_lengths': [2] * 3})
     monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
     mod._train_mini_batches(
         state,
