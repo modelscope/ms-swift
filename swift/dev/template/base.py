@@ -1089,7 +1089,10 @@ class Template(ProcessorMixin):
             return row
         inputs = dict(row)
         inputs["input_ids"] = torch.as_tensor(input_ids, dtype=torch.long).reshape(1, -1)
-        for key in ("mm_token_type_ids", "token_type_ids"):
+        # attention_mask belongs with the sequence fields the mRoPE index reads: get_rope_index
+        # indexes it per batch row (attention_mask[batch_idx].bool()), so leaving it a flat list
+        # would hand that expression an int. This copy is local to the position-id derivation.
+        for key in ("attention_mask", "mm_token_type_ids", "token_type_ids"):
             if inputs.get(key) is not None:
                 inputs[key] = torch.as_tensor(inputs[key], dtype=torch.long).reshape(1, -1)
         for key, value in list(inputs.items()):
