@@ -67,21 +67,15 @@ def _derive_megatron_ga(train_config: 'TrainConfig', distributed_config: 'Distri
 
 
 def _select_megatron_tuner(tuner: 'TunerConfig') -> Optional['TunerConfig']:
-    # Legacy's MegatronArguments defaults tuner_type to 'full' (swift/megatron/arguments/
-    # megatron_args.py), overriding the shared base default of 'lora'. TunerConfig carries that base
-    # default, so a Megatron argv with no explicit --tuner/--tuner_type must resolve to full-parameter
-    # training: falling through to the base 'lora' here silently trains adapters instead of the whole
-    # model, breaking argv parity with legacy (the cli-vs-legacy e2e gate caught it as a ~6x smaller
-    # grad_norm and a loss that barely moved). An explicit --tuner lora is still honoured.
+    # Select the tuner for the Megatron backend. The shared base default ('lora') is honoured as-is:
+    # an argv with no --tuner trains LoRA under BOTH backends. The old flip-to-full here reproduced
+    # legacy MegatronArguments' own default, which silently disagreed with the transformers backend
+    # on the same argv; that legacy parity is deliberately dropped -- pass --tuner full explicitly.
+    # trainable_tokens and friends are refused: mcore cannot consume those adapters.
     if tuner.tuner == 'full':
         return None
     if tuner.tuner == 'lora':
-        # _explicit_fields is set by parse_configs on every CLI-parsed Config (to the flags present in
-        # argv); it is ABSENT on a programmatically built TunerConfig, where tuner='lora' is already an
-        # explicit choice. So: no attribute -> honour lora; attribute present -> only an explicit
-        # --tuner/--tuner_type keeps lora, the untouched base default falls back to full.
-        explicit = getattr(tuner, '_explicit_fields', None)
-        return tuner if explicit is None or 'tuner' in explicit else None
+        return tuner
     raise NotImplementedError(f'dev Megatron training supports tuner in {{full, lora}}, got {tuner.tuner!r}.')
 
 
