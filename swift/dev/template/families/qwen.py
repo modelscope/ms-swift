@@ -530,7 +530,11 @@ class Qwen2VLTemplate(Template):
         if not self.is_training:
             return inputs
         base_model = self.get_base_model(model)
-        if not hasattr(base_model, "visual"):
+        # transformers >=5 nests both towers under `model.model` (Qwen2VLModel.visual /
+        # .language_model) and the top-level ForConditionalGeneration carries no `visual` at all,
+        # while earlier versions expose it directly. Admit both layouts: guarding on the flat one
+        # only made the nested branch below unreachable, so the merge silently never ran.
+        if not (hasattr(base_model, "visual") or hasattr(getattr(base_model, "model", None), "visual")):
             return inputs
         input_ids = inputs["input_ids"]
         if hasattr(base_model.model, "embed_tokens"):
