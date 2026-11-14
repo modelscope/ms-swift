@@ -228,7 +228,7 @@ class DeepEyesReward(ORM):
         count_tool_2 = predict_str.count('</tool_call>')
         if count_tool_1 != count_tool_2:
             is_format_error = True
-
+        # TODO: ?
         predict_no_think = predict_str.split('</think>')[-1].strip()
         count_answer_1 = predict_no_think.count('<answer>')
         count_answer_2 = predict_no_think.count('</answer>')
