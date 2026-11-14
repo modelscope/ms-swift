@@ -1339,7 +1339,6 @@ register_template(
 
 class Qwen3TTSTemplate(Template):
     # ref: https://github.com/QwenLM/Qwen3-TTS/tree/main/finetuning
-    unsupported_capabilities = frozenset({TemplateCapability.CUSTOM_COLLATOR, TemplateCapability.CUSTOM_SFT_LOSS})
     support_padding_free = False
     media_requires_text = True
     use_model = True
@@ -1414,29 +1413,72 @@ class Qwen3TTSTemplate(Template):
         assert ref_audio_path is not None, "'ref_audios' must be provided in the dataset."
         ref_mel = self._extract_ref_mel(ref_audio_path)  # [1, mel_len, 128]
 
+        return self._build_sample(torch.as_tensor(text_ids), audio_codes, ref_mel)
+
+    def _build_sample(self, text_ids, audio_codes, ref_mel):
+        t = len(text_ids) + len(audio_codes) + 8
+        input_ids = torch.zeros((t, 2), dtype=torch.long)
+        codec_ids = torch.zeros((t, 16), dtype=torch.long)
+        text_embedding_mask = torch.zeros(t, dtype=torch.bool)
+        codec_embedding_mask = torch.zeros(t, dtype=torch.bool)
+        codec_mask = torch.zeros(t, dtype=torch.bool)
+        attention_mask = torch.zeros(t, dtype=torch.long)
+        codec_0_labels = torch.full((t,), -100, dtype=torch.long)
+
+        audio_codec_0 = audio_codes[:, 0]
+
+        text_ids_len = len(text_ids)
+        codec_ids_len = audio_codec_0.shape[0]
+
+        # === Text channel ===
+        input_ids[:3, 0] = text_ids[:3]
+        input_ids[3:7, 0] = self._tts_pad_token_id
+        input_ids[7, 0] = self._tts_bos_token_id
+        input_ids[8 : 8 + text_ids_len - 3, 0] = text_ids[3:]
+        input_ids[8 + text_ids_len - 3, 0] = self._tts_eos_token_id
+        input_ids[8 + text_ids_len - 2 : 8 + text_ids_len + codec_ids_len, 0] = self._tts_pad_token_id
+        text_embedding_mask[: 8 + text_ids_len + codec_ids_len] = True
+
+        # === Codec channel ===
+        input_ids[3:8, 1] = torch.tensor(
+            [
+                self._codec_nothink_id,
+                self._codec_think_bos_id,
+                self._codec_think_eos_id,
+                0,  # placeholder for speaker embedding
+                self._codec_pad_id,
+            ]
+        )
+        input_ids[8 : 8 + text_ids_len - 3, 1] = self._codec_pad_id
+        input_ids[8 + text_ids_len - 3, 1] = self._codec_pad_id
+        input_ids[8 + text_ids_len - 2, 1] = self._codec_bos_id
+        input_ids[8 + text_ids_len - 1 : 8 + text_ids_len - 1 + codec_ids_len, 1] = audio_codec_0
+        input_ids[8 + text_ids_len - 1 + codec_ids_len, 1] = self._codec_eos_token_id
+
+        # === Labels (codec layer 0) ===
+        codec_0_labels[8 + text_ids_len - 1 : 8 + text_ids_len - 1 + codec_ids_len] = audio_codec_0
+        codec_0_labels[8 + text_ids_len - 1 + codec_ids_len] = self._codec_eos_token_id
+
+        # === Sub-talker codec IDs ===
+        codec_ids[8 + text_ids_len - 1 : 8 + text_ids_len - 1 + codec_ids_len, :] = audio_codes
+
+        # === Masks ===
+        codec_embedding_mask[3 : 8 + text_ids_len + codec_ids_len] = True
+        codec_embedding_mask[6] = False  # speaker embedding position
+        codec_mask[8 + text_ids_len - 1 : 8 + text_ids_len - 1 + codec_ids_len] = True
+        attention_mask[: 8 + text_ids_len + codec_ids_len] = True
+
         return {
-            "input_ids": text_ids,  # dummy for length tracking
-            "labels": None,
-            "tts_audio_codes": audio_codes,  # [codec_len, 16]
-            "tts_ref_mel": ref_mel,  # [1, mel_len, 128]
+            "input_ids": input_ids,
+            "ref_mels": ref_mel.squeeze(0),
+            "attention_mask": attention_mask,
+            "text_embedding_mask": text_embedding_mask,
+            "codec_embedding_mask": codec_embedding_mask,
+            "codec_0_labels": codec_0_labels,
+            "codec_ids": codec_ids,
+            "codec_mask": codec_mask,
         }
 
-    def compute_sft_loss(self, model, inputs, num_items_in_batch=None, trainer=None):
-        """Compute the TTS-native loss."""
-        self.require_capabilities(TemplateCapability.CUSTOM_SFT_LOSS)
-        # Extract speaker_embedding from ref_mels and cache for checkpoint post-processing
-        if "ref_mels" in inputs:
-            base_model = model.module if hasattr(model, "module") else model
-            with torch.no_grad():
-                speaker_embedding = base_model.speaker_encoder(
-                    inputs["ref_mels"].to(base_model.device).to(base_model.dtype)
-                ).detach()
-            if self.target_speaker_embedding is None:
-                self.target_speaker_embedding = speaker_embedding.cpu()
-            inputs.pop("ref_mels")
-            inputs["speaker_embedding"] = speaker_embedding
-        outputs = model(**inputs)
-        return outputs
 
     def save_callback(self, model, output_dir):
         """Custom save: drop speaker_encoder weights and inject target_speaker_embedding
@@ -1452,6 +1494,7 @@ class Qwen3TTSTemplate(Template):
         from transformers.modeling_utils import unwrap_model
 
         base_model = unwrap_model(model)
+        self.target_speaker_embedding = getattr(base_model, "_tts_speaker_embedding", self.target_speaker_embedding)
         state_dict = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
 
         # 1. Drop speaker_encoder keys
@@ -1469,96 +1512,6 @@ class Qwen3TTSTemplate(Template):
         # Save config
         with open(os.path.join(output_dir, "config.json"), "w", encoding="utf-8") as f:
             json.dump(config_dict, f, indent=2, ensure_ascii=False)
-
-    @staticmethod
-    def _prepare_media_row(row: Dict[str, Any], media: Dict[str, Any]) -> None:
-        media["_text_input_ids"] = list(row["input_ids"])
-
-    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to=None) -> Dict[str, Any]:
-        """Build the TTS dual-channel batch."""
-        self.require_capabilities(TemplateCapability.CUSTOM_COLLATOR)
-        item_length = [len(b["input_ids"]) + b["tts_audio_codes"].shape[0] for b in batch]
-        max_length = max(item_length) + 8
-        b_size, t = len(batch), max_length
-
-        input_ids = torch.zeros((b_size, t, 2), dtype=torch.long)
-        codec_ids = torch.zeros((b_size, t, 16), dtype=torch.long)
-        text_embedding_mask = torch.zeros((b_size, t), dtype=torch.bool)
-        codec_embedding_mask = torch.zeros((b_size, t), dtype=torch.bool)
-        codec_mask = torch.zeros((b_size, t), dtype=torch.bool)
-        attention_mask = torch.zeros((b_size, t), dtype=torch.long)
-        codec_0_labels = torch.full((b_size, t), -100, dtype=torch.long)
-
-        for i, data in enumerate(batch):
-            text_ids = torch.tensor(data["input_ids"])  # [text_len]
-            audio_codes = data["tts_audio_codes"]  # [codec_len, 16]
-            audio_codec_0 = audio_codes[:, 0]
-
-            text_ids_len = len(text_ids)
-            codec_ids_len = audio_codec_0.shape[0]
-
-            # === Text channel ===
-            input_ids[i, :3, 0] = text_ids[:3]
-            input_ids[i, 3:7, 0] = self._tts_pad_token_id
-            input_ids[i, 7, 0] = self._tts_bos_token_id
-            input_ids[i, 8 : 8 + text_ids_len - 3, 0] = text_ids[3:]
-            input_ids[i, 8 + text_ids_len - 3, 0] = self._tts_eos_token_id
-            input_ids[i, 8 + text_ids_len - 2 : 8 + text_ids_len + codec_ids_len, 0] = self._tts_pad_token_id
-            text_embedding_mask[i, : 8 + text_ids_len + codec_ids_len] = True
-
-            # === Codec channel ===
-            input_ids[i, 3:8, 1] = torch.tensor(
-                [
-                    self._codec_nothink_id,
-                    self._codec_think_bos_id,
-                    self._codec_think_eos_id,
-                    0,  # placeholder for speaker embedding
-                    self._codec_pad_id,
-                ]
-            )
-            input_ids[i, 8 : 8 + text_ids_len - 3, 1] = self._codec_pad_id
-            input_ids[i, 8 + text_ids_len - 3, 1] = self._codec_pad_id
-            input_ids[i, 8 + text_ids_len - 2, 1] = self._codec_bos_id
-            input_ids[i, 8 + text_ids_len - 1 : 8 + text_ids_len - 1 + codec_ids_len, 1] = audio_codec_0
-            input_ids[i, 8 + text_ids_len - 1 + codec_ids_len, 1] = self._codec_eos_token_id
-
-            # === Labels (codec layer 0) ===
-            codec_0_labels[i, 8 + text_ids_len - 1 : 8 + text_ids_len - 1 + codec_ids_len] = audio_codec_0
-            codec_0_labels[i, 8 + text_ids_len - 1 + codec_ids_len] = self._codec_eos_token_id
-
-            # === Sub-talker codec IDs ===
-            codec_ids[i, 8 + text_ids_len - 1 : 8 + text_ids_len - 1 + codec_ids_len, :] = audio_codes
-
-            # === Masks ===
-            codec_embedding_mask[i, 3 : 8 + text_ids_len + codec_ids_len] = True
-            codec_embedding_mask[i, 6] = False  # speaker embedding position
-            codec_mask[i, 8 + text_ids_len - 1 : 8 + text_ids_len - 1 + codec_ids_len] = True
-            attention_mask[i, : 8 + text_ids_len + codec_ids_len] = True
-
-        ref_mels = torch.cat([data["tts_ref_mel"] for data in batch], dim=0)
-
-        return {
-            "input_ids": input_ids,
-            "ref_mels": ref_mels,
-            "attention_mask": attention_mask,
-            "text_embedding_mask": text_embedding_mask.unsqueeze(-1),
-            "codec_embedding_mask": codec_embedding_mask.unsqueeze(-1),
-            "labels": codec_0_labels,
-            "codec_0_labels": codec_0_labels,
-            "codec_ids": codec_ids,
-            "codec_mask": codec_mask,
-        }
-
-    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        rows = [
-            {
-                "input_ids": row.pop("_text_input_ids"),
-                "tts_audio_codes": row.pop("tts_audio_codes"),
-                "tts_ref_mel": row.pop("tts_ref_mel"),
-            }
-            for row in batch
-        ]
-        return self.data_collator(rows)
 
 
 register_template(
