@@ -52,6 +52,7 @@ from swift.dev.config.validate import (
     _check_prm,
     _check_quantization,
     _check_reference_sync,
+    _check_remote_rl,
     _check_rl_advanced,
     _check_rl_padding_free,
     _check_rl_padding_side,
@@ -248,7 +249,7 @@ def test_chord_router_replay_and_sampling_replay():
 def test_prm_channel_and_scorer_knobs():
     """S2-35: PRM scorer knobs without a --prm channel do nothing (refused); prm_orm_mix is the
     convex-combination ratio in [0,1]; PRM cannot stack with RLSD/SDAR (both per-token)."""
-    reward = _explicit(RewardConfig(), 'prm_orm_mix')
+    reward = _explicit(RewardConfig(), 'prm_scorer')
     with pytest.raises(ValueError, match='no --prm channel is set'):
         _check_prm(RLConfig(rl_type='grpo'), reward)
 
@@ -354,7 +355,9 @@ def test_multi_turn_and_rollout_basics():
     GRPO-only multi-turn gate and the sandbox guard run through validate_rollout_config."""
     with pytest.raises(ValueError, match='GRPO-only'):
         validate_rollout_config(RolloutConfig(max_turns=4), RLConfig(rl_type='dpo'))
-    validate_rollout_config(RolloutConfig(max_turns=4, sampler_mode='colocate'), RLConfig(rl_type='grpo'))
+    # a hand-built RolloutConfig skips process's in_place derivation, so pin it explicitly
+    validate_rollout_config(RolloutConfig(max_turns=4, sampler_mode='colocate',
+                                          weight_sync_strategy='in_place'), RLConfig(rl_type='grpo'))
     validate_rollout_config(RolloutConfig(max_turns=4))  # sampling (TUI): exempt
     with pytest.raises(ValueError, match='sandbox_num_envs'):
         validate_rollout_config(RolloutConfig(sandbox_num_envs=0))
@@ -408,29 +411,43 @@ def test_resource_mode_and_async_gates(monkeypatch):
 
 
 def test_streaming_publication_pairs():
-    """S2-40: parameter_sync_step>=1; one_step_off pins staleness 1; fully_async refuses staleness 0;
-    colocate must publish every step."""
+    """S2-40: parameter_sync_step>=1; one_step_off pins staleness 1; colocate requires in_place;
+    adapter_snapshot refuses full-param and partial-rollout; in_place under an overlapping mode
+    requires allow_partial_rollout; an unknown strategy is refused."""
+    grpo = RLConfig(rl_type='grpo', rollout_importance_sampling_mode='token_truncate')
     rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated', parameter_sync_step=0)
     with pytest.raises(ValueError, match='parameter_sync_step'):
-        _check_streaming_publication(rollout, 'one_step_off')
+        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
 
-    rollout = _explicit(RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated'), 'max_staleness')
+    rollout = _explicit(RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
+                                      weight_sync_strategy='adapter_snapshot'), 'max_staleness')
     rollout.max_staleness = 2
     with pytest.raises(ValueError, match='one_step_off'):
-        _check_streaming_publication(rollout, 'one_step_off')
+        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
 
-    rollout = RolloutConfig(async_mode='fully_async', sampler_mode='disaggregated', max_staleness=0)
-    with pytest.raises(ValueError, match='max_staleness'):
-        _check_streaming_publication(rollout, 'fully_async')
-
-    rollout = RolloutConfig(async_mode='none', sampler_mode='colocate', parameter_sync_step=3)
+    rollout = RolloutConfig(async_mode='none', sampler_mode='colocate', weight_sync_strategy='adapter_snapshot')
     with pytest.raises(ValueError, match='colocate'):
-        _check_streaming_publication(rollout, 'none')
+        _check_streaming_publication(rollout, grpo, None, 'none')
 
-    # every guard satisfied: colocate publishes once per step, fully_async keeps a deep buffer
-    _check_streaming_publication(RolloutConfig(async_mode='none', sampler_mode='colocate'), 'none')
-    _check_streaming_publication(
-        RolloutConfig(async_mode='fully_async', sampler_mode='disaggregated', max_staleness=4), 'fully_async')
+    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
+                            weight_sync_strategy='adapter_snapshot', allow_partial_rollout=False)
+    with pytest.raises(ValueError, match='no adapter to pin'):
+        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+
+    lora = TunerConfig(tuner='lora')
+    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
+                            weight_sync_strategy='adapter_snapshot', allow_partial_rollout=True)
+    with pytest.raises(ValueError, match='inert under'):
+        _check_streaming_publication(rollout, grpo, lora, 'one_step_off')
+
+    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
+                            weight_sync_strategy='in_place', allow_partial_rollout=False)
+    with pytest.raises(ValueError, match='allow_partial_rollout'):
+        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+
+    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
+                            weight_sync_strategy='in_place', allow_partial_rollout=True)
+    _check_streaming_publication(rollout, grpo, None, 'one_step_off')
 
 
 def test_offload_knobs_and_rollout_sampler(caplog):
@@ -877,3 +894,45 @@ def test_backend_specific_dispatch_refuses_the_wrong_side(backend):
     # all-off defaults pass on both backends; a None tuner_config never trips its tuner-only rows
     _check_backend_specific(ModelConfig(model='m'), DatasetConfig(dataset=['d']), TrainConfig(),
                             DistributedConfig(backend=backend), is_megatron, tuner_config=None)
+
+
+# --- _check_remote_rl (mode='remote' + RL: the client-port guard set) ---------------------
+
+def test_remote_rl_refuses_only_the_local_fabric_gaps():
+    """mode='remote' + RL refuses exactly the local-fabric gaps with no client port, one per
+    behaviour, message-matched so a rewrite cannot lose the guidance: the in-process replay
+    engines, the EMA reference sync, the colocate / elastic devices, the delta weight
+    transports, and the multi-turn sandbox."""
+    cases = [
+        (RLConfig(rl_type='grpo', router_replay_mode='R2'), None, 'router_replay_mode'),
+        (RLConfig(rl_type='grpo', enable_sampling_replay=True), None, 'enable_sampling_replay'),
+        (RLConfig(rl_type='grpo', sync_ref_model=True), None, 'sync_ref_model'),
+        (RLConfig(rl_type='ppo'), RolloutConfig(sampler_mode='colocate'), 'colocate'),
+        (RLConfig(rl_type='ppo'), RolloutConfig(resource_mode='adaptive'), 'adaptive'),
+        (RLConfig(rl_type='ppo'), RolloutConfig(weight_sync_backend='delta_sharded'), 'weight_sync_backend'),
+        (RLConfig(rl_type='grpo'), RolloutConfig(max_turns=4), 'multi-turn'),
+        (RLConfig(rl_type='grpo'), RolloutConfig(tools=['sandbox']), 'multi-turn'),
+    ]
+    for rl_config, rollout_config, needle in cases:
+        with pytest.raises(ValueError, match=needle):
+            _check_remote_rl(rl_config, rollout_config)
+
+
+def test_remote_rl_allows_every_recipe_algorithm_with_defaults():
+    """The remote contract: EVERY rl_type passes with default knobs -- the policy, the critic,
+    the frozen reference / teacher / reward models are each a served-model handle. A
+    reintroduced rl_type whitelist (the old grpo-only guard) would break this."""
+    for rl_type in ('grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'):
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig())
+
+
+def test_remote_rl_multi_turn_boundary_and_missing_rollout():
+    """max_turns=None (off) and the explicit single-turn rollout pass; tools alone trips even
+    at max_turns=1 (the guard reads BOTH); a None rollout_config (the offline preference
+    family) must neither trip the rollout guards nor dereference them."""
+    _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(max_turns=None))
+    _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(max_turns=1))
+    with pytest.raises(ValueError, match='multi-turn'):
+        _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(max_turns=1, tools=['sandbox']))
+    for rl_type in ('dpo', 'kto', 'rm'):
+        _check_remote_rl(RLConfig(rl_type=rl_type), None)

@@ -16,7 +16,6 @@ worker startup via ``TWINKLE_WORKER_SETUP_HOOK``; the client asks for it by clas
 ships a serialized ``TemplateSpec`` so the server rebuilds the dev Template itself.
 """
 from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from swift.dev.utils.logger import get_logger
@@ -34,8 +33,9 @@ def build_remote_model(model_config: 'ModelConfig', distributed_config: 'Distrib
     the handle strips the scheme itself. The server must already run it as a multi-LoRA host
     (``swift deploy`` / a server_config.yaml with a model app); this function never starts one.
     """
-    from twinkle import init_twinkle_client
     from twinkle_client.model import MultiLoraTransformersModel
+
+    from twinkle import init_twinkle_client
 
     init_twinkle_client(base_url=distributed_config.server_base_url, api_key=distributed_config.server_api_key)
     handle = MultiLoraTransformersModel(model_config.model or '')
@@ -55,6 +55,12 @@ class RemoteModel:
 
     def __init__(self, handle: Any) -> None:
         self._handle = handle
+        # The shared loop sizes its per-rank micro-batches off ``device_mesh.data_world_size``;
+        # remotely ONE client process drives the server, whose own sharding splits the batch it
+        # receives. A single-process mesh (dp=1) keeps every division correct.
+        from twinkle import DeviceMesh
+
+        self.device_mesh = DeviceMesh.from_sizes(dp_size=1)
 
     def __getattr__(self, name: str) -> Any:
         # forward_backward / set_* / add_adapter_to_model / save / ... delegate unchanged.
@@ -222,6 +228,42 @@ def configure_remote_loss(model: Any, train_config: 'TrainConfig',
     model.set_loss(loss_cls.__name__, **kwargs)
 
 
+class RemoteWeightSync:
+    """The policy -> sampler weight sync over HTTP: the save -> adapter_uri hand-off.
+
+    The SAME face the streaming driver and the training loop drive a CheckpointEngineManager
+    with (``sync_weights`` / ``version`` / ``close``), so the recipes stay mode-blind; the
+    transport underneath is the server's own store instead of an NCCL/IPC channel: every sync
+    saves a sampler-serving checkpoint (``is_sampler=True`` keeps only the newest server-side)
+    and stamps the returned ``twinkle://`` URI onto the client sampler, whose ``sample`` falls
+    back to it when a call names no adapter. A new sync REPLACES the stamped URI; the version
+    counter advances exactly once per completed sync, matching the ray engine's contract.
+    """
+
+    def __init__(self, model: Any, sampler: Any) -> None:
+        self.model = model
+        self.sampler = sampler
+        self._version = 0
+
+    def sync_weights(self, merge_and_sync: bool = True) -> None:
+        response = self.model.save('remote-sampler-weights', save_optimizer=False, is_sampler=True)
+        twinkle_path = getattr(response, 'twinkle_path', None)
+        if not twinkle_path:
+            # Refused BEFORE stamping: overwriting the held URI with None would drop the sampler's
+            # last good adapter on a sync that never completed.
+            raise ValueError('the remote weight sync got no twinkle:// path back from model.save().')
+        self.sampler.adapter_uri = twinkle_path
+        self._version += 1
+
+    def version(self) -> int:
+        return self._version
+
+    def close(self) -> None:
+        # No channel to tear down: the transport is the server's store, and the stamped URI
+        # simply goes stale on the next sync.
+        return None
+
+
 def configure_remote_metric(model: Any, task_type: Optional[str] = None) -> None:
     """Register the run's metric on the server model by NAME (classes cannot cross HTTP).
 
@@ -256,8 +298,9 @@ def configure_remote_processor(model: Any, template_config: 'TemplateConfig', mo
     below, so the per-row stages (position_ids/mrope, bookkeeping drops) run next to the batch
     stages twinkle already owns, and the client no longer finishes rows before shipping them.
     """
-    import json
     from dataclasses import asdict
+
+    import json
 
     from swift.dev.builders.template import build_template_spec
 

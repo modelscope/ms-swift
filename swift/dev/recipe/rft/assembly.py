@@ -104,43 +104,69 @@ def initialize_rft_cluster(
             "use 'manual' or 'estimate' for a static plan."
         )
     sp = template_config.sequence_parallel_size
-    sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # mode='remote' runs ONE client process (the sft assembly's remote shape for the model;
+    # the sampler / weight sync / rollout take their remote object sources below).
+    remote_run = distributed_config.mode == 'remote'
+    sp_mesh = None if remote_run else (build_dp_mesh(distributed_config, sp) if sp > 1 else None)
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None:
+    if resume_dir and tuner_config is None and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
         policy_config = copy(model_config)
         policy_config.model = resume_dir
-    model = build_model(
-        policy_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-    )
-    if tuner_config is not None:
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=1,
-            task_type=model_config.task_type,
+    if remote_run:
+        from swift.dev.builders.remote import (
+            apply_remote_tuner,
+            build_remote_model,
+            configure_remote_loss,
+            configure_remote_processor,
         )
+
+        model = build_remote_model(model_config, distributed_config)
+        if tuner_config is not None:
+            apply_remote_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+                model_config=model_config,
+            )
+        configure_remote_processor(model, template_config, model_config, distributed_config)
+        # RFT trains the kept completions with plain cross-entropy SFT -- the same causal_lm
+        # cross-entropy the remote supervised path sets by name (reduction='sum', no DFT).
+        configure_remote_loss(model, train_config, task_type=model_config.task_type,
+                              model_config=model_config)
     else:
-        apply_full_param_freeze(model, train_config)
-    model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    model.set_template(template)
-    # RFT trains the kept completions with plain cross-entropy SFT -- NOT an RL loss.
-    configure_loss(model, loss_type="cross_entropy", reduction="sum")
+        model = build_model(
+            policy_config,
+            distributed_config,
+            train_config,
+            tuner_config,
+            device_mesh=sp_mesh,
+            quantize_config=quantize_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+        )
+        if tuner_config is not None:
+            apply_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+            )
+        else:
+            apply_full_param_freeze(model, train_config)
+        model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        model.set_template(template)
+        # RFT trains the kept completions with plain cross-entropy SFT -- NOT an RL loss.
+        configure_loss(model, loss_type="cross_entropy", reduction="sum")
     configure_optimizer(
         model,
         train_config,
@@ -158,11 +184,21 @@ def initialize_rft_cluster(
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
+        distributed_config=distributed_config,
+        template_config=template_config,
     )
     params = rollout_sampling_params(rl_config.max_completion_length, generation_config)
-    # One rollout for every generation (single-turn is the one-turn degenerate), on its CPU group.
-    rollout = build_rollout(sampler, template, rollout_config, sampling_params=params, remote=True, inflight=inflight)
-    engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+    # One rollout for every generation (single-turn is the one-turn degenerate); under ray it is
+    # an actor on the CPU rollout group, remotely a plain in-process object over the client
+    # sampler handle.
+    rollout = build_rollout(sampler, template, rollout_config, sampling_params=params,
+                            remote=not remote_run, inflight=inflight)
+    if remote_run:
+        from swift.dev.builders.remote import RemoteWeightSync
+
+        engine = RemoteWeightSync(model, sampler)
+    else:
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
     orm_scorers, orm_scorer_names = resolve_reward_scorers(
         "orm",
         reward_config=reward_config,
@@ -172,7 +208,7 @@ def initialize_rft_cluster(
         rollout_config=rollout_config,
         backend=rollout_config.rollout_sampler,
         sampler=sampler,
-        worker_group=CONTROL_GROUP,
+        worker_group=None if remote_run else CONTROL_GROUP,
         quantize_config=quantize_config,
     )
     if not orm_scorers:

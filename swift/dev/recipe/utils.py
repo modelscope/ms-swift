@@ -1080,15 +1080,15 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     the GPUs) or ``None``; the meshes map each auxiliary group to the DeviceMesh its model shards with
     (empty under an estimate plan). ``group_requests`` supplies this recipe's own frozen-model groups.
     """
-    import twinkle
-    from twinkle import DeviceGroup, DeviceMesh, Platform
     from twinkle.perf import Perf
     from twinkle_agentic.async_rl import estimate_plan, resource_device_groups
 
+    import twinkle
     from swift.dev.builders import build_dp_mesh, build_template, load_model_processor
     from swift.dev.builders.sandbox import SANDBOX
     from swift.dev.builders.streaming import CONTROL_GROUP, ENV_GROUP, ROLLOUT_GROUP
     from swift.dev.config import process_configs, validate_configs
+    from twinkle import DeviceGroup, DeviceMesh, Platform
 
     process_configs(
         model_config, template_config, dataset_config, train_config, distributed_config,
@@ -1110,6 +1110,16 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     if backend not in ('vllm', 'sglang'):
         raise ValueError(f"rollout_sampler={backend!r} cannot back an online-RL rollout: weight sync into the "
                          "sampler needs a CheckpointEngineMixin engine. Use 'vllm' or 'sglang'.")
+    if distributed_config.mode == 'remote':
+        # The single-process client run: no local twinkle runtime, DeviceGroups, or perf actors to
+        # initialize -- the server owns the trainer and the sampler, and build_remote_model binds
+        # the transport. The remote weight channel (save -> adapter_uri) needs no placement plan,
+        # so no plan or estimate runs here. Only the vllm-served sampler has a client port today.
+        if backend != 'vllm':
+            raise ValueError(
+                f"--mode remote needs rollout_sampler='vllm': the served-sampler client face exists "
+                f"for the vLLM serving stack only (got {backend!r}).")
+        return template, None, {}
     requests = group_requests()
     # One mesh per auxiliary, built once so the group's rank count and the model's sharding cannot
     # drift; an estimate plan rewrites the specs, so the dict is dropped and re-derived at the build.
@@ -1184,18 +1194,39 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     return template, resource_plan, auxiliary_meshes
 
 
-def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutConfig', template: Any,
+def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutConfig', template: Any,  # noqa: C901
                      tuner_config: Optional['TunerConfig'], resource_plan: Any = None,
-                     colocate: bool = False, enable_sampling_replay: bool = False) -> Any:
+                     colocate: bool = False, enable_sampling_replay: bool = False,
+                     distributed_config: Optional['DistributedConfig'] = None,
+                     template_config: Optional['TemplateConfig'] = None) -> Any:
     """The weight-syncable rollout sampler: shaped engine args, then the planned or static build.
 
     The planned layout (estimate/adaptive) sizes the replica pool and stamps the elastic instance id;
     the static shape reads the rollout_config replica knobs (estimate's apply_plan already rewrote
     them, so the two agree). Colocate pins the sleep/save knob the borrow-and-return loop needs.
+    Under ``distributed_config.mode='remote'`` the sampler is the CLIENT handle over the server's
+    served engine instead: no engine args or replicas are built locally, and the same dev
+    TemplateSpec the model's processor was set with rebuilds the server-side template so the
+    training forward and the rollout agree token-for-token.
     """
-    from twinkle import DeviceMesh
+    if distributed_config is not None and distributed_config.mode == 'remote':
+        if rollout_config.rollout_sampler != 'vllm':
+            raise ValueError(
+                f"--mode remote needs rollout_sampler='vllm': the served-sampler client face exists "
+                f"for the vLLM serving stack only (got {rollout_config.rollout_sampler!r}).")
+        if template_config is None:
+            raise ValueError('build_rl_sampler needs template_config under mode=remote: the client '
+                             'sampler rebuilds the dev Template server-side from its serialized spec.')
+        from twinkle_client.sampler import vLLMSampler as ClientSampler
 
+        from swift.dev.builders.template import build_template_spec
+
+        sampler = ClientSampler(model_config.model)
+        spec = build_template_spec(template_config, model_config)
+        sampler.set_template('swift.dev.template.Template', **{'template_spec': spec})
+        return sampler
     from swift.dev.builders import build_engine_args, build_sampler
+    from twinkle import DeviceMesh
 
     backend = rollout_config.rollout_sampler
     sampler_engine_args = build_engine_args(backend, None, rollout_config)

@@ -190,6 +190,11 @@ def initialize_cluster(
     is the rows of one driver batch (it bounds the episodes in flight); ``teacher_prompt`` says the
     dataset carries a privileged ``teacher_prompt`` column.
     """
+    from twinkle.advantage import TeacherReweight
+    from twinkle.metric import RolloutCorrection
+    from twinkle.processor import RoutingReplay
+    from twinkle_agentic.async_rl import ProcessReward
+
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
@@ -205,13 +210,13 @@ def initialize_cluster(
     from swift.dev.processor import InputProcessor, processor_kwargs
     from swift.dev.recipe.utils import single_teacher_id
     from swift.dev.utils.scoring import PrivilegedView
-    from twinkle.advantage import TeacherReweight
-    from twinkle.metric import RolloutCorrection
-    from twinkle.processor import RoutingReplay
-    from twinkle_agentic.async_rl import ProcessReward
 
     sp = template_config.sequence_parallel_size
-    sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # mode='remote' runs ONE client process: no local device mesh to shard with (the server owns
+    # the trainer's sharding), so the model build below swaps to the client handle and the
+    # sampler / weight-sync / rollout take their remote object sources.
+    remote_run = distributed_config.mode == 'remote'
+    sp_mesh = None if remote_run else (build_dp_mesh(distributed_config, sp) if sp > 1 else None)
     # Refuse the engine/training combinations a quantized refit cannot serve
     # (DeepSeek-V4 MXFP4 experts): cheaper now than after the engine is built.
     from swift.dev.weight_sync import check_quantized_weight_sync
@@ -222,44 +227,69 @@ def initialize_cluster(
     )
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None:
+    if resume_dir and tuner_config is None and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
         policy_config = copy.copy(model_config)
         policy_config.model = resume_dir
-    # create the actor (the trainable policy) here
-    model = build_model(
-        policy_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-        enable_router_replay=rl_config.router_replay_mode != "disabled",
-        torch_dtype="float32",
-    )
-    if tuner_config is not None:
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=1,
-            task_type=model_config.task_type,
+    # create the actor (the trainable policy) here: the in-process model, or under mode='remote'
+    # the twinkle_client handle over the server's resident one (the sft assembly's remote shape:
+    # the tuner / loss / processor travel as class names + kwargs, everything below is shared).
+    if remote_run:
+        from swift.dev.builders.remote import (
+            apply_remote_tuner,
+            build_remote_model,
+            configure_remote_processor,
         )
+
+        model = build_remote_model(model_config, distributed_config)
+        if tuner_config is not None:
+            apply_remote_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+                model_config=model_config,
+            )
+        # Full-param remote trains every server-side parameter by default (the freeze knobs were
+        # refused at validate time); the processor ships as the dev TemplateSpec so the
+        # server-side encodes match this process's row semantics.
+        configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
-        apply_full_param_freeze(model, train_config)
-    model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    model.set_template(template)
-    configure_rl_loss(model, rl_config)
+        model = build_model(
+            policy_config,
+            distributed_config,
+            train_config,
+            tuner_config,
+            device_mesh=sp_mesh,
+            quantize_config=quantize_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+            enable_router_replay=rl_config.router_replay_mode != "disabled",
+            torch_dtype="float32",
+        )
+        if tuner_config is not None:
+            apply_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+            )
+        else:
+            apply_full_param_freeze(model, train_config)
+        model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        model.set_template(template)
     # The optimizer reads the tuner's param groups and sizes its LR scheduler from the step budget;
     # the policy metric appends onto the optimizer's metric list (twinkle add_metric contract).
+    # The loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport
+    # (local model, Ray proxy, remote served-model handle): see configure_rl_loss.
+    configure_rl_loss(model, rl_config)
     configure_optimizer(
         model,
         train_config,
@@ -284,16 +314,25 @@ def initialize_cluster(
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
+        distributed_config=distributed_config,
+        template_config=template_config,
     )
-    engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+    if remote_run:
+        from swift.dev.builders.remote import RemoteWeightSync
+
+        engine = RemoteWeightSync(model, sampler)
+    else:
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         adapter = build_cluster_adapter(
             resource_plan, rollout_config, model=model, sampler=sampler, checkpoint_manager=engine)
     params = rollout_sampling_params(rl_config.max_completion_length, generation_config)
-    # One rollout for every generation (single-turn is the one-turn degenerate), on its CPU group.
+    # One rollout for every generation (single-turn is the one-turn degenerate); under ray it is
+    # an actor on the CPU rollout group, remotely a plain in-process object over the client
+    # sampler handle (its sample() rides HTTP; the driver still runs locally).
     rollout = build_rollout(
-        sampler, template, rollout_config, sampling_params=params, remote=True,
+        sampler, template, rollout_config, sampling_params=params, remote=not remote_run,
         inflight=inflight_rows(rollout_config, batch_size, rl_config.num_generations))
 
     # create the reference here (a KL anchor): a bare frozen model on its own group, or the policy
@@ -310,6 +349,7 @@ def initialize_cluster(
             model_id=rl_config.ref_model,
             model_config=model_config,
             template=template,
+            template_config=template_config,
             distributed_config=distributed_config,
             device_mesh=auxiliary_mesh(REF_GROUP, ref_spec, auxiliary_meshes),
             parallel_spec=ref_spec,
@@ -325,6 +365,7 @@ def initialize_cluster(
         model_id=single_teacher_id(rl_config.teacher_model, algo="RLSD/SDAR"),
         model_config=model_config,
         template=template,
+        template_config=template_config,
         distributed_config=distributed_config,
         device_mesh=auxiliary_mesh(TEACHER_GROUP, rl_config.teacher_parallel_spec, auxiliary_meshes),
         parallel_spec=rl_config.teacher_parallel_spec,
@@ -338,6 +379,10 @@ def initialize_cluster(
 
     # create prm & orm here -- the shared channel resolver: one scorer worker per entry, each
     # reward MODEL on its own group; the driver runs them on every finished episode / segment.
+    # Under ray the control group is the CPU actor group the scoring workers / estimator ride;
+    # remotely those are plain in-process objects (a FunctionWorker without a remote group runs
+    # its callable in THIS process, which is exactly the remote run's scoring shape).
+    worker_group = None if remote_run else CONTROL_GROUP
     scorer_kwargs = {
         "reward_config": reward_config,
         "model_config": model_config,
@@ -346,7 +391,7 @@ def initialize_cluster(
         "rollout_config": rollout_config,
         "backend": rollout_config.rollout_sampler,
         "sampler": sampler,
-        "worker_group": CONTROL_GROUP,
+        "worker_group": worker_group,
         "quantize_config": quantize_config,
     }
     orm_scorers, orm_names = resolve_reward_scorers("orm", **scorer_kwargs)
@@ -372,9 +417,9 @@ def initialize_cluster(
         sampling_params=params,
         colocate=colocate,
         advantage=build_advantage(rl_config, reward_config, use_prm=bool(prm_scorers),
-                                   has_teacher=has_teacher, remote_group=CONTROL_GROUP),
-        privileged=PrivilegedView(template=template, **{"remote_group": CONTROL_GROUP}) if teacher_prompt else None,
-        routing=RoutingReplay(**{"remote_group": CONTROL_GROUP}) if rl_config.router_replay_mode == "R2" else None,
+                                   has_teacher=has_teacher, remote_group=worker_group),
+        privileged=PrivilegedView(template=template, **{"remote_group": worker_group}) if teacher_prompt else None,
+        routing=RoutingReplay(**{"remote_group": worker_group}) if rl_config.router_replay_mode == "R2" else None,
     )
 
 

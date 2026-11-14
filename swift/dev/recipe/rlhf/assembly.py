@@ -58,6 +58,7 @@ def _build_reference(
     model: Any,
     *,
     remote_group: Optional[str],
+    template_config: Optional["TemplateConfig"] = None,
 ) -> Optional[Any]:
     """The frozen reference the encoder probes for ref-logps, or None for the reference-free types.
 
@@ -80,17 +81,19 @@ def _build_reference(
             "normally defaulted to the policy model by process.py::_derive_rl_ref_model; pass "
             "--ref_model explicitly if you bypassed config processing."
         )
-    if remote_group is None:
+    if remote_group is None and distributed_config.mode != 'remote':
         raise ValueError(
             "A full-parameter frozen reference must be built on its own DeviceGroup, but "
             "remote_group is None: _reference_needs_group planned no group for it -- the "
             "plan and the build have drifted."
         )
+    # mode='remote': the reference is another served-model handle (no DeviceGroup to plan).
     return build_ref_model(
         name=remote_group,
         model_id=rl_config.ref_model,
         model_config=model_config,
         template=template,
+        template_config=template_config,
         distributed_config=distributed_config,
         adapters=tuple(rl_config.ref_adapters or ()),
         model_type=rl_config.ref_model_type,
@@ -179,7 +182,10 @@ def build_preference_objects(
         reward_config=reward_config,
     )
     sp = template_config.sequence_parallel_size
-    sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # mode='remote' runs ONE client process: the policy AND the frozen reference are served-model
+    # handles (the sft assembly's remote shape for the model).
+    remote_run = distributed_config.mode == 'remote'
+    sp_mesh = None if remote_run else (build_dp_mesh(distributed_config, sp) if sp > 1 else None)
     # rm rides task_type='seq_cls' (process.py set it before the loss defaults read it), which also
     # threads the score head into LoRA's modules_to_save; the other types keep the Config's value.
     task_type = model_config.task_type
@@ -207,36 +213,58 @@ def build_preference_objects(
     resolve_step_intervals(train_config, checkpoint_config, total_opt_steps)
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     build_config = model_config
-    if resume_dir and tuner_config is None:
+    if resume_dir and tuner_config is None and not remote_run:
         build_config = copy.copy(model_config)
         build_config.model = resume_dir
-    model = build_model(
-        build_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-    )
-    if tuner_config is not None:
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=1,
-            task_type=task_type,
+    if remote_run:
+        from swift.dev.builders.remote import (
+            apply_remote_tuner,
+            build_remote_model,
+            configure_remote_processor,
         )
+
+        model = build_remote_model(model_config, distributed_config)
+        if tuner_config is not None:
+            # rm rides the seq_cls score head through the adapter channel (the same task kwargs
+            # the local path threads into modules_to_save).
+            apply_remote_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=task_type,
+                model_config=model_config,
+            )
+        configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
-        apply_full_param_freeze(model, train_config)
-    model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    model.set_template(template)
+        model = build_model(
+            build_config,
+            distributed_config,
+            train_config,
+            tuner_config,
+            device_mesh=sp_mesh,
+            quantize_config=quantize_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+        )
+        if tuner_config is not None:
+            apply_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=task_type,
+            )
+        else:
+            apply_full_param_freeze(model, train_config)
+        model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        model.set_template(template)
+    # The loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport
+    # (local model, Ray proxy, remote served-model handle): see configure_rl_loss.
     configure_rl_loss(model, rl_config)
     configure_optimizer(
         model,
@@ -250,7 +278,8 @@ def build_preference_objects(
     # inside forward_backward from the ref_logps the loop forwards, so margins/accuracies ride out.
     configure_rl_metrics(model, rl_config)
     reference = _build_reference(
-        template, model_config, rl_config, tuner_config, distributed_config, model, remote_group=ref_remote_group
+        template, model_config, rl_config, tuner_config, distributed_config, model,
+        remote_group=ref_remote_group, template_config=template_config,
     )
     return PreferenceCluster(
         model=model,

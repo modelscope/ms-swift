@@ -1,26 +1,47 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # RFT's visible training main: five segments, then the rejection-sampling round loop (one driver per round).
 from __future__ import annotations
-
-import json
 import os
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from swift.dev.recipe.batching import balance_update
-from swift.dev.utils.logger import get_logger
+import json
 
+from swift.dev.recipe.batching import balance_update
 from swift.dev.recipe.rft.assembly import build_rft_driver, initialize_rft_cluster, rft_group_requests
 from swift.dev.recipe.utils import (
-    StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_generation_batch_size, resolve_rollout_max_steps, resume_training, rollout_step_budget,
-    save_final_checkpoint, save_training_step,
-    snapshot_initial_adapter)
+    StepState,
+    build_save_knobs,
+    initialize_rl_devices,
+    optimizer_batch_slices,
+    prompt_rows_from_dataset,
+    resolve_generation_batch_size,
+    resolve_rollout_max_steps,
+    resume_training,
+    rollout_step_budget,
+    save_final_checkpoint,
+    save_training_step,
+    snapshot_initial_adapter,
+)
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
-        TrainConfig, TunerConfig)
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        GenerationConfig,
+        LoggingConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
+        RewardConfig,
+        RLConfig,
+        RolloutConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = get_logger()
 
@@ -117,8 +138,9 @@ class RFTSelector:
         matrix is the round's collected ORM score rows (straight off the driver's batch summaries,
         so no trajectory is materialised for it).
         """
-        from swift.dev.utils.scoring import accumulate_reward_metric
         from twinkle.metric import CompletionRewardMetric
+
+        from swift.dev.utils.scoring import accumulate_reward_metric
 
         if self._reward_metric is None:
             self._reward_metric = CompletionRewardMetric()
@@ -278,7 +300,7 @@ def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, sa
     return round_save_due
 
 
-def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+def run_rft(model_config: 'ModelConfig',  # noqa: C901 template_config: 'TemplateConfig',
             dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
             distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
             rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
@@ -318,7 +340,12 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # no replay (num_iterations=1); an explicit --max_steps still overrides.
     from swift.dev.builders import build_dp_mesh
 
-    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    remote_run = distributed_config.mode == 'remote'
+    if remote_run:
+        # One client process drives the server: the policy handle's own mesh sizes the batches.
+        dp_size = 1
+    else:
+        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the round's generation chunking: the derived
     # default fills whole optimizer updates on the sampling axis (num_samples per prompt), never the
@@ -406,7 +433,7 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({'model': cluster.model, 'sampler': cluster.sampler})):
+    if not remote_run and Perf.initialize(filter_perf_actors({'model': cluster.model, 'sampler': cluster.sampler})):
         logger.info('[perf] profiling enabled for the online RFT loop.')
     # segment 5: the visible round loop.
     save_steps = checkpoint_config.save_steps
@@ -439,9 +466,10 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     finally:
         Perf.shutdown()
         # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the Cluster's
-        # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side).
+        # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side). A served
+        # sampler's lifecycle is the server session's, not this client's.
         cluster.rollout.close()
-        cluster.sampler.shutdown()
+        cluster.sampler.shutdown() if not remote_run else None
         state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json was written at initialize_rl_devices.

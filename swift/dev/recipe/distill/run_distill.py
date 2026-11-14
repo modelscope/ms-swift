@@ -163,7 +163,12 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # the optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer.
     from swift.dev.builders import build_dp_mesh
 
-    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    remote_run = distributed_config.mode == 'remote'
+    if remote_run:
+        # One client process drives the server: the student handle's own mesh sizes the batches.
+        dp_size = 1
+    else:
+        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
     # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
@@ -246,7 +251,7 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({
+    if not remote_run and Perf.initialize(filter_perf_actors({
             'model': cluster.model,
             'sampler': cluster.sampler,
             **{f'teacher_{index}': teacher for index, teacher in enumerate(cluster.teachers)},
@@ -260,7 +265,8 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     finally:
         Perf.shutdown()
         cluster.rollout.close()
-        cluster.sampler.shutdown()
+        # A served sampler's lifecycle is the server session's, not this client's.
+        cluster.sampler.shutdown() if not remote_run else None
         state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.

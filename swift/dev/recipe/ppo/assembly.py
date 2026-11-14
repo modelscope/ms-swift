@@ -108,6 +108,9 @@ def initialize_ppo_cluster(
     optimizers' LR schedulers are fully configured here; ``batch_size`` is the rows of one driver
     batch (it bounds the episodes in flight).
     """
+    from twinkle.advantage import GAEAdvantage
+    from twinkle.processor import TrajectoryFilter
+
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
@@ -126,47 +129,67 @@ def initialize_ppo_cluster(
         configure_rl_metrics,
     )
     from swift.dev.processor import InputProcessor, processor_kwargs
-    from twinkle.advantage import GAEAdvantage
-    from twinkle.processor import TrajectoryFilter
 
     sp = template_config.sequence_parallel_size
-    sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # mode='remote' runs ONE client process: the policy AND the critic are served-model handles.
+    remote_run = distributed_config.mode == 'remote'
+    sp_mesh = None if remote_run else (build_dp_mesh(distributed_config, sp) if sp > 1 else None)
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None:
+    if resume_dir and tuner_config is None and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_ppo).
         policy_config = copy.deepcopy(model_config)
         policy_config.model = resume_dir
-    model = build_model(
-        policy_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-        torch_dtype="float32",
-    )
-    if tuner_config is not None:
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=1,
-            task_type=model_config.task_type,
+    if remote_run:
+        from swift.dev.builders.remote import (
+            apply_remote_tuner,
+            build_remote_model,
+            configure_remote_processor,
         )
+
+        model = build_remote_model(model_config, distributed_config)
+        if tuner_config is not None:
+            apply_remote_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+                model_config=model_config,
+            )
+        configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
-        apply_full_param_freeze(model, train_config)
-    model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    model.set_template(template)
-    # the policy's loss is the shared clipped surrogate ('ppo' maps to it in configure_rl_loss)
+        model = build_model(
+            policy_config,
+            distributed_config,
+            train_config,
+            tuner_config,
+            device_mesh=sp_mesh,
+            quantize_config=quantize_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+            torch_dtype="float32",
+        )
+        if tuner_config is not None:
+            apply_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+            )
+        else:
+            apply_full_param_freeze(model, train_config)
+        model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        model.set_template(template)
+        # the policy's loss is the shared clipped surrogate ('ppo' maps to it in configure_rl_loss)
+    # The loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport
+    # (local model, Ray proxy, remote served-model handle): see configure_rl_loss.
     configure_rl_loss(model, rl_config)
     configure_optimizer(
         model,
@@ -185,6 +208,8 @@ def initialize_ppo_cluster(
 
     # The critic: a trainable seq_cls num_labels=1 value model, initialized from the first ORM
     # reward MODEL (TRL's choice) or the policy base; full-param, so no tuner_config reaches it.
+    # Remotely it is ANOTHER served-model handle: the seq_cls value head rides the server's
+    # adapter channel, so the critic is a LoRA on its served base there.
     value_config = copy.deepcopy(model_config)
     value_config.task_type = "seq_cls"
     value_config.num_labels = 1
@@ -192,23 +217,43 @@ def initialize_ppo_cluster(
 
     orm_models = split_channel(list(reward_config.orm))[1] if reward_config is not None else []
     value_config.model = orm_models[0] if orm_models else model_config.model
-    value_model = build_model(
-        value_config,
-        distributed_config,
-        train_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-        instance_id="value",
-        torch_dtype="float32",
-    )
-    value_model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    value_model.set_template(template)
+    if remote_run:
+        from swift.dev.builders.remote import build_remote_model, configure_remote_processor
+
+        if tuner_config is None or tuner_config.tuner != 'lora':
+            raise ValueError(
+                '--mode remote PPO needs --tuner lora: the remote critic is a served-model LoRA '
+                'whose seq_cls value head rides the adapter channel (add_adapter_to_model), so a '
+                'full-parameter remote critic has no head to train. Use --tuner lora, or run PPO '
+                'with mode=ray for the local full-parameter critic.')
+        value_model = build_remote_model(value_config, distributed_config)
+        from peft import LoraConfig
+        from swift.dev.builders.adapter import _lora_common_kwargs
+
+        value_model.add_adapter_to_model(
+            'default', LoraConfig(**_lora_common_kwargs(tuner_config, task_type=None)),
+            task='seq_cls', num_labels=1, gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+        configure_remote_processor(value_model, template_config, value_config, distributed_config)
+    else:
+        value_model = build_model(
+            value_config,
+            distributed_config,
+            train_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+            instance_id="value",
+            torch_dtype="float32",
+        )
+        value_model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        value_model.set_template(template)
+    # The value loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport
+    # (see configure_ppo_value_loss).
     configure_ppo_value_loss(value_model, rl_config)
     configure_optimizer(
         value_model,
@@ -229,8 +274,15 @@ def initialize_ppo_cluster(
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
+        distributed_config=distributed_config,
+        template_config=template_config,
     )
-    engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+    if remote_run:
+        from swift.dev.builders.remote import RemoteWeightSync
+
+        engine = RemoteWeightSync(model, sampler)
+    else:
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         # Only the flex ranks: the trainer's ranks also hold the critic, which lending would leave
@@ -238,18 +290,21 @@ def initialize_ppo_cluster(
         adapter = build_cluster_adapter(
             resource_plan, rollout_config, model=model, sampler=sampler, checkpoint_manager=engine, lend=False)
     params = rollout_sampling_params(rl_config.max_completion_length, generation_config)
-    # PPO rolls out single-turn, on the rollout CPU group.
+    # PPO rolls out single-turn: under ray on the rollout CPU group, remotely a plain in-process
+    # object over the client sampler handle.
     rollout = build_rollout(
-        sampler, template, rollout_config, sampling_params=params, remote=True,
+        sampler, template, rollout_config, sampling_params=params, remote=not remote_run,
         inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)))
 
     # PPO ALWAYS anchors the KL: the full-parameter default is a frozen policy-init copy on the ref
     # group; a LoRA run reuses the policy actor itself with its adapter off (identity-derived).
+    # Remotely both shapes ride client handles (the policy itself, or another served model).
     reference = build_ref_model(
         name=REF_GROUP,
         model_id=(rl_config.ref_model or model_config.model),
         model_config=model_config,
         template=template,
+        template_config=template_config,
         distributed_config=distributed_config,
         device_mesh=auxiliary_mesh(
             REF_GROUP,
@@ -281,10 +336,10 @@ def initialize_ppo_cluster(
         rollout_config=rollout_config,
         backend=rollout_config.rollout_sampler,
         sampler=sampler,
-        worker_group=CONTROL_GROUP,
+        worker_group=None if remote_run else CONTROL_GROUP,
         quantize_config=quantize_config,
     )
-    group = {"remote_group": CONTROL_GROUP}
+    group = {"remote_group": None if remote_run else CONTROL_GROUP}
     return Cluster(
         model=model,
         value_model=value_model,

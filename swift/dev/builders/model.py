@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
+        TemplateConfig,
         TrainConfig,
         TunerConfig,
     )
@@ -588,6 +589,7 @@ def build_ref_model(
     model_revision: Optional[str] = None,
     instance_id: Optional[str] = None,
     deepspeed: Optional[str] = None,
+    template_config: Optional['TemplateConfig'] = None,
 ) -> Optional[Any]:
     """One frozen auxiliary (reference / teacher), as the BARE twinkle model (cookbook shape).
 
@@ -607,6 +609,33 @@ def build_ref_model(
         return policy_model
     if not model_id:
         return None
+    if distributed_config.mode == 'remote':
+        # mode='remote': the frozen auxiliary is ANOTHER served-model handle (the multi-tenant
+        # server hosts the reference / teacher next to the policy). The SAME caller contract --
+        # the bare model is the auxiliary, ``forward_only`` rides the handle -- and the same
+        # dev TemplateSpec the policy's processor was set with keeps the two encodes identical.
+        # A frozen ADAPTER preload is the server deployment's own configuration, not a client
+        # call: refusing it here keeps the knobs from silently not applying.
+        if template_config is None:
+            raise ValueError(
+                f'{name}: build_ref_model needs template_config under mode=remote: the served '
+                'auxiliary rebuilds the dev Template server-side from its serialized spec.')
+        from swift.dev.builders.remote import build_remote_model, configure_remote_processor
+
+        if adapters:
+            raise ValueError(
+                f'{name}: --mode remote does not support frozen adapter lists ({list(adapters)!r}): a '
+                'served auxiliary carries its adapter in the server-side deployment. Bake it into '
+                'the served model, or run mode=ray.')
+        config = copy.copy(model_config)
+        config.model = model_id
+        if model_type is not None:
+            config.model_type = model_type
+        if model_revision is not None:
+            config.model_revision = model_revision
+        frozen = build_remote_model(config, distributed_config)
+        configure_remote_processor(frozen, template_config, model_config, distributed_config)
+        return frozen
     from swift.dev.processor import InputProcessor, processor_kwargs
 
     config = copy.copy(model_config)

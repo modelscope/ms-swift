@@ -1,26 +1,46 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # PPO's visible training main: five segments, then ONE loop over the streaming driver.
 from __future__ import annotations
-
 import math
 import os
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from swift.dev.recipe.batching import balance_update
-from swift.dev.utils.logger import get_logger
-
-from swift.dev.recipe.ppo.assembly import (
-    Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
+from swift.dev.recipe.ppo.assembly import Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests
 from swift.dev.recipe.utils import (
-    StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_rollout_max_steps, resume_training, rollout_step_budget, resolve_generation_batch_size,
-    save_training_step, snapshot_initial_adapter, stream_batch_size)
+    StepState,
+    build_save_knobs,
+    initialize_rl_devices,
+    optimizer_batch_slices,
+    prompt_rows_from_dataset,
+    resolve_generation_batch_size,
+    resolve_rollout_max_steps,
+    resume_training,
+    rollout_step_budget,
+    save_training_step,
+    snapshot_initial_adapter,
+    stream_batch_size,
+)
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
-        TrainConfig, TunerConfig)
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        GenerationConfig,
+        LoggingConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
+        RewardConfig,
+        RLConfig,
+        RolloutConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = get_logger()
 
@@ -244,7 +264,7 @@ def _ppo_extra_metrics(cluster, reward_metric, _versions_cell) -> Dict[str, Any]
     return extra
 
 
-def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+def run_ppo(model_config: 'ModelConfig',  # noqa: C901 template_config: 'TemplateConfig',
             dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
             distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
             rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
@@ -273,7 +293,12 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # the optimizer's LR-scheduler horizon (num_ppo_epochs replays per rollout), derived BEFORE the build.
     from swift.dev.builders import build_dp_mesh
 
-    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    remote_run = distributed_config.mode == 'remote'
+    if remote_run:
+        # One client process drives the server: the policy handle's own mesh sizes the batches.
+        dp_size = 1
+    else:
+        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
     # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
@@ -308,9 +333,10 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         moe_config=moe_config, generation_config=generation_config, resource_plan=resource_plan,
         auxiliary_meshes=auxiliary_meshes)
     # segment 4: dataloader + driver + the step cadence + the save closure.
+    from twinkle.metric import CompletionRewardMetric
+
     from swift.dev.builders import build_prompt_dataloader, is_megatron_backend
     from swift.dev.builders.optimizer import resolve_max_grad_norm
-    from twinkle.metric import CompletionRewardMetric
 
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
@@ -356,6 +382,17 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         """
         ckpt_dir = save_training_step(cluster.model, state.handler, name, save_knobs,
                                       consumed_train_samples=state.global_step, is_final=is_final)
+        if remote_run:
+            # The critic rides its OWN server-side training run's store entry under the SAME
+            # save name (step-aligned): the local <ckpt>/value_model directory nesting has no
+            # remote counterpart, and the local save kwargs (output_dir / component_states /
+            # async_save ...) cannot cross the SaveRequest protocol face.
+            response = cluster.value_model.save(
+                name,
+                save_optimizer=not (checkpoint_config.no_save_optim or checkpoint_config.save_only_model),
+                consumed_train_samples=state.global_step)
+            logger.info('[remote] value checkpoint: %s', getattr(response, 'twinkle_path', name))
+            return ckpt_dir
         _save_value_checkpoint(
             cluster.value_model, ckpt_dir, checkpoint_config, state.global_step,
             async_save=(checkpoint_config.async_save and not is_final))
@@ -390,7 +427,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({
+    if not remote_run and Perf.initialize(filter_perf_actors({
             'model': cluster.model,
             'value_model': cluster.value_model,
             'sampler': cluster.sampler,
@@ -407,7 +444,8 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     finally:
         Perf.shutdown()
         cluster.rollout.close()
-        cluster.sampler.shutdown()
+        # A served sampler's lifecycle is the server session's, not this client's.
+        cluster.sampler.shutdown() if not remote_run else None
         state.tracker.close()
     state.handler.on_train_end()
     if _save_final:

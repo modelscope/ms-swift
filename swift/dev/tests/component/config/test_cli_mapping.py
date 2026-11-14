@@ -296,3 +296,30 @@ def test_megatron_rlhf_parser_applies_megatron_surface(monkeypatch):
     assert configs['train_config'].gradient_accumulation_steps == 1
     assert configs['model_config'].torch_dtype == 'bfloat16'
     assert configs['model_config'].attn_impl == 'fused'
+
+
+def test_rl_mode_remote_survives_parse_for_every_family():
+    """--mode remote stays remote for every rl_type: the recipes drive a twinkle-server
+    through twinkle_client with the same loop code, so the mode='ray' overrides below must
+    not silently turn a remote request into a local Ray run (and no sampler_mode default is
+    stamped -- the served sampler owns its own placement)."""
+    from swift.dev.cli.rl import parse_rl_configs
+
+    for rl_type in ('grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'):
+        configs = parse_rl_configs([
+            '--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', rl_type, '--mode', 'remote'])
+        assert configs['distributed_config'].mode == 'remote', rl_type
+        assert configs['rollout_config'].sampler_mode is None, rl_type
+
+
+def test_rl_mode_defaults_to_ray_with_a_disaggregated_sampler():
+    """Without --mode remote the online family forces mode='ray' + the disaggregated sampler
+    default; the offline preference family forces the mode only (it rolls out nothing)."""
+    from swift.dev.cli.rl import parse_rl_configs
+
+    online = parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', 'grpo'])
+    assert online['distributed_config'].mode == 'ray'
+    assert online['rollout_config'].sampler_mode == 'disaggregated'
+    offline = parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', 'dpo'])
+    assert offline['distributed_config'].mode == 'ray'
+    assert offline['rollout_config'].sampler_mode is None

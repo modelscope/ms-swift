@@ -6,8 +6,8 @@ import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from swift.dev.recipe.distill.worker import DistillWorker
-from swift.dev.template.conventions import PROMPT_INPUT_KEYS
 from swift.dev.recipe.utils import TEACHER_GROUP, auxiliary_mesh, build_rl_sampler, teacher_group
+from swift.dev.template.conventions import PROMPT_INPUT_KEYS
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -163,45 +163,67 @@ def initialize_distill_cluster(
     from swift.dev.processor import InputProcessor, processor_kwargs
 
     sp = template_config.sequence_parallel_size
-    sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # mode='remote' runs ONE client process: the student AND every teacher are served-model handles.
+    remote_run = distributed_config.mode == 'remote'
+    sp_mesh = None if remote_run else (build_dp_mesh(distributed_config, sp) if sp > 1 else None)
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None:
+    if resume_dir and tuner_config is None and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_distill).
         policy_config = copy.deepcopy(model_config)
         policy_config.model = resume_dir
-    model = build_model(
-        policy_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-        torch_dtype="float32",
-    )
-    if tuner_config is not None:
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=1,
-            task_type=model_config.task_type,
+    if remote_run:
+        from swift.dev.builders.remote import (
+            apply_remote_tuner,
+            build_remote_model,
+            configure_remote_processor,
         )
+
+        model = build_remote_model(model_config, distributed_config)
+        if tuner_config is not None:
+            apply_remote_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+                model_config=model_config,
+            )
+        configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
-        apply_full_param_freeze(model, train_config)
-    model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    model.set_template(template)
-    configure_rl_loss(model, rl_config)
+        model = build_model(
+            policy_config,
+            distributed_config,
+            train_config,
+            tuner_config,
+            device_mesh=sp_mesh,
+            quantize_config=quantize_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+            torch_dtype="float32",
+        )
+        if tuner_config is not None:
+            apply_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+            )
+        else:
+            apply_full_param_freeze(model, train_config)
+        model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        model.set_template(template)
     # The optimizer reads the tuner's param groups and sizes its LR scheduler from the step budget;
     # the policy metric appends onto the optimizer's metric list (twinkle add_metric contract).
+    # The loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport
+    # (local model, Ray proxy, remote served-model handle): see configure_rl_loss.
+    configure_rl_loss(model, rl_config)
     configure_optimizer(
         model,
         train_config,
@@ -220,22 +242,32 @@ def initialize_distill_cluster(
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
+        distributed_config=distributed_config,
+        template_config=template_config,
     )
-    engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+    if remote_run:
+        from swift.dev.builders.remote import RemoteWeightSync
+
+        engine = RemoteWeightSync(model, sampler)
+    else:
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         adapter = build_cluster_adapter(
             resource_plan, rollout_config, model=model, sampler=sampler, checkpoint_manager=engine)
     params = distill_sampling_params(rl_config, generation_config)
-    # One rollout for every on-policy generation (distillation rolls out single-turn), on its CPU group.
+    # One rollout for every on-policy generation (distillation rolls out single-turn); under ray
+    # it is an actor on the CPU rollout group, remotely a plain in-process object over the
+    # client sampler handle.
     rollout = build_rollout(
-        sampler, template, rollout_config, sampling_params=params, remote=True,
+        sampler, template, rollout_config, sampling_params=params, remote=not remote_run,
         inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)))
 
     teachers, teacher_options = _build_teachers(
         model=model,
         model_config=model_config,
         template=template,
+        template_config=template_config,
         rl_config=rl_config,
         tuner_config=tuner_config,
         distributed_config=distributed_config,
@@ -249,7 +281,7 @@ def initialize_distill_cluster(
         gkd_logits_topk=rl_config.gkd_logits_topk,
         sft_alpha=rl_config.sft_alpha,
         train_batch_size=train_batch_size,
-        remote_group=CONTROL_GROUP,
+        remote_group=None if remote_run else CONTROL_GROUP,
         **teacher_options,
     )
     return Cluster(
@@ -270,6 +302,7 @@ def _build_teachers(
     model: Any,
     model_config: "ModelConfig",
     template: Any,
+    template_config: Optional["TemplateConfig"] = None,
     rl_config: "RLConfig",
     tuner_config: Optional["TunerConfig"],
     distributed_config: "DistributedConfig",
@@ -317,6 +350,7 @@ def _build_teachers(
                 model_id=model_id,
                 model_config=model_config,
                 template=template,
+                template_config=template_config,
                 distributed_config=distributed_config,
                 device_mesh=auxiliary_mesh((teacher_group(index) if spread else TEACHER_GROUP), spec, auxiliary_meshes),
                 parallel_spec=spec,
@@ -370,11 +404,18 @@ def _build_teachers(
         # privileged view on the policy actor (no separate group, adapters ON).
         return [model], {}
     offload = bool(signal == "logits" and rl_config.offload_teacher_model)
+    if offload and distributed_config.mode == 'remote':
+        # The CPU-offload hook toggles the LOCAL teacher's residency; a served teacher's memory
+        # is the server's, so the knob has no consumer remotely.
+        raise ValueError(
+            "--mode remote does not support --offload_teacher_model (the teacher's CPU offload is "
+            'a local memory hook on the in-process teacher). Drop it, or run mode=ray.')
     teacher = build_ref_model(
         name=TEACHER_GROUP,
         model_id=teacher_model,
         model_config=model_config,
         template=template,
+        template_config=template_config,
         distributed_config=distributed_config,
         device_mesh=auxiliary_mesh(TEACHER_GROUP, rl_config.teacher_parallel_spec, auxiliary_meshes),
         parallel_spec=rl_config.teacher_parallel_spec,

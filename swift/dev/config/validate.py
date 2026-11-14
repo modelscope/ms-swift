@@ -52,7 +52,8 @@ def validate_configs(
 
     _check_remote_mode(distributed_config, is_megatron, rl_config,
                        train_config=train_config, tuner_config=tuner_config,
-                       quantize_config=quantize_config)
+                       quantize_config=quantize_config, rollout_config=rollout_config,
+                       checkpoint_config=checkpoint_config)
     _check_group_by_length(dataset_config, template_config)
     _check_lazy_tokenize(dataset_config)
     _check_data_sharding(dataset_config)
@@ -154,7 +155,10 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
                        rl_config: Optional['RLConfig'],
                        train_config: Optional['TrainConfig'] = None,
                        tuner_config: Optional['TunerConfig'] = None,
-                       quantize_config: Optional['QuantizeConfig'] = None) -> None:
+                       quantize_config: Optional['QuantizeConfig'] = None,
+                       rollout_config: Optional['RolloutConfig'] = None,
+                       reward_config: Optional['RewardConfig'] = None,
+                       checkpoint_config: Optional['CheckpointConfig'] = None) -> None:
     """mode='remote' preconditions: a server to talk to, and a path the client port covers.
 
     The remote mode drives a twinkle-server through twinkle_client, so everything that assumes
@@ -180,10 +184,7 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             "with --route_prefix /api/v1 and the base URL should carry no path (or exactly "
             "'/api/v1').")
     if rl_config is not None:
-        raise ValueError(
-            "--mode remote does not support RL yet: the rollout side needs the StreamingDriver "
-            "client port (in progress). Train the supervised family remotely, or run RL with "
-            "mode=ray as today.")
+        _check_remote_rl(rl_config, rollout_config, checkpoint_config)
     # backend under remote names the SERVER-side model app's engine (hf or megatron): both are
     # legal, because configure_optimizer's two branches are already descriptions that cross HTTP
     # ('AdamW' for the transformers app, 'MegatronOptimizer' + its kwargs for the megatron one).
@@ -237,6 +238,72 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             '--mode remote does not support --predict_with_generate yet: the generative-eval '
             'sampler is built in-process. Evaluate the saved twinkle:// checkpoint with '
             '`swift infer --sampler twinkle`, or use val-loss eval (the default) remotely.')
+
+
+def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutConfig'],
+                     checkpoint_config: Optional['CheckpointConfig'] = None) -> None:
+    """mode='remote' + RL: the coverage of the client object sources, refused gap by gap.
+
+    Every recipe algorithm runs remotely with the SAME loop code: the policy, the critic, the
+    frozen reference / teacher / reward models are each a twinkle_client model handle (the
+    multi-tenant server hosts as many served models as the run needs), the rollout rides a served
+    sampler handle, and the weight channel is the save -> adapter_uri hand-off. Refused here is
+    only what genuinely lives in the LOCAL actor fabric with no client port: the colocate /
+    elastic devices, the delta weight transports, the in-process routing-replay and
+    sampling-replay engines, the EMA reference sync, and the multi-turn sandbox.
+    """
+    if rl_config.router_replay_mode != 'disabled':
+        raise ValueError(
+            f"--mode remote does not support router_replay_mode={rl_config.router_replay_mode!r}: "
+            "the recording forward replays the training model's own expert routing in-process. "
+            "Use the default 'disabled', or mode=ray.")
+    if rl_config.enable_sampling_replay:
+        raise ValueError(
+            '--mode remote does not support --enable_sampling_replay (the replay engine is a '
+            'local sampler-construction flag; a served sampler is configured server-side). Drop '
+            'it, or run mode=ray.')
+    if (rl_config.rl_type == 'ppo' and checkpoint_config is not None
+            and checkpoint_config.resume_from_checkpoint):
+        # PPO's two-model save nests the critic at <policy-ckpt>/value_model locally; remotely the
+        # critic checkpoint lives in its OWN server-side training run, and no protocol channel links
+        # the two, so a remote PPO resume cannot find the step-aligned critic.
+        raise ValueError(
+            '--mode remote does not support PPO resume yet: the critic checkpoint sits in its own '
+            'server-side training run and no policy->value checkpoint association crosses the '
+            'protocol. Restart the remote run, or resume with mode=ray.')
+    if rl_config.sync_ref_model:
+        # The EMA pair streams the policy's weights into the reference through a checkpoint-engine
+        # channel; remotely the policy and the reference are separate served models, so the sync
+        # would have to ride a server-side path that does not exist yet.
+        raise ValueError(
+            "--mode remote does not support --sync_ref_model (the EMA policy->reference weight stream "
+            'is a checkpoint-engine channel between local actors). Drop it, or run mode=ray.')
+    if rollout_config is not None:
+        colocate = rollout_config.sampler_mode == 'colocate'
+        if colocate:
+            # The colocate dance (sleep/wake, offload, KV release) time-shares ONE process's devices;
+            # remotely the sampler is a separate served app that already owns its own.
+            raise ValueError(
+                "--mode remote does not support sampler_mode='colocate' (the served sampler owns its "
+                "own devices; there is no borrow-and-return loop). Use the default disaggregated "
+                "placement, or run mode=ray.")
+        if rollout_config.resource_mode == 'adaptive':
+            raise ValueError(
+                "--mode remote does not support resource_mode='adaptive' (the elastic cluster adapter "
+                "grows sampler replicas on local ranks). Use the static layout, or run mode=ray.")
+        if rollout_config.weight_sync_backend != 'full':
+            # delta_{sharded,rpc} stream trainer-side deltas through in-process engines; the remote
+            # sync channel IS the save -> adapter_uri checkpoint hand-off.
+            raise ValueError(
+                f"--mode remote does not support weight_sync_backend={rollout_config.weight_sync_backend!r}: "
+                'the remote weight channel is the saved twinkle:// adapter_uri. Use the default '
+                "'full' (via save), or run mode=ray.")
+        if (getattr(rollout_config, 'max_turns', None) or 1) > 1 or (rollout_config.tools or ()):
+            # The multi-turn rollout's sandbox env replicas are local CPU actors; the single-turn
+            # rollout runs fine over the served sampler.
+            raise ValueError(
+                '--mode remote does not support the multi-turn rollout / tools (the sandbox lives on '
+                'local CPU groups). Drop the knobs for single-turn rollouts, or run mode=ray.')
 
 
 def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'], moe_config: Optional['MoEConfig'],
@@ -1685,6 +1752,8 @@ def _check_attn_impl_availability(model_config: 'ModelConfig') -> None:
         return
     from transformers.utils import (
         is_flash_attn_2_available as _fa2,  # noqa: N813
+    )
+    from transformers.utils import (
         is_torch_npu_available,
     )
     if probe_name == 'flash_attention_2':

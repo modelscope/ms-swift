@@ -8,11 +8,10 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import torch
+from twinkle.perf import span as perf_span
 
 from swift.dev.recipe.batching import balance_update
 from swift.dev.recipe.grpo.assembly import build_driver, grpo_group_requests, initialize_cluster
-from twinkle.perf import span as perf_span
-
 from swift.dev.recipe.utils import (
     RolloutStepState,
     _log_line,
@@ -456,7 +455,7 @@ def _grpo_extra_metrics(
     return extra
 
 
-def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
              dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
              distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
              rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
@@ -480,10 +479,15 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         output_dir=output_dir, prompt_rows=prompt_rows,
         group_requests=(lambda: grpo_group_requests(
             rl_config, reward_config, distributed_config, tuner_config)))
+    remote_run = distributed_config.mode == 'remote'
     # the optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer.
     from swift.dev.builders import build_dp_mesh
 
-    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    if remote_run:
+        # One client process drives the server: the policy handle's own mesh sizes the batches.
+        dp_size = 1
+    else:
+        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     ga = train_config.gradient_accumulation_steps
     # One resolved value feeds the driver batch, the step budget and the dataloader: the derived
@@ -589,7 +593,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         attributes={
             'adv_pipeline_scope': 'auxiliary_forwards_and_advantage_resolution',
             'unavailable_metrics': ['perf/mfu/actor'],
-        })
+        }) if not remote_run else None
 
     save_knobs = build_save_knobs(
         checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir)
@@ -650,7 +654,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({
+    if not remote_run and Perf.initialize(filter_perf_actors({
             'model': cluster.model,
             'sampler': cluster.sampler,
             'reference': cluster.reference,
@@ -678,7 +682,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         try:
             state.finish_rollout_metrics(
                 stream_stats=driver.stats(),
-                status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
+                status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None
         finally:
             try:
                 Perf.shutdown()
@@ -687,7 +691,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                     cluster.rollout.close()
                 finally:
                     try:
-                        cluster.sampler.shutdown()
+                        # A served sampler's lifecycle is the server session's, not this client's.
+                        cluster.sampler.shutdown() if not remote_run else None
                     finally:
                         state.tracker.close()
     state.handler.on_train_end()
