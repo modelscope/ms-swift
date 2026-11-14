@@ -3,12 +3,9 @@
 
 Two layers live here:
 
-* declaration builders -- the two-loop graph (solver + question loops) at the
-  current registry version, its v3 ancestor, and surgical variants (extra model,
-  checkpoint, extra stage). They are plain dicts: the test IS the declaration's
-  oracle. The current graph reads its version from the registry rather than
-  carrying a literal, so a registry bump does not silently turn these fixtures
-  into legacy graphs that the validator refuses.
+* declaration builders -- the v4 two-loop graph (solver + question loops),
+  its v3 ancestor, and surgical variants (extra model, checkpoint, extra
+  stage). They are plain dicts: the test IS the declaration's oracle.
 * fake components -- ``FakeResource`` / ``FakeIterator`` / ``FakeStage``
   replace the real bindings so the DAGController and GraphSession protocols
   (clicks, circles, pause boundaries, pagination) run without engines while
@@ -20,9 +17,9 @@ import copy
 import threading
 import time
 
+from swift.dev.webui import upgrade
 from swift.dev.webui.dag import DAGController
 from swift.dev.webui.graph import Graph
-from swift.dev.webui.registry import REGISTRY_VERSION
 from swift.dev.webui.session import GraphSession
 
 MODEL_ID = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -92,7 +89,7 @@ def base_declaration():
          'sources': ['chall'], 'consumers': ['train_q'],
          'budget_owner': 'train_q', 'feedback': ['fq']},
     ]
-    return {'version': REGISTRY_VERSION, 'workflow_id': 'two-loop-test',
+    return {'version': 4, 'workflow_id': 'two-loop-test',
             'resource': {'mode': 'local', 'cards': [0, 1, 2, 3]},
             'nodes': nodes, 'edges': edges, 'frames': frames}
 
@@ -242,6 +239,24 @@ class FakeStage:
         return outputs
 
 
+def current(declaration):
+    """The declaration at the running registry version, via the product's own upgrade service.
+
+    A fixture that declares a graph in the vocabulary of an older registry goes stale the moment
+    the registry moves, and then fails at setup with a version error that says nothing about the
+    code under test. Routing it through ``upgrade.run`` is what a real saved canvas does, so the
+    migration is exercised instead of worked around.
+
+    ``can_confirm`` is asserted rather than skipped: a graph that still needs a human choice has
+    no single current form, and building one anyway would test a graph nobody declared.
+    """
+    result = upgrade.run({'graph': declaration})
+    assert not result.get('error'), result['error']
+    assert result['can_confirm'], (f'旧图无法无人工确认地迁移：choices={result["choices"]} '
+                                   f'validation_error={result["validation_error"]}')
+    return result['candidate']
+
+
 def build_fakes(declaration, *, batches=8, delays=None):
     """One fake per node, keyed by node id and shaped by the descriptor."""
     graph = Graph.from_declaration(declaration)
@@ -267,6 +282,7 @@ def build_fakes(declaration, *, batches=8, delays=None):
 
 def build_controller(declaration, *, batches=8, delays=None):
     """A DAGController over fake bindings: real scheduling, no engines."""
+    declaration = current(declaration)
     graph, fakes = build_fakes(declaration, batches=batches, delays=delays)
     events = []
     recorded = {}
@@ -280,6 +296,7 @@ def build_controller(declaration, *, batches=8, delays=None):
 def build_session(declaration, *, batches=8, delays=None):
     """A GraphSession whose bindings are patched to the fakes: the real
     command loop, event channel and preview surface over fake components."""
+    declaration = current(declaration)
     graph, fakes = build_fakes(declaration, batches=batches, delays=delays)
     session = GraphSession(declaration)
     session._build_binding = lambda graph_node: fakes[graph_node.id]

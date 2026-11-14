@@ -9,11 +9,11 @@ import pytest
 from swift.dev.webui.graph import Graph, GraphValidationError
 from swift.dev.webui.placement import NUMERIC_GROUP, plan_device_groups
 
-from ._fakes import base_declaration, node
+from ._fakes import base_declaration, current, node
 
 
 def plan_of(declaration):
-    return plan_device_groups(Graph.from_declaration(declaration))
+    return plan_device_groups(Graph.from_declaration(current(declaration)))
 
 
 def refusal(declaration):

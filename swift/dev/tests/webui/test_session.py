@@ -113,7 +113,7 @@ class TestUpdateAndRelease:
         declaration = session._declaration
         for entry in declaration['nodes']:
             if entry['id'] == 'adv':
-                entry['params']['profile'] = 'token'
+                entry['params']['num_generations'] = 8
         reply = session.command({'op': 'update', 'declaration': declaration})
         assert reply['ok'] and reply['revision'] == 1
         assert 'adv' not in session._residents   # fingerprint changed -> dropped
