@@ -22,7 +22,10 @@ class _StubModel:
     def __init__(self):
         self.losses = {}
 
-    def set_loss(self, loss, loss_key=None):
+    def set_loss(self, loss, loss_key=None, **kwargs):
+        # Mirrors TransformersModel.set_loss(loss_cls, **kwargs): loss_key and the loss
+        # hyperparameters all arrive as keyword arguments, so a stub naming only loss_key
+        # rejects every real call that carries epsilon / beta / temperature and friends.
         self.losses[loss_key] = loss
 
 

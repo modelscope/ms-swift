@@ -67,8 +67,11 @@ class _StubModel:
     def __init__(self):
         self.loss = None
 
-    def set_loss(self, loss):
+    def set_loss(self, loss, **kwargs):
+        # Mirrors TransformersModel.set_loss(loss_cls, **kwargs): the loss hyperparameters ride in
+        # as keyword arguments, so a stub that names only the loss rejects every real call.
         self.loss = loss
+        self.loss_kwargs = kwargs
 
 
 @pytest.mark.parametrize('rl_type, cls_name', [
@@ -287,10 +290,11 @@ def test_gae_full_lambda_credits_all_tokens():
 
     # normalize=False asserts the RAW recursion (hand-computed below); the production default
     # normalize=True would standardize the batch and hide the per-token credit assignment.
-    advantages, returns = GAEAdvantage(gamma=1.0, gae_lambda=1.0, normalize=False)([0.0, 0.0, 1.0], [0.5, 0.5, 0.5])
+    gae = GAEAdvantage(gamma=1.0, gae_lambda=1.0, normalize=False)
+    advantages, returns = gae.token_advantages([[0.0, 0.0, 1.0]], [[0.5, 0.5, 0.5]])
     # delta_t = r_t + gamma*V_{t+1} - V_t ; last-to-first: 0.5, 0.5, 0.5 (full carry at lam=1).
-    assert advantages.flatten().tolist() == pytest.approx([0.5, 0.5, 0.5])
-    assert returns.flatten().tolist() == pytest.approx([1.0, 1.0, 1.0])  # advantage + value
+    assert advantages[0] == pytest.approx([0.5, 0.5, 0.5])
+    assert returns[0] == pytest.approx([1.0, 1.0, 1.0])  # advantage + value
 
 
 def test_gae_zero_lambda_is_one_step_td():
@@ -298,10 +302,11 @@ def test_gae_zero_lambda_is_one_step_td():
     pytest.importorskip('twinkle.advantage')
     from twinkle.advantage import GAEAdvantage
 
-    advantages, returns = GAEAdvantage(gamma=1.0, gae_lambda=0.0, normalize=False)([0.0, 0.0, 1.0], [0.5, 0.5, 0.5])
+    gae = GAEAdvantage(gamma=1.0, gae_lambda=0.0, normalize=False)
+    advantages, returns = gae.token_advantages([[0.0, 0.0, 1.0]], [[0.5, 0.5, 0.5]])
     # No carry: delta = [0+0.5-0.5, 0+0.5-0.5, 1+0-0.5] = [0.0, 0.0, 0.5].
-    assert advantages.flatten().tolist() == pytest.approx([0.0, 0.0, 0.5])
-    assert returns.flatten().tolist() == pytest.approx([0.5, 0.5, 1.0])
+    assert advantages[0] == pytest.approx([0.0, 0.0, 0.5])
+    assert returns[0] == pytest.approx([0.5, 0.5, 1.0])
 
 
 def test_gae_length_matches_response_and_requires_values():
@@ -309,11 +314,13 @@ def test_gae_length_matches_response_and_requires_values():
     pytest.importorskip('twinkle.advantage')
     from twinkle.advantage import GAEAdvantage
 
-    advantages, returns = GAEAdvantage(gamma=0.9, gae_lambda=0.95,
-                                       normalize=False)([1.0, 2.0, 3.0, 4.0], [0.0, 0.0, 0.0, 0.0])
-    assert advantages.shape == (1, 4) and returns.shape == (1, 4)  # one advantage/return per token
+    gae = GAEAdvantage(gamma=0.9, gae_lambda=0.95, normalize=False)
+    advantages, returns = gae.token_advantages([[1.0, 2.0, 3.0, 4.0]], [[0.0, 0.0, 0.0, 0.0]])
+    # One advantage/return per response token: rows are ragged lists, not a padded tensor.
+    assert len(advantages) == 1 and len(advantages[0]) == 4
+    assert len(returns) == 1 and len(returns[0]) == 4
     with pytest.raises(TypeError):
-        GAEAdvantage()([1.0, 2.0])  # value function is mandatory for GAE (positional `values`)
+        gae.token_advantages([[1.0, 2.0]])  # value function is mandatory for GAE (positional `values`)
 
 
 # ----------------------------------------------------------------------
