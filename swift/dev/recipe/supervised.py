@@ -45,6 +45,57 @@ def _is_vpp_megatron(distributed_config: "DistributedConfig") -> bool:
             and (distributed_config.virtual_pipeline_model_parallel_size or 1) > 1)
 
 
+def _probe_batch_identity(global_step: int, samples: list) -> None:
+    """Record which data one update consumed, so a resume can be compared against its source run.
+
+    Gated by ``SWIFT_BATCH_IDENTITY_PROBE`` (a path prefix). A resumed run that trains on a different
+    batch than the source run did at the same global step diverges for a reason that has nothing to do
+    with weights or optimizer state, and no amount of parameter inspection can tell the two apart: both
+    show up as a loss that no longer matches. Digesting the batch itself separates them -- equal
+    digests with unequal loss point at the model state, unequal digests point at the dataloader
+    position. The digest covers tensor bytes and the sorted scalar structure, so a reorder, a truncation
+    and a different sample all change it.
+    """
+    import hashlib
+    import json
+    import os
+
+    prefix = os.environ.get('SWIFT_BATCH_IDENTITY_PROBE')
+    if not prefix:
+        return
+    import torch
+
+    def digest(value) -> str:
+        hasher = hashlib.blake2b(digest_size=8)
+        if torch.is_tensor(value):
+            tensor = value.detach().to('cpu').contiguous().flatten()
+            hasher.update(str(tuple(value.shape)).encode())
+            hasher.update(str(value.dtype).encode())
+            # A byte view rather than ``.numpy()``: bfloat16 has no numpy counterpart, and the digest
+            # must cover every dtype the dataloader can emit.
+            hasher.update(tensor.view(torch.uint8).numpy().tobytes())
+        elif isinstance(value, dict):
+            for key in sorted(value):
+                hasher.update(str(key).encode())
+                hasher.update(digest(value[key]).encode())
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                hasher.update(digest(item).encode())
+        else:
+            hasher.update(repr(value).encode())
+        return hasher.hexdigest()
+
+    record = {
+        'rank': int(os.environ.get('RANK') or os.environ.get('LOCAL_RANK') or 0),
+        'global_step': int(global_step),
+        'num_samples': len(samples),
+        'batch': digest(samples),
+        'per_sample': [digest(sample) for sample in samples],
+    }
+    with open(f'{prefix}.rank{record["rank"]}.jsonl', 'a') as handle:
+        handle.write(json.dumps(record) + '\n')
+
+
 #: Forward tasks whose eval must submit each dataloader batch as ONE whole forward: their
 #: labels live per record (decision) or one record expands into several sequences (embedding
 #: anchor+positives, reranker query+candidates), so the forward-only micro-batcher's
@@ -278,6 +329,7 @@ def run_supervised(
         """Submit one update; every backend schedules its micro-batches internally."""
         state.publish_state()
         handler.on_step_begin()
+        _probe_batch_identity(state.global_step, samples)
         # forward_backward / clip_grad_and_step carry @timed at their twinkle definition
         # site, so the span is recorded on the rank that actually runs them. forward_backward is
         # declared sync=True on the model: an actor-side failure raises at this call, failing THIS
