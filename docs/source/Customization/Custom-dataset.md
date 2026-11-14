@@ -86,6 +86,8 @@ alpaca格式:
 - 可以通过增加"loss_scale"字段，控制对应的模型回复部分（"role"为"assistant"）的loss_scale。（ms-swift>=4.2.0）默认为None。该功能优先级高于命令行参数 `--loss_scale`的其他策略部分，例如：'ignore_empty_think', 'hermes'等。使用非二值的正权重（如`0.5`或`2.0`）时，需要额外设置`--is_binary_loss_scale false`，以保留权重大小。二值化模式只区分是否参与损失计算，不能表达降低或提高权重。
 assistant 消息可包含独立的 `reasoning_content` 字符串。数据预处理会保留该字段，包括将 OpenAI `tool_calls` 转为标准消息时；思考只保留在调用前的一条 assistant 消息中，不按工具调用数重复。该字段的编码仍需对应模板支持。
 
+Qwen3.5/3.6/3.8 的 `swift` 后端支持独立的文本 `reasoning_content` 和 `content`。思考字段非 null 时，模板直接构造思考边界，两个字段的正文（包括字面 think／EOS 标记）按普通文本编码。逐消息 `loss`／`loss_scale` 和 `preserve_thinking` 继续生效。使用默认 loss 策略或显式消息权重；基于文本模式的 loss 策略不检查预编码正文。未提供思考字段时，原合并 content 格式保持不变。工具参数及其他角色消息沿用现有编码。
+
 ```jsonl
 {"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好，有什么可以帮助你的吗？", "loss": false}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2", "loss": true}]}
 {"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 0.5}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}

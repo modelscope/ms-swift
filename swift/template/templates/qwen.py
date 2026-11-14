@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import transformers
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from functools import partial
+from functools import cached_property, partial
 from packaging import version
 from PIL import Image
 from torch import nn
@@ -22,7 +22,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import Context, Word, findall
+from ..utils import Context, Word, findall, get_last_user_round
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
@@ -631,6 +631,36 @@ class Qwen3_5Template(Qwen3VLTemplate):
                                f'transformers>=5.9.0 (current: {self.transformers_version}). ')
         return Qwen2VLTemplate._post_encode(self, model, inputs)
 
+    @cached_property
+    def _reasoning_text_tokenizer(self):
+        # Qwen's think tokens can be added tokens with special=False, so
+        # split_special_tokens=True does not make them ordinary text.
+        from tokenizers import Tokenizer
+        backend = getattr(self.tokenizer, 'backend_tokenizer', None)
+        if backend is None:
+            raise ValueError('Structured Qwen reasoning requires a fast tokenizer.')
+        config = json.loads(backend.to_str())
+        config['added_tokens'] = []
+        return Tokenizer.from_str(json.dumps(config))
+
+    def _encode_reasoning_fields(self, message, *, keep_thinking, before_tools):
+        reasoning, content = message['reasoning_content'], message.get('content') or ''
+        if not isinstance(reasoning, str) or not isinstance(content, str):
+            raise ValueError('Structured Qwen reasoning_content and content must be strings.')
+        encode_text = self._reasoning_text_tokenizer.encode
+        if keep_thinking:
+            tokens = self._tokenize('<think>')
+            tokens += encode_text('\n' + reasoning + '\n', add_special_tokens=False).ids
+            tokens += self._tokenize('</think>')
+            body = '\n\n' + content
+        else:
+            tokens = self._tokenize(self.template_meta.history_thinking_prefix)
+            body = content
+        if before_tools and content:
+            body += '\n\n'
+        tokens += encode_text(body, add_special_tokens=False).ids
+        return {'token_ids': tokens}
+
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         # Normalize message content so the swift backend byte-matches Qwen3.5/Qwen3.6
         # HF `chat_template.jinja` rendering (per-role `|trim` and canonical <think> padding).
@@ -639,8 +669,18 @@ class Qwen3_5Template(Qwen3VLTemplate):
         # See: https://github.com/modelscope/ms-swift/issues/9276
         if isinstance(inputs.system, str):
             inputs.system = inputs.system.strip()
-        for message in inputs.messages:
+        last_user = get_last_user_round(inputs.messages)
+        for index, message in enumerate(inputs.messages):
             role = message.get('role')
+            if role == 'assistant' and message.get('reasoning_content') is not None:
+                if self.template_backend == 'swift':
+                    before_tools = (
+                        index + 1 < len(inputs.messages) and inputs.messages[index + 1]['role'] == 'tool_call')
+                    message['content'] = self._encode_reasoning_fields(
+                        message,
+                        keep_thinking=self._get_preserve_thinking(inputs) or index >= last_user,
+                        before_tools=before_tools)
+                continue
             content = message.get('content')
             if not isinstance(content, str):
                 continue

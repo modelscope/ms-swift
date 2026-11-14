@@ -116,7 +116,7 @@ class Template(ProcessorMixin):
         loss_scale: The loss scale function to use
         """
         self._processor_inited = False
-        self._version = 'v6'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v7'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
@@ -1497,17 +1497,18 @@ class Template(ProcessorMixin):
                 # The GLM-4.5 assistant part (tool call) may end with <|observation|>,
                 # and here we avoid adding <|user|>.
                 response_content = response
-                if not isinstance(response_content, str):
-                    if isinstance(response_content, list) and response_content and isinstance(
-                            response_content[-1], str):
-                        response_content = response_content[-1]
-                    else:
-                        token_ids = response_content if isinstance(response_content,
-                                                                   list) else response_content['token_ids']
-                        response_content = self.tokenizer.decode(token_ids[-20:])
-                endswith_stop_words = any(
-                    response_content.endswith(stop_word) for stop_word in template_meta.stop_words
-                    if isinstance(stop_word, str))
+                if (isinstance(response_content, list) and response_content
+                        and not isinstance(response_content[0], int)):
+                    response_content = response_content[-1]
+                token_ids = get_token_backed_response_ids(response_content)
+                if token_ids is not None:
+                    # A literal stop spelling in ordinary IDs is not a control token.
+                    stop_ids = [self._tokenize(word) for word in template_meta.stop_words if isinstance(word, str)]
+                    endswith_stop_words = any(ids and token_ids[-len(ids):] == ids for ids in stop_ids)
+                else:
+                    endswith_stop_words = any(
+                        response_content.endswith(stop_word) for stop_word in template_meta.stop_words
+                        if isinstance(stop_word, str))
                 # self.is_training needed because we may want to continue generation from
                 # the current response
                 add_eos = inputs.extra_kwargs.get('add_eos')

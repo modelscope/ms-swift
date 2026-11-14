@@ -88,6 +88,8 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 
 An assistant message may carry a separate `reasoning_content` string. Dataset preprocessing preserves this field, including when OpenAI `tool_calls` are converted to canonical messages. Reasoning stays on one assistant message before the calls; it is not duplicated across calls. Encoding this field still requires a template that supports it.
 
+The Qwen3.5/3.6/3.8 `swift` backend supports separate text `reasoning_content` and `content`. With a non-null reasoning field, it constructs think boundaries directly and encodes the two payload fields as ordinary text, including literal think/EOS spellings. Message `loss`/`loss_scale` and `preserve_thinking` still apply. Use the default loss strategy or explicit message weights; text-pattern loss strategies do not inspect pretokenized payloads. Without a reasoning field, the existing combined-content format is unchanged. Tool argument rendering and other message roles retain their existing encoding.
+
 ```jsonl
 {"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "Hi, how can I help you?", "loss": false}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2", "loss": true}]}
 {"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 0.5}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
