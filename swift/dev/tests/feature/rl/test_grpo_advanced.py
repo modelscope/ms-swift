@@ -21,21 +21,33 @@ class _StubModel:
 
     def __init__(self):
         self.losses = {}
+        self.loss_kwargs = {}
 
     def set_loss(self, loss, loss_key=None, **kwargs):
-        # Mirrors TransformersModel.set_loss(loss_cls, **kwargs): loss_key and the loss
-        # hyperparameters all arrive as keyword arguments, so a stub naming only loss_key
-        # rejects every real call that carries epsilon / beta / temperature and friends.
+        # Mirrors TransformersModel.set_loss(loss_cls, **kwargs): the loss arrives as a registry
+        # NAME -- the serializable form that crosses the ray boundary -- and loss_key plus the loss
+        # hyperparameters all ride in as keyword arguments. A stub that named only `loss`, or only
+        # `loss` and `loss_key`, rejected every real call carrying epsilon / beta / threshold.
         self.losses[loss_key] = loss
+        self.loss_kwargs[loss_key] = kwargs
 
 
 def _grpo_loss(**overrides):
+    import twinkle.loss
     from swift.dev.config import RLConfig
     from swift.dev.loss import configure_rl_loss
+    from twinkle.loss import Loss
+    from twinkle.utils import construct_class
 
     model = _StubModel()
     configure_rl_loss(model, RLConfig(rl_type='grpo', **overrides))
-    return model.losses.get(None) or next(iter(model.losses.values()))
+    key = None if None in model.losses else next(iter(model.losses))
+    # Resolve exactly the way TransformersModel.set_loss does -- construct_class accepts a loss class
+    # name and builds the instance from the captured kwargs. That is what makes the kernel's instance
+    # state (rollout_importance_sampling_mode, rollout_importance_sampling_threshold,
+    # importance_sampling_level) observable here; asserting against the bare class would silently pass
+    # with every hyperparameter dropped on the floor.
+    return construct_class(model.losses[key], Loss, twinkle.loss, **model.loss_kwargs[key])
 
 
 def test_rollout_is_weights_off_is_raw_ratio():
