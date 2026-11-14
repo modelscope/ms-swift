@@ -503,7 +503,7 @@ def test_disaggregated_loop_commits_actual_updates_before_publishing(monkeypatch
     grpo._disaggregated_loop(
         cluster,
         RLConfig(rl_type="grpo"),
-        RolloutConfig(weight_sync_strategy="in_place", parameter_sync_step=1),
+        RolloutConfig(parameter_sync_step=1),
         RewardConfig(),
         None,
         None,

@@ -354,9 +354,7 @@ def test_multi_turn_and_rollout_basics():
     GRPO-only multi-turn gate and the sandbox guard run through validate_rollout_config."""
     with pytest.raises(ValueError, match='GRPO-only'):
         validate_rollout_config(RolloutConfig(max_turns=4), RLConfig(rl_type='dpo'))
-    # a hand-built RolloutConfig skips process's in_place derivation, so pin it explicitly
-    validate_rollout_config(RolloutConfig(max_turns=4, sampler_mode='colocate',
-                                          weight_sync_strategy='in_place'), RLConfig(rl_type='grpo'))
+    validate_rollout_config(RolloutConfig(max_turns=4, sampler_mode='colocate'), RLConfig(rl_type='grpo'))
     validate_rollout_config(RolloutConfig(max_turns=4))  # sampling (TUI): exempt
     with pytest.raises(ValueError, match='sandbox_num_envs'):
         validate_rollout_config(RolloutConfig(sandbox_num_envs=0))
@@ -410,43 +408,29 @@ def test_resource_mode_and_async_gates(monkeypatch):
 
 
 def test_streaming_publication_pairs():
-    """S2-40: parameter_sync_step>=1; one_step_off pins staleness 1; colocate requires in_place;
-    adapter_snapshot refuses full-param and partial-rollout; in_place under an overlapping mode
-    requires allow_partial_rollout; an unknown strategy is refused."""
-    grpo = RLConfig(rl_type='grpo', rollout_importance_sampling_mode='token_truncate')
+    """S2-40: parameter_sync_step>=1; one_step_off pins staleness 1; fully_async refuses staleness 0;
+    colocate must publish every step."""
     rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated', parameter_sync_step=0)
     with pytest.raises(ValueError, match='parameter_sync_step'):
-        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+        _check_streaming_publication(rollout, 'one_step_off')
 
-    rollout = _explicit(RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                                      weight_sync_strategy='adapter_snapshot'), 'max_staleness')
+    rollout = _explicit(RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated'), 'max_staleness')
     rollout.max_staleness = 2
     with pytest.raises(ValueError, match='one_step_off'):
-        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+        _check_streaming_publication(rollout, 'one_step_off')
 
-    rollout = RolloutConfig(async_mode='none', sampler_mode='colocate', weight_sync_strategy='adapter_snapshot')
+    rollout = RolloutConfig(async_mode='fully_async', sampler_mode='disaggregated', max_staleness=0)
+    with pytest.raises(ValueError, match='max_staleness'):
+        _check_streaming_publication(rollout, 'fully_async')
+
+    rollout = RolloutConfig(async_mode='none', sampler_mode='colocate', parameter_sync_step=3)
     with pytest.raises(ValueError, match='colocate'):
-        _check_streaming_publication(rollout, grpo, None, 'none')
+        _check_streaming_publication(rollout, 'none')
 
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                            weight_sync_strategy='adapter_snapshot', allow_partial_rollout=False)
-    with pytest.raises(ValueError, match='no adapter to pin'):
-        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
-
-    lora = TunerConfig(tuner='lora')
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                            weight_sync_strategy='adapter_snapshot', allow_partial_rollout=True)
-    with pytest.raises(ValueError, match='inert under'):
-        _check_streaming_publication(rollout, grpo, lora, 'one_step_off')
-
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                            weight_sync_strategy='in_place', allow_partial_rollout=False)
-    with pytest.raises(ValueError, match='allow_partial_rollout'):
-        _check_streaming_publication(rollout, grpo, None, 'one_step_off')
-
-    rollout = RolloutConfig(async_mode='one_step_off', sampler_mode='disaggregated',
-                            weight_sync_strategy='in_place', allow_partial_rollout=True)
-    _check_streaming_publication(rollout, grpo, None, 'one_step_off')
+    # every guard satisfied: colocate publishes once per step, fully_async keeps a deep buffer
+    _check_streaming_publication(RolloutConfig(async_mode='none', sampler_mode='colocate'), 'none')
+    _check_streaming_publication(
+        RolloutConfig(async_mode='fully_async', sampler_mode='disaggregated', max_staleness=4), 'fully_async')
 
 
 def test_offload_knobs_and_rollout_sampler(caplog):

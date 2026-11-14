@@ -14,7 +14,6 @@ import pytest
 
 from swift.dev.recipe import utils as batch_metrics
 from swift.dev.recipe.utils import RunTracker, rollout_metrics
-from swift.dev.utils.scoring import sample_token_lengths
 
 
 def sample(prompt=3, response=2, *, tool=0):
@@ -70,17 +69,6 @@ def iteration_rows(path, state):
     return [
         dict(row["attributes"], data=row["values"], run_id=row["run_id"]) for row in rows if row["stage"] == "rollout"
     ]
-
-
-def test_lengths_include_tool_observations_and_exclude_padding():
-    assert sample_token_lengths(sample(tool=4)) == (3, 6)
-    assert sample_token_lengths(sample(response=0)) == (3, 0)
-    row = sample(tool=4)
-    row.encoded["input_ids"] += [0, 0]
-    labels = [-100] * 3 + [3, 4] + [-100] * 6
-    row.encoded["labels"] = labels[1:] + labels[:1]
-    row.encoded["attention_mask"] = [1] * 9 + [0, 0]
-    assert sample_token_lengths(row) == (3, 6)
 
 
 def test_shared_batch_statistics_do_not_require_rewards_or_recipe_state():

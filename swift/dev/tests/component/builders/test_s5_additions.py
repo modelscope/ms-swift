@@ -436,11 +436,11 @@ def test_build_rl_sampler_placement_and_replay_knob(monkeypatch):
     kw = calls[-1]
     assert kw['engine_args']['enable_memory_saver'] is True and 'enable_sleep_mode' not in kw['engine_args']
 
-    # LoRA + adapter_snapshot opens the engine's hot-swap surface
+    # LoRA opens the engine's hot-swap surface
     tuner = TunerConfig(tuner='lora', lora_rank=8)
     recipe_utils.build_rl_sampler(
         model_config=model_config,
-        rollout_config=RolloutConfig(weight_sync_strategy='adapter_snapshot'),
+        rollout_config=RolloutConfig(),
         template=template,
         tuner_config=tuner)
     kw = calls[-1]
