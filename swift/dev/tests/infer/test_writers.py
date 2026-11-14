@@ -222,7 +222,7 @@ def test_candidate_cache_lookup_by_prompt(tmp_path):
     cache = _CandidateCache([cache_path])
     # asking for <= the cached count returns that many candidates
     hits = cache.lookup({'messages': prompt}, 2)
-    assert hits is not None and [c.decoded for c in hits] == ['4', 'five']
+    assert hits is not None and [c['messages'][-1]['content'] for c in hits] == ['4', 'five']
     # asking for more than the cache holds is a MISS (it would silently shrink the group)
     assert cache.lookup({'messages': prompt}, 4) is None
     # an uncovered prompt misses
@@ -243,7 +243,7 @@ def test_candidate_cache_skips_corrupt_and_nonassistant_lines(tmp_path):
         f.write(json.dumps({'messages': prompt}) + '\n')  # no trailing assistant -> not a candidate
     cache = _CandidateCache([path])
     hits = cache.lookup({'messages': prompt}, 1)
-    assert hits is not None and [c.decoded for c in hits] == ['good']
+    assert hits is not None and [c['messages'][-1]['content'] for c in hits] == ['good']
 
 
 def test_candidate_cache_ignores_missing_file(tmp_path):
