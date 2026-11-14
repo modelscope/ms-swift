@@ -28,7 +28,11 @@ LENGTH_KEYS = frozenset({"length", "lengths"})
 # Row columns the encoder reads besides ``messages``. Whatever hands a prompt to a sampler must
 # carry them, or the model is prompted without its image / tools and nothing downstream notices.
 MEDIA_INPUT_KEYS = ("images", "audios", "videos")
-PROMPT_INPUT_KEYS = MEDIA_INPUT_KEYS + ("objects", "tools")
+#: Prompt columns the encoder consumes while rendering and that have no tensor form, so they can
+#: never be model payload. The media keys are NOT here: their raw form is a prompt reference but
+#: their tensor form is genuine payload, which ``model_payload_keys`` tells apart by value type.
+RENDER_ONLY_INPUT_KEYS = ("objects", "tools", "chat_template_kwargs")
+PROMPT_INPUT_KEYS = MEDIA_INPUT_KEYS + RENDER_ONLY_INPUT_KEYS
 
 # ---- Field registry ------------------------------------------------------------------------------
 # Every field a feature may carry, declared once with what it is. A key that is neither registered
@@ -136,6 +140,7 @@ def model_payload_keys(feature: Dict[str, Any]) -> frozenset[str]:
         for key, value in feature.items()
         if value is not None
         and key not in FIELDS
+        and key not in RENDER_ONLY_INPUT_KEYS
         and not is_bookkeeping_key(key)
         and not is_raw_prompt_media(key, value)
     )

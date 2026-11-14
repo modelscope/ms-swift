@@ -6,6 +6,7 @@ import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from swift.dev.recipe.distill.worker import DistillWorker
+from swift.dev.template.conventions import PROMPT_INPUT_KEYS
 from swift.dev.recipe.utils import TEACHER_GROUP, auxiliary_mesh, build_rl_sampler, teacher_group
 from swift.dev.utils.logger import get_logger
 
@@ -35,7 +36,7 @@ def distill_dataset_rows(template: Any, raw_rows: Sequence[Dict[str, Any]]) -> L
     """The off-policy training rows: dataset rows that carry their own assistant completion.
 
     Each is encoded once with the student's template (its labels mark the completion's trainable
-    positions) and keeps the full conversation plus the dataset columns for the teacher view --
+    positions) and keeps the conversation plus the raw prompt inputs the teacher view re-encodes --
     the same keys a rollout trajectory carries, so an update never branches on its source.
     """
     dataset_rows: List[Dict[str, Any]] = []
@@ -44,8 +45,13 @@ def distill_dataset_rows(template: Any, raw_rows: Sequence[Dict[str, Any]]) -> L
         if not messages or messages[-1].get("role") != "assistant":
             continue
         encoded = dict(template.encode(row))
-        for key, value in row.items():
-            encoded.setdefault(key, copy.deepcopy(value))
+        # The privileged teacher view RE-ENCODES the conversation, so it needs the raw prompt inputs
+        # (media references, tools, render kwargs), not the student feature's tensors. Nothing else
+        # from the dataset row may ride along: this feature is what both models collate, and a column
+        # outside the field contract is rejected there as model payload no collator can batch.
+        for key in PROMPT_INPUT_KEYS:
+            if row.get(key) is not None:
+                encoded.setdefault(key, copy.deepcopy(row[key]))
         encoded["messages"] = copy.deepcopy(messages)
         dataset_rows.append(encoded)
     return dataset_rows
