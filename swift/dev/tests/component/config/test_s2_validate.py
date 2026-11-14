@@ -952,3 +952,26 @@ def test_remote_rl_multi_turn_boundary_and_missing_rollout():
         _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(max_turns=1, tools=['sandbox']))
     for rl_type in ('dpo', 'kto', 'rm'):
         _check_remote_rl(RLConfig(rl_type=rl_type), None)
+
+
+def test_remote_rl_refuses_the_two_protocol_gaps():
+    """The gaps that are protocol-level rather than local-fabric-level, each refused at the
+    validate entry so neither surfaces as a silent wrong result deep in the loop.
+
+    ``--tuner full`` gives RemoteWeightSync no adapter to publish: the channel hands the served
+    sampler a twinkle:// adapter_uri which the server loads over its own base weights, so a
+    full-parameter run would leave the rollout policy serving stale weights while training moved
+    on. A remote PPO resume cannot find its step-aligned critic, which lives in its own
+    server-side training run with no policy->value association crossing the protocol.
+    """
+    with pytest.raises(ValueError, match='--tuner full'):
+        _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(), None, TunerConfig(tuner='full'))
+    with pytest.raises(ValueError, match='PPO resume'):
+        _check_remote_rl(RLConfig(rl_type='ppo'), RolloutConfig(),
+                         CheckpointConfig(resume_from_checkpoint='/ckpts/step-10'))
+    # The boundaries that must stay legal: lora IS the supported channel, an offline preference run
+    # has no sampler and so no weight ring to publish over, and no resume requested is not a resume.
+    _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(), None, TunerConfig(tuner='lora'))
+    _check_remote_rl(RLConfig(rl_type='dpo'), None, None, TunerConfig(tuner='full'))
+    _check_remote_rl(RLConfig(rl_type='ppo'), RolloutConfig(), CheckpointConfig())
+    _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(), None, None)

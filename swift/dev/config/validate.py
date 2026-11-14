@@ -184,7 +184,7 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             "with --route_prefix /api/v1 and the base URL should carry no path (or exactly "
             "'/api/v1').")
     if rl_config is not None:
-        _check_remote_rl(rl_config, rollout_config, checkpoint_config)
+        _check_remote_rl(rl_config, rollout_config, checkpoint_config, tuner_config)
     # backend under remote names the SERVER-side model app's engine (hf or megatron): both are
     # legal, because configure_optimizer's two branches are already descriptions that cross HTTP
     # ('AdamW' for the transformers app, 'MegatronOptimizer' + its kwargs for the megatron one).
@@ -241,7 +241,8 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
 
 
 def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutConfig'],
-                     checkpoint_config: Optional['CheckpointConfig'] = None) -> None:
+                     checkpoint_config: Optional['CheckpointConfig'] = None,
+                     tuner_config: Optional['TunerConfig'] = None) -> None:
     """mode='remote' + RL: the coverage of the client object sources, refused gap by gap.
 
     Every recipe algorithm runs remotely with the SAME loop code: the policy, the critic, the
@@ -298,6 +299,18 @@ def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutCon
                 f"--mode remote does not support weight_sync_backend={rollout_config.weight_sync_backend!r}: "
                 'the remote weight channel is the saved twinkle:// adapter_uri. Use the default '
                 "'full' (via save), or run mode=ray.")
+        if tuner_config is not None and tuner_config.tuner == 'full':
+            # RemoteWeightSync.sync_weights publishes by handing the served sampler a twinkle://
+            # adapter_uri, which the server loads as an adapter on top of its own base weights. A
+            # full-parameter run saves no adapter, so the sampler would keep serving its base
+            # weights while training moved on -- a silently frozen rollout policy. Gated on having a
+            # rollout at all: the offline preference family has no sampler and no weight ring, so
+            # --tuner full stays legal there (as it does for remote supervised training).
+            raise ValueError(
+                '--mode remote does not support --tuner full for online RL: the weight channel to '
+                'the served sampler is the save -> adapter_uri hand-off and the server loads that '
+                'URI as an adapter over its own base weights, so a full-parameter run would leave '
+                'the sampler serving stale weights. Use --tuner lora, or run mode=ray.')
         if (getattr(rollout_config, 'max_turns', None) or 1) > 1 or (rollout_config.tools or ()):
             # The multi-turn rollout's sandbox env replicas are local CPU actors; the single-turn
             # rollout runs fine over the served sampler.
