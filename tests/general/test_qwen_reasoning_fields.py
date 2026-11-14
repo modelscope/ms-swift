@@ -64,8 +64,10 @@ class TestQwenReasoningFields(unittest.TestCase):
         for word in ('<tool_call>', '</tool_call>', '<|endoftext|>'):
             self.assertNotIn(self.tokenizer.convert_tokens_to_ids(word), encoded['input_ids'])
         end = self.tokenizer.convert_tokens_to_ids('<|im_end|>')
-        self.assertEqual(encoded['input_ids'][-1], end)
-        self.assertEqual(encoded['labels'][-1], end)
+        suffix = self.tokenizer.encode('<|im_end|>\n', add_special_tokens=False)
+        self.assertIn(end, suffix)
+        self.assertEqual(encoded['input_ids'][-len(suffix):], suffix)
+        self.assertEqual(encoded['labels'][-len(suffix):], suffix)
         self.assertIn(reason, self.decode([i for i in encoded['labels'] if i != -100]))
 
     def test_marker_free_encoding_matches_existing_path(self):
@@ -87,7 +89,8 @@ class TestQwenReasoningFields(unittest.TestCase):
             with self.subTest(reason=reason, body=body):
                 encoded = self.encode(reason, body)
                 self.assertIn('<think>\n' + reason + '\n</think>\n\n', self.decode(encoded['input_ids']))
-                self.assertEqual(encoded['labels'][-1], self.tokenizer.eos_token_id)
+                suffix = self.tokenizer.encode('<|im_end|>\n', add_special_tokens=False)
+                self.assertEqual(encoded['labels'][-len(suffix):], suffix)
 
     def test_tool_calls_and_message_masks(self):
         for body in ('', 'body </think> tail'):
