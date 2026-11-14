@@ -42,22 +42,9 @@ def test_resolve_tool_plugins_sandbox_by_name():
 
 
 def test_sandbox_tools_build_wraps_env_tools(monkeypatch):
-    """SandboxTools.build(env) returns EnvTool.from_env(env) -- tools bound to the exact leased env."""
-    env = object()
-    calls = {}
-
-    class _FakeEnvTool:
-
-        @staticmethod
-        def from_env(e):
-            calls['env'] = e
-            return ['run_command', 'write_file']
-
-    import twinkle_agentic.envs as envs_mod
-    monkeypatch.setattr(envs_mod, 'EnvTool', _FakeEnvTool, raising=False)
-    tools = SandboxTools().build(env)
-    assert tools == ['run_command', 'write_file']
-    assert calls['env'] is env  # the env is threaded through, not a fresh one
+    """The rollout binds the env's tools to each episode's session itself, so the plugin
+    contributes nothing to the run's shared tool manager."""
+    assert SandboxTools().build() == []
 
 
 # --- env pool -------------------------------------------------------------------------
@@ -70,31 +57,24 @@ def test_build_env_pool_rejects_zero_envs(monkeypatch):
 
 
 def test_build_env_pool_local_builds_one_slot_per_env(monkeypatch, tmp_path):
-    """No template -> local LocalEnv slots under the workspace root, wrapped in an EnvLeases pool."""
+    """No template -> ONE LocalEnv under the workspace root, its session cap the whole budget."""
     built = {}
 
     class _FakeLocalEnv:
 
-        def __init__(self, workspace, command_timeout, memory_limit_gb):
-            built.setdefault('workspaces', []).append(workspace)
-            built['command_timeout'] = command_timeout
-            built['memory_limit_gb'] = memory_limit_gb
-
-    class _FakeEnvLeases:
-
-        def __init__(self, envs):
-            built['envs'] = envs
+        def __init__(self, root, command_timeout, memory_limit_gb, max_sessions):
+            built.update(root=root, command_timeout=command_timeout,
+                         memory_limit_gb=memory_limit_gb, max_sessions=max_sessions)
 
     import twinkle_agentic.envs as envs_mod
     monkeypatch.setattr(envs_mod, 'LocalEnv', _FakeLocalEnv, raising=False)
-    monkeypatch.setattr(envs_mod, 'EnvLeases', _FakeEnvLeases, raising=False)
 
     cfg = RolloutConfig(sandbox_num_envs=2, sandbox_workspace_root=str(tmp_path))
-    pool = build_env_pool(cfg)
-    assert isinstance(pool, _FakeEnvLeases)
-    assert len(built['envs']) == 2
-    # each slot gets its own workspace dir so concurrent episodes never cross files
-    assert built['workspaces'] == [str(tmp_path / 'slot_0'), str(tmp_path / 'slot_1')]
+    env = build_env_pool(cfg)
+    assert isinstance(env, _FakeLocalEnv)
+    assert built['root'] == str(tmp_path)
+    # one worker in-process, so the cap is the whole budget: ceil(2 / 1)
+    assert built['max_sessions'] == 2
 
 
 def test_build_tools_with_tools_builds_pool_and_manager(monkeypatch, tmp_path):
@@ -105,20 +85,14 @@ def test_build_tools_with_tools_builds_pool_and_manager(monkeypatch, tmp_path):
         def __init__(self, *a, **k):
             pass
 
-    class _FakeEnvLeases:
-
-        def __init__(self, envs):
-            self.envs = envs
-
     import twinkle_agentic.envs as envs_mod
     monkeypatch.setattr(envs_mod, 'LocalEnv', _FakeLocalEnv, raising=False)
-    monkeypatch.setattr(envs_mod, 'EnvLeases', _FakeEnvLeases, raising=False)
 
     cfg = RolloutConfig(tools=['sandbox'], sandbox_num_envs=1, sandbox_workspace_root=str(tmp_path))
     env, tool_manager = build_tools(cfg)
-    assert isinstance(env, _FakeEnvLeases) and len(env.envs) == 1
-    from twinkle_agentic.tools.tool_manager import ToolManager
-    assert isinstance(tool_manager, ToolManager)
+    assert isinstance(env, _FakeLocalEnv)
+    # 'sandbox' builds the env only; with no other plugin there is nothing to manage
+    assert tool_manager is None
 
 
 def test_tool_kind_registers_sandbox_against_the_tools_field():

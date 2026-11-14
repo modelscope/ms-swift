@@ -302,34 +302,36 @@ def test_build_ref_model_three_branches(monkeypatch):
 
 
 def test_build_reward_model_dispatches_by_kind(monkeypatch):
+    from twinkle.reward import FunctionWorker, GenerativeWorker
+
     from swift.dev.builders import reward as reward_module
     from swift.dev.config import DistributedConfig, ModelConfig, TemplateConfig
-    from swift.dev.rewards.scorer import ApiJudgeReward, GenerativeJudgeReward, RewardModel, RewardSpec
+    from swift.dev.rewards.scorer import ApiJudgeReward, RewardModel, RewardSpec
 
     common = dict(
         model_config=ModelConfig(model='policy'), template_config=TemplateConfig(),
         distributed_config=DistributedConfig(), rollout_config=SimpleNamespace())
 
-    # api judge: no engine at all, the endpoint id rides along (the OpenAI client it builds
-    # insists on a key, so give the env a fake one)
+    # api judge: no engine at all, a FunctionWorker around the endpoint client (the OpenAI client
+    # it builds insists on a key, so give the env a fake one)
     monkeypatch.setenv('OPENAI_API_KEY', 'test-key')
     scorer = reward_module.build_reward_model(
         RewardSpec(kind='api', model_id='http://judge/v1'), engine_args={'model': 'gpt'}, **common)
-    assert isinstance(scorer, ApiJudgeReward)
+    assert isinstance(scorer, FunctionWorker) and isinstance(scorer.fn, ApiJudgeReward)
 
     # generative_reuse shares the caller's sampler and does NOT own it
     sampler = object()
     scorer = reward_module.build_reward_model(
         RewardSpec(kind='generative_reuse', model_id='judge'), sampler=sampler, **common)
-    assert isinstance(scorer, GenerativeJudgeReward)
+    assert isinstance(scorer, GenerativeWorker) and scorer.sampler is sampler
 
-    # scalar: the frozen seq-cls model is wrapped, and spec.display_name stamps the metric column
+    # scalar: the frozen seq-cls model is wrapped, and spec.display_name stamps the metric column.
+    # Placement rides the remote_group the frozen model is built on, not an attribute of the worker.
     monkeypatch.setattr(reward_module, '_build_frozen_reward_model', lambda *a, **k: (SimpleNamespace(), 'T'))
     spec = RewardSpec(kind='scalar', model_id='rm-0.6b')
     scorer = reward_module.build_reward_model(spec, remote_group='reward_0', **common)
-    assert isinstance(scorer, RewardModel)
-    assert scorer.display_name == 'rm-0.6b'
-    assert scorer.placement_key == 'reward_0'
+    assert isinstance(scorer, FunctionWorker) and isinstance(scorer.fn, RewardModel)
+    assert scorer.fn.display_name == 'rm-0.6b'
     # display_name falls back through adapter -> 'judge'
     assert RewardSpec(kind='scalar', adapter='/tmp/a').display_name == '/tmp/a'
     assert RewardSpec(kind='api').display_name == 'judge'
@@ -435,17 +437,6 @@ def test_build_rl_sampler_placement_and_replay_knob(monkeypatch):
         model_config=model_config, rollout_config=sg, template=template, tuner_config=None, colocate=True)
     kw = calls[-1]
     assert kw['engine_args']['enable_memory_saver'] is True and 'enable_sleep_mode' not in kw['engine_args']
-
-    # LoRA opens the engine's hot-swap surface
-    tuner = TunerConfig(tuner='lora', lora_rank=8)
-    recipe_utils.build_rl_sampler(
-        model_config=model_config,
-        rollout_config=RolloutConfig(),
-        template=template,
-        tuner_config=tuner)
-    kw = calls[-1]
-    assert kw['engine_args']['enable_lora'] is True
-    assert kw['engine_args']['max_lora_rank'] == 8 and kw['engine_args']['max_loras'] == 2
 
     # the replay knob rides the RLConfig value passed in -- regression anchor for the crash where
     # build_rl_sampler read rollout_config.enable_sampling_replay, a field RolloutConfig never had

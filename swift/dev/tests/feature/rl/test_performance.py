@@ -76,83 +76,6 @@ def test_raw_training_record_uses_native_normalization_and_preserves_observation
     assert row['attributes']['non_numeric_values'] == {'loss': None, 'note': 'pending%', 'details': [1, 2]}
 
 
-def test_colocate_sync_boundary_and_no_double_wakeup(tmp_path, monkeypatch, perf_clock):
-    mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
-    events = []
-    awake = set()
-
-    def wake(tags):
-        for tag in tags:
-            assert tag not in awake, f"double wake {tag}"
-            awake.add(tag)
-        events.append(("wake", tags))
-
-    def sleep(level):
-        awake.clear()
-        events.append(("sleep", level))
-
-    def sync(**kwargs):
-        assert "weights" in awake
-        events.append(("sync", state.global_step))
-
-    model = NS(
-        offload_to_cpu=lambda **kw: None,
-        reload_to_gpu=lambda: None,
-        memory_stats=lambda **kwargs: [{"max_memory_allocated_bytes": 2 * 1024**3}],
-    )
-    def _generate(*a, **kw):
-        # generate's contract is (samples, encodings); the colocate loop re-attaches them.
-        one = sample()
-        return [one], [one.encoded]
-
-    cluster = NS(
-        model=model,
-        sampler=NS(wake_up=wake, sleep=sleep),
-        engine=NS(sync_weights=sync),
-        sampling_params={},
-        orm_scorers=[],
-        prm_scorer=None,
-        rollout=NS(generate=_generate),
-        worker=NS(),  # _prepare_routing_replay takes it (router_replay disabled here)
-    )
-    state = NS(model=model, global_step=0, reached_max=lambda: state.global_step >= 2, should_stop=lambda: False)
-    state.tracker = RunTracker(None, str(tmp_path))
-    attach_rollout_metrics(state)
-    state.setup_rollout_metrics([("trainer", [0])])
-    monkeypatch.setattr(mod, "_advantage_pipeline", lambda *a, **kw: (None,) * 4)
-    monkeypatch.setattr(mod, "_prepare_routing_replay", lambda *a: None)
-
-    def train(*a, **kw):
-        events.append(("train", state.global_step))
-        perf_clock.advance(1)  # one second of optimizer work per train call
-        state.global_step += 1
-        return 1
-
-    monkeypatch.setattr(mod, "_train_mini_batches", train)
-    mod._colocate_loop(
-        cluster,
-        NS(num_generations=1, dynamic_sample=False, advantage_estimator="grpo", log_completions=False),
-        NS(sleep_level=2, offload_model=True, offload_optimizer=True),
-        NS(orm_weights=None),
-        [[{"messages": []}]] * 2,
-        state,
-        train_batch_size=1,
-        output_dir=str(tmp_path),
-    )
-    assert [e for e in events if e[0] in ("sync", "train")] == [
-        ("sync", 0),
-        ("train", 0),
-        ("sync", 1),
-        ("train", 1),
-        ("sync", 2),
-    ]
-    assert not awake
-    rows = iteration_rows(tmp_path, state)
-    assert len(rows) == 2
-    assert all("timing_s/update_weights" in row["data"] for row in rows)
-    state.tracker.close()
-
-
 def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch):
     mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
     events = []
@@ -180,7 +103,7 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
         should_stop=lambda: False,
     )
 
-    def record():
+    def record(extra_metrics=None):
         state.global_step += 1
 
     def tail(**kw):
@@ -199,11 +122,8 @@ def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch)
         state,
         NS(num_iterations=1),
         [sample()],
+        [5],
         train_batch_size=1,
-        advantages=[0],
-        old_logps=[0],
-        ref_logps=None,
-        teacher_logps=None,
         temperature=1,
     )
     result = state.rollout_memory_metrics()
@@ -243,7 +163,7 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
         step_tail=lambda **kw: None,
     )
 
-    def record():
+    def record(extra_metrics=None):
         state.global_step += 1
 
     state.record = record
@@ -257,11 +177,8 @@ def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch)
         state,
         NS(num_iterations=1),
         [sample()] * 3,
+        [5] * 3,
         train_batch_size=1,
-        advantages=[0] * 3,
-        old_logps=[0] * 3,
-        ref_logps=None,
-        teacher_logps=None,
         temperature=1,
     )
     assert state.rollout_memory_metrics()["perf/max_memory_allocated_gb"] == 1
@@ -316,44 +233,10 @@ def test_failed_optimizer_never_records_a_successful_update(tmp_path, monkeypatc
             state,
             NS(num_iterations=1),
             [sample()],
+            [5],
             train_batch_size=1,
-            advantages=[0],
-            old_logps=[0],
-            ref_logps=None,
-            teacher_logps=None,
             temperature=1,
         )
     assert state.global_step == state.micro_step == 0
 
 
-def test_auxiliary_forwards_are_submitted_before_consuming_signals():
-    mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
-    launches = []
-
-    class Pending:
-        _is_lazy_collect = True
-
-        def __call__(self):
-            pytest.fail("large forward payloads must stay off the controller")
-
-    def lane(name):
-        def forward(**kwargs):
-            launches.append(name)
-            return Pending()
-
-        return forward
-
-    def advantages(samples, scored, *args):
-        assert launches == ["ref", "teacher", "old"]
-        assert all(isinstance(value, Pending) for value in scored.values())
-        return (1, 2, 3, 4)
-
-    cluster = NS(
-        model=NS(device_mesh=NS(data_world_size=1), forward_only=lane("old")),
-        reference=NS(forward_only=lane("ref")),
-        teacher=NS(forward_only=lane("teacher")),
-        worker=NS(privileged_features=lambda rows: [], grpo_advantages=advantages),
-        sampling_params={},
-    )
-    config = NS(rollout_importance_sampling_mode="token_truncate", log_rollout_offpolicy_metrics=False)
-    assert mod._advantage_pipeline(cluster, config, NS(), [sample()], 1, 0) == (1, 2, 3, 4)

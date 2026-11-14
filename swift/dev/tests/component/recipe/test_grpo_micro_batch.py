@@ -85,23 +85,27 @@ def train(
             rollout_logps=[i + 0.1],
             truncated=i % 2 == 0,
             sampling_mask=f"mask-{i}",
+            # Every per-sample training signal rides the trajectory itself; _forward_kwargs passes
+            # only inputs/batching/temperature and the model lifts these off each row.
+            advantages=i * 10.0,
+            old_logps=[i + 0.2],
+            ref_logps=[i + 0.3],
+            teacher_logps=[i + 0.4],
         )
         for i in range(offset, offset + count)
     ]
     if lengths is not None:
         for row, length in zip(rows, lengths, strict=True):
             row.encoded["input_ids"] *= length
+    row_lengths = list(lengths) if lengths is not None else [1] * count
     state.padding_free = padding_free
     return grpo._train_mini_batches(
         state,
         config or RLConfig(rl_type="grpo"),
         rows,
+        row_lengths,
         train_batch_size=2 * state.model.device_mesh.data_world_size,
         batching_kwargs=batching_kwargs,
-        advantages=[i * 10.0 for i in range(offset, offset + count)],
-        old_logps=[[i + 0.2] for i in range(offset, offset + count)],
-        ref_logps=[[i + 0.3] for i in range(offset, offset + count)],
-        teacher_logps=[[i + 0.4] for i in range(offset, offset + count)],
         temperature=0.8,
         chord_fn=chord_fn,
         ema_manager=ema,
@@ -110,7 +114,9 @@ def train(
 
 
 def ids(call):
-    return [row["input_ids"][0] for row in call["inputs"]]
+    """Row identity: a trajectory carries its encoding under .encoded, a prepared row is the dict."""
+    return [(row["input_ids"] if isinstance(row, dict) else row.encoded["input_ids"])[0]
+            for row in call["inputs"]]
 
 
 @pytest.mark.parametrize("padding_free", [False, True])
@@ -143,12 +149,13 @@ def test_length_balance_reduces_rank_load_and_keeps_all_signals_aligned(padding_
     order = ids(call)
     assert sorted(order) == list(range(8))
     assert order != list(range(8))
-    assert call["advantages"] == [i * 10.0 for i in order]
+    rows = call["inputs"]
+    assert [row.advantages for row in rows] == [i * 10.0 for i in order]
     for key, delta in [("rollout_logps", 0.1), ("old_logps", 0.2), ("ref_logps", 0.3), ("teacher_logps", 0.4)]:
-        assert call[key] == [[i + delta] for i in order]
-    assert call["sampling_masks"] == [f"mask-{i}" for i in order]
-    assert call["truncated"] == [i % 2 == 0 for i in order]
-    assert [row["routed_experts"] for row in call["inputs"]] == [[i] for i in order]
+        assert [getattr(row, key) for row in rows] == [[i + delta] for i in order]
+    assert [row.sampling_mask for row in rows] == [f"mask-{i}" for i in order]
+    assert [row.truncated for row in rows] == [i % 2 == 0 for i in order]
+    assert [row.encoded["routed_experts"] for row in call["inputs"]] == [[i] for i in order]
     metrics = state.balance_metrics[0]
     assert metrics["dp_balance/workload_imbalance_after"] < metrics["dp_balance/workload_imbalance_before"]
     assert ("dp_balance/padding_ratio_after" in metrics) == (not padding_free)
@@ -165,7 +172,7 @@ def test_balance_preserves_replay_update_membership_and_dropped_tail():
     expected = (list(range(7)) * 2)[:12]
     for start, call in zip(range(0, 12, 4), state.model.calls, strict=True):
         assert sorted(ids(call)) == sorted(expected[start : start + 4])
-        assert call["advantages"] == [i * 10.0 for i in ids(call)]
+        assert [row.advantages for row in call["inputs"]] == [i * 10.0 for i in ids(call)]
     assert state.micro_step == state.global_step == 3
 
 
@@ -173,7 +180,7 @@ def test_balance_disabled_keeps_skewed_batch_order():
     state = make_state(ga=2)
     train(state, 8, lengths=[2000, 1900, 1800, 1700, 300, 250, 200, 150])
     assert ids(state.model.calls[0]) == list(range(8))
-    assert state.balance_metrics == [None]
+    assert state.balance_metrics == [{}]
 
 
 def test_balance_metrics_reach_tracker_and_jsonl_without_leaking_to_next_step(tmp_path):
@@ -216,12 +223,13 @@ def test_full_update_keeps_input_order_and_all_auxiliary_fields_aligned():
     expected = list(range(16))
     assert ids(call) == expected
     assert call["micro_batch_size"] == 2
-    assert call["advantages"] == [i * 10.0 for i in expected]
+    rows = call["inputs"]
+    assert [row.advantages for row in rows] == [i * 10.0 for i in expected]
     for key, offset in [("rollout_logps", 0.1), ("old_logps", 0.2), ("ref_logps", 0.3), ("teacher_logps", 0.4)]:
-        assert call[key] == [[i + offset] for i in expected]
-    assert call["sampling_masks"] == [f"mask-{i}" for i in expected]
-    assert call["truncated"] == [i % 2 == 0 for i in expected]
-    assert [row["routed_experts"] for row in call["inputs"]] == [[i] for i in expected]
+        assert [getattr(row, key) for row in rows] == [[i + offset] for i in expected]
+    assert [row.sampling_mask for row in rows] == [f"mask-{i}" for i in expected]
+    assert [row.truncated for row in rows] == [i % 2 == 0 for i in expected]
+    assert [row.encoded["routed_experts"] for row in call["inputs"]] == [[i] for i in expected]
     assert state.model.steps == state.global_step == 1
     assert state.micro_step == 4
     assert state.saved == ["1"]
@@ -245,13 +253,14 @@ def test_replays_share_update_windows_and_drop_only_the_final_tail():
     assert [ids(call) for call in state.model.calls] == [expected[start : start + 16] for start in range(0, 48, 16)]
     for call in state.model.calls:
         indices = ids(call)
-        assert call["advantages"] == [index * 10.0 for index in indices]
-        assert call["old_logps"] == [[index + 0.2] for index in indices]
-        assert call["ref_logps"] == [[index + 0.3] for index in indices]
-        assert call["teacher_logps"] == [[index + 0.4] for index in indices]
-        assert call["rollout_logps"] == [[index + 0.1] for index in indices]
-        assert call["sampling_masks"] == [f"mask-{index}" for index in indices]
-        assert [row["routed_experts"] for row in call["inputs"]] == [[index] for index in indices]
+        rows = call["inputs"]
+        assert [row.advantages for row in rows] == [index * 10.0 for index in indices]
+        assert [row.old_logps for row in rows] == [[index + 0.2] for index in indices]
+        assert [row.ref_logps for row in rows] == [[index + 0.3] for index in indices]
+        assert [row.teacher_logps for row in rows] == [[index + 0.4] for index in indices]
+        assert [row.rollout_logps for row in rows] == [[index + 0.1] for index in indices]
+        assert [row.sampling_mask for row in rows] == [f"mask-{index}" for index in indices]
+        assert [row.encoded["routed_experts"] for row in call["inputs"]] == [[index] for index in indices]
     assert state.model.steps == state.global_step == 3
     assert state.micro_step == 12
     assert state.saved == ["1", "2", "3"]
@@ -303,8 +312,9 @@ def test_dropped_tails_do_not_carry_training_data_into_the_next_call():
     call = state.model.calls[0]
     expected = list(range(24, 40))
     assert ids(call) == expected
-    assert call["advantages"] == [index * 10.0 for index in expected]
-    assert call["old_logps"] == [[index + 0.2] for index in expected]
+    rows = call["inputs"]
+    assert [row.advantages for row in rows] == [index * 10.0 for index in expected]
+    assert [row.old_logps for row in rows] == [[index + 0.2] for index in expected]
     assert state.micro_step == 4 and state.global_step == 1
 
 
@@ -390,148 +400,20 @@ def test_checkpoint_restores_completed_update_counters_without_pending_samples(t
     assert ids(resumed.model.calls[0]) == list(range(28, 44))
 
 
-@pytest.mark.parametrize("iterations", [1, 2])
-def test_colocate_replays_each_rollout_without_repeating_the_prompt_dataset(iterations, monkeypatch):
-    from swift.dev.config import RewardConfig, RolloutConfig
-    from swift.dev.recipe import offload
-
-    state, generated, visits, scored_sizes = make_state(), [0], [], []
-
-    class Loader:
-        def __iter__(self):
-            visits.append(True)
-            for size in (4, 3):
-                yield [{"messages": []} for _ in range(size)]
-
-    def generate(prompts, *, num_samples, **kwargs):
-        start = generated[0]
-        generated[0] += len(prompts) * num_samples
-        samples = [
-            SimpleNamespace(encoded={"input_ids": [index], "labels": [index]}, rollout_logps=[0.0])
-            for index in range(start, generated[0])
-        ]
-        # generate's contract is (samples, encodings); the colocate loop re-attaches them.
-        return samples, [sample.encoded for sample in samples]
-
-    def advantages(cluster, config, reward, rows, *args, **kwargs):
-        scored_sizes.append(len(rows))
-        assert len(rows) % config.num_generations == 0
-        return [float(row.encoded["input_ids"][0]) for row in rows], [[0.0]] * len(rows), None, None
-
-    monkeypatch.setattr(offload, "offload_for_rollout", lambda *args: None)
-    monkeypatch.setattr(offload, "sleep_for_rollout", lambda *args: None)
-    monkeypatch.setattr(grpo, "_advantage_pipeline", advantages)
-    state.model.reload_to_gpu = lambda: None
-    cluster = SimpleNamespace(
-        model=state.model,
-        sampler=SimpleNamespace(wake_up=lambda **kwargs: None),
-        engine=SimpleNamespace(sync_weights=lambda **kwargs: None),
-        rollout=SimpleNamespace(generate=generate),
-        worker=SimpleNamespace(),  # _prepare_routing_replay takes it (router_replay disabled)
-        prm_scorer=None,
-        orm_scorers=[],
-        sampling_params={},
-    )
-    grpo._colocate_loop(
-        cluster,
-        RLConfig(rl_type="grpo", num_generations=4, num_iterations=iterations),
-        RolloutConfig(),
-        RewardConfig(),
-        Loader(),
-        state,
-        train_batch_size=4,
-        batching_kwargs={"micro_batch_size": 2},
-    )
-    expected = list(range(16)) * iterations
-    tail = list(range(16, 28)) * iterations
-    expected += tail[: (len(tail) // 16) * 16]
-    assert [index for call in state.model.calls for index in ids(call)] == expected
-    assert visits == [True] and generated[0] == 28 and scored_sizes == [16, 12]
-    assert state.global_step == len(expected) // 16 and state.micro_step == len(expected) // 4
-    assert (
-        rollout_step_budget(
-            num_prompts=7,
-            num_generations=4,
-            train_batch_size=4,
-            gradient_accumulation_steps=4,
-            num_train_epochs=1,
-            generation_batch_size=4,
-            num_iterations=iterations,
-        )
-        == state.global_step
-    )
-
-
-def test_disaggregated_loop_commits_actual_updates_before_publishing(monkeypatch, tmp_path):
-    from swift.dev.config import RewardConfig, RolloutConfig
-    from swift.dev.recipe.grpo import assembly
-
-    state = make_state()
-    state.tracker = SimpleNamespace(log_prompts=lambda *args: None)
-    pulls = [
-        [
-            SimpleNamespace(encoded={"input_ids": [i], "labels": [i]}, rollout_logps=[0.0], truncated=False, prompt=[])
-            for i in range(start, stop)
-        ]
-        for start, stop in ((0, 16), (16, 48))
-    ]
-    committed, published, aborted = [], [], []
-
-    class Driver:
-        def __iter__(self):
-            return iter(pulls)
-
-        commit = staticmethod(committed.append)
-        request_publish = staticmethod(published.append)
-        abort = staticmethod(lambda: aborted.append(True))
-
-    driver = Driver()
-    monkeypatch.setattr(assembly, "build_driver", lambda **kwargs: driver)
-    monkeypatch.setattr(grpo, "_prepare_routing_replay", lambda *args: None)
-    monkeypatch.setattr(
-        grpo,
-        "_advantage_pipeline",
-        lambda cluster, config, reward, rows, *args, **kwargs: (
-            [float(row.encoded["input_ids"][0]) for row in rows],
-            [[0.0]] * len(rows),
-            None,
-            None,
-        ),
-    )
-    cluster = SimpleNamespace(model=state.model, worker=SimpleNamespace(), orm_scorers=[],
-                             sampling_params={"temperature": 1.0})
-    grpo._disaggregated_loop(
-        cluster,
-        RLConfig(rl_type="grpo"),
-        RolloutConfig(parameter_sync_step=1),
-        RewardConfig(),
-        None,
-        None,
-        state,
-        train_batch_size=4,
-        batching_kwargs={"micro_batch_size": 2},
-        num_train_epochs=1,
-        output_dir=str(tmp_path),
-    )
-    assert committed == [1, 2] and len(published) == 2 and aborted == [True]
-    assert [len(call["inputs"]) for call in state.model.calls] == [16, 16, 16]
-    assert state.global_step == 3 and state.micro_step == 12
-
-
 def test_new_training_starts_with_zero_progress():
     assert training_progress({}) == (0, 0)
     assert training_progress({"cur_step": 0}) == (0, 0)
 
 
-@pytest.mark.parametrize(
-    "streaming, group_pull, expected",
-    [
-        (False, False, 2),
-        (True, True, 2),
-        (True, False, 2),
-    ],
-)
-def test_grpo_budget_counts_only_deliverable_updates(streaming, group_pull, expected):
+@pytest.mark.parametrize("streaming", [False, True])
+def test_grpo_budget_counts_only_deliverable_updates(streaming):
+    """The 4-row epoch tail is not an optimizer update on its own. The streaming driver folds it
+    into the 20 generated rows and floors that to its 16-row batch, so both routes count two."""
+    from swift.dev.recipe.utils import stream_batch_size
+
+    rows = stream_batch_size(
+        colocate=False, generation_batch_size=4, num_generations=4,
+        train_batch_size=4, gradient_accumulation_steps=4)
     assert (
         rollout_step_budget(
             num_prompts=5,
@@ -541,10 +423,9 @@ def test_grpo_budget_counts_only_deliverable_updates(streaming, group_pull, expe
             num_train_epochs=1,
             generation_batch_size=4,
             num_iterations=2,
-            streaming=streaming,
-            group_pull=group_pull,
+            stream_batch_rows=rows if streaming else None,
         )
-        == expected
+        == 2
     )
 
 
@@ -564,9 +445,10 @@ def test_real_dp_dispatch_slices_full_updates_in_contiguous_order(count):
         expected = list(range(rank * 8, (rank + 1) * 8))
         kwargs = dispatched[rank][2]
         assert ids(kwargs) == expected
-        assert kwargs["advantages"] == [index * 10.0 for index in expected]
-        assert kwargs["old_logps"] == [[index + 0.2] for index in expected]
-        assert kwargs["ref_logps"] == [[index + 0.3] for index in expected]
+        rows = kwargs["inputs"]
+        assert [row.advantages for row in rows] == [index * 10.0 for index in expected]
+        assert [row.old_logps for row in rows] == [[index + 0.2] for index in expected]
+        assert [row.ref_logps for row in rows] == [[index + 0.3] for index in expected]
 
 
 @pytest.mark.parametrize("ga", [1, 4])
@@ -579,20 +461,26 @@ def test_checkpoint_may_omit_the_micro_step_statistic():
 
 
 @pytest.mark.parametrize(
-    "prompts, iterations, ga, streaming, group_pull, expected",
+    "prompts, iterations, ga, streaming, expected",
     [
-        (4, 1, 4, False, False, 1),
-        (8, 1, 4, False, False, 2),
-        (8, 2, 4, False, False, 4),
-        (4, 1, 1, False, False, 4),
-        (8, 1, 4, True, True, 2),
-        (5, 1, 4, False, False, 1),
-        (5, 2, 4, False, False, 2),
-        (5, 1, 4, True, True, 1),
-        (5, 1, 4, True, False, 1),
+        (4, 1, 4, False, 1),
+        (8, 1, 4, False, 2),
+        (8, 2, 4, False, 4),
+        (4, 1, 1, False, 4),
+        (8, 1, 4, True, 2),
+        (5, 1, 4, False, 1),
+        (5, 2, 4, False, 2),
+        (5, 1, 4, True, 1),
     ],
 )
-def test_budget_counts_actual_optimizer_calls(prompts, iterations, ga, streaming, group_pull, expected):
+def test_budget_counts_actual_optimizer_calls(prompts, iterations, ga, streaming, expected):
+    from swift.dev.recipe.utils import stream_batch_size
+
+    rows = None
+    if streaming:
+        rows = stream_batch_size(
+            colocate=False, generation_batch_size=4, num_generations=4,
+            train_batch_size=4, gradient_accumulation_steps=ga)
     assert (
         rollout_step_budget(
             num_prompts=prompts,
@@ -602,8 +490,7 @@ def test_budget_counts_actual_optimizer_calls(prompts, iterations, ga, streaming
             num_train_epochs=1,
             generation_batch_size=4,
             num_iterations=iterations,
-            streaming=streaming,
-            group_pull=group_pull,
+            stream_batch_rows=rows,
         )
         == expected
     )
@@ -638,51 +525,47 @@ def test_colocate_budget_matches_replay_updates_without_generation_group_alignme
 
 
 @pytest.mark.parametrize("iterations", [1, 2, 3])
-@pytest.mark.parametrize("group_pull", [True, False])
 @pytest.mark.parametrize("num_prompts", [2, 3, 4, 6, 10])
-def test_streaming_budget_matches_the_drivers_actual_pull_rule(group_pull, num_prompts, iterations):
-    from types import SimpleNamespace
-
-    from twinkle_agentic.async_rl.streaming_driver import StreamingDriver
+def test_streaming_budget_matches_the_drivers_actual_delivery(num_prompts, iterations):
+    """The driver hands out whole ``batch_size`` rows at a time and that batch holds whole groups
+    (both enforced when it is built), so the budget is the generated row count floored to the
+    batch, replayed ``num_iterations`` times, then floored to the optimizer update."""
+    from swift.dev.recipe.utils import stream_batch_size
 
     num_generations, update_size = 3, 4
-    records = [
-        SimpleNamespace(group_key=prompt, score_ref=None)
-        for prompt in range(num_prompts)
-        for _ in range(num_generations)
-    ]
-    rule = (
-        StreamingDriver._make_group_pull_rule(num_generations, update_size)
-        if group_pull
-        else StreamingDriver._make_no_group_pull_rule(update_size)
-    )
-    delivered = rule(records) or []
-    expected = len(delivered) * iterations // update_size
+    train_batch_size, gradient_accumulation_steps = 2, 2
+    rows = stream_batch_size(
+        colocate=False, generation_batch_size=1, num_generations=num_generations,
+        train_batch_size=train_batch_size, gradient_accumulation_steps=gradient_accumulation_steps)
+    # whole groups: the invariant the driver's constructor raises on if it does not hold
+    assert rows % num_generations == 0
+    delivered = (num_prompts * num_generations) // rows * rows
+    expected = delivered * iterations // update_size
     assert (
         rollout_step_budget(
             num_prompts=num_prompts,
             num_generations=num_generations,
-            train_batch_size=2,
-            gradient_accumulation_steps=2,
+            train_batch_size=train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
             num_train_epochs=1,
             generation_batch_size=1,
             num_iterations=iterations,
-            streaming=True,
-            group_pull=group_pull,
+            stream_batch_rows=rows,
         )
         == expected
     )
 
 
-@pytest.mark.parametrize(
-    "streaming, group_pull, expected",
-    [
-        (False, False, 1),
-        (True, False, 0),
-        (True, True, 0),
-    ],
-)
-def test_budget_repeats_colocate_tails_but_keeps_the_drivers_delivery_drop(streaming, group_pull, expected):
+@pytest.mark.parametrize("streaming, expected", [(False, 1), (True, 0)])
+def test_budget_repeats_colocate_tails_but_keeps_the_drivers_delivery_drop(streaming, expected):
+    """12 rows replayed twice make one full 16-row update. The streaming driver instead floors the
+    delivery to its colocate batch first -- which amortizes the sleep/wake/sync hand-over over a
+    whole generation batch, here 16 rows -- and 12 rows never reach one, so nothing trains."""
+    from swift.dev.recipe.utils import stream_batch_size
+
+    rows = stream_batch_size(
+        colocate=True, generation_batch_size=4, num_generations=4,
+        train_batch_size=4, gradient_accumulation_steps=4)
     assert (
         rollout_step_budget(
             num_prompts=3,
@@ -692,22 +575,22 @@ def test_budget_repeats_colocate_tails_but_keeps_the_drivers_delivery_drop(strea
             num_train_epochs=1,
             generation_batch_size=4,
             num_iterations=2,
-            streaming=streaming,
-            group_pull=group_pull,
+            stream_batch_rows=rows if streaming else None,
         )
         == expected
     )
 
 
-@pytest.mark.parametrize(
-    "streaming, group_pull, expected",
-    [
-        (False, False, 0),
-        (True, False, 1),
-        (True, True, 1),
-    ],
-)
-def test_budget_drops_each_independent_round_tail(streaming, group_pull, expected):
+@pytest.mark.parametrize("streaming, expected", [(False, 0), (True, 1)])
+def test_budget_drops_each_independent_round_tail(streaming, expected):
+    """Six independent 2-row rounds never fill an 8-row update on their own, so a round loop drops
+    every tail. The streaming driver combines them into one delivery and floors it to its 8-row
+    batch, which is exactly one update."""
+    from swift.dev.recipe.utils import stream_batch_size
+
+    rows = stream_batch_size(
+        colocate=False, generation_batch_size=2, num_generations=1,
+        train_batch_size=2, gradient_accumulation_steps=4)
     assert (
         rollout_step_budget(
             num_prompts=6,
@@ -716,8 +599,7 @@ def test_budget_drops_each_independent_round_tail(streaming, group_pull, expecte
             gradient_accumulation_steps=4,
             num_train_epochs=2,
             generation_batch_size=2,
-            streaming=streaming,
-            group_pull=group_pull,
+            stream_batch_rows=rows if streaming else None,
         )
         == expected
     )

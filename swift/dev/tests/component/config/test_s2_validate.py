@@ -248,7 +248,7 @@ def test_chord_router_replay_and_sampling_replay():
 def test_prm_channel_and_scorer_knobs():
     """S2-35: PRM scorer knobs without a --prm channel do nothing (refused); prm_orm_mix is the
     convex-combination ratio in [0,1]; PRM cannot stack with RLSD/SDAR (both per-token)."""
-    reward = _explicit(RewardConfig(), 'prm_scorer')
+    reward = _explicit(RewardConfig(), 'prm_orm_mix')
     with pytest.raises(ValueError, match='no --prm channel is set'):
         _check_prm(RLConfig(rl_type='grpo'), reward)
 
