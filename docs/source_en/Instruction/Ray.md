@@ -54,6 +54,9 @@ rollout:
   gpus: 4    # must match train
 ```
 
+During naive colocated weight synchronization, training weights stay on the GPU until export finishes. Generation-phase
+offloading is unchanged. Allow GPU headroom for export temporaries alongside the resident training state and rollout weights.
+
 **Separate (dedicated GPU)** — Training and inference occupy separate GPUs with no memory contention:
 
 ```yaml
