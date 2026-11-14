@@ -436,6 +436,15 @@ def build_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size:
 
     Local reads Platform.get_world_size(), ray reads nproc_per_node; local + sp=1 with no spec
     returns None. dp spans ALL ranks, so SP peers share one data rank (identical samples).
+
+    This is also the ONLY seam that reads and validates ``parallel_spec`` on the supervised local
+    path, so callers must not gate it behind ``sequence_parallel_size > 1``: with SP=1 nothing else
+    parses the spec (``_twinkle_loader_layout`` returns early when ``nproc_per_node`` is None,
+    leaving the loader mesh None), and a local run then trains on the default mesh whatever
+    ``--parallel_spec`` said -- an unknown value is not even rejected. The ray-mode supervised
+    assemblies DO keep that gate, because there the spec is honored through ``build_parallel_mesh``
+    on the loader side while the model's mesh is sized by the DeviceGroup; handing build_model a
+    second mesh would change every ray chain for no gain.
     """
     from twinkle import DeviceMesh
 

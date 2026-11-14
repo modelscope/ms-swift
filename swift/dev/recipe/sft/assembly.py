@@ -133,7 +133,10 @@ def build_supervised_objects(
         moe_config,
     )
     sp = template_config.sequence_parallel_size
-    sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # build_dp_mesh is the only seam that reads and validates parallel_spec on the local path, so
+    # it must not be gated behind SP>1; ray keeps the gate (see its docstring) so no ray chain moves.
+    sp_mesh = (None if distributed_config.mode == 'ray' and sp <= 1
+               else build_dp_mesh(distributed_config, sp))
     task_type = model_config.task_type
     if task is not None:
         task_type = _require_task_type(recipe, model_config, task)

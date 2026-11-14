@@ -133,7 +133,10 @@ def initialize_ppo_cluster(
     sp = template_config.sequence_parallel_size
     # mode='remote' runs ONE client process: the policy AND the critic are served-model handles.
     remote_run = distributed_config.mode == 'remote'
-    sp_mesh = None if remote_run else (build_dp_mesh(distributed_config, sp) if sp > 1 else None)
+    # build_dp_mesh is the only seam that reads and validates parallel_spec on the local path, so
+    # it must not be gated behind SP>1; ray keeps the gate (see its docstring) so no ray chain moves.
+    sp_mesh = (None if remote_run or (distributed_config.mode == 'ray' and sp <= 1)
+               else build_dp_mesh(distributed_config, sp))
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
     if resume_dir and tuner_config is None and not remote_run:

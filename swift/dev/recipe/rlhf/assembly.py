@@ -185,7 +185,10 @@ def build_preference_objects(
     # mode='remote' runs ONE client process: the policy AND the frozen reference are served-model
     # handles (the sft assembly's remote shape for the model).
     remote_run = distributed_config.mode == 'remote'
-    sp_mesh = None if remote_run else (build_dp_mesh(distributed_config, sp) if sp > 1 else None)
+    # build_dp_mesh is the only seam that reads and validates parallel_spec on the local path, so
+    # it must not be gated behind SP>1; ray keeps the gate (see its docstring) so no ray chain moves.
+    sp_mesh = (None if remote_run or (distributed_config.mode == 'ray' and sp <= 1)
+               else build_dp_mesh(distributed_config, sp))
     # rm rides task_type='seq_cls' (process.py set it before the loss defaults read it), which also
     # threads the score head into LoRA's modules_to_save; the other types keep the Config's value.
     task_type = model_config.task_type
