@@ -82,9 +82,14 @@ def test_minus_100_labels_are_dropped_from_the_denominator():
 
 
 def test_a_batch_that_is_all_padding_yields_no_observations():
-    """An empty denominator must produce an empty observation list, not a division by zero or a
-    fabricated 0%."""
-    assert compute_acc(np.array([1, 2]), np.array([-100, -100])) == {'acc': []}
+    """An empty denominator must produce no observations at all, not a division by zero or a
+    fabricated 0%.
+
+    ``{}`` is ``compute_acc``'s single sentinel for "nothing to score" -- the same value its float
+    label and shape-mismatch guards return -- so an empty batch is indistinguishable from those at
+    the consumer, which is what keeps ``AccMetrics`` from averaging an empty list.
+    """
+    assert compute_acc(np.array([1, 2]), np.array([-100, -100])) == {}
 
 
 def test_a_validation_set_that_is_all_padding_does_not_divide_by_zero():
