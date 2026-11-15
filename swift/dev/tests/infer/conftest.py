@@ -25,7 +25,7 @@ def make_candidate(text: str, *, multi_turn: bool = False, messages: Optional[Li
     """Build one trajectory dict -- the shape emit, the rollout-token recorder and the candidate
     cache all read.
 
-    ``twinkle_agentic.rollout.RolloutSample`` is the light identity/version/score half of a step and
+    ``twinkle_agentic.rollout.RolloutStatus`` is the light identity/version/score half of a step and
     carries none of these keys, so the fixture must not build one: emit reads the answer through
     ``last_assistant_text(candidate['messages'])`` and ``candidate.get('rollout_logps')``, and the
     recorder persists ``input_ids`` / ``labels`` / ``response_token_ids`` / ``rollout_logps`` /

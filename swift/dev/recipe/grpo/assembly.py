@@ -432,7 +432,7 @@ def grpo_on_group(rl_config: "RLConfig", reward_config: "RewardConfig", sampling
     A zero-variance group (its advantage is degenerate) is replaced by ``num_generations`` fresh
     trajectories of the same row, up to ``max_resample_times`` (the driver's regeneration cap);
     remax returns one greedy baseline of the row, run once the group is final. ``None`` when
-    neither is on. The verdict reads the group's ``RolloutSample.orm_reward`` rows -- the light
+    neither is on. The verdict reads the group's ``RolloutStatus.orm_reward`` rows -- the light
     sample records the driver stamps when it scores, never the trajectories themselves.
     """
     dynamic = bool(rl_config.dynamic_sample)
