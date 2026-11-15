@@ -57,4 +57,4 @@ colocate 模式下，配方拿到一批后让 sampler 休眠、开始训练，�
 - `version_span_mean` / `max_partial_span`：本批的版本差，上界为 `max_staleness`。
 - `partial_ratio`：本批中版本差大于 0 的样本占比。
 - `dropped_stale`：因过期被丢弃的样本数。
-- `trainer_idle_ratio`：trainer 等待批次的时间占比。
+- `train_idle_ratio`：trainer 等待批次的时间占比（分子已扣除借卡线程收尾与 reclaim 的自身耗时，只反映 sampler 造成的等待）。
