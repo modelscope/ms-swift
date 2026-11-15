@@ -285,6 +285,7 @@ def _train_loop(
     save: Optional[Callable[[str], Any]] = None,
     last_batch_versions: Optional[List[List[int]]] = None,
     correction_out: Optional[Dict[str, float]] = None,
+    advantage_out: Optional[Dict[str, float]] = None,
     reward_metric: Any = None,
     completion_log: Any = None,
 ) -> None:
@@ -367,6 +368,13 @@ def _train_loop(
             trajs, adv_summary = cluster.advantage(
                 trajs, ref_out=ref_out, teacher_out=teacher_out, old_out=old_out,
                 global_step=state.global_step, scores=batch_facts['scores'])
+            if advantage_out is not None:
+                advantage_out.clear()
+                # Short names: the consumer namespaces them under ``advantage/``.
+                for source, name in (('absmean_advantage', 'absmean'),
+                                     ('zero_advantage_rows', 'zero_rows')):
+                    if source in adv_summary:
+                        advantage_out[name] = float(adv_summary[source])
             if correction_out is not None and adv_summary.get('rollout_correction'):
                 # The legacy-compatible off-policy diagnostics, from the training-side forward and
                 # the sampler's own log-probs BEFORE any optimizer step this batch.
@@ -428,9 +436,17 @@ def _grpo_extra_metrics(
     last_batch_versions: List[List[int]],
     rollout_correction: Dict[str, float],
     reward_metric: Any,
+    advantage_out: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     """Read the current rollout, staleness, and reward aggregates for step logging."""
     extra = {f"rollout_correction/{key}": value for key, value in rollout_correction.items()}
+    if advantage_out:
+        # Reported unconditionally, unlike the off-policy diagnostics above: a GRPO step whose groups
+        # all scored the same has an identically zero advantage, hence zero loss and zero grad_norm,
+        # and the console line for it is indistinguishable from a step that trained. These two are what
+        # separate them -- ``absmean`` is zero only when every group is degenerate, and ``zero_rows``
+        # says how many of this batch's rows contributed no gradient at all.
+        extra.update({f"advantage/{key}": value for key, value in advantage_out.items()})
     if driver_cell:
         # Straight reads of the driver's own counters; the idle ratio is folded BY the driver at each
         # hand-out -- the recipe does no timing math.
@@ -537,6 +553,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
     _last_batch_versions: List[List[int]] = []
     # The last batch's legacy rollout_correction/* diagnostics (signed KL, ppl, chi2).
     rollout_correction: Dict[str, float] = {}
+    # The last batch's advantage degeneracy read-out, refreshed by the loop on every advantage call.
+    advantage_summary: Dict[str, float] = {}
 
     # Fed from the per-sample orm_reward the driver's scoring writes -- the same
     # CompletionRewardMetric contract PPO's loop uses.
@@ -545,7 +563,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
     _reward_metric = CompletionRewardMetric()
 
     def _extra_metrics() -> Dict[str, Any]:
-        return _grpo_extra_metrics(_driver_cell, _last_batch_versions, rollout_correction, _reward_metric)
+        return _grpo_extra_metrics(_driver_cell, _last_batch_versions, rollout_correction, _reward_metric,
+                                   advantage_summary)
 
     def _grpo_log_line(record: dict, loss: float) -> str:
         """GRPO's console head: the default line plus this round's mean total reward.
@@ -554,6 +573,17 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         wanders while the reward climbs), so the head line leads with it when one was computed.
         """
         line = _log_line(record, loss)
+        absmean = record.get('advantage/absmean')
+        zero_rows = record.get('advantage/zero_rows')
+        if absmean is not None and zero_rows is not None:
+            # The console head already shows a loss of 0.0000 for a batch whose groups all scored the
+            # same, which is also what a broken run prints. These two say which it was: absmean is the
+            # magnitude the policy gradient is proportional to, and zero_rows is the fraction of this
+            # batch that contributed no gradient at all.
+            try:
+                line = f'{line}  adv={float(absmean):.4g} zero_adv={float(zero_rows):.0%}'
+            except (TypeError, ValueError):
+                pass
         reward = record.get('train/total_reward')
         if reward is not None:
             # The tracker may have formatted the scalar into a display string; coerce with a
@@ -675,6 +705,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
                         save=save,
                         last_batch_versions=_last_batch_versions,
                         correction_out=rollout_correction,
+                        advantage_out=advantage_summary,
                         reward_metric=_reward_metric,
                         completion_log=completion_log,
                         )
