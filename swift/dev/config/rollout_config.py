@@ -150,3 +150,11 @@ class RolloutConfig:
     sandbox_command_timeout: int = 60
     # Address-space cap per call for a LocalEnv; None does not cap.
     sandbox_memory_limit_gb: Optional[float] = 2.0
+    # How a harness compaction boundary treats the segment it writes out: 'drop' (default) keeps
+    # only the final segment trainable -- one row per episode; 'collect' freezes every written-out
+    # segment into its own training row, and the episode is delivered as several rows sharing one
+    # identity and one outcome (the advantage is computed once per episode and broadcast).
+    segment_policy: Literal['drop', 'collect'] = 'drop'
+    # Name of a 'harness' plugin that runs an external agent program per episode (codex,
+    # ms_agent, or your own via --external_plugins); None rolls out with the built-in tool loop.
+    harness: Optional[str] = None

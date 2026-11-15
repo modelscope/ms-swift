@@ -148,7 +148,8 @@ class PluginKind:
 #: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
 _BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm',
                          'swift.dev.builders.sandbox',
-                         'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins')
+                         'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins',
+                         'swift.dev.harnesses')
 
 
 def _declare_builtin_kinds() -> None:

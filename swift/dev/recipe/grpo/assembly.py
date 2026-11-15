@@ -137,6 +137,7 @@ def build_advantage(rl_config: "RLConfig", reward_config: "RewardConfig", *, use
         sdar_loss_coef=float(rl_config.sdar_loss_coef),
         rollout_importance_sampling_mode=bool(rl_config.rollout_importance_sampling_mode),
         log_rollout_offpolicy_metrics=bool(rl_config.log_rollout_offpolicy_metrics),
+        segment_discount=float(rl_config.segment_discount),
     )
     if name == 'gpg':
         kwargs['f_norm'] = float(rl_config.f_norm)
@@ -432,7 +433,7 @@ def grpo_on_group(rl_config: "RLConfig", reward_config: "RewardConfig", sampling
     A zero-variance group (its advantage is degenerate) is replaced by ``num_generations`` fresh
     trajectories of the same row, up to ``max_resample_times`` (the driver's regeneration cap);
     remax returns one greedy baseline of the row, run once the group is final. ``None`` when
-    neither is on. The verdict reads the group's ``RolloutSample.orm_reward`` rows -- the light
+    neither is on. The verdict reads the group's ``RolloutStatus.orm_reward`` rows -- the light
     sample records the driver stamps when it scores, never the trajectories themselves.
     """
     dynamic = bool(rl_config.dynamic_sample)
