@@ -775,9 +775,11 @@ class RolloutStepState(StepState):
         batch['truncated'] = [bool(flag) for flag in (summary.get('truncated') or ())]
         batch['turns'] = list(summary.get('turns') or ())
         # The admission version of every sample in the batch, which both summary producers carry
-        # (``streaming_driver._sample_facts`` and ``processor.trajectory.batch_summary``). Kept as a
-        # list rather than folded here because the conservative anchor is a property of the batch as
-        # trained, and ``record_rollout_training`` may still narrow which rows that is.
+        # (``streaming_driver._sample_facts`` and ``processor.trajectory.batch_summary``). Kept as the
+        # whole delivered batch rather than narrowed to the rows ``record_rollout_training`` later
+        # keeps: the anchor is stamped as a minimum, and a minimum over a superset is never larger
+        # than over the kept subset, so this stays on the conservative side without needing an
+        # index-to-version mapping the summary does not provide.
         batch['policy_versions'] = [int(version) for version in (summary.get('policy_versions') or ())
                                     if version is not None]
         # When the batch arrived -- the 'gen' fallback window end when no gen span exists.
