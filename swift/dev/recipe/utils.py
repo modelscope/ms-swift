@@ -756,7 +756,8 @@ class RolloutStepState(StepState):
             # end to end, or the window would select the wrong spans).
             self._iteration_started_ns = default_recorder.now_ns()
             self._iteration_facts = {'lengths': [], 'truncated': [], 'turns': [],
-                                     'trained_indices': set(), 'sample_visits': 0}
+                                     'trained_indices': set(), 'sample_visits': 0,
+                                     'policy_versions': []}
             self._memory_rows = None
 
     def observe_rollout_batch(self, summary: Dict[str, Any]) -> None:
@@ -773,6 +774,12 @@ class RolloutStepState(StepState):
                                      summary.get('response_lengths') or ()))
         batch['truncated'] = [bool(flag) for flag in (summary.get('truncated') or ())]
         batch['turns'] = list(summary.get('turns') or ())
+        # The admission version of every sample in the batch, which both summary producers carry
+        # (``streaming_driver._sample_facts`` and ``processor.trajectory.batch_summary``). Kept as a
+        # list rather than folded here because the conservative anchor is a property of the batch as
+        # trained, and ``record_rollout_training`` may still narrow which rows that is.
+        batch['policy_versions'] = [int(version) for version in (summary.get('policy_versions') or ())
+                                    if version is not None]
         # When the batch arrived -- the 'gen' fallback window end when no gen span exists.
         batch['received_ns'] = default_recorder.now_ns()
 
@@ -872,6 +879,13 @@ class RolloutStepState(StepState):
             MetricRecord(
                 stage='rollout',
                 optimizer_step=self.global_step,
+                # The version anchor of the batch this iteration actually trained: the minimum over
+                # its samples, which is the conservative reading ("every row is at least this
+                # stale") and the one the reporter folds into the run summary's per-context
+                # ``policy_version``. Reporting it only as a metric value -- which is what the step
+                # log does -- leaves that summary field permanently None, so a completed run cannot
+                # say which policy version it ended on even though every step logged one.
+                policy_version=(min(batch['policy_versions']) if batch['policy_versions'] else None),
                 values=values,
                 attributes={
                     'scope': 'iteration',
