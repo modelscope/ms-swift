@@ -2050,10 +2050,27 @@ class RunTracker:
                 record = replace(record, context_key=self.run_id)
             self._metric_reporter.record(record)
 
-    def log(self, metrics: Dict[str, Any], step: int, *, epoch_end: bool = False) -> Dict[str, Any]:
-        """Filter and write one metric record; returns the record actually emitted."""
+    def log(self, metrics: Dict[str, Any], step: int, *, epoch_end: bool = False,
+            persist: bool = True) -> Dict[str, Any]:
+        """Filter and write one metric record; returns the record actually emitted.
+
+        ``persist=False`` fans the record out to the console and the tensorboard/wandb/swanlab writers
+        without writing it to the metric reporter again. The epoch-end call needs exactly that: with
+        ``logging_strategy='epoch'`` it is the only point where ``should_log`` is true, so it is what
+        emits the epoch-boundary line, but the observation it carries was already persisted by the step
+        that produced it. Persisting it a second time wrote a byte-identical duplicate at the final
+        optimizer step of every run, which made that step's interval ambiguous and so made segmented
+        timing unjudgeable from the persisted metrics.
+
+        Declaring the re-emission at the call site is what makes this safe: no deduplication key is
+        needed, and none would work. The eval path legitimately logs a second, different observation at
+        the same ``optimizer_step``, and every record here is written with ``stage='train'`` -- the eval
+        one included -- so neither the step nor ``(stage, step)`` distinguishes a re-emission from a new
+        observation. Comparing values would be worse still: two steps whose metrics happen to be equal
+        are a legitimate outcome, not a duplicate.
+        """
         filtered = self._filter_metrics(metrics)
-        if self._metric_reporter is not None:
+        if self._metric_reporter is not None and persist:
             from twinkle.metric import MetricRecord
             # Twinkle normalizes scalars and preserves other raw observations in
             # attributes. Only percentage strings need Swift's legacy conversion.
@@ -2297,7 +2314,9 @@ def fit_supervised(
         state.publish_state()
         state.handler.on_epoch_end()
         if state.history:
-            state.tracker.log(state.history[-1], state.global_step, epoch_end=True)
+            # history[-1] is the record the last state.record() already persisted, so this call is a
+            # re-emission for the epoch-boundary fan-out only.
+            state.tracker.log(state.history[-1], state.global_step, epoch_end=True, persist=False)
         if state.should_stop():
             break
 
