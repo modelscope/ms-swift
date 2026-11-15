@@ -356,3 +356,31 @@ def test_each_iteration_stamps_its_own_version_and_the_summary_folds_the_latest(
         state.fold_iteration_metrics(publications=1)
     assert [row["policy_version"] for row in raw_rollout_rows(tmp_path, state)] == [3, 7]
     assert folded_policy_version(tmp_path, state) == [7]
+
+
+def test_grpo_extra_metrics_reports_advantage_degeneracy():
+    """A batch whose groups all scored the same must be distinguishable from one that trained.
+
+    ``loss=0.0000`` with a zero grad_norm is what GRPO prints for both, since a group with one score
+    is centered to exactly zero and contributes no gradient. These two keys are what separate them, so
+    they have to survive the trip from the estimator's summary into the record the step logs.
+    """
+    from swift.dev.recipe.grpo.run_grpo import _grpo_extra_metrics
+
+    reward_metric = NS(calculate=lambda: {})
+    extra = _grpo_extra_metrics([], [], {}, reward_metric,
+                               {'absmean': 0.5, 'zero_rows': 0.25})
+    assert extra['advantage/absmean'] == 0.5
+    assert extra['advantage/zero_rows'] == 0.25
+
+
+def test_grpo_extra_metrics_omits_advantage_keys_when_nothing_was_estimated():
+    """An unmeasured batch must not report a degenerate-looking zero.
+
+    ``zero_rows=0.0`` says every row contributed a gradient, which is a claim; an empty holder means
+    no advantage call has landed yet, and the keys stay absent instead of asserting either way.
+    """
+    from swift.dev.recipe.grpo.run_grpo import _grpo_extra_metrics
+
+    extra = _grpo_extra_metrics([], [], {}, NS(calculate=lambda: {}), {})
+    assert not [key for key in extra if key.startswith('advantage/')]
