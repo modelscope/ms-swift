@@ -20,7 +20,9 @@ class FSDPTurboArguments:
     ep_dispatcher: Literal['eager', 'fused', 'mc2', 'domino'] = 'eager'
     fsdp_implementation: Literal['native', 'custom'] = 'native'
     offload_params: bool = False
+    offload_activations: bool = False
     pin_memory: bool = True
+    host_pin_memory: Optional[bool] = None
     forward_prefetch: int = 1
     backward_prefetch: int = 1
 
@@ -67,7 +69,7 @@ class FSDPTurboArguments:
 
 @dataclass
 class FSDPTurboSftArguments(FSDPTurboArguments, SftArguments):
-    tuner_type: Literal['full'] = 'full'
+    tuner_type: Literal['full', 'lora'] = 'full'
     add_version: bool = False
     optim: str = 'adamw_torch'
 
@@ -75,9 +77,9 @@ class FSDPTurboSftArguments(FSDPTurboArguments, SftArguments):
         if self.model_type == 'deepseek_v4':
             raise ValueError('DeepSeek V4 is no longer supported by the FSDPTurbo backend.')
         if self.model_type == 'deepseek_v41':
-            if self.resume_from_checkpoint:
+            if self.resume_from_checkpoint and self.tuner_type != 'lora':
                 raise ValueError('Native V4.1 checkpoint resume is not supported.')
-            if self.save_only_model:
+            if self.save_only_model and self.tuner_type == 'full':
                 raise ValueError('Native V4.1 save_only_model is not supported: Host Engram requires its '
                                  'model-owned checkpoint state.')
 
@@ -123,26 +125,39 @@ class FSDPTurboSftArguments(FSDPTurboArguments, SftArguments):
             raise ValueError('`--fsdp` selects the HF/Accelerate backend and cannot be combined with FSDPTurbo.')
         if self.deepspeed:
             raise ValueError('DeepSpeed cannot be combined with the independent FSDPTurbo backend.')
-        if self.tuner_type != 'full':
-            raise ValueError('The initial FSDPTurbo backend supports full SFT only.')
+        if self.tuner_type not in ('full', 'lora'):
+            raise ValueError('FSDPTurbo supports full SFT or vanilla PEFT LoRA.')
         if self.sequence_parallel_size > 1:
             raise ValueError('Use `--tp_size` for FSDPTurbo; Swift sequence parallel is a different backend.')
         if self.padding_free or self.packing:
             raise ValueError('FSDPTurbo padding-free and packing paths have not been validated yet.')
         super().__post_init__()
+        if self.tuner_type == 'lora':
+            if self.tuner_backend != 'peft' or self.use_swift_lora:
+                raise ValueError('FSDPTurbo LoRA uses the PEFT backend.')
+            if self.resume_from_checkpoint and self.model_type != 'deepseek_v41':
+                raise ValueError('FSDPTurbo LoRA optimizer resume is not supported; use --adapters for a warm start.')
+            if (self.target_parameters or self.modules_to_save or self.use_dora or self.lorap_lr_ratio is not None
+                    or self.lora_bias != 'none' or self.init_weights not in (True, 'gaussian')):
+                raise ValueError('FSDPTurbo LoRA supports normally initialized linear adapters with bias=none; '
+                                 'target_parameters, modules_to_save, DoRA and LoRA+ are not supported.')
         self._validate_model_scope()
         self.validate_fsdpturbo()
         if self.task_type != 'causal_lm':
             raise ValueError('The initial FSDPTurbo backend supports causal-LM SFT only.')
         if self.max_steps <= 0:
             raise ValueError('The initial FSDPTurbo backend requires `--max_steps` to be a positive integer.')
-        if self.gradient_accumulation_steps != 1:
-            raise ValueError('The initial FSDPTurbo backend requires `--gradient_accumulation_steps 1`.')
+        if self.gradient_accumulation_steps < 1:
+            raise ValueError('gradient_accumulation_steps must be positive.')
+        native_adapter_accumulation = self.tuner_type == 'lora' and self.model_type == 'deepseek_v41'
+        if self.gradient_accumulation_steps > 1 and self.offload_params and not native_adapter_accumulation:
+            raise ValueError('FSDPTurbo CPU parameter offload requires gradient_accumulation_steps=1, except '
+                             'native V4.1 LoRA whose adapter gradients remain replicated on the accelerator.')
         if self.streaming:
             raise ValueError('The initial FSDPTurbo backend requires a map-style dataset, not streaming data.')
         save_strategy = getattr(self.training_args.save_strategy, 'value', self.training_args.save_strategy)
-        if save_strategy not in ('no', 'steps'):
-            raise ValueError('FSDPTurbo supports save_strategy=no or steps.')
+        if save_strategy not in ('no', 'steps', 'epoch'):
+            raise ValueError('FSDPTurbo supports save_strategy=no, steps or epoch.')
         if self.optimizer is not None or self.use_galore:
             raise ValueError('The initial FSDPTurbo backend supports its native AdamW optimizer only.')
         optim = getattr(self.training_args.optim, 'value', self.training_args.optim)

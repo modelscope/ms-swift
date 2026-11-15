@@ -34,6 +34,28 @@ class TestLossGroupInitialization(unittest.TestCase):
         self.assertEqual(reduce.call_args.kwargs['group'], 'loss-group')
         self.assertEqual(reduce.call_args.args[0].item(), 0)
 
+    def test_native_warmup_deduplicates_mesh_aliases_and_skips_single_rank_groups(self):
+        trainer = self.make_trainer(8)
+        trainer.config = object()
+        parallel_state = SimpleNamespace(
+            device_mesh_map={
+                'dense': SimpleNamespace(get_all_groups=lambda: ['dense-group', 'single-group']),
+                'dense_alias': SimpleNamespace(get_all_groups=lambda: ['dense-group']),
+                'expert': SimpleNamespace(get_all_groups=lambda: ['expert-group']),
+            })
+        group_sizes = {'single-group': 1, 'dense-group': 8, 'expert-group': 8}
+        with patch('fsdp_turbo.distributed.parallel_state.init_parallel_state',
+                   return_value=parallel_state) as initialize, \
+                patch('torch.distributed.get_world_size', side_effect=group_sizes.__getitem__), \
+                patch('torch.distributed.new_group', return_value='loading-ready') as loading_group, \
+                patch('torch.distributed.all_reduce') as reduce:
+            trainer._initialize_native_groups()
+        initialize.assert_called_once_with(trainer.config)
+        loading_group.assert_called_once_with(backend='gloo')
+        self.assertEqual(trainer._native_load_group, 'loading-ready')
+        self.assertEqual([call.kwargs.get('group') for call in reduce.call_args_list],
+                         [None, 'dense-group', 'expert-group'])
+
     def test_single_data_rank_needs_no_collective(self):
         trainer = self.make_trainer(1)
         with patch('torch.distributed.all_reduce') as reduce:

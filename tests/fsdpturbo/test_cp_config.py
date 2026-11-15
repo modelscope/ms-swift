@@ -38,6 +38,7 @@ def make_args(cp_size):
     return SimpleNamespace(
         training_args=train,
         model='/local/model',
+        tuner_type='full',
         torch_dtype=torch.bfloat16,
         dataset=['/local/data.jsonl'],
         cached_dataset=[],
@@ -54,10 +55,33 @@ def make_args(cp_size):
         backward_prefetch=0,
         offload_params=False,
         pin_memory=True,
+        host_pin_memory=None,
         fsdp_implementation='native',
         ep_dispatcher='eager',
         gradient_checkpointing=True,
     )
+
+
+def test_native_npu_full_unpinned_offload_fails_before_model_loading():
+    from swift.fsdpturbo.trainer import FSDPTurboTrainer
+
+    args = make_args(1)
+    args.model_type, args.router_aux_loss_coef = 'deepseek_v41', 0
+    args.offload_params, args.pin_memory = True, False
+    args.training_args.device = SimpleNamespace(type='npu')
+    with pytest.raises(ValueError, match='requires pin_memory=true'):
+        FSDPTurboTrainer(args, None, None, None)
+
+
+def test_native_npu_lora_keeps_unpinned_parameter_offload_available():
+    from swift.fsdpturbo.trainer import FSDPTurboTrainer
+
+    args = make_args(1)
+    args.model_type, args.router_aux_loss_coef = 'deepseek_v41', 0
+    args.tuner_type, args.offload_params, args.pin_memory = 'lora', True, False
+    args.training_args.device = SimpleNamespace(type='npu')
+    trainer = FSDPTurboTrainer(args, None, None, None)
+    assert trainer.config.distributed.fsdp_plan.pin_memory is False
 
 
 def test_cp1_does_not_enable_model_or_loss_patches():
@@ -141,7 +165,6 @@ def test_native_v41_entrypoint_resolves_after_backend_directory_reorganization()
 
 
 @pytest.mark.parametrize('field,value,message', [
-    ('gradient_checkpointing', True, 'does not support recompute'),
     ('ep_size', 1, 'requires EP > 1'),
     ('ep_dispatcher', 'fused', 'requires EP > 1'),
     ('resume_from_checkpoint', '/checkpoint', 'no checkpoint resume'),
@@ -163,6 +186,7 @@ def test_native_v41_trainer_rejects_model_only_save_before_loading():
     from swift.fsdpturbo.trainer import FSDPTurboTrainer
 
     args = make_args(1)
+    args.tuner_type = 'full'
     args.model_type = 'deepseek_v41'
     args.gradient_checkpointing = False
     args.router_aux_loss_coef = 0

@@ -14,7 +14,7 @@ class TestFSDPTurboLogging(unittest.TestCase):
         from swift.fsdpturbo.trainer import FSDPTurboTrainer
 
         trainer = object.__new__(FSDPTurboTrainer)
-        trainer.args = SimpleNamespace(validate_fsdpturbo=Mock())
+        trainer.args = SimpleNamespace(validate_fsdpturbo=Mock(), offload_params=False)
         # Exercise the real BaseTrainer early return for an existing group.
         with patch('torch.distributed.is_initialized', return_value=True), \
                 patch('torch.distributed.get_world_size', return_value=8), \

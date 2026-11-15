@@ -124,6 +124,18 @@ def test_native_fp16_is_rejected_without_reading_weights(native_source):
         _native_factory(args)
 
 
+def test_native_builder_options_are_forwarded_and_unknown_options_fail(native_source):
+    args, _, _ = native_source
+    args.model_kwargs = {'chunk_loss': True, 'chunk_loss_size': 128, 'head_compute_dtype': 'bf16'}
+    factory = _native_factory(args)
+    assert factory.keywords['chunk_loss'] is True
+    assert factory.keywords['chunk_loss_size'] == 128
+    assert factory.keywords['head_compute_dtype'] == 'bf16'
+    args.model_kwargs['chunk_los'] = True
+    with pytest.raises(ValueError, match='chunk_los'):
+        _native_factory(args)
+
+
 @pytest.mark.parametrize('length,ratio,expected', [(7, 0, 8), (9, 4, 16)])
 def test_native_cp_cache_covers_compression_aligned_padding(native_source, length, ratio, expected):
     args, _, config = native_source
@@ -195,7 +207,8 @@ def test_native_metadata_namespace_is_owned_by_swift(native_source):
 
 
 @pytest.mark.parametrize('offload,device', [(True, 'cpu'), (False, 'cuda:0')])
-def test_native_trainer_loads_after_wrapping_without_rank0_source(offload, device):
+@pytest.mark.parametrize('host_pin', [None, False, True])
+def test_native_trainer_loads_after_wrapping_without_rank0_source(offload, device, host_pin):
     from fsdp_turbo.fsdp_turbo_config import FSDPTurboConfig
     from torch import nn
 
@@ -218,11 +231,15 @@ def test_native_trainer_loads_after_wrapping_without_rank0_source(offload, devic
     trainer = object.__new__(FSDPTurboTrainer)
     trainer.args = SimpleNamespace(
         model='/source/native',
+        tuner_type='full',
+        cp_size=1,
         tp_size=1,
         ep_size=4,
         gradient_checkpointing=False,
         torch_dtype=torch.bfloat16,
         offload_params=offload,
+        pin_memory=False,
+        host_pin_memory=host_pin,
         resume_from_checkpoint=None,
         router_aux_loss_coef=0)
     trainer.train_args = SimpleNamespace(device=torch.device('cuda:0'))
@@ -239,14 +256,24 @@ def test_native_trainer_loads_after_wrapping_without_rank0_source(offload, devic
         events.append(('wrap', ))
         return SimpleNamespace(model=candidate)
 
-    def prepare(candidate, *, device, parameter_dtype):
+    def materialize(candidate, *, device):
+        assert candidate is model
+        events.append(('materialize', device))
+
+    def prepare(candidate, *, device, parameter_dtype, initialize_host_weights, pin_host_memory):
         assert parameter_dtype == torch.bfloat16
+        assert initialize_host_weights is False
+        assert pin_host_memory is (False if host_pin is None else host_pin)
         events.append(('prepare', device))
         return candidate
 
-    with mock.patch.object(TunerMixin, 'prepare_model', return_value=model), \
+    with mock.patch.object(FSDPTurboTrainer, '_initialize_native_groups',
+                           side_effect=lambda: events.append(('warmup', ))), \
+            mock.patch.object(TunerMixin, 'prepare_model', return_value=model), \
             mock.patch('fsdp_turbo.models.deepseek.deepseek_v41.adapter.prepare_deepseek_v41_model_for_fsdp',
                        side_effect=prepare), \
+            mock.patch('fsdp_turbo.models.deepseek.deepseek_v41.adapter.materialize_deepseek_v41_model',
+                       side_effect=materialize), \
             mock.patch('swift.fsdpturbo.loading.create_meta_model', return_value=model), \
             mock.patch('swift.fsdpturbo.loading.load_rank0_model', side_effect=AssertionError('native rank0 load')), \
             mock.patch('swift.fsdpturbo.loading.materialize_sharded_model',
@@ -254,5 +281,6 @@ def test_native_trainer_loads_after_wrapping_without_rank0_source(offload, devic
             mock.patch('fsdp_turbo.fsdp_turbo.FSDPTurbo', side_effect=wrap):
         assert trainer.build_model().model is model
 
-    assert events == [('prepare', torch.device(device)), ('wrap', ), ('load', '/source/native', True, 4096)]
+    assert events == [('prepare', torch.device('cpu')), ('warmup', ), ('wrap', ), ('materialize', torch.device(device)),
+                      ('load', '/source/native', True, 65_536)]
     assert not model.config.use_cache

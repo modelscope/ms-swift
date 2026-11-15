@@ -1,7 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch.nn as nn
 from dataclasses import dataclass
-from typing import Dict, Iterable, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterable, Literal, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from peft import LoraConfig
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,32 @@ class FSDPTurboModelSpec:
     native_model_factory: Optional[str] = None
     eager_dispatcher: Optional[str] = None
     cp_implementation: Literal['ulysses', 'kv_allgather', 'kcp'] = 'ulysses'
+    lora_modules: Tuple[str, ...] = ()
+
+    def validate_lora_config(self, model: nn.Module, config: 'LoraConfig', *, tp_size: int) -> None:
+        """Reject adapters whose targets bypass forward or conflict with TP."""
+        from fsdp_turbo.utils.str_match import module_name_match
+        from peft import LoraConfig
+        from peft.tuners.tuners_utils import check_target_module_exists
+
+        if not isinstance(config, LoraConfig) or (config.target_parameters or config.modules_to_save or config.use_dora
+                                                  or config.lora_bias or config.bias != 'none'
+                                                  or config.init_lora_weights not in (True, 'gaussian')):
+            raise ValueError('FSDPTurbo requires vanilla linear PEFT LoRA, including when loading --adapters.')
+        selected = {name for name, _ in model.named_modules() if check_target_module_exists(config, name)}
+        if self.lora_modules:
+            allowed = {name for names in self.matching_modules(model, self.lora_modules).values() for name in names}
+        else:
+            allowed = {name for name, module in model.named_modules() if isinstance(module, nn.Linear)}
+        if not selected or not selected <= allowed:
+            hint = ('Native V4.1 LoRA requires explicit attention targets; use --target_regex '
+                    "'model\\.layers\\.\\d+\\.attn\\.(wq_a|wq_b|wkv|wo_b)'. "
+                    if self.lora_modules else 'FSDPTurbo LoRA supports ordinary linear modules. ')
+            raise ValueError(f'{hint}Unsupported targets: {sorted(selected - allowed)}')
+        if tp_size > 1 and any(
+                module_name_match(pattern, name) for name in selected
+                for pattern in self.tp_colwise_modules + self.tp_rowwise_modules):
+            raise ValueError('LoRA on TP-managed modules is not supported.')
 
     @staticmethod
     def matching_modules(model: nn.Module, patterns: Iterable[str]) -> Dict[str, Tuple[str, ...]]:
@@ -79,6 +108,8 @@ _MODEL_SPECS = {
         native_model_factory='fsdp_turbo.models.deepseek.deepseek_v41.adapter.build_deepseek_v41_model',
         eager_dispatcher='custom_native_eager_forward',
         cp_implementation='kv_allgather',
+        lora_modules=('model.layers.{*}.attn.wq_a', 'model.layers.{*}.attn.wq_b', 'model.layers.{*}.attn.wkv',
+                      'model.layers.{*}.attn.wo_b'),
     ),
     'qwen3_5_moe':
     FSDPTurboModelSpec(

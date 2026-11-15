@@ -52,11 +52,17 @@ class TestRank0Loading(unittest.TestCase):
             target_patterns='experts.down_proj$',
             operations=[MergeModulelist(dim=0)],
         )
+        # Transformers 5.22 uses model parameter names to decide whether
+        # quantized companions remain parameters or must be dequantized.
+        import inspect
+        options = {
+            'model': nn.Module()
+        } if 'model' in inspect.signature(quantizer.update_weight_conversions).parameters else {}
         with _fp8_checkpoint_conversion():
-            converters = quantizer.update_weight_conversions([conversion])
+            converters = quantizer.update_weight_conversions([conversion], **options)
         converter = next(
-            entry for entry in converters
-            if isinstance(entry, WeightConverter) and 'experts.down_proj' in entry.target_patterns)
+            entry for entry in converters if isinstance(entry, WeightConverter)
+            and 'experts.down_proj' in [pattern.removesuffix('$') for pattern in entry.target_patterns])
         converter.collected_tensors[converter.source_patterns[0]] = [
             torch.full((2, 16), 0x21, dtype=torch.int8),
         ]

@@ -4,7 +4,7 @@
 
 ## Source pair
 
-Install this Swift checkout and pin FSDPTurbo to [`932c72f5fe391f0d5b01c888ff92179c478372ba`](https://gitcode.com/hazeldxq/FSDPTurbo/commit/932c72f5fe391f0d5b01c888ff92179c478372ba), based on upstream `43feabd`. The compatibility changes contain optional-dependency import fixes, native FSDP import isolation, CUDA grouped-matmul fixes, parameter exclusions, and owner-local HF initial loading into EFSDP intermediate shards, Triton device-property queries, and TP-local Ulysses GQA heads. Native V4.1 uses the upstream BF16 builder and sharded loader; it does not require a fork-specific checkpoint decoder or `load_device` argument. Transformers 5.16 or newer is required by the paired backend.
+Install the paired FSDPTurbo at [`2d74804`](https://gitcode.com/hazeldxq/FSDPTurbo/commit/2d748047993b8701c1293afcb1898e4b71fc49f1). Swift uses its native shard materialization, frozen expert gradients and chunked context-parallel attention.
 
 ## Native DeepSeek V4.1
 
@@ -31,7 +31,7 @@ NPROC_PER_NODE=4 MASTER_PORT=29501 swift fsdpturbo sft \
 
 The CLI starts one torchrun launcher. Set device visibility in the caller's CUDA or CANN environment. `enable_npu_model_patch=false` must take effect before Swift model imports because this backend owns parallel wrapping.
 
-Swift calls the native builder, normalizes parameters to BF16 through `prepare_deepseek_v41_model_for_fsdp`, applies FSDPTurbo, then calls `model.from_pretrained(strict=True, engram_rows_per_chunk=4096)`. Parameter preparation uses CPU when CPU offload is enabled. Buffers retain their native dtypes; the head retains FP32 computation. Host Engram weights and active-row FP32 moments use the model's existing optimizer, while Swift supplies its decay/no-decay groups through the existing optimizer factory. This preserves zero and nonzero weight decay without adding an Engram optimizer argument.
+Swift prepares the native model on meta, applies EP/FSDP, allocates the local parameter shards on the offload or compute device, and loads the BF16 checkpoint with `strict=True`. Before allocating pinned Host Engram storage, it warms the multi-rank communication groups. The head computes in FP32 by default. Trainable Host Engram weights and their active-row FP32 moments use the model's existing optimizer and Swift's decay/no-decay parameter groups.
 
 ## Parallel interfaces
 
@@ -46,15 +46,21 @@ The independent meshes overlap. `WORLD_SIZE` must be divisible by `fsdp_size * t
 
 `auto` selects native KV-AllGather for V4.1 and Ulysses for the existing Qwen3.5 MoE plan. Native V4.1 CP delegates to `set_context_parallel_group` and model-owned loss, with no legacy attention/loss replacement. Its inputs are right-padded to CP/compression alignment, then token IDs, masks and global positions are split once; labels stay complete and unshifted. Text-only metadata takes this path even though HF metadata contains a vision tower.
 
-V4.1 KV-AllGather CP requires TP=Ulysses=KCP=1 and eager operators. With `cp_size > 1`, its existing block recomputation can be enabled using both checkpointing switches. Ordinary V4.1 shared-cache recomputation remains unsupported. V4.1 attention-head TP is not implemented upstream; the TP plan above covers the shared experts.
+V4.1 KV-AllGather CP requires TP=Ulysses=KCP=1 and eager operators. Block recomputation can be enabled using both checkpointing switches. CP=1 uses stateless recomputation so native shared attention caches are not retained between checkpoint passes. V4.1 attention-head TP is not implemented upstream; the TP plan above covers the shared experts.
 
 The registered HF model path keeps its loader-selected FP32 stability parameters. Those parameters are excluded individually from FSDP, remain on the accelerator with CPU offload, and have gradients averaged before the optimizer step. An unused local branch still participates in synchronization; globally unused parameters retain `grad=None`.
 
 ## Data and lifecycle
 
-The entry currently supports full causal-LM SFT, a map-style dataset, positive `max_steps`, GA1, AdamW and eager attention. V4.1 accepts text-only Swift batches; actual images and invalid text metadata fail explicitly. The previous V4 model plan is absent.
+The entry supports full causal-LM SFT and vanilla PEFT LoRA with map-style datasets, positive `max_steps`, AdamW and eager attention. Native V4.1 accepts text-only Swift batches; real image training is not validated. The previous V4 model plan is absent. Native LoRA accepts explicit attention targets such as `--target_regex 'model\.layers\.\d+\.attn\.(wq_a|wq_b|wkv|wo_b)'`; base weights remain frozen and adapter gradients are replicated and averaged before the optimizer update.
 
-`save_strategy=no` or `steps` is accepted. The HF model path uses the existing DCP save/resume lifecycle with unchanged topology, optimizer groups, data cursor and RNG. Native V4.1 `resume_from_checkpoint` and `save_only_model` remain rejected; model-only files are not a Host Engram resume checkpoint. Evaluation, LoRA, PP and packing are not implemented by this entry.
+Native V4.1 LoRA supports gradient accumulation with CPU parameter offload. Full SFT and non-native LoRA still require accumulation 1 when parameters are offloaded. Native Full SFT on Ascend additionally requires `pin_memory=true`; native LoRA can use unpinned parameter shards. `host_pin_memory` controls Host Engram separately and otherwise inherits `pin_memory`.
+
+Evaluation and saving accept `no`, `steps` or `epoch`. Evaluation weights by valid target tokens and excludes examples duplicated by distributed sampling. Native LoRA saves standard PEFT adapters. With `save_only_model=false`, it also saves optimizer, scheduler, per-rank RNG and consumed-sample state. Keep the dataset, topology, sequence configuration and trainable parameters fixed when resuming. Use `--adapters` for a model-only warm start. HF Full SFT retains its DCP save/resume lifecycle.
+
+Pipeline parallelism, packing, padding-free input, streaming, DoRA, LoRA+, `modules_to_save` and arbitrary Swift plugins remain unsupported. Explicit rejection at startup does not mean these features passed usability acceptance.
+
+For long native sequences, `model_kwargs` accepts `chunk_loss`, `chunk_loss_size`, `head_compute_dtype`, `attention_query_chunk_size` and `index_query_chunk_size`. Loss chunks count total tokens. The attention and indexer settings bound their query windows. Set `offload_activations=true` to keep saved recomputation inputs on the host.
 
 For HF models, only rank zero loads original CPU weights; other ranks build on meta and load owner-local shards through DCP. Native V4.1 directly uses its native sharded initial-load API. Its raw FP8/FP4 checkpoint storage must be decoded separately before using this BF16 path.
 

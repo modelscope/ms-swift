@@ -7,8 +7,30 @@ import torch.distributed as dist
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
+
+
+def initialize_native_lora(adapter_model: torch.nn.Module, adapters: list[str]) -> None:
+    """Initialize or reload materialized native adapters after base checkpoint loading.
+
+    PEFT injection into a meta backbone cannot retain initialized tensor values.
+    Only adapter tensors are touched here; native base/Host weights stay intact.
+    """
+    from peft.tuners.lora.layer import LoraLayer
+    from peft.utils.save_and_load import load_peft_weights, set_peft_model_state_dict
+
+    adapter_name = next(iter(adapter_model.peft_config))
+    if adapters:
+        weights = load_peft_weights(adapters[0], device='cpu')
+        result = set_peft_model_state_dict(adapter_model, weights, adapter_name=adapter_name)
+        missing = [key for key in result.missing_keys if '.lora_' in key]
+        if missing or result.unexpected_keys:
+            raise ValueError(f'Incomplete native LoRA checkpoint: {missing}, {result.unexpected_keys}')
+    else:
+        config = adapter_model.peft_config[adapter_name]
+        for module in adapter_model.modules():
+            if isinstance(module, LoraLayer):
+                module.reset_lora_parameters(adapter_name, init_lora_weights=config.init_lora_weights)
 
 
 @contextmanager
@@ -50,20 +72,23 @@ def _fp8_checkpoint_conversion(dtype=None):
         result = original_dequantize(self, quantized, scales)
         return result.to(dtype) if dtype is not None else result
 
-    def update(self, conversions):
+    def update(self, conversions, *args, **kwargs):
         fixed = []
         for conversion in conversions:
-            if isinstance(conversion, WeightConverter) and any(
-                    source.endswith('.weight$') for source in conversion.source_patterns):
+            if isinstance(conversion, WeightConverter) and (
+                    any(source.endswith('.weight$') for source in conversion.source_patterns)
+                    or any(target.endswith('$') for target in conversion._original_target_patterns)):
                 replacement = WeightConverter(
                     source_patterns=[source.removesuffix('$') for source in conversion.source_patterns],
                     target_patterns=[target.removesuffix('$') for target in conversion._original_target_patterns],
                     operations=conversion.operations,
                 )
-                replacement.scope_prefix = conversion.scope_prefix
+                # scope_prefix was introduced after Transformers 5.8.
+                if hasattr(conversion, 'scope_prefix'):
+                    replacement.scope_prefix = conversion.scope_prefix
                 conversion = replacement
             fixed.append(conversion)
-        return original(self, fixed)
+        return original(self, fixed, *args, **kwargs)
 
     with patch.object(FineGrainedFP8HfQuantizer, 'update_weight_conversions', update), \
             patch.object(Fp8Dequantize, '_dequantize_one', dequantize):
@@ -141,20 +166,43 @@ def _native_factory(args):
     alignment = _native_cp_alignment(model_args, getattr(args, 'cp_size', 1))
     cache_length = (args.max_length + alignment - 1) // alignment * alignment
     model_args = replace(
-        model_args, max_seq_len=cache_length, max_batch_size=args.training_args.per_device_train_batch_size)
-    return partial(factory, model_args=model_args, tokenizer=PreTrainedTokenizerFast.from_pretrained(Path(args.model)))
+        model_args,
+        max_seq_len=cache_length,
+        max_batch_size=max(
+            args.training_args.per_device_train_batch_size,
+            getattr(args.training_args, 'per_device_eval_batch_size', 1)
+            if getattr(args.training_args, 'do_eval', False) else 1))
+    options = {key: value for key, value in model_kwargs.items() if key != 'config_path'}
+    # Keep architecture and tokenizer selection owned by the checked loader;
+    # expose the native builder's memory and operator options without silently
+    # discarding Swift --model_kwargs (notably chunk_loss at long sequence).
+    import inspect
+    allowed = set(
+        inspect.signature(factory).parameters) - {'model_args', 'tokenizer', 'config_path', 'model_name_or_path'}
+    unknown = set(options) - allowed
+    if unknown:
+        raise ValueError(f'Unsupported native V4.1 model_kwargs: {sorted(unknown)}')
+    return partial(
+        factory, model_args=model_args, tokenizer=PreTrainedTokenizerFast.from_pretrained(Path(args.model)), **options)
 
 
 def create_meta_model(args):
     native = _native_factory(args)
     if native is not None:
+        from transformers import PretrainedConfig
+
         model = native()
         config = json.loads((Path(args.model) / 'config.json').read_text())
-        model.config = SimpleNamespace(**config)
-        if config.get('text_config'):
-            model.config.text_config = SimpleNamespace(**config['text_config'])
-        if config.get('vision_config'):
-            model.config.vision_config = SimpleNamespace(**config['vision_config'])
+        model.config = PretrainedConfig()
+        model.config.update(config)
+        model.config.dtype = args.torch_dtype
+        for name in ('text_config', 'vision_config'):
+            if config.get(name):
+                nested = PretrainedConfig()
+                nested.update(config[name])
+                nested.dtype = args.torch_dtype
+                setattr(model.config, name, nested)
+        model.name_or_path = args.model
         model.model.head.weight.data = model.model.head.weight.data.to(torch.bfloat16)
         return model
     model, _ = args.get_model_processor(device_map='cpu', return_dummy_model=True)

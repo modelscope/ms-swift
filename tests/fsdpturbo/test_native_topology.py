@@ -39,15 +39,26 @@ def test_v41_cp_uses_native_kv_allgather_and_model_owned_loss():
     assert config.memory.recompute_plan == ['model.layers.{*}']
 
 
-def test_native_cp_recompute_reaches_existing_backend_configuration():
+@pytest.mark.parametrize('cp_size', [1, 2])
+def test_native_cp_recompute_reaches_existing_backend_configuration(cp_size):
     from swift.fsdpturbo.trainer import FSDPTurboTrainer
 
-    args = make_args(2)
+    args = make_args(cp_size)
     args.model_type = 'deepseek_v41'
     args.router_aux_loss_coef = 0
     with mock.patch('fsdp_turbo.training.trainer.BaseTrainer.__init__', autospec=True) as initialize:
         FSDPTurboTrainer(args, None, None, None)
-    assert initialize.call_args.kwargs['config'].distributed.kv_allgather_parallel_size == 2
+    assert initialize.call_args.kwargs['config'].distributed.kv_allgather_parallel_size == cp_size
+
+
+def test_activation_offload_reuses_backend_plan():
+    from swift.fsdpturbo.trainer import build_fsdpturbo_config
+
+    args = make_args(1)
+    args.offload_activations = True
+    config = build_fsdpturbo_config(args, get_model_spec('deepseek_v41'))
+    assert config.memory.swap_activation
+    assert config.memory.swap_activation_plan.apply_modules == ['model.layers.{*}']
 
 
 def test_cp_padding_uses_compression_alignment_and_keeps_labels_complete():

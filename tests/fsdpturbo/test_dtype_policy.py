@@ -27,6 +27,7 @@ class TestFSDPTurboDtypePolicy(unittest.TestCase):
         model = ToyModel()
         trainer = object.__new__(FSDPTurboTrainer)
         trainer.args = SimpleNamespace(
+            tuner_type='full',
             get_model_processor=mock.Mock(return_value=(model, None)),
             tp_size=1,
             ep_size=1,

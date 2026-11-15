@@ -180,13 +180,14 @@ class TestFSDPTurboArguments(unittest.TestCase):
         args = self._bare_sft_args(resume_from_checkpoint='/checkpoint', save_only_model=True)
         args._validate_model_scope()
 
-    def test_unvalidated_checkpoint_and_accumulation_paths_are_rejected(self):
+    def test_unvalidated_checkpoint_and_offloaded_accumulation_paths_are_rejected(self):
         cases = {
             'model_only_resume': {
                 'resume_only_model': True
             },
             'gradient_accumulation': {
-                'gradient_accumulation_steps': 2
+                'gradient_accumulation_steps': 2,
+                'offload_params': True
             },
         }
         for name, overrides in cases.items():

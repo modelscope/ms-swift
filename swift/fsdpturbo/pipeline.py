@@ -30,12 +30,10 @@ class FSDPTurboSft(SwiftSft):
 
     def run(self):
         train_dataset, val_dataset = self._prepare_dataset()
-        if val_dataset is not None:
-            logger.warning('FSDPTurbo evaluation is not implemented yet; the validation split will not be used.')
         self.args.save_args()
         self.model = None
         self.template.model = None
-        trainer = FSDPTurboTrainer(self.args, self.template, self.processor, train_dataset)
+        trainer = FSDPTurboTrainer(self.args, self.template, self.processor, train_dataset, val_dataset)
         try:
             trainer.setup()
             trainer.train()
