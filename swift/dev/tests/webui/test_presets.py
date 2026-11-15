@@ -2,16 +2,17 @@
 """Frontend preset contracts through the REAL presets.ts (S20 20h + S20-26).
 
 The presets are transpiled by esbuild and dumped as v4 declarations by
-``_presets_dump.mjs`` (replicating the editor's serializeGraph), then fed to
-the REAL python graph validator -- the same wire the vite server sends. The
-dump is skipped (not failed) where the webui toolchain is absent."""
+``_presets_dump.mjs`` (replicating the editor's serializeGraph), carried through the product's
+own one-shot upgrade service, then fed to the REAL python graph validator -- the same wire the
+vite server sends. The dump is skipped (not failed) where the webui toolchain is absent."""
 import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from swift.dev.webui.graph import Graph
+from swift.dev.webui import upgrade
+from swift.dev.webui.graph import Graph, GraphValidationError
 from swift.dev.webui.placement import plan_device_groups
 from swift.dev.webui.registry import REGISTRY
 
@@ -37,11 +38,36 @@ def declarations():
 
 @pytest.fixture(scope='module')
 def built(declarations):
-    return {d['workflow_id']: Graph.from_declaration(d) for d in declarations}
+    """The presets as graphs of the current registry version, via the product's upgrade service.
+
+    The dump replicates an editor that serializes v4, while ``Graph.from_declaration`` only runs
+    the current version, so every preset takes the same explicit migration a real saved canvas
+    takes (``POST /api/workflow/upgrade``). A preset whose migration still has open choices, or
+    whose upgraded candidate fails validation, is a broken preset: fail here rather than skip it.
+    """
+    graphs = {}
+    for declaration in declarations:
+        result = upgrade.run({'graph': declaration})
+        assert 'error' not in result, f"{declaration['workflow_id']}: {result.get('error')}"
+        assert result['can_confirm'], (f"{declaration['workflow_id']} cannot be upgraded "
+                                       f"unattended: choices={result['choices']} "
+                                       f"validation_error={result['validation_error']}")
+        graphs[declaration['workflow_id']] = Graph.from_declaration(result['candidate'])
+    return graphs
+
+
+def test_a_v4_declaration_is_refused_until_it_is_explicitly_upgraded(declarations):
+    """Control for the fixture above: the version guard is what makes the upgrade mandatory.
+
+    Without it the fixture could pass by handing a stale declaration straight to the validator,
+    and a canvas saved by an older editor would be run as if it meant the current thing.
+    """
+    with pytest.raises(GraphValidationError, match='version'):
+        Graph.from_declaration(declarations[0])
 
 
 class TestPresetContracts:
-    """Every preset builds as a v4 graph and keeps the core wiring."""
+    """Every preset upgrades to the current registry version and keeps the core wiring."""
 
     def test_thirteen_presets_dump(self, declarations):
         assert len(declarations) == 13
@@ -87,7 +113,10 @@ class TestPresetContracts:
 
     def test_every_preset_plans_disjoint_groups(self, declarations):  # S20-26
         for declaration in declarations:
-            stocked = json.loads(json.dumps(declaration))
+            # Upgrade first, then stock the candidate: the migration is allowed to reshape nodes,
+            # so fields injected afterwards are the ones placement is guaranteed to see.
+            upgraded = upgrade.run({'graph': declaration})['candidate']
+            stocked = json.loads(json.dumps(upgraded))
             stocked['resource'] = {'mode': 'local', 'cards': list(range(16))}
             for node in stocked['nodes']:
                 if node['type'] in ('model', 'sampler'):

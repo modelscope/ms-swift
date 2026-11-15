@@ -3,11 +3,13 @@
 from __future__ import annotations
 import math
 import os
+import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from swift.dev.recipe.batching import balance_update
 from swift.dev.recipe.ppo.assembly import Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests
 from swift.dev.recipe.utils import (
+    RolloutStepState,
     StepState,
     build_save_knobs,
     initialize_rl_devices,
@@ -118,7 +120,7 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
 
 
 def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
-                rollout_config: 'RolloutConfig', state: StepState, reward_metric: Any, *,
+                rollout_config: 'RolloutConfig', state: RolloutStepState, reward_metric: Any, *,
                 train_batch_size: int, ema_manager: Any, save: Callable[[str], Any],
                 versions_cell: List[List[int]]) -> None:
     """One loop for every placement: take a scored batch, lift it through GAE, train both models.
@@ -156,10 +158,18 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
     try:
         # the initial publication: a resumed policy differs from the weights the sampler loaded
         sync()
+        # The window opens before the pull, not after it: iterating the driver blocks until the
+        # sampler has a batch, so that wait is generation time and belongs to the iteration that
+        # consumes it. The initial publication deliberately stays outside the first window.
+        state.begin_rollout_iteration()
         for trajs, batch_facts in driver:
             if cluster.colocate:
                 reclaim()
             versions_cell[:] = batch_facts.get('version_spans') or []
+            # The delivery facts are sample-based (the driver never opens its own rows), which is what
+            # this call wants: lengths / truncation / turns for the whole delivered batch, so
+            # throughput is measured against everything the sampler generated.
+            state.observe_rollout_batch(batch_facts)
             # the nonempty-response rule runs in the worker on the real rows; the kept rows'
             # summary replaces the batch facts (its metrics describe exactly what trains), and its
             # kept ``indices`` slice the row-aligned score column to the rows that train.
@@ -167,6 +177,10 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
                 trajs, where=lambda traj: bool(traj.get('response_token_ids')))
             if not trajs:
                 raise RuntimeError('the pulled batch has no response tokens to train on.')
+            # Only the kept rows train, so only they count as sample visits. The indices are positions
+            # in the delivered batch, which is what keeps a row dropped here out of the trained total
+            # while it still counts toward the generated one above.
+            state.record_rollout_training(kept_facts['indices'])
             scores = [batch_facts['scores'][index] for index in kept_facts['indices']]
             lengths = [p + r for p, r in zip(kept_facts.get('prompt_lengths') or (),
                                             kept_facts.get('response_lengths') or ())]
@@ -193,10 +207,16 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
                 cluster, state, rl_config, trajs, lengths,
                 train_batch_size=train_batch_size, temperature=temperature, ema_manager=ema_manager, save=save)
             batches += 1
-            if state.reached_max() or state.should_stop():
-                break
-            if batches % rollout_config.parameter_sync_step == 0:
+            finished = state.reached_max() or state.should_stop()
+            publishes = batches % rollout_config.parameter_sync_step == 0 and not finished
+            if publishes:
+                # Synced inside the window it serves, so the publication's span and its count land on
+                # the iteration that paid for them instead of falling between two windows.
                 sync()
+            state.fold_iteration_metrics(publications=int(publishes), terminal=finished)
+            if finished:
+                break
+            state.begin_rollout_iteration()
     finally:
         # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
         driver.close()
@@ -264,7 +284,7 @@ def _ppo_extra_metrics(cluster, reward_metric, _versions_cell) -> Dict[str, Any]
     return extra
 
 
-def run_ppo(model_config: 'ModelConfig',  # noqa: C901 template_config: 'TemplateConfig',
+def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
             dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
             distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
             rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
@@ -356,7 +376,7 @@ def run_ppo(model_config: 'ModelConfig',  # noqa: C901 template_config: 'Templat
         """The critic's namespaced metrics + the batch's reward aggregate and version spans."""
         return _ppo_extra_metrics(cluster, reward_metric, _versions_cell)
 
-    state = StepState(
+    state = RolloutStepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
         dp_balance=train_config.dp_balance,
@@ -368,6 +388,19 @@ def run_ppo(model_config: 'ModelConfig',  # noqa: C901 template_config: 'Templat
         manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
         empty_cache_steps=train_config.torch_empty_cache_steps,
         extra_metrics_fn=_extra_metrics, log_formatter=_ppo_log_line)
+    # The iteration-level accounting layer (per-update ``[perf]`` line, phase timings, rollout /
+    # trained sample totals) is shared rollout infrastructure, not a GRPO extra: without this setup
+    # the state has no run metric and every observe / fold call in the loop is a silent no-op, which
+    # is how a PPO run used to finish reporting zero throughput and no segmented timing at all.
+    state.setup_rollout_metrics(
+        template.performance_device_groups,
+        mode='colocate' if cluster.colocate else rollout_config.resource_mode,
+        parameter_sync_step=rollout_config.parameter_sync_step,
+        num_generations=rl_config.num_generations,
+        attributes={
+            'adv_pipeline_scope': 'critic_and_reference_forwards_and_gae_resolution',
+            'unavailable_metrics': ['perf/mfu/actor'],
+        }) if not remote_run else None
 
     save_knobs = build_save_knobs(
         checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir)
@@ -442,11 +475,21 @@ def run_ppo(model_config: 'ModelConfig',  # noqa: C901 template_config: 'Templat
                         train_batch_size=train_batch_size, ema_manager=ema_manager, save=save,
                         versions_cell=_versions_cell)
     finally:
-        Perf.shutdown()
-        cluster.rollout.close()
-        # A served sampler's lifecycle is the server session's, not this client's.
-        cluster.sampler.shutdown() if not remote_run else None
-        state.tracker.close()
+        try:
+            # The terminal run totals (rollout / trained samples, throughput, wall time) go through the
+            # same reporter as the per-iteration records. Without this call the run summary reports zero
+            # for every throughput field even though the loop folded each iteration, and a run that died
+            # mid-loop would leave no totals at all -- so it runs first and cannot be skipped by, nor
+            # skip, the teardown below it.
+            state.finish_rollout_metrics(
+                stream_stats=driver.stats(),
+                status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None
+        finally:
+            Perf.shutdown()
+            cluster.rollout.close()
+            # A served sampler's lifecycle is the server session's, not this client's.
+            cluster.sampler.shutdown() if not remote_run else None
+            state.tracker.close()
     state.handler.on_train_end()
     if _save_final:
         # The final checkpoint is synchronous on BOTH models; its args.json is written by

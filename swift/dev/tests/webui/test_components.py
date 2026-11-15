@@ -77,17 +77,33 @@ class TestStageContracts:
         scorers = [('math', lambda rs: [1.0] * len(rs)),
                    ('format', lambda rs: [0.5] * len(rs))]
         stage = ScoreStage('sc', {})
-        out = stage.invoke({'scorers': scorers, 'samples': rows}, [])
-        assert out['reward']['values'] == [[1.0, 0.5]] * 3
-        assert out['reward']['scorer_ids'] == ['math', 'format']
+        out = stage.invoke({'scorers': scorers, 'traj': rows}, [])
+        # v5: each wired scorer contributes one named column written back onto copies of the rows
+        # under rewards.orm, and the metric port carries one mean per column. There is no reward
+        # channel any more -- the columns ride the trajectory.
+        assert [row['rewards']['orm'] for row in out['traj']] == [{'math': 1.0, 'format': 0.5}] * 3
+        assert out['metric']['values'] == {'math': 1.0, 'format': 0.5}
+        assert out['metric']['invalid_count'] == 0
+        assert 'rewards' not in rows[0], 'the incoming rows must not be mutated in place'
 
     def test_short_scorer_column_fails_loudly(self):  # S20-57b
         rows = [{'messages': []} for _ in range(3)]
         stage = ScoreStage('sc', {})
         bad = [('math', lambda rs: [1.0, 2.0])]
         with pytest.raises(ComponentError) as excinfo:
-            stage.invoke({'scorers': bad, 'samples': rows}, [])
+            stage.invoke({'scorers': bad, 'traj': rows}, [])
         assert 'scores every row' in str(excinfo.value)
+
+    def test_unwired_traj_fails_loudly(self):  # S20-57c
+        # Control for S20-57b. With no rows the per-slot "already scored" check is vacuously true,
+        # so every scorer is skipped and the stage used to hand back a clean empty batch --
+        # indistinguishable downstream from a batch that was legitimately drained.
+        stage = ScoreStage('sc', {})
+        scorer = [('math', lambda rs: [1.0] * len(rs))]
+        for inputs in ({'scorers': scorer}, {'scorers': scorer, 'traj': []}):
+            with pytest.raises(ComponentError) as excinfo:
+                stage.invoke(inputs, [])
+            assert 'wired traj batch' in str(excinfo.value)
 
     def test_train_step_without_a_wired_loss_fails(self):  # S20-58
         train = TrainStepStage('tr', {'tokenizer': MODEL_ID})

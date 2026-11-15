@@ -300,7 +300,7 @@ def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, sa
     return round_save_due
 
 
-def run_rft(model_config: 'ModelConfig',  # noqa: C901 template_config: 'TemplateConfig',
+def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
             dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
             distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
             rollout_config: 'RolloutConfig', rl_config: 'RLConfig',

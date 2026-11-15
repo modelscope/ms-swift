@@ -623,9 +623,9 @@ class StepState:
         record['loss'] = loss
         record.update(_mtp_metrics(self.model))
         if self._extra_metrics_fn is not None:
-            record.update(self._extra_metrics_fn())
+            record.update(normalize_metric_values(self._extra_metrics_fn()))
         if extra_metrics is not None:
-            record.update(extra_metrics)
+            record.update(normalize_metric_values(extra_metrics))
         if should_log:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
@@ -756,7 +756,8 @@ class RolloutStepState(StepState):
             # end to end, or the window would select the wrong spans).
             self._iteration_started_ns = default_recorder.now_ns()
             self._iteration_facts = {'lengths': [], 'truncated': [], 'turns': [],
-                                     'trained_indices': set(), 'sample_visits': 0}
+                                     'trained_indices': set(), 'sample_visits': 0,
+                                     'policy_versions': []}
             self._memory_rows = None
 
     def observe_rollout_batch(self, summary: Dict[str, Any]) -> None:
@@ -773,6 +774,14 @@ class RolloutStepState(StepState):
                                      summary.get('response_lengths') or ()))
         batch['truncated'] = [bool(flag) for flag in (summary.get('truncated') or ())]
         batch['turns'] = list(summary.get('turns') or ())
+        # The admission version of every sample in the batch, which both summary producers carry
+        # (``streaming_driver._sample_facts`` and ``processor.trajectory.batch_summary``). Kept as the
+        # whole delivered batch rather than narrowed to the rows ``record_rollout_training`` later
+        # keeps: the anchor is stamped as a minimum, and a minimum over a superset is never larger
+        # than over the kept subset, so this stays on the conservative side without needing an
+        # index-to-version mapping the summary does not provide.
+        batch['policy_versions'] = [int(version) for version in (summary.get('policy_versions') or ())
+                                    if version is not None]
         # When the batch arrived -- the 'gen' fallback window end when no gen span exists.
         batch['received_ns'] = default_recorder.now_ns()
 
@@ -872,6 +881,13 @@ class RolloutStepState(StepState):
             MetricRecord(
                 stage='rollout',
                 optimizer_step=self.global_step,
+                # The version anchor of the batch this iteration actually trained: the minimum over
+                # its samples, which is the conservative reading ("every row is at least this
+                # stale") and the one the reporter folds into the run summary's per-context
+                # ``policy_version``. Reporting it only as a metric value -- which is what the step
+                # log does -- leaves that summary field permanently None, so a completed run cannot
+                # say which policy version it ended on even though every step logged one.
+                policy_version=(min(batch['policy_versions']) if batch['policy_versions'] else None),
                 values=values,
                 attributes={
                     'scope': 'iteration',
@@ -1946,6 +1962,24 @@ def coerce_metric_scalars(metrics: Dict[str, Any]) -> Dict[str, float]:
         number = _coerce_scalar(value)
         if number is not None:
             result[key] = number
+    return result
+
+
+def normalize_metric_values(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """The same numeric normalization as :func:`coerce_metric_scalars`, keeping non-numeric values.
+
+    A recipe's extra metrics are a mixed dict: PPO's critic objective arrives as LossMetric's display
+    string ``'0.89551'`` beside genuinely textual telemetry such as ``speed='0.36 iters/s'``. Dropping
+    the non-numeric half -- which is right for a component's own metric dict, where such an entry is
+    noise -- would silently lose that telemetry, so anything that is not a pure number passes through
+    untouched. Without this the persisted ``metrics.jsonl`` carries the SAME conceptual quantity as a
+    float under one key (the policy's ``loss``, re-pinned by the loop) and as a string under another
+    (``value_loss``), which breaks any consumer that reads the file as a numeric table.
+    """
+    result: Dict[str, Any] = {}
+    for key, value in metrics.items():
+        number = _coerce_scalar(value)
+        result[key] = value if number is None else number
     return result
 
 

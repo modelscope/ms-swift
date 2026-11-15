@@ -276,3 +276,83 @@ def test_default_worker_recorder_reset_does_not_erase_iteration_observations(tmp
     state.fold_iteration_metrics()
     assert iteration_rows(tmp_path, state)[0]["data"]["timing_s/gen"] == 2
     state.tracker.close()
+
+
+def raw_rollout_rows(path, state):
+    """Raw ``stage='rollout'`` rows, keeping the record-level fields ``iteration_rows`` drops.
+
+    ``policy_version`` is a field of the record rather than an entry of ``values`` or ``attributes``,
+    and the reporter serializes it at the top level, so the summary-folding contract can only be
+    checked against the raw line.
+    """
+    state.tracker._metric_reporter.flush()
+    rows = [json.loads(line) for line in (path / "metrics_raw.jsonl").read_text().splitlines()]
+    return [row for row in rows if row["stage"] == "rollout"]
+
+
+def folded_policy_version(tmp_path, state):
+    """The version the run summary reports for this context: the max over the iteration records."""
+    state.finish_rollout_metrics()
+    state.tracker.close()
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    versions = [context.get("policy_version") for context in (summary.get("per_context") or {}).values()]
+    return versions
+
+
+@pytest.mark.parametrize(
+    "versions, expected",
+    [
+        ([9, 3, 7], 3),  # unsorted: the anchor is the minimum, not the first, last or largest
+        ([None, 5, None, 2], 2),  # a producer that could not resolve some rows must not poison it
+        (["4", "2"], 2),  # versions arriving as JSON strings still order numerically, not lexically
+    ],
+)
+def test_iteration_record_stamps_the_conservative_batch_version(tmp_path, versions, expected):
+    state = observed_state(tmp_path)
+    state.observe_rollout_batch({'prompt_lengths': [3, 4], 'response_lengths': [2, 3],
+                                 'policy_versions': versions})
+    state.global_step = 1
+    state.record_rollout_training([0, 1])
+    state.fold_iteration_metrics(publications=1)
+    assert raw_rollout_rows(tmp_path, state)[0]["policy_version"] == expected
+    state.tracker.close()
+
+
+@pytest.mark.parametrize("summary", [{'prompt_lengths': [3], 'response_lengths': [2]},
+                                     {'prompt_lengths': [3], 'response_lengths': [2],
+                                      'policy_versions': []}])
+def test_iteration_record_leaves_the_version_unset_when_the_batch_carries_none(tmp_path, summary):
+    """An uninstrumented producer stays visibly uninstrumented instead of reporting version 0.
+
+    A missing key and an empty list are the two shapes a summary without versions takes; neither may
+    raise (``min()`` of an empty sequence does) and neither may stamp 0, which would read as "this
+    batch came from the initial policy" -- a claim nothing observed.
+    """
+    state = observed_state(tmp_path)
+    state.observe_rollout_batch(summary)
+    state.global_step = 1
+    state.record_rollout_training([0])
+    state.fold_iteration_metrics(publications=1)
+    assert raw_rollout_rows(tmp_path, state)[0]["policy_version"] is None
+    state.tracker.close()
+
+
+def test_each_iteration_stamps_its_own_version_and_the_summary_folds_the_latest(tmp_path):
+    """Two iterations, two versions: each record carries its own, the run summary carries the max.
+
+    This is the contract that was broken end to end. The version was only ever written into the
+    step-log value channel, so the record field stayed None and the reporter -- which folds
+    ``record.policy_version`` -- had nothing to fold, leaving a completed run unable to say which
+    policy version it ended on while every step logged one.
+    """
+    state = observed_state(tmp_path)
+    for step, version in [(1, 3), (2, 7)]:
+        if step > 1:
+            state.begin_rollout_iteration()
+        state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2],
+                                     'policy_versions': [version]})
+        state.global_step = step
+        state.record_rollout_training([0])
+        state.fold_iteration_metrics(publications=1)
+    assert [row["policy_version"] for row in raw_rollout_rows(tmp_path, state)] == [3, 7]
+    assert folded_policy_version(tmp_path, state) == [7]

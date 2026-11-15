@@ -215,7 +215,10 @@ def initialize_cluster(
     # the trainer's sharding), so the model build below swaps to the client handle and the
     # sampler / weight-sync / rollout take their remote object sources.
     remote_run = distributed_config.mode == 'remote'
-    sp_mesh = None if remote_run else (build_dp_mesh(distributed_config, sp) if sp > 1 else None)
+    # build_dp_mesh is the only seam that reads and validates parallel_spec on the local path, so
+    # it must not be gated behind SP>1; ray keeps the gate (see its docstring) so no ray chain moves.
+    sp_mesh = (None if remote_run or (distributed_config.mode == 'ray' and sp <= 1)
+               else build_dp_mesh(distributed_config, sp))
     # Refuse the engine/training combinations a quantized refit cannot serve
     # (DeepSeek-V4 MXFP4 experts): cheaper now than after the engine is built.
     from swift.dev.weight_sync import check_quantized_weight_sync
