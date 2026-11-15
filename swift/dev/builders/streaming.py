@@ -84,7 +84,27 @@ def build_rollout(sampler: Any,
 
     from .sandbox import build_tools
 
+    harness = getattr(rollout_config, 'harness', None)
+    if harness:
+        # Fail loudly before anything is built: the agent program owns each episode's tools, so
+        # any tool plugin beside the env would be built here and silently dropped below.
+        tool_names = [name for name in (getattr(rollout_config, 'tools', None) or [])
+                      if name != 'sandbox']
+        if tool_names:
+            raise ValueError(
+                f'--harness {harness!r} owns each episode\'s tools; --tools {tool_names} would be '
+                "silently ignored. Drop them ('sandbox' may stay: the env survives, the agent "
+                'program runs inside the episode\'s session).')
     env, tool_manager = build_tools(rollout_config, env_group=(ENV_GROUP if remote else None), inflight=inflight)
+    agent = None
+    if harness:
+        # An external agent program runs each episode and owns its tools and its loop, so no
+        # tool manager rides along (the rollout's own check enforces this); the env stays --
+        # the program runs inside the episode's session.
+        from swift.dev.utils.plugin import PluginRegistry
+
+        agent = PluginRegistry.resolve('harness', harness, config=rollout_config).build()
+        tool_manager = None
     placement: Dict[str, Any] = {}
     if remote:
         placement['remote_group'] = ROLLOUT_GROUP
@@ -98,6 +118,8 @@ def build_rollout(sampler: Any,
         max_trajectory_tokens=getattr(rollout_config, 'max_trajectory_tokens', None),
         env=env,
         tool_manager=tool_manager,
+        harness=agent,
+        segment_policy=getattr(rollout_config, 'segment_policy', 'drop'),
         **kwargs,
         **placement)
 

@@ -384,6 +384,7 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
     _check_chord(cfg)
     _check_router_replay(cfg)
     _check_sampling_replay(cfg, rollout_config)
+    _check_segments(cfg, rollout_config, reward_config)
     _check_prm(cfg, reward_config)
     _check_self_distillation(cfg, train_config, reward_config)
     _check_distillation(cfg, model_config)
@@ -1030,6 +1031,42 @@ def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutCon
                          'are trainable but were not drawn from the sampled policy, so they have no sampling '
                          'mask to replay against (GRPOLoss rejects the resulting loss_mask != trainable). Set '
                          'max_turns=None, or disable enable_sampling_replay.')
+
+
+def _check_segments(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'],
+                    reward_config: Optional['RewardConfig'] = None) -> None:
+    """Reject collected-segment combinations the loop cannot honour (no silently dead knob).
+
+    ``segment_policy='collect'`` delivers one episode as several training rows; the PRM segment
+    accounting is episode-level and is not re-mapped onto those rows, and the discount only has
+    rows to act on under collect. The uniform-broadcast warning notes the sequence-mean loss
+    default weights a multi-row episode by its row count (CompactionRL's token-level ablation).
+    """
+    if rollout_config is None:
+        return
+    collecting = rollout_config.segment_policy == 'collect'
+    if collecting and reward_config is not None and reward_config.prm:
+        raise ValueError(
+            "segment_policy='collect' does not accept --prm: the PRM segment accounting is episode-level "
+            'and is not mapped onto a compacted episode\'s several rows. Drop --prm, or keep the default '
+            "segment_policy='drop'.")
+    if getattr(cfg, 'segment_discount', 1.0) != 1.0 and not collecting:
+        raise ValueError(
+            f'segment_discount={cfg.segment_discount} discounts the rows a compacted episode delivers, but '
+            "segment_policy is 'drop': every episode is one row and there is nothing to discount. Pass "
+            "--segment_policy collect, or leave segment_discount at 1.0.")
+    if collecting and getattr(cfg, 'advantage_estimator', 'grpo') == 'gae':
+        raise ValueError(
+            "segment_policy='collect' feeds the scalar advantage family (the episode's advantage is "
+            'computed once and broadcast onto its rows); the GAE token-level path has no episode fold. '
+            'Pick a GRPO-family estimator, or drop.')
+    if collecting:
+        from swift.dev.utils import get_logger
+
+        get_logger().warning(
+            "segment_policy='collect' trains every compacted segment; with the default sequence-mean loss a "
+            'multi-row episode weighs by its row count -- consider a token-level normalization '
+            "(loss_type='bnpo', token_mean_scope='global') as CompactionRL's ablation does.")
 
 
 def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:

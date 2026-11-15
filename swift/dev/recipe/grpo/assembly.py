@@ -137,6 +137,7 @@ def build_advantage(rl_config: "RLConfig", reward_config: "RewardConfig", *, use
         sdar_loss_coef=float(rl_config.sdar_loss_coef),
         rollout_importance_sampling_mode=bool(rl_config.rollout_importance_sampling_mode),
         log_rollout_offpolicy_metrics=bool(rl_config.log_rollout_offpolicy_metrics),
+        segment_discount=float(rl_config.segment_discount),
     )
     if name == 'gpg':
         kwargs['f_norm'] = float(rl_config.f_norm)
