@@ -2,6 +2,7 @@
 # RFT's visible training main: five segments, then the rejection-sampling round loop (one driver per round).
 from __future__ import annotations
 import os
+import sys
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import json
@@ -470,6 +471,9 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         # sampler's lifecycle is the server session's, not this client's.
         cluster.rollout.close()
         cluster.sampler.shutdown() if not remote_run else None
+        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+        # record, and close() is what writes the summary.
+        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json was written at initialize_rl_devices.

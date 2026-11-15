@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 from itertools import count
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
@@ -267,6 +268,9 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         cluster.rollout.close()
         # A served sampler's lifecycle is the server session's, not this client's.
         cluster.sampler.shutdown() if not remote_run else None
+        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+        # record, and close() is what writes the summary.
+        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.

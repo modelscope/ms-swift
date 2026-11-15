@@ -706,6 +706,37 @@ class StepState:
         control.should_evaluate = False
         control.should_log = False
 
+    def finish_metrics(self, *, status: str = 'completed') -> None:
+        """Emit the terminal run record, which is what takes the persisted summary out of 'running'.
+
+        The reducer advances its run status only on a ``stage='run'`` record
+        (``twinkle/metric/reporting.py``: ``if record.stage == 'run': self.run_status = record.status``)
+        and the reporter writes ``summary.json`` from that status when it closes. The rollout family
+        emits such a record from :meth:`RolloutStepState.finish_rollout_metrics`; the offline family
+        closed the tracker without ever emitting one, so every sft run's ``summary.json`` reported
+        ``status='running'`` however it ended. A completed run was then indistinguishable from an
+        abandoned one, and anything that treats a non-terminal status as "still in flight" -- a stop
+        gate, a dashboard, a reaper -- reported finished runs as running. Measured on three chains that
+        all wrote ``exit_code=0`` and a full 30 steps: NRA120, NRA100 and NRA66 each stayed at
+        ``status='running'``.
+
+        Kept separate from ``finish_rollout_metrics`` rather than folded into ``RunTracker.close``:
+        the rollout record carries that family's own counters, and a second ``stage='run'`` record
+        emitted by ``close`` would overwrite the ``run_status`` and ``result`` the rollout totals just
+        set. Each family states its own terminal record, the way each already states its own steps.
+        """
+        from twinkle.metric import MetricRecord
+
+        self.tracker.record(MetricRecord(
+            stage='run', optimizer_step=self.global_step,
+            values={
+                'train_steps': self.global_step,
+                'micro_steps': self.micro_step,
+                'max_steps': self.max_steps,
+            },
+            status='failed' if status == 'failed' else 'completed',
+            attributes={'step_unit': 'run_summary', 'loop_status': status}))
+
 
 class RolloutStepState(StepState):
     """A :class:`StepState` for rollout recipes (GRPO now; every online rollout family later).

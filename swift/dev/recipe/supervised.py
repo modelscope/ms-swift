@@ -2,6 +2,8 @@
 """Shared supervised training for SFT, classification, embedding, ranking, and preference recipes."""
 
 from __future__ import annotations
+
+import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from swift.dev.recipe.utils import (
@@ -407,6 +409,11 @@ def run_supervised(
         if callable(shutdown):
             shutdown()
         finish_manual_gc(gc_was_enabled)
+        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+        # record, and close() is what writes the summary. sys.exc_info() is the in-flight exception,
+        # which inside a finally block is the only signal that distinguishes a loop that finished from
+        # one that was raised out of -- the same reading run_grpo uses for its own terminal record.
+        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         state.tracker.close()
     ckpt_dir = save_final_checkpoint(model, save, enabled=_save_final)
     # A remote ckpt_dir is a twinkle:// URI in the SERVER's store: the server-side checkpoint has
