@@ -1,15 +1,17 @@
 """S8c — the plugin registry: kind declaration, singletons, external sources (L1).
 
-One builtin kind exists now -- ``reward`` (base ORM, 9 entries) -- declared when the rewards package
+Two builtin kinds exist now -- ``reward`` (base ORM, 9 entries) and ``prm_scorer`` (base
+PRMSegmentScorer, the PRM step-segmentation plugins) -- declared when the rewards package
 imports. The registry checks shape at REGISTRATION time (a reward not subclassing ORM is rejected
 there, not halfway through a rollout), adopts an existing entries dict by reference, and loads
 external plugin sources from a file, a folder, or a hub id. The fixtures snapshot and restore global
 state; builtin kinds are never cleared (re-declaring them is a no-op once cached, so clearing would
 brick the process).
 
-The ``prm_scorer`` kind this file used to assert is gone by design: 78a1a1c55 deleted
-``rewards/prm.py`` and moved process scoring onto twinkle's scoring components, so ``--prm`` now
-resolves a channel through ``resolve_reward_scorers`` instead of a plugin name.
+The ``prm_scorer`` kind was briefly gone (78a1a1c55 deleted ``rewards/prm.py`` with the score
+worker it served) and is restored in a new shape: the scoring itself stays on the driver's PRM
+channel, and the plugin only decides when a step closes a segment (``prm_segment(sample, traj)``),
+selected by ``--prm_scorer`` off the RewardConfig.
 
 Maps to ut_plan S8-58/59/60.
 """

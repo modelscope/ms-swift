@@ -473,6 +473,7 @@ def build_driver(*, cluster: Cluster, rl_config: "RLConfig", rollout_config: "Ro
     scorers); the group verdict reads the samples' ``orm_reward`` rows.
     """
     from swift.dev.builders.streaming import build_streaming_driver
+    from swift.dev.rewards.prm import build_prm_segment
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,
@@ -487,6 +488,7 @@ def build_driver(*, cluster: Cluster, rl_config: "RLConfig", rollout_config: "Ro
         orm_names=cluster.orm_names,
         prms=cluster.prm_scorers,
         prm_names=cluster.prm_names,
+        prm_segment=build_prm_segment(reward_config, rollout_config),
         on_group=grpo_on_group(rl_config, reward_config, cluster.sampling_params, len(cluster.orm_scorers)),
         max_group_regenerations=(rl_config.max_resample_times if rl_config.dynamic_sample else 0),
         cluster_adapter=cluster.adapter,

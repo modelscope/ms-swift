@@ -130,6 +130,7 @@ def build_streaming_driver(*,
                            orm_names: Optional[Sequence[str]] = None,
                            prms: Sequence[Any] = (),
                            prm_names: Optional[Sequence[str]] = None,
+                           prm_segment: Optional[Callable[[Any, Any], bool]] = None,
                            on_sample: Optional[Callable[[Any], Optional[bool]]] = None,
                            on_group: Optional[Callable[[Any, List[Any], int], List[Any]]] = None,
                            max_group_regenerations: int = 0,
@@ -142,7 +143,8 @@ def build_streaming_driver(*,
     ray -- the driver never opens one; the identity facts were stamped at admission) and the
     light facts carrying the row-aligned score column beside the row lengths. ``orm_names`` /
     ``prm_names`` name the scorers in that column (``None`` falls back to the driver's
-    positional names).
+    positional names). ``prm_segment`` is the PRM segmentation predicate handed straight to the
+    driver (``None`` = every step closes a segment).
 
     Staleness follows ``async_mode`` (:func:`max_staleness_of`) unless ``max_staleness`` is given
     (without a checkpoint manager it only sets how many batches run ahead), the sync interval is
@@ -164,6 +166,7 @@ def build_streaming_driver(*,
         orm_names=orm_names,
         prms=prms,
         prm_names=prm_names,
+        prm_segment=prm_segment,
         on_sample=on_sample,
         on_group=on_group,
         max_group_regenerations=max_group_regenerations,

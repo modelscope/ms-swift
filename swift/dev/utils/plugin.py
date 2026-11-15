@@ -146,7 +146,8 @@ class PluginKind:
 #: so the loader must guarantee those kinds are declared BEFORE it imports the user file. Nothing in the
 #: CLI's config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before
 #: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
-_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.builders.sandbox',
+_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm',
+                         'swift.dev.builders.sandbox',
                          'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins')
 
 

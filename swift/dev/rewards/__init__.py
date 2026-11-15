@@ -5,5 +5,7 @@ from __future__ import annotations
 
 from .code_reward import CodeExecutionReward
 from .orm import ORM, REWARD, orms
+from .prm import PRM_STEP_SCORER, PRMSegmentScorer, prm_scorers
 
-__all__ = ['ORM', 'REWARD', 'orms', 'CodeExecutionReward']
+__all__ = ['ORM', 'REWARD', 'orms', 'CodeExecutionReward', 'PRM_STEP_SCORER', 'PRMSegmentScorer',
+           'prm_scorers']

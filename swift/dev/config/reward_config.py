@@ -46,6 +46,13 @@ class RewardConfig:
     prm_model_revision: Optional[List[str]] = None
     prm_template: Optional[List[str]] = None
     prm_parallel_spec: Optional[str] = None
+    # Which plugin segments the PRM steps: a registered 'prm_scorer' name, class, or callable --
+    # 'turn' (one assistant turn per segment) or 'delimiter' (the turn whose text contains
+    # prm_step_delimiter closes a segment). None picks by rollout shape: 'turn' for multi-turn
+    # (max_turns set), 'delimiter' otherwise. Only read when a --prm channel is active.
+    prm_scorer: Optional[Any] = None
+    # The 'delimiter' segmentation's step boundary in the decoded assistant text ('\n' default).
+    prm_step_delimiter: Optional[str] = None
     # PRM/ORM fusion on every response token: mix*process + (1-mix)*orm; 0 = standard GRPO, 1 = pure
     # process. Must be in [0, 1]; only read when a --prm channel is active for rl_type=grpo.
     prm_orm_mix: float = 0.5

@@ -1035,12 +1035,14 @@ def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutCon
 def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
     """Reject GRPO process-reward (PRM) combinations the loop cannot honour (no silently dead knob).
 
-    Refuses RLSD/SDAR overlap, prm_orm_mix with no --prm channel or outside [0, 1].
+    Refuses RLSD/SDAR overlap, prm_orm_mix with no --prm channel or outside [0, 1], and the
+    segmentation knobs (prm_scorer / prm_step_delimiter) with no channel either.
     The prm channel and its knobs all live on the RewardConfig; a missing one counts as "no channel".
     """
     if cfg.rl_type != 'grpo':
         return
-    scorer_knobs = sorted({'prm_orm_mix'}.intersection(_changed_fields(reward_config)))
+    scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter', 'prm_orm_mix'}.intersection(
+        _changed_fields(reward_config)))
     if reward_config is None or not reward_config.prm:
         if scorer_knobs:
             details = ', '.join(f'--{name}' for name in scorer_knobs)
