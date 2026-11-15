@@ -617,9 +617,18 @@ class StepState:
             due = self.global_step % _FALLBACK_LOGGING_STEPS == 0
         should_log = due or self.handler.control.should_log
         # twinkle.metric is the single source of every algorithm metric: merge the WHOLE component
-        # output, coerced to numeric scalars; ``loss`` is re-pinned as the normalized float.
+        # output, coercing display strings to numbers but keeping the values that are genuinely
+        # textual; ``loss`` is re-pinned as the normalized float.
+        #
+        # This used to be coerce_metric_scalars, which drops every non-numeric entry, and that
+        # silently lost TrainMetric's 'total time elapse' and 'speed' -- they are formatted strings,
+        # so no sft run persisted a per-step training speed at all, while the eval path (which keeps
+        # non-numeric values verbatim) did persist eval_speed. The reporter routes non-numeric values
+        # to attributes.non_numeric_values rather than to the numeric table, and the tracker's writer
+        # path re-coerces with _coerce_scalar, so carrying them is what makes the timing visible
+        # without breaking any consumer that reads the record as numbers.
         record = {'step': self.global_step}
-        record.update(coerce_metric_scalars(metrics))
+        record.update(normalize_metric_values(metrics))
         record['loss'] = loss
         record.update(_mtp_metrics(self.model))
         if self._extra_metrics_fn is not None:
@@ -1953,9 +1962,11 @@ def _coerce_scalar(value: Any) -> Optional[float]:
 def coerce_metric_scalars(metrics: Dict[str, Any]) -> Dict[str, float]:
     """Reduce a raw component-metric dict to its finite numeric scalars, dropping non-numeric entries.
 
-    Applied when a loop assembles its per-step record so every value the human-readable step line formats
-    (``f'{value:.4f}'``) and every scalar the tracker writes is already a number, regardless of whether the
-    twinkle.metric component that produced it returned a float or a display string.
+    Use this only where a pure numeric table is required. It drops genuinely textual telemetry --
+    ``TrainMetric``'s ``'total time elapse'`` and ``'speed'`` are formatted strings -- so a per-step
+    record meant for the metric reporter should go through :func:`normalize_metric_values` instead,
+    which coerces the same way and keeps the rest; the reporter files non-numeric values under
+    ``attributes.non_numeric_values`` rather than in the numeric table.
     """
     result: Dict[str, float] = {}
     for key, value in metrics.items():
@@ -1969,12 +1980,14 @@ def normalize_metric_values(metrics: Dict[str, Any]) -> Dict[str, Any]:
     """The same numeric normalization as :func:`coerce_metric_scalars`, keeping non-numeric values.
 
     A recipe's extra metrics are a mixed dict: PPO's critic objective arrives as LossMetric's display
-    string ``'0.89551'`` beside genuinely textual telemetry such as ``speed='0.36 iters/s'``. Dropping
-    the non-numeric half -- which is right for a component's own metric dict, where such an entry is
-    noise -- would silently lose that telemetry, so anything that is not a pure number passes through
-    untouched. Without this the persisted ``metrics.jsonl`` carries the SAME conceptual quantity as a
-    float under one key (the policy's ``loss``, re-pinned by the loop) and as a string under another
-    (``value_loss``), which breaks any consumer that reads the file as a numeric table.
+    string ``'0.89551'`` beside genuinely textual telemetry such as ``speed='0.36 iters/s'``, and a
+    component's own dict carries the same mix -- ``TrainMetric`` formats both ``total time elapse`` and
+    ``speed`` as strings. Dropping the non-numeric half would silently lose that telemetry, so anything
+    that is not a pure number passes through untouched; the reporter files it under
+    ``attributes.non_numeric_values`` instead of the numeric table. Without this the persisted
+    ``metrics.jsonl`` carries the SAME conceptual quantity as a float under one key (the policy's
+    ``loss``, re-pinned by the loop) and as a string under another (``value_loss``), which breaks any
+    consumer that reads the file as a numeric table.
     """
     result: Dict[str, Any] = {}
     for key, value in metrics.items():
