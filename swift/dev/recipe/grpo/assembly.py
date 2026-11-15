@@ -193,7 +193,6 @@ def initialize_cluster(
     from twinkle.advantage import TeacherReweight
     from twinkle.metric import RolloutCorrection
     from twinkle.processor import RoutingReplay
-    from twinkle_agentic.async_rl import ProcessReward
 
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
