@@ -678,5 +678,5 @@ register_template(
         is_thinking=True,
         thinking_prefix='<think>\n',
         stop_words=['<|im_end|>'],
-        agent_template='hermes',
+        agent_template='nemotron3_5',
     ))
