@@ -141,21 +141,15 @@ def test_tool_observe_bridge_matches_the_shipped_jinja(family):
 
     if not monotonic:
         # The jinja rewrites a turn it already rendered -- Qwen3's empty think block follows the
-        # last message, so closing the history decorates an assistant turn that the reopened render
-        # leaves bare. No delta can therefore be measured against the closed history, and
-        # render_delta falls back to an anchor: it renders the appended turns after a minimal
-        # conversation and returns that tail. The contract is then that the bridge reproduces the
-        # appended turns exactly as the template renders them at the end of the whole conversation,
-        # which is what an incremental caller appends to the ids it already banked (a prompt render
-        # plus the sampled tokens -- not the closed-history re-encode compared above).
-        reopened = list(dev.encode(
-            {"messages": copy.deepcopy([*TOOL_HISTORY, TOOL_RESULT]), "tools": copy.deepcopy(TOOLS)},
-            intent=INFER,
-        )["input_ids"])
-        for label, delta in (("feature", list(observe())), ("engine", list(observe(engine=True)))):
-            assert delta, f"{family}: the {label} anchor bridge is empty"
-            assert reopened[-len(delta):] == delta, (
-                f"{family}: the {label} anchor bridge is not the full render's tail")
+        # last message -- so no delta can be measured against the closed history. render_delta then
+        # tries an anchor, but an anchor bridge is only returned once it is verified to equal the
+        # tail of the full render; a tool turn fails that check, because its block depends on the
+        # assistant tool_calls turn it answers and the anchor has no such turn. The incremental path
+        # must say so rather than splice a wrong bridge into a training sequence.
+        with pytest.raises(RuntimeError, match="non-monotonic"):
+            observe()
+        with pytest.raises(RuntimeError, match="non-monotonic"):
+            observe(engine=True)
         return
 
     # the tool-description layer is dev's own (the parity matrix excludes it), so the tail is checked
