@@ -133,11 +133,15 @@ def _dump_train_tensors(global_step: int, samples: list) -> None:
                    if not torch.is_tensor(value) and isinstance(value, (str, int, float, bool))}
         # Media ride as raw objects/paths, so only their COUNT is recordable here. The placeholder
         # tokens they expand to are in input_ids; pairing the two is what catches media dropped or
-        # duplicated between the dataset and the trainer.
+        # duplicated between the dataset and the trainer. After the processor runs, the raw list is
+        # gone and the count lives in the grid tensor's first dimension instead.
         for key in ('images', 'videos', 'audios'):
             value = sample.get(key)
             if isinstance(value, (list, tuple)):
                 scalars[f'{key}_count'] = len(value)
+        grid = sample.get('image_grid_thw')
+        if torch.is_tensor(grid) and grid.dim() == 2 and 'images_count' not in scalars:
+            scalars['images_count'] = int(grid.shape[0])
         name = f'step{global_step:05d}.rank{rank}.s{position:03d}.pt'
         torch.save({'tensors': tensors, 'scalars': scalars}, os.path.join(root, name))
         records.append({'global_step': int(global_step), 'rank': rank, 'sample': position, 'file': name,
