@@ -1272,6 +1272,7 @@ class Qwen3TTSLoader(ModelLoader):
 
     model_type = "qwen3_tts"
     model_cls = "transformers:AutoModel"
+    loss_type = "tts"
     architectures = ["Qwen3TTSForConditionalGeneration"]
     template = "qwen3_tts"
     requires = ["qwen-tts"]
