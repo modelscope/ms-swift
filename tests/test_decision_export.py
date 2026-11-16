@@ -42,7 +42,7 @@ def make_head(head_cls, base_dir):
             head_temperature=1.2)
     if head_cls is ClefJointSchemaHead:
         return head_cls(hidden_size=8, width=12, routing_layers=1, layers=2, heads=3, feedforward=19, dropout=0.2)
-    if head_cls is Thx02ReadoutHead:
+    if issubclass(head_cls, Thx02ReadoutHead):
         return head_cls(hidden_size=8, num_codes=5, temperature=0.7, head_temperature=1.4, temperatures=temperatures)
     if head_cls is OmniJevHead:
         head = head_cls(
@@ -79,7 +79,18 @@ class TestDecisionExport(unittest.TestCase):
 
     def test_merged_backbone_and_trained_head_roundtrip(self):
         merge_module = importlib.import_module('swift.pipelines.export.merge_lora')
-        for head_cls, shard_size in product(HEADS, ['5GB', '1KB']):
+
+        class NativeExportHead(Thx02ReadoutHead):
+            head_type = 'native-export-test'
+
+            def save_native_config(self, model_dir, output_dir):
+                (Path(output_dir) / 'native-export.json').write_text(
+                    json.dumps({
+                        'source': model_dir,
+                        'head_temperature': float(self.head_temperature)
+                    }))
+
+        for head_cls, shard_size in product(HEADS + [NativeExportHead], ['5GB', '1KB']):
             with self.subTest(
                     head=head_cls.head_type, shard_size=shard_size), tempfile.TemporaryDirectory() as directory:
                 torch.manual_seed(42)
@@ -170,6 +181,12 @@ class TestDecisionExport(unittest.TestCase):
                     index = json.loads((out / 'model.safetensors.index.json').read_text())
                     self.assertFalse(any(k.startswith('scoring_head.') for k in index['weight_map']))
                 self.assertTrue((out / head.HEAD_EXPORT_SUBDIR / head.HEAD_WEIGHTS_NAME).is_file())
+                if head_cls is NativeExportHead:
+                    self.assertEqual(
+                        json.loads((out / 'native-export.json').read_text()), {
+                            'source': str(base_dir),
+                            'head_temperature': float(head.head_temperature)
+                        })
                 restored, info = model_cls.from_pretrained(str(out), output_loading_info=True)
                 self.assertFalse(info['unexpected_keys'])
                 self.assertFalse(info['missing_keys'])

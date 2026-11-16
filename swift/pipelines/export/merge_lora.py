@@ -3,7 +3,7 @@ import os
 
 from swift.arguments import ExportArguments
 from swift.model import save_checkpoint
-from swift.model.decision_head import StartLuxLetterHead, get_scoring_head
+from swift.model.decision_head import get_scoring_head
 from swift.tuners import Swift
 from swift.utils import HfConfigFactory, get_logger
 from ..utils import prepare_model_template
@@ -70,10 +70,8 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
                 os.makedirs(head_dir, exist_ok=True)
                 os.replace(
                     os.path.join(output_dir, head.HEAD_WEIGHTS_NAME), os.path.join(head_dir, head.HEAD_WEIGHTS_NAME))
+                head.save_native_config(model.model_dir, output_dir)
                 logger.info(f'decision: saved scoring_head weights and meta to {output_dir}.')
-                if isinstance(head, StartLuxLetterHead):
-                    head.save_decision_config(model.model_dir, output_dir)
-                    logger.info('StartLux export requires a startlux-decide version that supports letter_bias.')
             logger.info(f'Successfully merged LoRA and saved in `{output_dir}`.')
         finally:
             args.quant_method = origin_quant_method

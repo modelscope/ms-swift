@@ -284,6 +284,13 @@ class ScoringHead(nn.Module):
         with open(os.path.join(save_directory, self.HEAD_META_NAME), 'w', encoding='utf-8') as f:
             json.dump({**self.extra_state_for_save(), 'head_type': self.head_type}, f, indent=2, ensure_ascii=False)
 
+    def save_native_config(self, model_dir: str, output_dir: str) -> None:
+        """Optionally export native inference config alongside a merged backbone.
+
+        Heads without a native export format keep only the shared head checkpoint.
+        """
+        pass
+
     def load_pretrained(self, load_directory: str) -> bool:
         """Supported checkpoint layouts:
         - Adapter checkpoint (LoRA): ``HEAD_WEIGHTS_NAME`` exists → load weights from it (the head
@@ -646,7 +653,7 @@ class StartLuxLetterHead(JevVerbalizerHead):
             raise ValueError(f'{head_file}: letter_bias must be 26 finite numbers (A to Z).')
         return cls(bias, list(letters), dict(cls.DEFAULT_RANGES), temperatures, head_temperature=1.0)
 
-    def save_decision_config(self, model_dir: str, output_dir: str) -> None:
+    def save_native_config(self, model_dir: str, output_dir: str) -> None:
         """Export the trained letter read-out in StartLux's decision_config.json format.
 
         The native head has only one parameter (the letter bias). Keeping it in JSON
@@ -654,6 +661,7 @@ class StartLuxLetterHead(JevVerbalizerHead):
         Preserve the source folder's AutoThink and prompt settings, replacing only the
         letter ids, bias and effective per-kind temperatures with the trained values.
         """
+        from swift.utils import get_logger
         source = self._locate(model_dir, 'decision_config.json', 'STARTLUX_DECISION_CONFIG')
         if source is None:
             raise FileNotFoundError(f'StartLux decision_config.json not found under {model_dir!r}.')
@@ -667,6 +675,7 @@ class StartLuxLetterHead(JevVerbalizerHead):
         }
         with open(os.path.join(output_dir, 'decision_config.json'), 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
+        get_logger().info('StartLux export requires a startlux-decide version that supports letter_bias.')
 
 
 class EvidenceRoutingLayer(nn.Module):
