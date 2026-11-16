@@ -12,6 +12,7 @@ from ..register import register_template
 from ..utils import findall
 from ..vision_utils import load_audio, load_image, load_video_hf
 from .qwen import QwenTemplateMeta
+from .utils import NemotronThinkingMixin
 
 
 def _nemotron_transcribe_audio_tokens(audio_mask, subsampling_factor):
@@ -19,7 +20,7 @@ def _nemotron_transcribe_audio_tokens(audio_mask, subsampling_factor):
     return (audio_mask.sum(-1) + subsampling_factor - 1) // subsampling_factor
 
 
-class NemoSpeechLMTemplate(Template):
+class NemoSpeechLMTemplate(NemotronThinkingMixin, Template):
     placeholder_tokens = ['<|audio|>']
     support_padding_free = False
 
@@ -91,16 +92,13 @@ class NemoSpeechLMTemplate(Template):
         }
 
 
-class NemotronHOmniTemplate(Template):
+class NemotronHOmniTemplate(NemotronThinkingMixin, Template):
     # Private markers exist only during expansion. Both modalities become official token 18.
     image_sentinel = -200
     video_sentinel = -201
     image_patch = -202
     video_patch = -203
     placeholder_tokens = ['<image>']
-
-    def __init__(self, *args, enable_thinking=True, **kwargs):
-        super().__init__(*args, enable_thinking=True if enable_thinking is None else enable_thinking, **kwargs)
 
     @staticmethod
     def _normalize_messages(messages):
@@ -284,6 +282,7 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        preserve_thinking=False,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))
@@ -297,6 +296,7 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        preserve_thinking=False,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))

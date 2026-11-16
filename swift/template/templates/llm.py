@@ -11,7 +11,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt
 from .llama import Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, NemotronThinkingMixin
 
 register_template(
     TemplateMeta(
@@ -671,12 +671,22 @@ register_template(
         preserve_thinking=True,
     ))
 
+
+class NemotronHTemplate(NemotronThinkingMixin, Template):
+    pass
+
+
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.nemotron_h,
+        template_cls=NemotronHTemplate,
         default_system=None,
         is_thinking=True,
         thinking_prefix='<think>\n',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        # Official jinja truncates historical thinking by default (truncate_history_thinking=True).
+        preserve_thinking=False,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))

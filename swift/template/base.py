@@ -116,7 +116,7 @@ class Template(ProcessorMixin):
         loss_scale: The loss scale function to use
         """
         self._processor_inited = False
-        self._version = 'v6'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v7'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
