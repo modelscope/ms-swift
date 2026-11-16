@@ -305,7 +305,9 @@ def _two_way_available() -> bool:
 
 def _build_tiny_h2o(src: str, out: str) -> None:
     """H2O file layout (standard Qwen3.5 config + model.safetensors, label_rows.safetensors,
-    serve_config.json) around a 4-layer Qwen3.5 hybrid backbone (3 gated-deltanet + 1 full-attention)."""
+    serve_config.json) around a 4-layer Qwen3.5 hybrid backbone (gated-deltanet / full attention interleaved,
+    like the real backbone: the readout is the last token, so a single trailing full-attention layer would
+    make causal and bidirectional attention identical for the readout)."""
     import shutil
     from safetensors.torch import save_file
     from transformers import Qwen3_5Config, Qwen3_5ForConditionalGeneration
@@ -328,7 +330,7 @@ def _build_tiny_h2o(src: str, out: str) -> None:
         linear_key_head_dim=16,
         linear_value_head_dim=16,
         mtp_num_hidden_layers=0,
-        layer_types=['linear_attention'] * 3 + ['full_attention'])
+        layer_types=['linear_attention', 'full_attention', 'linear_attention', 'full_attention'])
     text['rope_parameters'] = dict(text['rope_parameters'], mrope_section=[3, 3, 2])
     vision = dict(base['vision_config'], depth=1, hidden_size=32, intermediate_size=64, num_heads=2, out_hidden_size=64)
     torch.manual_seed(0)
@@ -531,6 +533,8 @@ class TestStageFSftRoundTrip:
             DatasetMeta(dataset_name='h2o_tiny_test', dataset_path=str(data_file), preprocess_func=Pre()),
             exist_ok=True)
         monkeypatch.setenv('SWIFT_CALIBRATION_MIN_ITEMS', '2')
+        # multi-device boxes would make `is_mp()` true and shard the tiny model across devices
+        monkeypatch.setenv('SWIFT_SINGLE_DEVICE_MODE', '1')
         result = sft_main(
             SftArguments(
                 model=tiny_dir,
@@ -548,6 +552,8 @@ class TestStageFSftRoundTrip:
                 per_device_train_batch_size=2,
                 per_device_eval_batch_size=2,
                 learning_rate=1e-3,
+                # accelerate forwards `grad_scaler` to fused AdamW, which newer torch rejects
+                optim='adamw_torch',
                 output_dir=str(tmp_path / 'output'),
                 save_strategy='epoch',
                 eval_strategy='epoch',
