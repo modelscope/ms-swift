@@ -248,7 +248,11 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
     loss = None
     if labels is not None:
         labels = labels.to(logits.device)
-        if self.config.problem_type is None:
+        heads = getattr(self.config, 'seq_cls_heads', None)
+        if heads:
+            from .seq_cls_head import multi_head_loss
+            loss = multi_head_loss(pooled_logits, labels, heads)
+        elif self.config.problem_type is None:
             if self.num_labels == 1:
                 self.config.problem_type = 'regression'
             elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
@@ -256,7 +260,9 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
             else:
                 self.config.problem_type = 'multi_label_classification'
 
-        if self.config.problem_type == 'regression':
+        if heads:
+            pass
+        elif self.config.problem_type == 'regression':
             loss_fct = MSELoss()
             if self.num_labels == 1:
                 loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
@@ -346,16 +352,24 @@ def _patch_sequence_classification(model, model_meta):
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
     lm_head_model = get_lm_head_model(model, model_meta, lm_heads)
+    if getattr(model.config, 'seq_cls_heads', None) and not any(hasattr(lm_head_model, head) for head in lm_heads):
+        raise ValueError('Multi-head seq_cls requires a generation model with a replaceable language-model head.')
     lm_head_model.num_labels = model.config.num_labels
     for lm_head in lm_heads:
         if hasattr(lm_head_model, lm_head):
             hidden_size = getattr(lm_head_model, lm_head).in_features
             setattr(lm_head_model, lm_head, nn.Identity())
             break
-    lm_head_model.score = nn.Linear(hidden_size, lm_head_model.num_labels, bias=False, dtype=lm_head_model.dtype)
-    if lm_head_model.score.weight.device == torch.device('meta'):
-        lm_head_model.score.to_empty(device='cpu')
-    lm_head_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
+    heads = getattr(model.config, 'seq_cls_heads', None)
+    if heads:
+        from .seq_cls_head import MultiHeadSequenceClassifier
+        lm_head_model.score = MultiHeadSequenceClassifier(
+            hidden_size, heads, dtype=lm_head_model.dtype, initializer_range=initializer_range)
+    else:
+        lm_head_model.score = nn.Linear(hidden_size, lm_head_model.num_labels, bias=False, dtype=lm_head_model.dtype)
+        if lm_head_model.score.weight.device == torch.device('meta'):
+            lm_head_model.score.to_empty(device='cpu')
+        lm_head_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
 
     origin_forward = lm_head_model.forward
 

@@ -331,6 +331,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             'experts_impl',
             'new_special_tokens',
             'num_labels',
+            'seq_cls_heads',
             'problem_type',
             'rope_scaling',
             'max_model_len',

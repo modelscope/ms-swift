@@ -81,6 +81,7 @@ class ModelArguments:
     new_special_tokens: List[str] = field(default_factory=list)
 
     num_labels: Optional[int] = None
+    seq_cls_heads: Optional[str] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     rope_scaling: Optional[str] = None
     device_map: Optional[Union[dict, str]] = None
@@ -189,7 +190,17 @@ class ModelArguments:
         logger.info(f'Setting args.max_model_len: {self.max_model_len}')
 
     def _init_model_info(self) -> torch.dtype:
+        if self.seq_cls_heads is not None:
+            from swift.model.seq_cls_head import normalize_seq_cls_heads
+            self.seq_cls_heads = normalize_seq_cls_heads(json_parse_to_dict(self.seq_cls_heads))
+            if self.task_type not in {None, 'seq_cls'}:
+                raise ValueError('seq_cls_heads requires task_type=seq_cls.')
+            if getattr(self, 'sequence_parallel_size', 1) > 1:
+                raise ValueError('Multi-head seq_cls currently requires sequence_parallel_size=1.')
+            self.task_type = 'seq_cls'
+            self.num_labels = sum(h['num_labels'] for h in self.seq_cls_heads)
         model_kwargs = self.get_model_kwargs()
+        model_kwargs.pop('seq_cls_heads', None)
         if self.tuner_backend == 'unsloth':
             model_kwargs['download_model'] = True
         self.model_info, self.model_meta = get_model_info_meta(**model_kwargs)
@@ -244,6 +255,7 @@ class ModelArguments:
             'max_model_len': self.max_model_len,
             'task_type': self.task_type,
             'num_labels': self.num_labels,
+            'seq_cls_heads': self.seq_cls_heads,
             'problem_type': self.problem_type,
             'init_strategy': self.init_strategy,
         }

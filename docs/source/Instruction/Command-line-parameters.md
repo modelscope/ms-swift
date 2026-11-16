@@ -48,6 +48,7 @@
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
 - problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
+- seq_cls_heads: 可选的独立序列分类头配置，接受 JSON 列表或 JSON 文件路径。使用 `--task_type seq_cls`，例如 `[{'name': 'category', 'num_labels': 3}, {'name': 'tags', 'num_labels': 2, 'problem_type': 'multi_label_classification'}, {'name': 'quality', 'num_labels': 1, 'weight': 0.25}]`（文件中使用标准 JSON 双引号）。每个头有独立参数，共用骨干和现有序列池化；各头损失取均值后按正数 `weight` 加权求和。`num_labels` 自动设为所有头输出维数之和。数据中的 `label` 必须是包含每个头名称的字典：单标签为类别整数，多标签为激活类别索引列表，回归为数值或目标向量。所有头都需要标签；推理返回按头名称组织的预测和 logprobs，训练/评估记录各头 accuracy 或 MSE。配置保存在 checkpoint 和 args.json 中；LoRA 保存整个 score 模块。该选项使用 Transformers 的序列分类转换路径；Megatron 和外部推理后端不支持多头配置。默认 None，现有单头行为保持不变。
 - rope_scaling: rope类型，你可以传入字符串，例如：`linear`、`dynamic`、`yarn`并结合传入`max_model_len`，ms-swift会自动设置对应的rope_scaling并覆盖'config.json'中的rope_scaling。或者你需要传入一个json字符串，例如`'{"factor":2.0, "type":"yarn"}'`，该值会直接覆盖'config.json'中的rope_scaling。默认为None。
 - max_model_len: 如果使用`rope_scaling`并传入字符串，可以设置`max_model_len`，该参数用来计算rope的`factor`倍数。该参数默认为None。若为非None，该参数会**覆盖**'config.json'中的`max_position_embeddings`值。
 - device_map: 模型使用的device_map配置，例如：'auto'、'cpu'、json字符串、json文件路径。该参数会**透传**入transformers的`from_pretrained`接口。默认为None，根据设备和分布式训练情况自动设置。
