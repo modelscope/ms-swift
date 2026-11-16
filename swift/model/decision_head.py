@@ -978,7 +978,7 @@ class ClefJointSchemaHead(ScoringHead):
         for question_index, (context_vectors, lexical) in enumerate(zip(option_contexts, lexical_options)):
             option_queries.append(
                 self.option_context_projection(context_vectors) + self.option_lexical_projection(lexical)
-                + self.option_question_projection(question_vectors[question_index]).unsqueeze(0))
+                + self.option_question_projection(question_vectors[question_index].unsqueeze(0)))
         routed_options = torch.cat(option_queries, dim=0).unsqueeze(0)
         for layer in self.evidence_layers:
             routed_options = layer(routed_options, memory)
@@ -992,7 +992,7 @@ class ClefJointSchemaHead(ScoringHead):
             option_summaries.append(torch.sum(routing_weights.unsqueeze(-1) * options, dim=0))
         fields = (
             base_fields + self.option_summary_norm(torch.stack(option_summaries))
-            + self.global_projection(global_vector).unsqueeze(0) + self.type_embedding(type_ids))
+            + self.global_projection(global_vector.unsqueeze(0)) + self.type_embedding(type_ids))
         fields = fields.unsqueeze(0)
         for layer in self.layers:
             fields = layer(fields, memory)
