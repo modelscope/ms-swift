@@ -387,6 +387,12 @@ def _train_loop(
                                      ('zero_advantage_rows', 'zero_rows')):
                     if source in adv_summary:
                         advantage_out[name] = float(adv_summary[source])
+                # The no-signal counts ride the same channel: a scorer that silently fails on every
+                # row still yields zero advantage, so without these the run looks like a normal
+                # all-average batch instead of a broken judge.
+                for source in ('unscored_orm_rows', 'unscored_baseline_rows', 'unscored_prm_rows'):
+                    if source in adv_summary:
+                        advantage_out[source] = int(adv_summary[source])
             if correction_out is not None and adv_summary.get('rollout_correction'):
                 # The legacy-compatible off-policy diagnostics, from the training-side forward and
                 # the sampler's own log-probs BEFORE any optimizer step this batch.

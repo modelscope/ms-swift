@@ -211,6 +211,10 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
                 if gae_summary.get('reward_totals'):
                     gae_summary['reward_totals'] = [
                         gae_summary['reward_totals'][position] for position in lane_restore]
+                if gae_summary.get('unscored_flags'):
+                    gae_summary['unscored_flags'] = [
+                        gae_summary['unscored_flags'][position] for position in lane_restore]
+            _unscored_cell[0] = sum(gae_summary.get('unscored_flags') or ())
             # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
             reward_metric.reset()
             reward_metric.accumulate(
@@ -275,7 +279,7 @@ def _ppo_log_line(record: Dict[str, Any], loss: float) -> str:
     return '  '.join(parts)
 
 
-def _ppo_extra_metrics(cluster, reward_metric, _versions_cell) -> Dict[str, Any]:
+def _ppo_extra_metrics(cluster, reward_metric, _versions_cell, _unscored_cell) -> Dict[str, Any]:
     """The critic's namespaced metrics + the batch's reward aggregate and version spans."""
     extra: Dict[str, Any] = {}
     for key, value in (cluster.value_model.calculate_metric(is_training=True) or {}).items():
@@ -286,6 +290,9 @@ def _ppo_extra_metrics(cluster, reward_metric, _versions_cell) -> Dict[str, Any]
         else:
             extra[key] = value
     extra.update(reward_metric.calculate())
+    # A judge that fails on every row still produces zero advantage, so the count is the only thing
+    # that separates a broken scorer from a genuinely unrewarding batch.
+    extra["advantage/unscored_orm_rows"] = _unscored_cell[0]
     if _versions_cell:
         extra.update(
             {
@@ -384,10 +391,11 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         batch_size=batch_size, num_train_epochs=num_train_epochs, max_steps=math.ceil(max_steps / steps_per_batch))
     reward_metric = CompletionRewardMetric()
     _versions_cell: List[List[int]] = []
+    _unscored_cell: List[int] = [0]
 
     def _extra_metrics() -> Dict[str, Any]:
         """The critic's namespaced metrics + the batch's reward aggregate and version spans."""
-        return _ppo_extra_metrics(cluster, reward_metric, _versions_cell)
+        return _ppo_extra_metrics(cluster, reward_metric, _versions_cell, _unscored_cell)
 
     state = RolloutStepState(
         cluster.model, train_config,
