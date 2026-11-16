@@ -17,9 +17,12 @@ twinkle's deterministic worker-actor name ``{group}-{cls}-{caller_file}_{line}-{
 Ray run builds the model at the same call site, so they all want the same name), and stale infra
 globals (``_mode``/``_device_group``/``_device_mesh``) leak between the local and Ray runs.
 
-``RayHelper.teardown`` drops the placement group + registry actor and clears the class-level
+``RayHelper.shutdown`` drops the placement group + registry actor and clears the class-level
 ``resource_manager`` (so the next ``initialize`` rebuilds it instead of pointing at dead actors);
-``ray.shutdown`` then kills the worker actors and frees their GPUs. Safe to call after ``run_sft``
+``ray.shutdown`` then kills the worker actors and frees their GPUs. (The method is ``shutdown``, not
+``teardown`` -- an earlier ``RayHelper.teardown()`` call here raised AttributeError that the bare
+``except`` swallowed, so the registry handle was never cleared between tests and the next run failed
+with "Can't find actor ... from a different cluster".) Safe to call after ``run_sft``
 returns: ``run_offline`` materializes the history into plain dicts (``float(metrics['loss'])`` per
 step) before returning, so no live Ray future is dropped here. Every step is best-effort and guarded
 -- a run that never touched Ray leaves ``ray_inited()`` False and this is a cheap no-op.
@@ -32,7 +35,7 @@ def reset_twinkle_runtime() -> None:
     try:
         from twinkle.infra._ray import RayHelper
         if RayHelper.ray_inited():
-            RayHelper.teardown()
+            RayHelper.shutdown()
     except Exception:  # noqa: BLE001 -- teardown is best-effort; never mask a caller's own result
         pass
     try:
