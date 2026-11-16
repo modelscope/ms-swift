@@ -142,6 +142,11 @@ class RolloutConfig:
     # Ray CPU replicas the sandbox env runs on; each holds ceil(sandbox_num_envs / sandbox_num_workers)
     # sessions.
     sandbox_num_workers: int = 1
+    # Default seconds an env ``reset`` waits for a free session before raising (the batch/__call__ and
+    # stream paths). The streaming driver's admission loop overrides this per call with 0 (return a
+    # no-slot sentinel and retry the member later), so a full pool never blocks admission. None waits
+    # forever; 0 makes even the batch path non-blocking. Default 600 keeps the historical behavior.
+    sandbox_session_wait: Optional[float] = 600.0
     # AgentENV control-plane base URL (sandbox_template set); None lets the SDK read E2B_API_URL.
     sandbox_api_url: Optional[str] = None
     # AgentENV sandbox idle timeout in seconds; None takes AgentEnv's own default.

@@ -54,7 +54,8 @@ def build_env_pool(rollout_config: 'RolloutConfig', *, remote_group: Optional[st
         raise ValueError(f'RolloutConfig.sandbox_num_envs must be >= 1, got {num_envs}.')
     workers = rollout_config.sandbox_num_workers if remote_group is not None else 1
     max_sessions = math.ceil(num_envs / workers)
-    common: dict = {'max_sessions': max_sessions}
+    common: dict = {'max_sessions': max_sessions,
+                    'session_wait_timeout': rollout_config.sandbox_session_wait}
     if remote_group is not None:
         common['remote_group'] = remote_group
     if inflight is not None:
