@@ -67,6 +67,7 @@ def validate_configs(
     _check_unsloth_strategy(distributed_config, template_config, tuner_config)
     _check_unsloth_eval(train_config, distributed_config)
     _check_deepspeed_autotp(distributed_config)
+    _check_weight_sync_offload(distributed_config, rl_config)
     _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
     _check_megatron_optimizer(train_config, is_megatron)
@@ -481,6 +482,31 @@ def _check_weight_sync_backend(rollout_config: Optional['RolloutConfig'],
         raise ValueError(
             '--weight_sync_backend delta_sharded is not wired through the adaptive resource controller\'s '
             'weight-sync channels; use resource_mode manual or estimate.')
+
+
+def _check_weight_sync_offload(distributed_config: 'DistributedConfig',
+                               rl_config: Optional['RLConfig']) -> None:
+    """Reject checkpoint-engine weight sync on the DeepSpeed CPU-offload tiers.
+
+    On those tiers the fp32 master lives on the CPU and the bf16 parameters are written back from it with a
+    non-blocking copy, so a sync that reads the model's parameters can read values that do not yet reflect
+    the update that just finished. The same tier also fails to reproduce a run bitwise when resumed from a
+    checkpoint taken after five or more updates, while the non-offload ZeRO presets and FSDP2 reproduce it
+    exactly; that divergence is inside DeepSpeed's cpu_offload branch, not in this stack. Until it is
+    resolved, weight sync on an offload tier is not supported rather than silently unreliable.
+    """
+    from swift.dev.utils.utils import deepspeed_cpu_offload
+    rl_type = None if rl_config is None else rl_config.rl_type
+    if rl_type not in _ROLLOUT_SYNC_TYPES:
+        return
+    if not deepspeed_cpu_offload(distributed_config.deepspeed):
+        return
+    raise ValueError(
+        f'Weight sync into a rollout sampler is not supported with DeepSpeed CPU offload '
+        f'(--deepspeed {distributed_config.deepspeed!r}, rl_type={rl_type!r}): the offload tier keeps the '
+        'fp32 master on the CPU and writes the bf16 parameters back asynchronously, so the sampler can be '
+        'handed weights that lag the last update. Use a non-offload ZeRO preset (--deepspeed zero2 or '
+        'zero3) or FSDP2 (--fsdp fsdp2), which keep the parameters the sync reads up to date.')
 
 
 def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
