@@ -98,6 +98,38 @@ def _probe_batch_identity(global_step: int, samples: list) -> None:
         handle.write(json.dumps(record) + '\n')
 
 
+def _dump_train_tensors(global_step: int, samples: list) -> None:
+    """Write the trainer's actual per-sample tensors when ``SWIFT_TRAIN_TENSOR_DUMP`` names a directory.
+
+    The batch-identity digest next to this is bit-sensitive but not invertible: it can tell that two
+    runs differ, not whether the trained span is the one the template contract specifies. Reconciling
+    the training scope needs the positions themselves -- labels against input_ids' single shift, which
+    roles carry loss_mask, where padding sits -- so this dumps the tensors instead of a hash of them.
+    """
+    import os
+    root = os.environ.get('SWIFT_TRAIN_TENSOR_DUMP')
+    if not root:
+        return
+    import json
+
+    import torch
+    os.makedirs(root, exist_ok=True)
+    rank = int(os.environ.get('RANK') or os.environ.get('LOCAL_RANK') or 0)
+    records = []
+    for position, sample in enumerate(samples):
+        tensors = {key: value.detach().to('cpu').contiguous()
+                   for key, value in sample.items() if torch.is_tensor(value)}
+        scalars = {key: value for key, value in sample.items()
+                   if not torch.is_tensor(value) and isinstance(value, (str, int, float, bool))}
+        name = f'step{global_step:05d}.rank{rank}.s{position:03d}.pt'
+        torch.save({'tensors': tensors, 'scalars': scalars}, os.path.join(root, name))
+        records.append({'global_step': int(global_step), 'rank': rank, 'sample': position, 'file': name,
+                        'tensor_keys': sorted(tensors), 'scalars': scalars})
+    with open(os.path.join(root, f'index.rank{rank}.jsonl'), 'a', encoding='utf-8') as handle:
+        for record in records:
+            handle.write(json.dumps(record, default=str) + '\n')
+
+
 #: Forward tasks whose eval must submit each dataloader batch as ONE whole forward: their
 #: labels live per record (decision) or one record expands into several sequences (embedding
 #: anchor+positives, reranker query+candidates), so the forward-only micro-batcher's
@@ -332,6 +364,7 @@ def run_supervised(
         state.publish_state()
         handler.on_step_begin()
         _probe_batch_identity(state.global_step, samples)
+        _dump_train_tensors(state.global_step, samples)
         # forward_backward / clip_grad_and_step carry @timed at their twinkle definition
         # site, so the span is recorded on the rank that actually runs them. forward_backward is
         # declared sync=True on the model: an actor-side failure raises at this call, failing THIS
