@@ -131,6 +131,13 @@ def _dump_train_tensors(global_step: int, samples: list) -> None:
                 tensors[key] = torch.tensor(value)
         scalars = {key: value for key, value in sample.items()
                    if not torch.is_tensor(value) and isinstance(value, (str, int, float, bool))}
+        # Media ride as raw objects/paths, so only their COUNT is recordable here. The placeholder
+        # tokens they expand to are in input_ids; pairing the two is what catches media dropped or
+        # duplicated between the dataset and the trainer.
+        for key in ('images', 'videos', 'audios'):
+            value = sample.get(key)
+            if isinstance(value, (list, tuple)):
+                scalars[f'{key}_count'] = len(value)
         name = f'step{global_step:05d}.rank{rank}.s{position:03d}.pt'
         torch.save({'tensors': tensors, 'scalars': scalars}, os.path.join(root, name))
         records.append({'global_step': int(global_step), 'rank': rank, 'sample': position, 'file': name,
