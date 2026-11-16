@@ -168,7 +168,9 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
 
                 model_cls = AutoModelForSequenceClassification
             elif loader is not None:
-                model_cls = loader.resolve_model_cls()
+                # config rides along so two-layout families (JEV's text-only Qwen3.5) resolve
+                # the layout-correct class for this weightless dummy build.
+                model_cls = loader.resolve_model_cls(config)
             else:
                 from transformers import AutoModelForCausalLM
 

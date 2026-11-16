@@ -21,17 +21,21 @@ def save_checkpoint(model: Optional[Any],
                     safe_serialization: bool = True,
                     max_shard_size: Any = '5GB',
                     model_dirs: List[str] = None,
-                    additional_saved_files: Optional[List[str]] = None) -> None:
+                    additional_saved_files: Optional[List[str]] = None,
+                    state_dict: Optional[Any] = None) -> None:
     """Write a model directory out: weights via ``save_pretrained``, then processor + sidecar files.
 
     ``model=None`` writes only the processor and copies sidecars -- the streaming transforms already
     wrote their weights and reuse this for the non-weight half. Each sidecar file (args.json,
     preprocessor_config.json, extras) is searched first-come across ``model_dirs``; an existing
-    args.json in the destination is never overwritten.
+    args.json in the destination is never overwritten. ``state_dict`` passes through to
+    ``save_pretrained`` verbatim (``None`` = the model's own); the merge component uses it to
+    write a head-stripped dict for a decision-family base whose head rides its own sidecar.
     """
     if model is not None:
         if model.__class__.__name__ != 'SentenceTransformer':
-            model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+            model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=safe_serialization,
+                                  max_shard_size=max_shard_size)
         else:
             model.save_pretrained(output_dir, safe_serialization=safe_serialization)
             # SentenceTransformer keeps modules/configs as loose .py/.json files; carry them over.
