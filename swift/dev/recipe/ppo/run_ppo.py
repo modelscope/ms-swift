@@ -6,7 +6,7 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from swift.dev.recipe.batching import balance_update
+from swift.dev.recipe.batching import balance_lanes, balance_update
 from swift.dev.recipe.ppo.assembly import Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests
 from swift.dev.recipe.utils import (
     RolloutStepState,
@@ -184,20 +184,33 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
             scores = [batch_facts['scores'][index] for index in kept_facts['indices']]
             lengths = [p + r for p, r in zip(kept_facts.get('prompt_lengths') or (),
                                             kept_facts.get('response_lengths') or ())]
+            # The lanes run in the DP-balanced order (GAE is per-sample: no group contract, so
+            # whole rows may move freely); the score rows are permuted alongside, and
+            # `lane_restore` puts the returned trajectories back into the caller's order -- the
+            # value model trains that original order, and the reward telemetry reads per-row
+            # totals aligned with it.
+            lane_trajs, lane_order, lane_restore = balance_lanes(
+                state, trajs, lengths, group_size=1, micro_batch_kwargs={'micro_batch_size': micro_batch_size})
+            lane_scores = scores if lane_order is None else [scores[index] for index in lane_order]
             # the critic's values (``task='value'``) and the reference's logps: two whole-batch
             # response-framed forwards over the kept rows; the policy actor chains its own
             # disable_lora pass when the reference IS the policy object.
             values_out = cluster.value_model.forward_only(
-                inputs=trajs, output_frame='response', output_fields=('values',),
+                inputs=lane_trajs, output_frame='response', output_fields=('values',),
                 micro_batch_size=micro_batch_size, task='value')
             ref_out = cluster.reference.forward_only(
-                inputs=trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
+                inputs=lane_trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
                 micro_batch_size=micro_batch_size, **({'disable_lora': True} if ref_shared else {}))
             # ONE advantage call (estimator=gae, kl=k1): token rewards ``r - kl_coef*KL`` with the
             # weighted ORM score on the last token, GAE over the pre-update critic values; the
             # trajectories come back carrying advantages / returns / old_logps / old_values.
             trajs, gae_summary = cluster.advantage(
-                trajs, ref_out=ref_out, value_out=values_out, scores=scores)
+                lane_trajs, ref_out=ref_out, value_out=values_out, scores=lane_scores)
+            if lane_restore is not None:
+                trajs = [trajs[position] for position in lane_restore]
+                if gae_summary.get('reward_totals'):
+                    gae_summary['reward_totals'] = [
+                        gae_summary['reward_totals'][position] for position in lane_restore]
             # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
             reward_metric.reset()
             reward_metric.accumulate(

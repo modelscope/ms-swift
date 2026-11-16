@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import torch
 from twinkle.perf import span as perf_span
 
-from swift.dev.recipe.batching import balance_update
+from swift.dev.recipe.batching import balance_lanes, balance_update
 from swift.dev.recipe.grpo.assembly import build_driver, grpo_group_requests, initialize_cluster
 from swift.dev.recipe.utils import (
     RolloutStepState,
@@ -338,19 +338,29 @@ def _train_loop(
                 last_batch_versions[:1] = [batch_facts.get('version_spans') or []]
             # The forwards, flattened into the loop body: each lane is ONE whole-batch
             # response-framed forward, its result passed as a handle straight into the advantage.
+            # The lanes run in the DP-balanced order (whole GRPO groups stay together, so the
+            # advantage's positional group math still sees complete blocks); the score rows are
+            # permuted alongside, and `lane_restore` puts the returned trajectories back into the
+            # caller's order before any downstream consumer.
+            lane_lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
+                                                 batch_facts.get('response_lengths') or ())]
+            lane_trajs, lane_order, lane_restore = balance_lanes(
+                state, trajs, lane_lengths, group_size=rl_config.num_generations, micro_batch_kwargs=batching)
+            lane_scores = batch_facts['scores'] if lane_order is None else [
+                batch_facts['scores'][index] for index in lane_order]
             ref_out = None
             if cluster.reference is not None:
                 # a disable_adapter auxiliary IS the policy object itself (identity derives disable_lora AND
                 # the policy-group placement).
                 ref_out = cluster.reference.forward_only(
-                    inputs=trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
+                    inputs=lane_trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
                     **batching, **({'disable_lora': True} if cluster.reference is cluster.model else {}))
             teacher_out = None
             if cluster.teacher is not None or teacher_prompt:
                 # teacher_prompt without a dedicated teacher: the policy grades the privileged view itself.
                 t_model = cluster.teacher if cluster.teacher is not None else cluster.model
                 t_disable = cluster.teacher is not None and cluster.teacher is cluster.model
-                view = cluster.privileged(trajs) if cluster.privileged is not None else trajs
+                view = cluster.privileged(lane_trajs) if cluster.privileged is not None else lane_trajs
                 teacher_out = t_model.forward_only(
                     inputs=view, output_frame='response', output_fields=('logps',), temperature=temperature,
                     **batching, **({'disable_lora': True} if t_disable else {}))
@@ -359,15 +369,17 @@ def _train_loop(
                 # the pre-update policy lane: old_logps from the training side BEFORE any optimizer
                 # step this batch (the default is the sampler's own logps, already on the rows).
                 old_out = cluster.model.forward_only(
-                    inputs=trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
+                    inputs=lane_trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
                     **batching)
             # ONE advantage call: reads the rows plus the batch's row-aligned score rows
             # (``facts['scores']``, meeting here inside the worker), returns the trajectories with
             # the training-target columns attached (references) plus a light numeric summary; the
             # caller replaces its old references.
             trajs, adv_summary = cluster.advantage(
-                trajs, ref_out=ref_out, teacher_out=teacher_out, old_out=old_out,
-                global_step=state.global_step, scores=batch_facts['scores'])
+                lane_trajs, ref_out=ref_out, teacher_out=teacher_out, old_out=old_out,
+                global_step=state.global_step, scores=lane_scores)
+            if lane_restore is not None:
+                trajs = [trajs[position] for position in lane_restore]
             if advantage_out is not None:
                 advantage_out.clear()
                 # Short names: the consumer namespaces them under ``advantage/``.
@@ -385,8 +397,7 @@ def _train_loop(
                 state,
                 rl_config,
                 trajs,
-                [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
-                                       batch_facts.get('response_lengths') or ())],
+                lane_lengths,
                 train_batch_size=train_batch_size,
                 batching_kwargs=batching_kwargs,
                 temperature=temperature,
