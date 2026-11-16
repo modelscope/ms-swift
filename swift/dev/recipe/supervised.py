@@ -105,6 +105,11 @@ def _dump_train_tensors(global_step: int, samples: list) -> None:
     runs differ, not whether the trained span is the one the template contract specifies. Reconciling
     the training scope needs the positions themselves -- labels against input_ids' single shift, which
     roles carry loss_mask, where padding sits -- so this dumps the tensors instead of a hash of them.
+
+    At this seam the dataloader's ``InputFeature`` still holds its encoded columns as Python lists;
+    the backend collates them into padded tensors inside ``forward_backward`` on the worker. The
+    numeric columns are therefore materialised here, which is what carries the per-sample training
+    scope. Padding the collator adds is downstream of this point and is not visible in these files.
     """
     import os
     root = os.environ.get('SWIFT_TRAIN_TENSOR_DUMP')
@@ -117,8 +122,13 @@ def _dump_train_tensors(global_step: int, samples: list) -> None:
     rank = int(os.environ.get('RANK') or os.environ.get('LOCAL_RANK') or 0)
     records = []
     for position, sample in enumerate(samples):
-        tensors = {key: value.detach().to('cpu').contiguous()
-                   for key, value in sample.items() if torch.is_tensor(value)}
+        tensors = {}
+        for key, value in sample.items():
+            if torch.is_tensor(value):
+                tensors[key] = value.detach().to('cpu').contiguous()
+            elif isinstance(value, (list, tuple)) and value and all(
+                    isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+                tensors[key] = torch.tensor(value)
         scalars = {key: value for key, value in sample.items()
                    if not torch.is_tensor(value) and isinstance(value, (str, int, float, bool))}
         name = f'step{global_step:05d}.rank{rank}.s{position:03d}.pt'
