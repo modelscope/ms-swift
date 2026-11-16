@@ -679,6 +679,7 @@ class H2OTemplate(Thx02Template):
         # both register, so a renamed/copied checkpoint raises "Multiple possible types found".
         if self.dummy_model is None:
             import torch
+
             from swift.model import get_model_processor
             with torch.device('meta'):
                 self.dummy_model = get_model_processor(
