@@ -54,12 +54,12 @@ class TestClefLinearInputRanks(unittest.TestCase):
 
     def _build(self):
         import torch
+
         from swift.model.decision_head import ClefJointSchemaHead
 
-        head = ClefJointSchemaHead(
-            hidden_size=32, width=8, routing_layers=1, layers=1, heads=2, feedforward=16)
+        head = ClefJointSchemaHead(hidden_size=32, width=8, routing_layers=1, layers=1, heads=2, feedforward=16)
         sequence_hidden = torch.randn(12, 32)
-        input_ids_row = torch.randint(0, 64, (12,))
+        input_ids_row = torch.randint(0, 64, (12, ))
         output_embedding_weight = torch.randn(64, 32)
         return torch, head, sequence_hidden, input_ids_row, output_embedding_weight
 
