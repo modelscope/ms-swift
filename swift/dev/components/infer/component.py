@@ -683,16 +683,16 @@ def _build_scorers(infer_config: 'InferConfig', reward_config: Optional['RewardC
 
     def _channel_funcs(plan: Any, name: str) -> Tuple[List[Any], List[str]]:
         funcs, names = get_reward_funcs(plan.rules, reward_config)
-        funcs = [FunctionWorker(func) for func in funcs]
+        funcs = [FunctionWorker(func, instance_id=f'{name}{index}') for index, func in enumerate(funcs)]
         names = list(names)
-        for spec in plan.specs:
+        for index, spec in enumerate(plan.specs):
             remote_group = name if ray and spec.kind in ('scalar', 'generative_independent') else None
             funcs.append(build_reward_model(
                 spec, model_config=model_config, template_config=template_config,
                 distributed_config=dist, rollout_config=rollout_config, backend=backend,
                 sampler=sampler, engine_args=engine_args, remote_group=remote_group,
                 judge_template=getattr(reward_config, 'judge_template', None),
-                quantize_config=quantize_config))
+                quantize_config=quantize_config, instance_id=f'{name}{index}'))
             names.append(spec.display_name)
         return funcs, names
 

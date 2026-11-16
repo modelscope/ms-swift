@@ -1363,7 +1363,13 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
             parallel_spec=getattr(reward_config, f'{channel}_parallel_spec')),
         channel=channel, sampler_model=model_config.model, backend=backend)
     funcs, names = get_reward_funcs(plan.rules, reward_config)
-    scorers = [FunctionWorker(func, remote_group=worker_group) for func in funcs]
+    # instance_id per entry: ray names a worker after its construction call site, so every handle
+    # built by this one comprehension would otherwise get the same actor name and the second
+    # --orm entry would fail to start with ActorAlreadyExistsError.
+    scorers = [
+        FunctionWorker(func, remote_group=worker_group, instance_id=f'{channel}{index}')
+        for index, func in enumerate(funcs)
+    ]
     names = list(names)
     prefix = 'reward' if channel == 'orm' else channel
     for index, spec in enumerate(plan.specs):
@@ -1374,7 +1380,8 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
             spec, model_config=model_config, template_config=template_config,
             distributed_config=distributed_config, rollout_config=rollout_config, backend=backend,
             sampler=sampler, remote_group=f'{prefix}_{index}', worker_group=worker_group,
-            judge_template=reward_config.judge_template, quantize_config=quantize_config))
+            judge_template=reward_config.judge_template, quantize_config=quantize_config,
+            instance_id=f'{prefix}{index}'))
         names.append(spec.display_name)
     return scorers, names
 
