@@ -122,7 +122,7 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
 def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
                 rollout_config: 'RolloutConfig', state: RolloutStepState, reward_metric: Any, *,
                 train_batch_size: int, ema_manager: Any, save: Callable[[str], Any],
-                versions_cell: List[List[int]]) -> None:
+                versions_cell: List[List[int]], unscored_cell: List[int]) -> None:
     """One loop for every placement: take a scored batch, lift it through GAE, train both models.
 
     Colocate time-shares the devices with BOTH training models: the critic is offloaded before the
@@ -214,7 +214,7 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
                 if gae_summary.get('unscored_flags'):
                     gae_summary['unscored_flags'] = [
                         gae_summary['unscored_flags'][position] for position in lane_restore]
-            _unscored_cell[0] = sum(gae_summary.get('unscored_flags') or ())
+            unscored_cell[0] = sum(gae_summary.get('unscored_flags') or ())
             # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
             reward_metric.reset()
             reward_metric.accumulate(
@@ -494,7 +494,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         if not (state.reached_max() or state.should_stop()):
             _train_loop(cluster, driver, rl_config, rollout_config, state, reward_metric,
                         train_batch_size=train_batch_size, ema_manager=ema_manager, save=save,
-                        versions_cell=_versions_cell)
+                        versions_cell=_versions_cell, unscored_cell=_unscored_cell)
     finally:
         try:
             # The terminal run totals (rollout / trained samples, throughput, wall time) go through the
