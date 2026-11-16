@@ -33,19 +33,32 @@ def greedy_params(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def group_variance(rewards_block: List[List[Any]], weights: Any) -> float:
-    """The weighted-reward std of one group (dynamic_sample's zero-variance test)."""
+    """The weighted-reward std of one group (dynamic_sample's zero-variance test).
+
+    Unscored members are excluded here exactly as the estimator excludes them: a row whose every
+    scorer failed folds to NaN and ``nanstd`` ignores it, and a group left with fewer than two scored
+    members has no std at all -- reported as 0.0 so the group is resampled, which is what the estimator
+    will do with it anyway (every advantage zero).
+
+    Counting a failure as a 0.0 score instead invents spread the estimator never sees: one scored 1.0
+    beside three failures looks like a group worth keeping, yet trains on nothing. The fold and the std
+    are twinkle's own, so admission and estimation cannot drift apart.
+    """
     import torch
+
+    from twinkle.advantage import nanstd, reduce_rewards
 
     if len(rewards_block) <= 1:
         return 0.0
     matrix = torch.tensor(
-        [[0.0 if value is None or value != value else float(value) for value in row] or [0.0] for row in rewards_block],
+        [[float('nan') if value is None or value != value else float(value) for value in row] or [float('nan')]
+         for row in rewards_block],
         dtype=torch.float32,
     )
-    if weights is not None and matrix.shape[1] == len(weights):
-        matrix = matrix * weights.unsqueeze(0)
-    weighted = matrix.nansum(dim=1)
-    return float(torch.std(weighted, unbiased=False)) if weighted.numel() > 1 else 0.0
+    if weights is not None and matrix.shape[1] != len(weights):
+        weights = None
+    std = nanstd(reduce_rewards(matrix, weights))
+    return 0.0 if std != std else float(std)
 
 
 def grpo_group_requests(
