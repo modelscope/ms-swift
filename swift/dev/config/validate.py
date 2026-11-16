@@ -486,9 +486,7 @@ def _check_weight_sync_backend(rollout_config: Optional['RolloutConfig'],
 
 def _check_weight_sync_deepspeed(distributed_config: 'DistributedConfig',
                                  rl_config: Optional['RLConfig']) -> None:
-    """Reject checkpoint-engine weight sync on the DeepSpeed tiers it cannot serve correctly.
-
-    Two distinct failures, both measured end to end rather than inferred:
+    """Reject checkpoint-engine weight sync on the DeepSpeed tier it cannot serve correctly.
 
     CPU offload (zero2_offload / zero3_offload): the fp32 master lives on the CPU and the bf16
     parameters are written back from it with a non-blocking copy, so a sync that reads the model's
@@ -497,13 +495,12 @@ def _check_weight_sync_deepspeed(distributed_config: 'DistributedConfig',
     updates, while non-offload ZeRO-2 and FSDP2 reproduce it exactly; that divergence is inside
     DeepSpeed's cpu_offload branch, not in this stack.
 
-    ZeRO-3, offload or not: stage 3 partitions parameters across ranks, and the sync's
-    ``merge_adapter`` reads the LoRA matrices before anything gathers them, so peft's
-    ``weight_B @ weight_A`` receives an empty local shard and raises ``size mismatch ... vec (0)``.
-    The publisher then dies and the receiver reports a ZMQ metadata timeout, which names the
-    transport instead of the cause. ZeRO-2 does not partition parameters and syncs correctly.
+    Non-offload ZeRO-3 used to fail here too -- ``merge_adapter`` read an empty local LoRA shard
+    because nothing had gathered the partitioned parameters -- so the refusal was removed once the
+    sync started gathering them first (``TransformersModel._get_weight_generator`` ->
+    ``strategy.gather_params_for_read``). Its end-to-end fidelity is verified separately.
     """
-    from swift.dev.utils.utils import deepspeed_cpu_offload, deepspeed_zero_stage
+    from swift.dev.utils.utils import deepspeed_cpu_offload
     rl_type = None if rl_config is None else rl_config.rl_type
     if rl_type not in _ROLLOUT_SYNC_TYPES:
         return
@@ -516,12 +513,6 @@ def _check_weight_sync_deepspeed(distributed_config: 'DistributedConfig',
             f'(--deepspeed {spec!r}, rl_type={rl_type!r}): the offload tier keeps the fp32 master on the '
             'CPU and writes the bf16 parameters back asynchronously, so the sampler can be handed weights '
             f'that lag the last update. {alternatives}')
-    if deepspeed_zero_stage(spec) == 3:
-        raise ValueError(
-            f'Weight sync into a rollout sampler is not supported with ZeRO-3 '
-            f'(--deepspeed {spec!r}, rl_type={rl_type!r}): stage 3 partitions parameters across ranks and '
-            'the sync merges the LoRA adapter before gathering them, so the merge reads an empty local '
-            f'shard and fails with a size mismatch. {alternatives}')
 
 
 def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
