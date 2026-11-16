@@ -48,6 +48,7 @@
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
 - problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
+  - 当 `--task_type seq_cls --problem_type multi_label_classification` 与 `--sequence_parallel_size > 1` 一起使用时，多标签目标按样本保留完整的类别维度，不随 token 序列切分。
 - rope_scaling: rope类型，你可以传入字符串，例如：`linear`、`dynamic`、`yarn`并结合传入`max_model_len`，ms-swift会自动设置对应的rope_scaling并覆盖'config.json'中的rope_scaling。或者你需要传入一个json字符串，例如`'{"factor":2.0, "type":"yarn"}'`，该值会直接覆盖'config.json'中的rope_scaling。默认为None。
 - max_model_len: 如果使用`rope_scaling`并传入字符串，可以设置`max_model_len`，该参数用来计算rope的`factor`倍数。该参数默认为None。若为非None，该参数会**覆盖**'config.json'中的`max_position_embeddings`值。
 - device_map: 模型使用的device_map配置，例如：'auto'、'cpu'、json字符串、json文件路径。该参数会**透传**入transformers的`from_pretrained`接口。默认为None，根据设备和分布式训练情况自动设置。
