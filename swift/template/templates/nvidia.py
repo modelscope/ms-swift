@@ -285,7 +285,7 @@ register_template(
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
         stop_words=['<|im_end|>'],
-        agent_template='hermes',
+        agent_template='nemotron3_5',
     ))
 
 register_template(
@@ -298,5 +298,5 @@ register_template(
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
         stop_words=['<|im_end|>'],
-        agent_template='hermes',
+        agent_template='nemotron3_5',
     ))
