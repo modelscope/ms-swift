@@ -1074,9 +1074,19 @@ def _build_transformers_model(
             world = Platform.get_world_size() if distributed_config.mode != 'ray' else 1
         micro_bs = (train_config.per_device_train_batch_size if train_config is not None else 1) or 1
         ga = (train_config.gradient_accumulation_steps if train_config is not None else 1) or 1
+        # gradient_clipping is the one "auto" placeholder that decides numerics rather than batch
+        # geometry. Neither HF Trainer nor accelerate's dataloader-carrying prepare runs here, and
+        # accelerate's own prepare fills this key with a hardcoded 1.0 (accelerator.py config_kwargs ->
+        # deepspeed_config_process(must_match=False)), while twinkle's fill_auto resolves only the batch
+        # keys. Left as "auto" it therefore becomes 1.0 no matter what the user asked for, and
+        # --max_grad_norm / --clip_grad are silently inert on the DeepSpeed path -- the engine's step does
+        # the clipping there, and the loop's clip_grad_and_step is a no-op on DeepSpeedOptimizerWrapper.
+        from swift.dev.builders.optimizer import resolve_max_grad_norm
+        clip = resolve_max_grad_norm(train_config) if train_config is not None else 1.0
         for key, value in (('train_micro_batch_size_per_gpu', micro_bs),
                            ('gradient_accumulation_steps', ga),
-                           ('train_batch_size', world * micro_bs * ga)):
+                           ('train_batch_size', world * micro_bs * ga),
+                           ('gradient_clipping', clip)):
             if config.get(key) == 'auto':
                 config[key] = value
         # ZeRO-3 bucket sizes: HF Trainer fills these "auto" values from config.hidden_size; a
