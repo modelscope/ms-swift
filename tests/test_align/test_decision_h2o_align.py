@@ -19,11 +19,12 @@ diffing against a reference implementation:
                      invariance, `H2O_TWO_WAY=1` making full attention bidirectional, no truncation,
                      one-question-per-row enforcement, and the dummy-model rebuild used by DataLoader workers.
   E  loss         -- `scoring` loss back-propagates into the hidden states while the label rows stay fixed.
-  F  sft          -- (CUDA) a short LoRA `swift sft` round-trip restores `head_temperature`/`temperatures`.
+  F  sft          -- (CUDA/NPU) a short LoRA `swift sft` round-trip restores `head_temperature`/`temperatures`.
 
 Env variables (all optional; without them the non-weight files of `Qwen/Qwen3.5-4B` are downloaded):
 
     QWEN35_PROCESSOR_DIR    Dir with a Qwen3.5 tokenizer / processor / config used to build the tiny model.
+    H2O_TEST_DEVICE         Pin the tiny model's device (`npu:0`, `cpu`, ...); default is cuda -> npu:0 -> cpu.
 
 Usage::
 
@@ -265,8 +266,18 @@ def _qwen35_processor_dir():
 
 
 def _tiny_device():
+    # `H2O_TEST_DEVICE` pins the device (e.g. `npu:0`, `cpu`) when auto-detection is not what you want.
+    override = os.environ.get('H2O_TEST_DEVICE')
+    if override:
+        return override
     if torch.cuda.is_available():
         return 'cuda'
+    try:
+        import torch_npu
+        if torch_npu.npu.is_available():
+            return 'npu:0'
+    except (ImportError, AttributeError):
+        pass
     try:  # flash-linear-attention kernels need a GPU; without them the reference torch path runs on CPU
         import fla  # noqa: F401
         return None
