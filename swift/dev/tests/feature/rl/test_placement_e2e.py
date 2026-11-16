@@ -18,7 +18,7 @@ RL_PLAN §二 "只补缺口，不重写"):
 | # | case | input | expected (contract) | where covered | failure it kills |
 |---|------|-------|---------------------|---------------|------------------|
 | 1 | colocate shares one group, CUDA-IPC sync | ``sampler_mode='colocate'`` GRPO | trainer+sampler in ONE ``model`` group; policy handed over via CUDA-IPC | planning: ``test_recipes.py::test_plan_device_groups_colocate_shares_one_group``; e2e IPC delivery: ``test_backends_e2e.py`` megatron GRPO logs "Updated N base weights via IPC"; e2e per-window cadence: ``test_async_e2e.py::test_sync_colocate_is_driverless_and_on_policy`` (colocate is a driver-less plain loop that syncs unconditionally every window) | weight-sync mode chosen wrong / colocate run never hands the device over |
-| 2 | **disaggregated: disjoint groups, NCCL sync** | ``sampler_mode='disaggregated'`` + ``weight_sync_strategy='in_place'`` GRPO, nproc=1 | sampler on its OWN GPU (disjoint ``sampler`` group), policy pushed by NCCL each window, run trains on-policy | **THIS FILE** ``test_disaggregated_grpo_nccl_sync_disjoint_gpus`` (planning unit: ``test_recipes.py::test_plan_device_groups_heterogeneous_disjoint_ranks``) | overlapping device groups (NCCL same-card conflict) / the cross-GPU NCCL sync silently skipped |
+| 2 | **disaggregated: disjoint groups, NCCL sync** | ``sampler_mode='disaggregated'`` GRPO (unconditional in-place NCCL publish), nproc=1 | sampler on its OWN GPU (disjoint ``sampler`` group), policy pushed by NCCL each window, run trains on-policy | **THIS FILE** ``test_disaggregated_grpo_nccl_sync_disjoint_gpus`` (planning unit: ``test_recipes.py::test_plan_device_groups_heterogeneous_disjoint_ranks``) | overlapping device groups (NCCL same-card conflict) / the cross-GPU NCCL sync silently skipped |
 | 3 | colocate that cannot fit the sampler | ``sampler_mode='colocate'``, sampler GPUs > trainer GPUs | ``ValueError`` pointing at ``disaggregated`` | ``test_recipes.py::test_plan_device_groups_validation`` | silent mis-placement instead of a loud refusal |
 | 4 | frozen auxiliary owns a disjoint group | separate teacher / value model | the auxiliary is a Ray actor on its OWN group, never contending with the policy's ``parallel_state`` | ``test_algorithms_e2e.py::test_gkd_e2e_separate_teacher`` (separate teacher, accel(2)) and ``::test_ppo_*`` (critic); planning: ``test_recipes.py::test_plan_device_groups_heterogeneous_disjoint_ranks`` | auxiliary shares the policy's process-level ``parallel_state`` and corrupts it |
 
@@ -52,13 +52,14 @@ def test_disaggregated_grpo_nccl_sync_disjoint_gpus(tiny_qwen2_5, rl_data, tmp_p
     ``sampler_mode='disaggregated'`` makes ``plan_device_groups`` append a ``sampler`` group over ranks
     ``[nproc, nproc + sampler_world_size)`` -- DISJOINT from the trainer's ``model`` group ``[0, nproc)`` --
     so with ``nproc=1`` the trainer owns one GPU and the vLLM sampler the other (this test is ``accel(2)``).
-    ``CheckpointEngineManager(mode='standalone')`` then wires the NCCL transport, and
-    ``weight_sync_strategy='in_place'`` is what actually DRIVES it: each driver publish calls
+    ``CheckpointEngineManager(mode='standalone')`` then wires the NCCL transport, and the in-place publish is
+    what actually DRIVES it: each driver publish calls
     ``SyncableRollout.sync_weights`` -> ``ColocateHandover.enter`` (which, with ``colocate=False``, reduces to
     ``manager.sync_weights(merge_and_sync=True)`` -- a plain NCCL broadcast of the LoRA-merged base weights,
-    no device hand-over). ``adapter_snapshot`` would instead pin per-version adapter paths and never touch
-    the NCCL broadcast, so ``in_place`` is set explicitly to exercise the transport the plan names for a
-    disaggregated run.
+    no device hand-over). This in-place pause/resume publish is now UNCONDITIONAL behavior (78a1a1c55 retired
+    the ``weight_sync_strategy`` / ``allow_partial_rollout`` knobs); ``sampler_mode='disaggregated'`` with the
+    default ``weight_sync_backend='full'`` selects the disjoint-GPU NCCL transport the plan names, so the
+    placement alone exercises it -- no publication-strategy knob remains to set.
 
     Two oracles, both anchored to the placement rather than to a self-consistent round trip:
 
@@ -89,7 +90,7 @@ def test_disaggregated_grpo_nccl_sync_disjoint_gpus(tiny_qwen2_5, rl_data, tmp_p
         nproc=1,
         max_steps=6,
         rlhf_over={'num_generations': 2}, reward_over={'orm': [_varied_content_reward]},
-        rollout_over={'sampler_mode': 'disaggregated', 'weight_sync_strategy': 'in_place'},
+        rollout_over={'sampler_mode': 'disaggregated'},
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
     )
     history = run_rl(configs)

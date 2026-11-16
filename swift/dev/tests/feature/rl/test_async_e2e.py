@@ -6,7 +6,9 @@ The overlapped regimes ride a per-sample ``StreamingDriver`` and differ only in 
 (``async_mode='one_step_off'`` -> 1, ``'fully_async'`` -> the configured value). At staleness > 0 the sampler
 runs ahead on its OWN GPUs (``sampler_mode='disaggregated'`` is mandatory there -- a colocated sampler
 time-shares one DeviceGroup and cannot overlap), a publish overwrites the live weights under in-flight
-generations (``in_place`` + ``allow_partial_rollout`` aborts and resumes each), and a sample may be trained up
+generations and pauses then resumes each on the new weights (this abort/resume is now UNCONDITIONAL
+behavior -- 78a1a1c55 retired the ``weight_sync_strategy`` / ``allow_partial_rollout`` knobs), and a sample
+may be trained up
 to ``max_staleness`` versions after it was generated; the driver counts each publish (``stream_publishes``)
 and stamps each sample's version skew (``version_span_mean``). The failure this dimension kills is the
 staleness bound being violated -- a slow trajectory that spans several publishes being consumed at a lag
@@ -26,9 +28,9 @@ per RL_PLAN §二 "只补缺口，不重写"):
 
 | # | case | input | expected (contract) | where covered | failure it kills |
 |---|------|-------|---------------------|---------------|------------------|
-| 1 | staleness=0 synchronous colocate (driver-less) | ``async_mode='none'`` colocate GRPO | trains strictly on-policy; resolved regime is colocate + in_place; the StreamingDriver-only telemetry (``stream_publishes`` / ``version_span_mean`` / ``off_policy_consumed`` / ``partial_ratio``) is ABSENT (no driver on the plain loop) | **THIS FILE** ``test_sync_colocate_is_driverless_and_on_policy`` | colocate silently put back on the driver / a version skew creeping into a regime that alternates generation and training, or a downgrade that trivially lacks the telemetry |
-| 2 | one_step_off bounded overlap (staleness 1) | ``async_mode='one_step_off'`` disaggregated GRPO, in_place + allow_partial_rollout + IS mode | trains on disjoint GPUs; ``version_span_mean <= 1`` and ``max_partial_span <= 1`` on EVERY step; policy published at least once | **THIS FILE** ``test_one_step_off_disaggregated_staleness_bounded`` | straggler consumed at lag > max_staleness (in-flight staleness gate missing) / version pin released early |
-| 3 | fully_async bounded overlap (staleness 2) | ``async_mode='fully_async'`` ``max_staleness=2`` disaggregated GRPO, in_place + partial + IS mode | trains; ``version_span_mean <= 2`` and ``max_partial_span <= 2`` on EVERY step | **THIS FILE** ``test_fully_async_disaggregated_staleness_bounded`` | the deep-buffer staleness bound enforced only at depth 1 (a straggler consumed at lag 3) |
+| 1 | staleness=0 synchronous colocate (driver-less) | ``async_mode='none'`` colocate GRPO | trains strictly on-policy; resolved regime is colocate + async none; the StreamingDriver-only telemetry (``stream_publishes`` / ``version_span_mean`` / ``off_policy_consumed`` / ``partial_ratio``) is ABSENT (no driver on the plain loop) | **THIS FILE** ``test_sync_colocate_is_driverless_and_on_policy`` | colocate silently put back on the driver / a version skew creeping into a regime that alternates generation and training, or a downgrade that trivially lacks the telemetry |
+| 2 | one_step_off bounded overlap (staleness 1) | ``async_mode='one_step_off'`` disaggregated GRPO, unconditional pause/resume publish + IS mode | trains on disjoint GPUs; ``version_span_mean <= 1`` and ``max_partial_span <= 1`` on EVERY step; policy published at least once | **THIS FILE** ``test_one_step_off_disaggregated_staleness_bounded`` | straggler consumed at lag > max_staleness (in-flight staleness gate missing) / version pin released early |
+| 3 | fully_async bounded overlap (staleness 2) | ``async_mode='fully_async'`` ``max_staleness=2`` disaggregated GRPO, unconditional pause/resume publish + IS mode | trains; ``version_span_mean <= 2`` and ``max_partial_span <= 2`` on EVERY step | **THIS FILE** ``test_fully_async_disaggregated_staleness_bounded`` | the deep-buffer staleness bound enforced only at depth 1 (a straggler consumed at lag 3) |
 | 4 | colocate x overlap refused | ``async_mode='one_step_off'`` + ``sampler_mode='colocate'`` | ``ValueError`` ("needs the sampler on its own GPUs") | ``test_infeasible_combos.py::test_colocate_async_overlap_rejected`` | a single-card ColocateHandover that cannot overlap silently degrading instead of refusing |
 | 5 | async GRPO without off-policy correction refused | ``async_mode='one_step_off'``, no ``rollout_importance_sampling_mode`` | ``ValueError`` (requires the IS mode) | ``test_infeasible_combos.py::test_async_grpo_requires_importance_sampling`` | staleness > 0 trains GRPO on raw stale tokens with no importance-sampling correction, silently wrong |
 
@@ -39,7 +41,7 @@ rollout abort+resume, in-place weight overwrite under in-flight generation, an N
 end and pin the version-span bound to the configured ``max_staleness``. Row 1 is the 0-rung on the OTHER code
 path: a colocated sampler cannot overlap, so ``run_grpo`` runs it driver-less (``_colocate_loop``), and the
 strictly-on-policy guarantee is structural rather than a measured span -- the row pins that regime (it trains,
-it resolves to colocate + in_place, and it emits NO driver telemetry), which is the contrast that makes rows
+it resolves to colocate + async none, and it emits NO driver telemetry), which is the contrast that makes rows
 2/3's ``span <= max_staleness`` bound meaningful.
 
 Honest oracle note (testcase-planning step 4/8): whether ``version_span_mean`` actually RISES above 0 within
@@ -47,15 +49,16 @@ a 3-window tiny run is timing-dependent (it needs a generation slow enough to be
 so rows 2/3 assert the CEILING -- ``span <= max_staleness`` on every step -- which is exactly the invariant
 the staleness gate guarantees, NOT a forced nonzero observation (that would be flaky). The bound is the
 adversarial assertion: remove the in-flight staleness gate and a straggler is consumed at lag > max_staleness
--> the bound goes red. ``in_place`` is mandatory for rows 2/3 to be meaningful: under ``adapter_snapshot``
-the driver reports ``version_span`` as a constant 0 by design, so the bound would be vacuous.
+-> the bound goes red. The bound is only meaningful on the overlapping regime: a sync/colocate downgrade
+reports ``version_span`` 0 by construction, so ``_assert_overlapping_regime`` pins the disaggregated
+placement + publication behavior to keep the ceiling from going vacuous.
 
 Reverse-verification: row 1 goes red if colocate is put back on the driver (any of ``stream_publishes`` /
 ``version_span_mean`` / ``off_policy_consumed`` / ``partial_ratio`` shows up in the history), if the resolved
 regime is not the synchronous colocate one, or if the run does not train on-policy (NaN loss / zero ``lora_B``).
 Rows 2/3 go red if the staleness gate is removed (a straggler consumed at lag > max_staleness -> bound
 violated), if the overlapping regime silently downgrades to sync/colocate (``_assert_overlapping_regime``), or
-if the in_place + partial-rollout machinery corrupts training (NaN loss / zero ``lora_B`` -> ``assert_rl_trained``
+if the pause/resume publish machinery corrupts training (NaN loss / zero ``lora_B`` -> ``assert_rl_trained``
 red). Run with ``CUDA_VISIBLE_DEVICES=<cards> pytest swift/dev/tests/feature/rl/test_async_e2e.py -m slow``.
 """
 import pytest
@@ -78,9 +81,8 @@ def test_sync_colocate_is_driverless_and_on_policy(tiny_qwen2_5, rl_data, tmp_pa
     * it really trains on-policy -- finite normalized loss + a non-zero ``lora_B`` read back from disk, with
       the GRPO policy-gradient fingerprint (``train/approx_kl`` / ``train/clip_ratio``) present, so it rolled
       out and took a real policy-gradient step rather than degrading to a non-rollout loop;
-    * the resolved config is the synchronous colocate regime (``sampler_mode='colocate'``, ``async_mode='none'``,
-      ``weight_sync_strategy`` derived to ``in_place``), so the run cannot have been silently downgraded to
-      something that trivially lacks the telemetry;
+    * the resolved config is the synchronous colocate regime (``sampler_mode='colocate'``, ``async_mode='none'``),
+      so the run cannot have been silently downgraded to something that trivially lacks the telemetry;
     * the StreamingDriver-only telemetry rows 2/3 read (``stream_publishes`` / ``version_span_mean`` /
       ``off_policy_consumed`` / ``partial_ratio``) is ABSENT -- there is no driver on the colocate path to emit
       it. Asserting the absence pins the "no driver, no version face" design: a regression that put colocate
@@ -108,9 +110,6 @@ def test_sync_colocate_is_driverless_and_on_policy(tiny_qwen2_5, rl_data, tmp_pa
     rc = configs['rollout_config']
     assert rc.sampler_mode == 'colocate', f'expected the synchronous colocate regime, got {rc.sampler_mode!r}'
     assert rc.async_mode == 'none', f'expected async_mode none (staleness 0), got {rc.async_mode!r}'
-    assert rc.weight_sync_strategy == 'in_place', (
-        f'colocate derives in_place (the only publication whose sync_fn hands the device back each window), '
-        f'got {rc.weight_sync_strategy!r}')
 
     assert_rl_trained(
         history, configs, 'grpo', max_loss=20.0, require_keys=('train/approx_kl', 'train/clip_ratio'))
@@ -129,9 +128,10 @@ def test_one_step_off_disaggregated_staleness_bounded(tiny_qwen2_5, rl_data, tmp
 
     ``async_mode='one_step_off'`` pins ``max_staleness=1``: the driver trains version ``v`` while admitting
     ``v+1``. ``validate`` forces the overlapping regime onto ``sampler_mode='disaggregated'`` (a colocated
-    sampler cannot overlap), ``weight_sync_strategy='in_place'`` + ``allow_partial_rollout`` (a publish
-    overwrites the sampler's single live weight copy under the in-flight generations, so each is aborted and
-    resumed on the fresh weights), and -- because GRPO trains on raw sampled tokens -- a
+    sampler cannot overlap); the in-place publish that overwrites the sampler's single live weight copy under
+    the in-flight generations -- pausing each and resuming it on the fresh weights -- is now UNCONDITIONAL
+    behavior (78a1a1c55 retired the ``weight_sync_strategy`` / ``allow_partial_rollout`` knobs), and -- because
+    GRPO trains on raw sampled tokens -- a
     ``rollout_importance_sampling_mode`` to correct the off-policy ratio (``old`` recomputed from the live
     policy minus ``rollout`` the sampler's own logprobs). The oracle is the staleness BOUND, an independent
     contract (the configured ``max_staleness``): ``version_span_mean`` and ``max_partial_span`` must never
@@ -157,13 +157,11 @@ def test_one_step_off_disaggregated_staleness_bounded(tiny_qwen2_5, rl_data, tmp
         rollout_over={
             'sampler_mode': 'disaggregated',
             'async_mode': 'one_step_off',
-            'weight_sync_strategy': 'in_place',
-            'allow_partial_rollout': True,
         },
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
     )
     history = run_rl(configs)
-    _assert_overlapping_regime(configs, async_mode='one_step_off', max_staleness=1)
+    _assert_overlapping_regime(configs, history, async_mode='one_step_off', max_staleness=1)
     assert_rl_trained(
         history,
         configs,
@@ -172,10 +170,6 @@ def test_one_step_off_disaggregated_staleness_bounded(tiny_qwen2_5, rl_data, tmp
         require_keys=('version_span_mean', 'max_partial_span', 'stream_publishes'))
 
     _assert_staleness_bound(history, max_staleness=1)
-    publishes = [r['stream_publishes'] for r in history]
-    assert publishes[-1] >= 1, (
-        f'stream_publishes never advanced ({publishes}): the overlapping run never pushed a trained policy '
-        f'into the disaggregated sampler, so it rolled out on stale disk-loaded weights the whole time')
 
 
 @pytest.mark.slow
@@ -184,7 +178,7 @@ def test_fully_async_disaggregated_staleness_bounded(tiny_qwen2_5, rl_data, tmp_
     """Row 3: ``fully_async`` at ``max_staleness=2`` runs the sampler two versions ahead and bounds the span
     to 2 -- the deep-buffer regime the single-lookahead ``one_step_off`` structurally cannot reach.
 
-    Same overlapping machinery as row 2 (disaggregated + in_place + partial rollout + IS correction), but the
+    Same overlapping machinery as row 2 (disaggregated + unconditional pause/resume publish + IS correction), but the
     driver admits up to ``max_staleness=2`` versions ahead, so a ready buffer of in-flight trajectories
     absorbs a deeper version skew (``buffer_depth`` scales with ``max_staleness + 1``). The bound oracle
     scales with the knob: ``version_span_mean`` and ``max_partial_span`` must never exceed 2. This is the row
@@ -209,13 +203,11 @@ def test_fully_async_disaggregated_staleness_bounded(tiny_qwen2_5, rl_data, tmp_
             'sampler_mode': 'disaggregated',
             'async_mode': 'fully_async',
             'max_staleness': 2,
-            'weight_sync_strategy': 'in_place',
-            'allow_partial_rollout': True,
         },
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
     )
     history = run_rl(configs)
-    _assert_overlapping_regime(configs, async_mode='fully_async', max_staleness=2)
+    _assert_overlapping_regime(configs, history, async_mode='fully_async', max_staleness=2)
     assert_rl_trained(
         history,
         configs,
@@ -226,28 +218,39 @@ def test_fully_async_disaggregated_staleness_bounded(tiny_qwen2_5, rl_data, tmp_
     _assert_staleness_bound(history, max_staleness=2)
 
 
-def _assert_overlapping_regime(configs, *, async_mode, max_staleness):
-    """Anti-degeneracy: the RESOLVED config really is the overlapping disaggregated regime we asked for.
+def _assert_overlapping_regime(configs, history, *, async_mode, max_staleness):
+    """Anti-degeneracy: the RESOLVED config really is the overlapping disaggregated regime we asked for,
+    and the publication BEHAVIOR (pause + resume of in-flight requests) actually ran.
 
     The bound assertions in rows 2/3 would also pass on a silently-downgraded synchronous / colocate run
     (span 0 <= any bound), so pin the regime from the post-validation config: ``async_mode``, the mandatory
-    disaggregated placement, the in_place + allow_partial_rollout publish mechanism the overlapping regime
-    requires, and the staleness depth. ``validate`` already REFUSES the run outright if any of these is an
-    illegal combination, so reaching here with them intact means the overlapping path was really taken.
+    disaggregated placement, and the staleness depth. ``validate`` already REFUSES the run outright if any
+    of these is an illegal combination, so reaching here with them intact means the overlapping path was
+    really taken.
+
+    The in-place publish + partial-rollout abort/resume became UNCONDITIONAL behavior (78a1a1c55 deleted the
+    ``weight_sync_strategy`` / ``allow_partial_rollout`` knobs -- a sync now always pauses the sampler's
+    running requests and lets them continue on the new weights), so this pins the BEHAVIOR rather than a
+    config value that no longer exists: a publication really reached the separate-GPU sampler
+    (``stream_publishes`` advanced) and the partial-rollout face is reported on every step
+    (``max_partial_span`` present), which is what proves in-flight requests were paused and resumed rather
+    than discarded. Restoring the deleted fields to go green is explicitly forbidden.
     """
     rc = configs['rollout_config']
     assert rc.async_mode == async_mode, f'async_mode resolved to {rc.async_mode!r}, expected {async_mode!r}'
     assert rc.sampler_mode == 'disaggregated', (
         f'an overlapping regime must place the sampler on its own GPUs, but sampler_mode resolved to '
         f'{rc.sampler_mode!r} (a colocate downgrade would make the staleness bound vacuous)')
-    assert rc.weight_sync_strategy == 'in_place', (
-        f'overlapping in_place publish expected (the only strategy with a real version_span), got '
-        f'{rc.weight_sync_strategy!r}')
-    assert rc.allow_partial_rollout, (
-        'overlapping in_place requires allow_partial_rollout: a publish aborts and resumes each in-flight '
-        'generation on the fresh weights')
     assert rc.max_staleness == max_staleness, (
         f'max_staleness resolved to {rc.max_staleness}, expected {max_staleness}')
+    publishes = [r['stream_publishes'] for r in history]
+    assert publishes[-1] >= 1, (
+        f'stream_publishes never advanced ({publishes}): the overlapping run never pushed a trained policy '
+        f'into the disaggregated sampler, so it rolled out on stale disk-loaded weights the whole time')
+    assert all('max_partial_span' in r for r in history), (
+        'the partial-rollout face (max_partial_span) is absent from some step: a publication must pause and '
+        'resume each in-flight generation on the fresh weights, and that abort/resume is what this telemetry '
+        'reports -- its absence means the unconditional pause/resume behavior did not run')
 
 
 def _assert_staleness_bound(history, *, max_staleness):
