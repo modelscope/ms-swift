@@ -8,6 +8,8 @@ shares. All hand-computed; no Ray, no GPU.
 
 Maps to ut_plan S8-01/02/03 (device groups) and S8-21/22/23/24 (scoring utils).
 """
+import math
+
 import torch
 import pytest
 
@@ -52,7 +54,8 @@ class TestPlanDeviceGroups:
 
 class TestWeightedReward:
     """S8-21: the single-row collapse -- nansum over weighted per-scorer columns (a judge NaN must
-    not poison the whole sample)."""
+    not poison the valid scores beside it), and a row where EVERY scorer failed is NaN, i.e. no
+    signal, rather than a fabricated 0."""
 
     def test_weighted_nansum(self):
         from twinkle.advantage import weighted_score
@@ -60,10 +63,22 @@ class TestWeightedReward:
         # 8*0.25 + nan*2.0 -- the None judge score contributes nothing, not NaN.
         assert weighted_score([8.0, None], torch.tensor([0.25, 2.0])) == pytest.approx(2.0)
 
-    def test_all_nan_is_zero(self):
+    def test_all_nan_is_no_signal(self):
         from twinkle.advantage import weighted_score
 
-        assert weighted_score([None, None], torch.tensor([1.0, 1.0])) == pytest.approx(0.0)
+        # Every scorer failed: the row was never scored, so it folds to NaN ("no signal"), not 0.0.
+        # A fake 0 is indistinguishable from a genuine zero score, and wherever the fold is
+        # subtracted (a remax baseline) it fabricates an advantage of the full reward.
+        assert math.isnan(weighted_score([None, None], torch.tensor([1.0, 1.0])))
+        assert math.isnan(weighted_score([], None))
+
+    def test_partial_failure_keeps_the_valid_scorers(self):
+        from twinkle.advantage import weighted_score
+
+        # One failed scorer beside a valid one still folds the valid score -- the failure drops out
+        # instead of discarding the row or poisoning it with NaN.
+        assert weighted_score([None, 4.0], torch.tensor([1.0, 0.5])) == pytest.approx(2.0)
+        assert weighted_score([float('nan'), 4.0], None) == pytest.approx(4.0)
 
 
 class TestBuildRewardWeights:
