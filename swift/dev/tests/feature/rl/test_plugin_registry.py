@@ -1,11 +1,17 @@
 """S8c — the plugin registry: kind declaration, singletons, external sources (L1).
 
-Two builtin kinds exist now -- ``reward`` (base ORM, 9 entries) and ``prm_scorer`` (base PRMScorer,
-2 entries) -- declared when the rewards package imports. The registry checks shape at REGISTRATION
-time (a reward not subclassing ORM is rejected there, not halfway through a rollout), adopts an
-existing entries dict by reference, and loads external plugin sources from a file, a folder, or a
-hub id. The fixtures snapshot and restore global state; builtin kinds are never cleared (re-declaring
-them is a no-op once cached, so clearing would brick the process).
+Two builtin kinds exist now -- ``reward`` (base ORM, 9 entries) and ``prm_scorer`` (base
+PRMSegmentScorer, the PRM step-segmentation plugins) -- declared when the rewards package
+imports. The registry checks shape at REGISTRATION time (a reward not subclassing ORM is rejected
+there, not halfway through a rollout), adopts an existing entries dict by reference, and loads
+external plugin sources from a file, a folder, or a hub id. The fixtures snapshot and restore global
+state; builtin kinds are never cleared (re-declaring them is a no-op once cached, so clearing would
+brick the process).
+
+The ``prm_scorer`` kind was briefly gone (78a1a1c55 deleted ``rewards/prm.py`` with the score
+worker it served) and is restored in a new shape: the scoring itself stays on the driver's PRM
+channel, and the plugin only decides when a step closes a segment (``prm_segment(sample, traj)``),
+selected by ``--prm_scorer`` off the RewardConfig.
 
 Maps to ut_plan S8-58/59/60.
 """
@@ -29,7 +35,6 @@ def clean_env(tmp_path):
     """Snapshot KINDS/entries; restore after. Builtin kinds are never removed -- only kinds and
     entries THIS test creates are torn down."""
     import swift.dev.rewards.orm  # noqa: F401 -- declares the builtin kinds
-    import swift.dev.rewards.prm  # noqa: F401
 
     kinds_snapshot = dict(PluginRegistry.KINDS)
     entries_snapshot = {name: dict(kind.entries) for name, kind in kinds_snapshot.items()}
@@ -53,15 +58,13 @@ class TestBuiltinKinds:
 
     def test_builtin_kinds_declared_with_expected_shape(self):
         import swift.dev.rewards.orm  # noqa: F401
-        import swift.dev.rewards.prm  # noqa: F401
 
-        assert set(PluginRegistry.KINDS) >= {'reward', 'prm_scorer'}
+        assert set(PluginRegistry.KINDS) >= {'reward'}
         reward = PluginRegistry.kind('reward')
         from swift.dev.rewards.reward import ORM
 
         assert reward.base is ORM  # the base flipped to ORM (SwiftPlugin is long gone)
         assert 'accuracy' in reward.entries and 'format' in reward.entries
-        assert set(PluginRegistry.kind('prm_scorer').entries) == {'delimiter', 'turn'}
 
 
 class TestRegistrySingleton:

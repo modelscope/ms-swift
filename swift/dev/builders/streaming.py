@@ -84,7 +84,27 @@ def build_rollout(sampler: Any,
 
     from .sandbox import build_tools
 
+    harness = getattr(rollout_config, 'harness', None)
+    if harness:
+        # Fail loudly before anything is built: the agent program owns each episode's tools, so
+        # any tool plugin beside the env would be built here and silently dropped below.
+        tool_names = [name for name in (getattr(rollout_config, 'tools', None) or [])
+                      if name != 'sandbox']
+        if tool_names:
+            raise ValueError(
+                f'--harness {harness!r} owns each episode\'s tools; --tools {tool_names} would be '
+                "silently ignored. Drop them ('sandbox' may stay: the env survives, the agent "
+                'program runs inside the episode\'s session).')
     env, tool_manager = build_tools(rollout_config, env_group=(ENV_GROUP if remote else None), inflight=inflight)
+    agent = None
+    if harness:
+        # An external agent program runs each episode and owns its tools and its loop, so no
+        # tool manager rides along (the rollout's own check enforces this); the env stays --
+        # the program runs inside the episode's session.
+        from swift.dev.utils.plugin import PluginRegistry
+
+        agent = PluginRegistry.resolve('harness', harness, config=rollout_config).build()
+        tool_manager = None
     placement: Dict[str, Any] = {}
     if remote:
         placement['remote_group'] = ROLLOUT_GROUP
@@ -98,6 +118,8 @@ def build_rollout(sampler: Any,
         max_trajectory_tokens=getattr(rollout_config, 'max_trajectory_tokens', None),
         env=env,
         tool_manager=tool_manager,
+        harness=agent,
+        segment_policy=getattr(rollout_config, 'segment_policy', 'drop'),
         **kwargs,
         **placement)
 
@@ -127,14 +149,24 @@ def build_streaming_driver(*,
                            max_steps: Optional[int] = None,
                            checkpoint_manager: Any = None,
                            orms: Sequence[Any] = (),
+                           orm_names: Optional[Sequence[str]] = None,
                            prms: Sequence[Any] = (),
+                           prm_names: Optional[Sequence[str]] = None,
+                           prm_segment: Optional[Callable[[Any, Any], bool]] = None,
                            on_sample: Optional[Callable[[Any], Optional[bool]]] = None,
                            on_group: Optional[Callable[[Any, List[Any], int], List[Any]]] = None,
                            max_group_regenerations: int = 0,
                            cluster_adapter: Any = None,
                            max_staleness: Optional[int] = None,
                            remote: bool = False) -> Any:
-    """One ``StreamingDriver`` handing out ``(trajs, samples)`` batches of ``batch_size`` rows.
+    """One ``StreamingDriver`` handing out trajectory batches of ``batch_size`` rows.
+
+    Each batch arrives as ``(rows, facts)``: the rows exactly as they travel (references under
+    ray -- the driver never opens one; the identity facts were stamped at admission) and the
+    light facts carrying the row-aligned score column beside the row lengths. ``orm_names`` /
+    ``prm_names`` name the scorers in that column (``None`` falls back to the driver's
+    positional names). ``prm_segment`` is the PRM segmentation predicate handed straight to the
+    driver (``None`` = every step closes a segment).
 
     Staleness follows ``async_mode`` (:func:`max_staleness_of`) unless ``max_staleness`` is given
     (without a checkpoint manager it only sets how many batches run ahead), the sync interval is
@@ -153,7 +185,10 @@ def build_streaming_driver(*,
         sync_interval=rollout_config.parameter_sync_step,
         checkpoint_manager=checkpoint_manager,
         orms=orms,
+        orm_names=orm_names,
         prms=prms,
+        prm_names=prm_names,
+        prm_segment=prm_segment,
         on_sample=on_sample,
         on_group=on_group,
         max_group_regenerations=max_group_regenerations,

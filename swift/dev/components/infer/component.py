@@ -242,10 +242,7 @@ class InferComponent(RecipeComponent):
                 sampler, template, self.rollout_config or RolloutConfig(),
                 sampling_params=asdict(to_sampling_params(self.generation_config)), adapter_path=adapter_path)
 
-        if infer_config.batch_size < 1:
-            raise ValueError(f'InferConfig.batch_size must be >= 1, got {infer_config.batch_size}.')
-        if infer_config.max_batches:
-            rows = rows[:infer_config.max_batches * infer_config.batch_size]
+        rows = _plan_rows(rows, infer_config)
         from swift.dev.dataset.storage import open_store_writer
 
         writer = open_store_writer(
@@ -424,9 +421,9 @@ class InferComponent(RecipeComponent):
         done: Dict[int, List[Dict[str, Any]]] = {}
         next_ordinal = 0
         try:
-            for trajs, samples in driver:
-                # group_key is the driver's draw ordinal of the group's prompt
-                done[int(samples[0].group_key)] = trajs
+            for batch, _facts in driver:
+                # group_key is the driver's draw ordinal of the group's prompt (stamped on every row)
+                done[int(batch[0]['group_key'])] = batch
                 while next_ordinal in done:
                     group = done.pop(next_ordinal)
                     emit_group(group[0][_ROW_INDEX], group)
@@ -686,16 +683,16 @@ def _build_scorers(infer_config: 'InferConfig', reward_config: Optional['RewardC
 
     def _channel_funcs(plan: Any, name: str) -> Tuple[List[Any], List[str]]:
         funcs, names = get_reward_funcs(plan.rules, reward_config)
-        funcs = [FunctionWorker(func) for func in funcs]
+        funcs = [FunctionWorker(func, instance_id=f'{name}{index}') for index, func in enumerate(funcs)]
         names = list(names)
-        for spec in plan.specs:
+        for index, spec in enumerate(plan.specs):
             remote_group = name if ray and spec.kind in ('scalar', 'generative_independent') else None
             funcs.append(build_reward_model(
                 spec, model_config=model_config, template_config=template_config,
                 distributed_config=dist, rollout_config=rollout_config, backend=backend,
                 sampler=sampler, engine_args=engine_args, remote_group=remote_group,
                 judge_template=getattr(reward_config, 'judge_template', None),
-                quantize_config=quantize_config))
+                quantize_config=quantize_config, instance_id=f'{name}{index}'))
             names.append(spec.display_name)
         return funcs, names
 
@@ -758,10 +755,10 @@ def _emit_all(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Opt
         # Each multi-turn candidate is a distinct trajectory (its own tool calls); ``messages`` keeps
         # only the first, so store every candidate's full trajectory rather than losing all but one.
         out['all_messages'] = [_candidate_messages(candidate) for candidate in candidates]
-    if candidates[0].get('rollout_logprobs'):
+    if candidates[0].get('rollout_logps'):
         # Present for a generated candidate (a cached one has none); mirrors legacy's per-row
         # ``logprobs`` for the response this row keeps.
-        out['logprobs'] = list(candidates[0]['rollout_logprobs'])
+        out['logprobs'] = list(candidates[0]['rollout_logps'])
     if ground_truth is not None:
         out['labels'] = ground_truth
     if scores is not None:
@@ -861,8 +858,12 @@ def _dpo_row(row: Dict[str, Any], trajectory: Dict[str, Any], positive: Any,
     if multi_turn:
         out['multi_turn'] = True
         out['truncated'] = bool(positive.get('truncated'))
+        # The ledger column travels with the trajectory: generated_keys above strips a dataset column
+        # of the same name, so what the row carries must come from the candidate that was kept.
+        out['rollout_infos'] = dict(positive.get('rollout_infos') or {})
         if negative is not None:
             out['rejected_truncated'] = bool(negative.get('truncated'))
+            out['rejected_rollout_infos'] = dict(negative.get('rollout_infos') or {})
     if ground_truth is not None:
         out['ground_truth'] = ground_truth
     # Group id: every row from one prompt shares it, so positives can be traced back to their group.
@@ -909,6 +910,20 @@ def _emit_grpo(row: Dict[str, Any], trajectory: Dict[str, Any], ground_truth: Op
     else:
         out['scores'] = None
     return [out]
+
+
+def _plan_rows(rows: List[Dict[str, Any]], infer_config: 'InferConfig') -> List[Dict[str, Any]]:
+    """The rows this run will process: ``max_batches`` truncates, a batch below one is fatal.
+
+    Both properties are easy to break silently -- a coerced batch size of zero would make the
+    generate loop plan no batches at all, and rounding the row count down to whole batches would
+    drop the trailing partial batch, i.e. silently skip data the user asked to run.
+    """
+    if infer_config.batch_size < 1:
+        raise ValueError(f'InferConfig.batch_size must be >= 1, got {infer_config.batch_size}.')
+    if infer_config.max_batches:
+        return rows[:infer_config.max_batches * infer_config.batch_size]
+    return rows
 
 
 def _prompt_batch_size(batch_size: Optional[int]) -> int:
@@ -970,7 +985,7 @@ class _RolloutRecorder:
         """Persist one candidate's rollout tokens; return the NPZ path relative to ``base_dir``.
 
         The sidecar holds the payload every dump format shares (``input_ids`` / ``labels`` /
-        ``completion_mask`` / ``response_token_ids`` / ``rollout_logprobs``)
+        ``completion_mask`` / ``response_token_ids`` / ``rollout_logps``)
         -- old_logps are the one thing training cannot recompute (the policy has drifted). Multimodal
         tensors are omitted on purpose: reproducible, so training re-encodes them from the row's kept
         media columns and messages, as an online rollout would. None when disabled or token-less.
@@ -985,7 +1000,7 @@ class _RolloutRecorder:
             'input_ids': np.asarray(input_ids, dtype=np.int64),
             'labels': np.asarray(labels, dtype=np.int64),
             'response_token_ids': np.asarray(candidate.get('response_token_ids') or [], dtype=np.int64),
-            'rollout_logprobs': np.asarray(candidate.get('rollout_logprobs') or [], dtype=np.float32),
+            'rollout_logps': np.asarray(candidate.get('rollout_logps') or [], dtype=np.float32),
         }
         completion_mask = candidate.get('completion_mask')
         if completion_mask is not None:

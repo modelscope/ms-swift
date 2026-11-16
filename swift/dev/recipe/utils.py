@@ -96,9 +96,9 @@ def begin_rollout_iteration(state):
     state.begin_rollout_iteration()
 
 
-def observe_rollout_samples(state, samples, *, length_fn=None):
-    """Back-compat shim: see :meth:`RolloutStepState.observe_rollout_samples`."""
-    state.observe_rollout_samples(samples, length_fn=length_fn)
+def observe_rollout_batch(state, summary):
+    """Back-compat shim: see :meth:`RolloutStepState.observe_rollout_batch`."""
+    state.observe_rollout_batch(summary)
 
 
 def record_rollout_training(state, indices):
@@ -542,14 +542,14 @@ class StepState:
                  empty_cache_steps: Optional[int] = None,
                  extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None,
                  log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None,
-                 padding_free: bool = False, balance_batch: bool = False):
+                 padding_free: bool = False, dp_balance: bool = False):
         # The tracker initializes its reporters as a construction side effect (validation ran above).
 
         from swift.dev.callbacks import build_callbacks
         from swift.dev.callbacks.handler import CallbackHandler
 
         self.model = model
-        self.balance_batch = balance_batch
+        self.dp_balance = dp_balance
         self.padding_free = padding_free
         self.ga = gradient_accumulation_steps
         self.max_steps = max_steps
@@ -617,15 +617,24 @@ class StepState:
             due = self.global_step % _FALLBACK_LOGGING_STEPS == 0
         should_log = due or self.handler.control.should_log
         # twinkle.metric is the single source of every algorithm metric: merge the WHOLE component
-        # output, coerced to numeric scalars; ``loss`` is re-pinned as the normalized float.
+        # output, coercing display strings to numbers but keeping the values that are genuinely
+        # textual; ``loss`` is re-pinned as the normalized float.
+        #
+        # This used to be coerce_metric_scalars, which drops every non-numeric entry, and that
+        # silently lost TrainMetric's 'total time elapse' and 'speed' -- they are formatted strings,
+        # so no sft run persisted a per-step training speed at all, while the eval path (which keeps
+        # non-numeric values verbatim) did persist eval_speed. The reporter routes non-numeric values
+        # to attributes.non_numeric_values rather than to the numeric table, and the tracker's writer
+        # path re-coerces with _coerce_scalar, so carrying them is what makes the timing visible
+        # without breaking any consumer that reads the record as numbers.
         record = {'step': self.global_step}
-        record.update(coerce_metric_scalars(metrics))
+        record.update(normalize_metric_values(metrics))
         record['loss'] = loss
         record.update(_mtp_metrics(self.model))
         if self._extra_metrics_fn is not None:
-            record.update(self._extra_metrics_fn())
+            record.update(normalize_metric_values(self._extra_metrics_fn()))
         if extra_metrics is not None:
-            record.update(extra_metrics)
+            record.update(normalize_metric_values(extra_metrics))
         if should_log:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
@@ -697,6 +706,37 @@ class StepState:
         control.should_evaluate = False
         control.should_log = False
 
+    def finish_metrics(self, *, status: str = 'completed') -> None:
+        """Emit the terminal run record, which is what takes the persisted summary out of 'running'.
+
+        The reducer advances its run status only on a ``stage='run'`` record
+        (``twinkle/metric/reporting.py``: ``if record.stage == 'run': self.run_status = record.status``)
+        and the reporter writes ``summary.json`` from that status when it closes. The rollout family
+        emits such a record from :meth:`RolloutStepState.finish_rollout_metrics`; the offline family
+        closed the tracker without ever emitting one, so every sft run's ``summary.json`` reported
+        ``status='running'`` however it ended. A completed run was then indistinguishable from an
+        abandoned one, and anything that treats a non-terminal status as "still in flight" -- a stop
+        gate, a dashboard, a reaper -- reported finished runs as running. Measured on three chains that
+        all wrote ``exit_code=0`` and a full 30 steps: NRA120, NRA100 and NRA66 each stayed at
+        ``status='running'``.
+
+        Kept separate from ``finish_rollout_metrics`` rather than folded into ``RunTracker.close``:
+        the rollout record carries that family's own counters, and a second ``stage='run'`` record
+        emitted by ``close`` would overwrite the ``run_status`` and ``result`` the rollout totals just
+        set. Each family states its own terminal record, the way each already states its own steps.
+        """
+        from twinkle.metric import MetricRecord
+
+        self.tracker.record(MetricRecord(
+            stage='run', optimizer_step=self.global_step,
+            values={
+                'train_steps': self.global_step,
+                'micro_steps': self.micro_step,
+                'max_steps': self.max_steps,
+            },
+            status='failed' if status == 'failed' else 'completed',
+            attributes={'step_unit': 'run_summary', 'loop_status': status}))
+
 
 class RolloutStepState(StepState):
     """A :class:`StepState` for rollout recipes (GRPO now; every online rollout family later).
@@ -756,31 +796,33 @@ class RolloutStepState(StepState):
             # end to end, or the window would select the wrong spans).
             self._iteration_started_ns = default_recorder.now_ns()
             self._iteration_facts = {'lengths': [], 'truncated': [], 'turns': [],
-                                     'trained_indices': set(), 'sample_visits': 0}
+                                     'trained_indices': set(), 'sample_visits': 0,
+                                     'policy_versions': []}
             self._memory_rows = None
 
-    def observe_rollout_samples(self, samples, *, length_fn=None) -> None:
-        """Attach this iteration's rollout-specific sample facts (lengths / truncation / turns)."""
+    def observe_rollout_batch(self, summary: Dict[str, Any]) -> None:
+        """Attach this iteration's rollout facts (lengths / truncation / turns), off the light summary.
+
+        The facts are the driver's row-level batch summary -- reading them off the trajectories
+        would mean materialising a whole rollout batch for its metadata. """
         from twinkle.perf import default_recorder
 
         batch = self._iteration_facts
         if batch is None:
             return
-        samples = list(samples)
-        # The rollout counts (prompt, response) tokens when it builds the trajectory, so the heavy
-        # trajectory is never fetched for this; only synthesised samples need a length_fn.
-        lengths = []
-        for sample in samples:
-            counts = getattr(sample, 'token_lengths', None)
-            if counts is None:
-                if length_fn is None:
-                    raise ValueError('rollout metrics need token_lengths on every sample (or a length_fn).')
-                counts = length_fn(sample)
-            lengths.append(tuple(counts))
-        batch['lengths'] = lengths
-        batch['truncated'] = [bool(getattr(sample, 'truncated', False)) for sample in samples]
-        batch['turns'] = [getattr(sample, 'turns', None) for sample in samples]
-        # When the samples arrived -- the 'gen' fallback window end when no gen span exists.
+        batch['lengths'] = list(zip(summary.get('prompt_lengths') or (),
+                                     summary.get('response_lengths') or ()))
+        batch['truncated'] = [bool(flag) for flag in (summary.get('truncated') or ())]
+        batch['turns'] = list(summary.get('turns') or ())
+        # The admission version of every sample in the batch, which both summary producers carry
+        # (``streaming_driver._sample_facts`` and ``processor.trajectory.batch_summary``). Kept as the
+        # whole delivered batch rather than narrowed to the rows ``record_rollout_training`` later
+        # keeps: the anchor is stamped as a minimum, and a minimum over a superset is never larger
+        # than over the kept subset, so this stays on the conservative side without needing an
+        # index-to-version mapping the summary does not provide.
+        batch['policy_versions'] = [int(version) for version in (summary.get('policy_versions') or ())
+                                    if version is not None]
+        # When the batch arrived -- the 'gen' fallback window end when no gen span exists.
         batch['received_ns'] = default_recorder.now_ns()
 
     def record_rollout_training(self, indices) -> None:
@@ -879,6 +921,13 @@ class RolloutStepState(StepState):
             MetricRecord(
                 stage='rollout',
                 optimizer_step=self.global_step,
+                # The version anchor of the batch this iteration actually trained: the minimum over
+                # its samples, which is the conservative reading ("every row is at least this
+                # stale") and the one the reporter folds into the run summary's per-context
+                # ``policy_version``. Reporting it only as a metric value -- which is what the step
+                # log does -- leaves that summary field permanently None, so a completed run cannot
+                # say which policy version it ended on even though every step logged one.
+                policy_version=(min(batch['policy_versions']) if batch['policy_versions'] else None),
                 values=values,
                 attributes={
                     'scope': 'iteration',
@@ -1087,15 +1136,15 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     the GPUs) or ``None``; the meshes map each auxiliary group to the DeviceMesh its model shards with
     (empty under an estimate plan). ``group_requests`` supplies this recipe's own frozen-model groups.
     """
-    import twinkle
-    from twinkle import DeviceGroup, DeviceMesh, Platform
     from twinkle.perf import Perf
     from twinkle_agentic.async_rl import estimate_plan, resource_device_groups
 
+    import twinkle
     from swift.dev.builders import build_dp_mesh, build_template, load_model_processor
     from swift.dev.builders.sandbox import SANDBOX
     from swift.dev.builders.streaming import CONTROL_GROUP, ENV_GROUP, ROLLOUT_GROUP
     from swift.dev.config import process_configs, validate_configs
+    from twinkle import DeviceGroup, DeviceMesh, Platform
 
     process_configs(
         model_config, template_config, dataset_config, train_config, distributed_config,
@@ -1117,6 +1166,16 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     if backend not in ('vllm', 'sglang'):
         raise ValueError(f"rollout_sampler={backend!r} cannot back an online-RL rollout: weight sync into the "
                          "sampler needs a CheckpointEngineMixin engine. Use 'vllm' or 'sglang'.")
+    if distributed_config.mode == 'remote':
+        # The single-process client run: no local twinkle runtime, DeviceGroups, or perf actors to
+        # initialize -- the server owns the trainer and the sampler, and build_remote_model binds
+        # the transport. The remote weight channel (save -> adapter_uri) needs no placement plan,
+        # so no plan or estimate runs here. Only the vllm-served sampler has a client port today.
+        if backend != 'vllm':
+            raise ValueError(
+                f"--mode remote needs rollout_sampler='vllm': the served-sampler client face exists "
+                f"for the vLLM serving stack only (got {backend!r}).")
+        return template, None, {}
     requests = group_requests()
     # One mesh per auxiliary, built once so the group's rank count and the model's sharding cannot
     # drift; an estimate plan rewrites the specs, so the dict is dropped and re-derived at the build.
@@ -1172,6 +1231,12 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     ]
     if SANDBOX in (rollout_config.tools or ()):
         cpu_groups.append(DeviceGroup(name=ENV_GROUP, ranks=rollout_config.sandbox_num_workers, device_type='CPU'))
+    # An inference engine pins NCCL_CUMEM_ENABLE inside the actor process it starts in (sglang writes
+    # 0 unless the variable is already set), while the trainer keeps NCCL's default of 1. A checkpoint
+    # communicator spans both processes, and a cuMem / legacy-IPC mismatch leaves the broadcast source
+    # waiting forever for a shareable fd that the peer never sends. Every actor inherits the driver's
+    # environment, so pinning it here makes the two halves agree; an explicit user value still wins.
+    os.environ.setdefault('NCCL_CUMEM_ENABLE', '0')
     twinkle.initialize(
         mode='ray',
         nproc_per_node=total,
@@ -1185,18 +1250,39 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     return template, resource_plan, auxiliary_meshes
 
 
-def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutConfig', template: Any,
+def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutConfig', template: Any,  # noqa: C901
                      tuner_config: Optional['TunerConfig'], resource_plan: Any = None,
-                     colocate: bool = False, enable_sampling_replay: bool = False) -> Any:
+                     colocate: bool = False, enable_sampling_replay: bool = False,
+                     distributed_config: Optional['DistributedConfig'] = None,
+                     template_config: Optional['TemplateConfig'] = None) -> Any:
     """The weight-syncable rollout sampler: shaped engine args, then the planned or static build.
 
     The planned layout (estimate/adaptive) sizes the replica pool and stamps the elastic instance id;
     the static shape reads the rollout_config replica knobs (estimate's apply_plan already rewrote
     them, so the two agree). Colocate pins the sleep/save knob the borrow-and-return loop needs.
+    Under ``distributed_config.mode='remote'`` the sampler is the CLIENT handle over the server's
+    served engine instead: no engine args or replicas are built locally, and the same dev
+    TemplateSpec the model's processor was set with rebuilds the server-side template so the
+    training forward and the rollout agree token-for-token.
     """
-    from twinkle import DeviceMesh
+    if distributed_config is not None and distributed_config.mode == 'remote':
+        if rollout_config.rollout_sampler != 'vllm':
+            raise ValueError(
+                f"--mode remote needs rollout_sampler='vllm': the served-sampler client face exists "
+                f"for the vLLM serving stack only (got {rollout_config.rollout_sampler!r}).")
+        if template_config is None:
+            raise ValueError('build_rl_sampler needs template_config under mode=remote: the client '
+                             'sampler rebuilds the dev Template server-side from its serialized spec.')
+        from twinkle_client.sampler import vLLMSampler as ClientSampler
 
+        from swift.dev.builders.template import build_template_spec
+
+        sampler = ClientSampler(model_config.model)
+        spec = build_template_spec(template_config, model_config)
+        sampler.set_template('swift.dev.template.Template', **{'template_spec': spec})
+        return sampler
     from swift.dev.builders import build_engine_args, build_sampler
+    from twinkle import DeviceMesh
 
     backend = rollout_config.rollout_sampler
     sampler_engine_args = build_engine_args(backend, None, rollout_config)
@@ -1214,6 +1300,24 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         sampler_engine_args['enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'] = True
     if enable_sampling_replay:
         sampler_engine_args['enable_sampling_replay'] = True
+    if rollout_config.weight_sync_backend == 'delta_sharded':
+        # The delta lane needs its engine-side registration in place before the sampler starts:
+        # vLLM builds a weight-transfer engine per worker from weight_transfer_config, and SGLang
+        # resolves the delta loader (registered in custom_weight_loader) by per-request
+        # load_format. The KV-release lane additionally needs the sleep/memory-saver knob on.
+        if backend == 'vllm':
+            from twinkle import Platform
+            wt_backend = ('twinkle_delta_hccl' if Platform.get_platform().__name__ == 'NPU'
+                          else 'twinkle_delta_ipc')
+            sampler_engine_args.setdefault('weight_transfer_config', {'backend': wt_backend})
+            sampler_engine_args.setdefault('enable_sleep_mode', True)
+        else:
+            from twinkle.checkpoint_engine.delta.rollout.sglang_loader import LOADER_FQN
+            loaders = list(sampler_engine_args.get('custom_weight_loader') or [])
+            if LOADER_FQN not in loaders:
+                loaders.append(LOADER_FQN)
+            sampler_engine_args['custom_weight_loader'] = loaders
+            sampler_engine_args.setdefault('enable_memory_saver', True)
     if resource_plan is not None:
         return build_sampler(
             model_config, backend=backend, engine_args=dict(sampler_engine_args),
@@ -1259,7 +1363,13 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
             parallel_spec=getattr(reward_config, f'{channel}_parallel_spec')),
         channel=channel, sampler_model=model_config.model, backend=backend)
     funcs, names = get_reward_funcs(plan.rules, reward_config)
-    scorers = [FunctionWorker(func, remote_group=worker_group) for func in funcs]
+    # instance_id per entry: ray names a worker after its construction call site, so every handle
+    # built by this one comprehension would otherwise get the same actor name and the second
+    # --orm entry would fail to start with ActorAlreadyExistsError.
+    scorers = [
+        FunctionWorker(func, remote_group=worker_group, instance_id=f'{channel}{index}')
+        for index, func in enumerate(funcs)
+    ]
     names = list(names)
     prefix = 'reward' if channel == 'orm' else channel
     for index, spec in enumerate(plan.specs):
@@ -1270,7 +1380,8 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
             spec, model_config=model_config, template_config=template_config,
             distributed_config=distributed_config, rollout_config=rollout_config, backend=backend,
             sampler=sampler, remote_group=f'{prefix}_{index}', worker_group=worker_group,
-            judge_template=reward_config.judge_template, quantize_config=quantize_config))
+            judge_template=reward_config.judge_template, quantize_config=quantize_config,
+            instance_id=f'{prefix}{index}'))
         names.append(spec.display_name)
     return scorers, names
 
@@ -1889,15 +2000,37 @@ def _coerce_scalar(value: Any) -> Optional[float]:
 def coerce_metric_scalars(metrics: Dict[str, Any]) -> Dict[str, float]:
     """Reduce a raw component-metric dict to its finite numeric scalars, dropping non-numeric entries.
 
-    Applied when a loop assembles its per-step record so every value the human-readable step line formats
-    (``f'{value:.4f}'``) and every scalar the tracker writes is already a number, regardless of whether the
-    twinkle.metric component that produced it returned a float or a display string.
+    Use this only where a pure numeric table is required. It drops genuinely textual telemetry --
+    ``TrainMetric``'s ``'total time elapse'`` and ``'speed'`` are formatted strings -- so a per-step
+    record meant for the metric reporter should go through :func:`normalize_metric_values` instead,
+    which coerces the same way and keeps the rest; the reporter files non-numeric values under
+    ``attributes.non_numeric_values`` rather than in the numeric table.
     """
     result: Dict[str, float] = {}
     for key, value in metrics.items():
         number = _coerce_scalar(value)
         if number is not None:
             result[key] = number
+    return result
+
+
+def normalize_metric_values(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """The same numeric normalization as :func:`coerce_metric_scalars`, keeping non-numeric values.
+
+    A recipe's extra metrics are a mixed dict: PPO's critic objective arrives as LossMetric's display
+    string ``'0.89551'`` beside genuinely textual telemetry such as ``speed='0.36 iters/s'``, and a
+    component's own dict carries the same mix -- ``TrainMetric`` formats both ``total time elapse`` and
+    ``speed`` as strings. Dropping the non-numeric half would silently lose that telemetry, so anything
+    that is not a pure number passes through untouched; the reporter files it under
+    ``attributes.non_numeric_values`` instead of the numeric table. Without this the persisted
+    ``metrics.jsonl`` carries the SAME conceptual quantity as a float under one key (the policy's
+    ``loss``, re-pinned by the loop) and as a string under another (``value_loss``), which breaks any
+    consumer that reads the file as a numeric table.
+    """
+    result: Dict[str, Any] = {}
+    for key, value in metrics.items():
+        number = _coerce_scalar(value)
+        result[key] = value if number is None else number
     return result
 
 
@@ -1955,10 +2088,27 @@ class RunTracker:
                 record = replace(record, context_key=self.run_id)
             self._metric_reporter.record(record)
 
-    def log(self, metrics: Dict[str, Any], step: int, *, epoch_end: bool = False) -> Dict[str, Any]:
-        """Filter and write one metric record; returns the record actually emitted."""
+    def log(self, metrics: Dict[str, Any], step: int, *, epoch_end: bool = False,
+            persist: bool = True) -> Dict[str, Any]:
+        """Filter and write one metric record; returns the record actually emitted.
+
+        ``persist=False`` fans the record out to the console and the tensorboard/wandb/swanlab writers
+        without writing it to the metric reporter again. The epoch-end call needs exactly that: with
+        ``logging_strategy='epoch'`` it is the only point where ``should_log`` is true, so it is what
+        emits the epoch-boundary line, but the observation it carries was already persisted by the step
+        that produced it. Persisting it a second time wrote a byte-identical duplicate at the final
+        optimizer step of every run, which made that step's interval ambiguous and so made segmented
+        timing unjudgeable from the persisted metrics.
+
+        Declaring the re-emission at the call site is what makes this safe: no deduplication key is
+        needed, and none would work. The eval path legitimately logs a second, different observation at
+        the same ``optimizer_step``, and every record here is written with ``stage='train'`` -- the eval
+        one included -- so neither the step nor ``(stage, step)`` distinguishes a re-emission from a new
+        observation. Comparing values would be worse still: two steps whose metrics happen to be equal
+        are a legitimate outcome, not a duplicate.
+        """
         filtered = self._filter_metrics(metrics)
-        if self._metric_reporter is not None:
+        if self._metric_reporter is not None and persist:
             from twinkle.metric import MetricRecord
             # Twinkle normalizes scalars and preserves other raw observations in
             # attributes. Only percentage strings need Swift's legacy conversion.
@@ -2202,7 +2352,9 @@ def fit_supervised(
         state.publish_state()
         state.handler.on_epoch_end()
         if state.history:
-            state.tracker.log(state.history[-1], state.global_step, epoch_end=True)
+            # history[-1] is the record the last state.record() already persisted, so this call is a
+            # re-emission for the epoch-boundary fan-out only.
+            state.tracker.log(state.history[-1], state.global_step, epoch_end=True, persist=False)
         if state.should_stop():
             break
 

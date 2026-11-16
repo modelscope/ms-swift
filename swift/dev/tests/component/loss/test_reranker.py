@@ -59,8 +59,15 @@ def test_a_group_smaller_than_the_minimum_is_skipped_not_scored(monkeypatch):
 
 
 def test_labels_without_a_positive_score_zero():
-    """The zero is built with requires_grad=True on purpose: the Trainer calls backward() on it."""
-    loss = _loss(ListwiseRerankerLoss)(_outputs(3., 2., 1.), torch.tensor([0, 0, 0]))
+    """The zero is built with requires_grad=True on purpose: the Trainer calls backward() on it.
+
+    ``logits[:0].sum()`` is a graph-connected zero only when the logits themselves carry a graph, so
+    the fixture marks them as a real model output does -- the previous plain-tensor fixture made the
+    assertion about the implementation's idiom unanswerable.
+    """
+    outputs = types.SimpleNamespace(
+        logits=torch.tensor([[3.], [2.], [1.]], dtype=torch.float, requires_grad=True))
+    loss = _loss(ListwiseRerankerLoss)(outputs, torch.tensor([0, 0, 0]))
     assert loss.requires_grad
     assert float(loss.detach()) == 0.0
 

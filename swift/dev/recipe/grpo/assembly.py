@@ -33,19 +33,32 @@ def greedy_params(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def group_variance(rewards_block: List[List[Any]], weights: Any) -> float:
-    """The weighted-reward std of one group (dynamic_sample's zero-variance test)."""
+    """The weighted-reward std of one group (dynamic_sample's zero-variance test).
+
+    Unscored members are excluded here exactly as the estimator excludes them: a row whose every
+    scorer failed folds to NaN and ``nanstd`` ignores it, and a group left with fewer than two scored
+    members has no std at all -- reported as 0.0 so the group is resampled, which is what the estimator
+    will do with it anyway (every advantage zero).
+
+    Counting a failure as a 0.0 score instead invents spread the estimator never sees: one scored 1.0
+    beside three failures looks like a group worth keeping, yet trains on nothing. The fold and the std
+    are twinkle's own, so admission and estimation cannot drift apart.
+    """
     import torch
+
+    from twinkle.advantage import nanstd, reduce_rewards
 
     if len(rewards_block) <= 1:
         return 0.0
     matrix = torch.tensor(
-        [[0.0 if value is None or value != value else float(value) for value in row] or [0.0] for row in rewards_block],
+        [[float('nan') if value is None or value != value else float(value) for value in row] or [float('nan')]
+         for row in rewards_block],
         dtype=torch.float32,
     )
-    if weights is not None and matrix.shape[1] == len(weights):
-        matrix = matrix * weights.unsqueeze(0)
-    weighted = matrix.nansum(dim=1)
-    return float(torch.std(weighted, unbiased=False)) if weighted.numel() > 1 else 0.0
+    if weights is not None and matrix.shape[1] != len(weights):
+        weights = None
+    std = nanstd(reduce_rewards(matrix, weights))
+    return 0.0 if std != std else float(std)
 
 
 def grpo_group_requests(
@@ -87,8 +100,11 @@ def grpo_group_requests(
 class Cluster(NamedTuple):
     """Every actor and handle GRPO's visible loop drives (a plain handle bundle, not a layer).
 
-    The signal components (``scores`` ... ``routing``) read the trajectories where they live; an
-    option that is off leaves its component ``None``.
+    ``advantage`` is the estimator + formula knobs in one handle: it owns the per-token math
+    (KL-in-reward, PRM fusion, teacher reweighting) inside its call, reading the named score
+    columns the driver already wrote. ``privileged`` builds the teacher view rows when the
+    dataset carries a privileged prompt; ``routing`` replays MoE routing. An option that is off
+    leaves its component ``None``.
     """
 
     model: Any
@@ -101,16 +117,61 @@ class Cluster(NamedTuple):
     orm_scorers: List[Any]
     orm_names: List[str]
     prm_scorers: List[Any]
+    prm_names: List[str]
     sampling_params: Dict[str, Any]
     colocate: bool
-    scores: Any
-    kl: Any
-    process_reward: Any
-    combine: Any
-    teacher_reweight: Any
+    advantage: Any
     privileged: Any
-    correction: Any
     routing: Any
+
+
+def build_advantage(rl_config: "RLConfig", reward_config: "RewardConfig", *, use_prm: bool,
+                    has_teacher: bool, remote_group: Optional[str] = None) -> Any:
+    """The ONE Advantage handle GRPO trains through: estimator + formula knobs, nothing else.
+
+    The estimator name picks the per-sequence math; each knob maps one-to-one onto the
+    ``rl_config`` / ``reward_config`` field it came from, and only knobs the estimator reads
+    are passed -- its constructor rejects set-but-unread knobs, so a wiring mistake fails
+    here, not mid-training. ``use_prm`` / ``has_teacher`` are the cluster's own wiring facts
+    (the PRM scorers / teacher lane exist or do not); ``remote_group`` places the estimator on
+    the control group.
+    """
+    from twinkle.advantage import ESTIMATORS
+
+    name = rl_config.advantage_estimator
+    if name not in ESTIMATORS:
+        raise ValueError(f'advantage_estimator {name!r} not in {tuple(ESTIMATORS)}.')
+    kwargs: Dict[str, Any] = dict(
+        num_generations=rl_config.num_generations,
+        reward_weights=reward_config.orm_weights,
+        scale_rewards=(rl_config.scale_rewards or 'group'),
+        beta=float(rl_config.beta or 0.0),
+        kl_in_reward=bool(rl_config.kl_in_reward and rl_config.beta),
+        sdar_loss_coef=float(rl_config.sdar_loss_coef),
+        rollout_importance_sampling_mode=bool(rl_config.rollout_importance_sampling_mode),
+        log_rollout_offpolicy_metrics=bool(rl_config.log_rollout_offpolicy_metrics),
+        segment_discount=float(rl_config.segment_discount),
+    )
+    if name == 'gpg':
+        kwargs['f_norm'] = float(rl_config.f_norm)
+    if use_prm:
+        kwargs.update(use_prm=True, prm_orm_mix=float(reward_config.prm_orm_mix),
+                      prm_weights=reward_config.prm_weights)
+    if rl_config.advantage_reweight == 'rlsd':
+        kwargs.update(
+            teacher_reweight='rlsd',
+            rlsd_lambda=float(rl_config.rlsd_lambda),
+            rlsd_lambda_warmup_steps=int(rl_config.rlsd_lambda_warmup_steps),
+            rlsd_lambda_decay_steps=int(rl_config.rlsd_lambda_decay_steps),
+            rlsd_reweight_clip_range=float(rl_config.rlsd_reweight_clip_range),
+            rlsd_negative_only=bool(rl_config.rlsd_negative_only))
+    elif has_teacher and not use_prm and rl_config.sdar_loss_coef <= 0:
+        # sdar keeps the scalar advantage (its loss reads teacher_logps itself); every other
+        # teacher lane without PRM broadcast-expands the advantage per token.
+        kwargs.update(teacher_reweight='expand', teacher_kl_coef=float(rl_config.teacher_kl_coef))
+    if remote_group is not None:
+        kwargs['remote_group'] = remote_group
+    return ESTIMATORS[name](**kwargs)
 
 
 def initialize_cluster(
@@ -143,6 +204,10 @@ def initialize_cluster(
     is the rows of one driver batch (it bounds the episodes in flight); ``teacher_prompt`` says the
     dataset carries a privileged ``teacher_prompt`` column.
     """
+    from twinkle.advantage import TeacherReweight
+    from twinkle.metric import RolloutCorrection
+    from twinkle.processor import RoutingReplay
+
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
@@ -158,14 +223,16 @@ def initialize_cluster(
     from swift.dev.processor import InputProcessor, processor_kwargs
     from swift.dev.recipe.utils import single_teacher_id
     from swift.dev.utils.scoring import PrivilegedView
-    from twinkle.advantage import TeacherReweight
-    from twinkle.metric import RolloutCorrection
-    from twinkle.processor import RoutingReplay
-    from twinkle.signals import KLEstimator, ResponseScores, SignalCombine
-    from twinkle_agentic.async_rl import ProcessReward
 
     sp = template_config.sequence_parallel_size
-    sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # mode='remote' runs ONE client process: no local device mesh to shard with (the server owns
+    # the trainer's sharding), so the model build below swaps to the client handle and the
+    # sampler / weight-sync / rollout take their remote object sources.
+    remote_run = distributed_config.mode == 'remote'
+    # build_dp_mesh is the only seam that reads and validates parallel_spec on the local path, so
+    # it must not be gated behind SP>1; ray keeps the gate (see its docstring) so no ray chain moves.
+    sp_mesh = (None if remote_run or (distributed_config.mode == 'ray' and sp <= 1)
+               else build_dp_mesh(distributed_config, sp))
     # Refuse the engine/training combinations a quantized refit cannot serve
     # (DeepSeek-V4 MXFP4 experts): cheaper now than after the engine is built.
     from swift.dev.weight_sync import check_quantized_weight_sync
@@ -176,44 +243,69 @@ def initialize_cluster(
     )
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None:
+    if resume_dir and tuner_config is None and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
         policy_config = copy.copy(model_config)
         policy_config.model = resume_dir
-    # create the actor (the trainable policy) here
-    model = build_model(
-        policy_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-        enable_router_replay=rl_config.router_replay_mode != "disabled",
-        torch_dtype="float32",
-    )
-    if tuner_config is not None:
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=1,
-            task_type=model_config.task_type,
+    # create the actor (the trainable policy) here: the in-process model, or under mode='remote'
+    # the twinkle_client handle over the server's resident one (the sft assembly's remote shape:
+    # the tuner / loss / processor travel as class names + kwargs, everything below is shared).
+    if remote_run:
+        from swift.dev.builders.remote import (
+            apply_remote_tuner,
+            build_remote_model,
+            configure_remote_processor,
         )
+
+        model = build_remote_model(model_config, distributed_config)
+        if tuner_config is not None:
+            apply_remote_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+                model_config=model_config,
+            )
+        # Full-param remote trains every server-side parameter by default (the freeze knobs were
+        # refused at validate time); the processor ships as the dev TemplateSpec so the
+        # server-side encodes match this process's row semantics.
+        configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
-        apply_full_param_freeze(model, train_config)
-    model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    model.set_template(template)
-    configure_rl_loss(model, rl_config)
+        model = build_model(
+            policy_config,
+            distributed_config,
+            train_config,
+            tuner_config,
+            device_mesh=sp_mesh,
+            quantize_config=quantize_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+            enable_router_replay=rl_config.router_replay_mode != "disabled",
+            torch_dtype="float32",
+        )
+        if tuner_config is not None:
+            apply_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+            )
+        else:
+            apply_full_param_freeze(model, train_config)
+        model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        model.set_template(template)
     # The optimizer reads the tuner's param groups and sizes its LR scheduler from the step budget;
     # the policy metric appends onto the optimizer's metric list (twinkle add_metric contract).
+    # The loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport
+    # (local model, Ray proxy, remote served-model handle): see configure_rl_loss.
+    configure_rl_loss(model, rl_config)
     configure_optimizer(
         model,
         train_config,
@@ -238,16 +330,25 @@ def initialize_cluster(
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
+        distributed_config=distributed_config,
+        template_config=template_config,
     )
-    engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+    if remote_run:
+        from swift.dev.builders.remote import RemoteWeightSync
+
+        engine = RemoteWeightSync(model, sampler)
+    else:
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         adapter = build_cluster_adapter(
             resource_plan, rollout_config, model=model, sampler=sampler, checkpoint_manager=engine)
     params = rollout_sampling_params(rl_config.max_completion_length, generation_config)
-    # One rollout for every generation (single-turn is the one-turn degenerate), on its CPU group.
+    # One rollout for every generation (single-turn is the one-turn degenerate); under ray it is
+    # an actor on the CPU rollout group, remotely a plain in-process object over the client
+    # sampler handle (its sample() rides HTTP; the driver still runs locally).
     rollout = build_rollout(
-        sampler, template, rollout_config, sampling_params=params, remote=True,
+        sampler, template, rollout_config, sampling_params=params, remote=not remote_run,
         inflight=inflight_rows(rollout_config, batch_size, rl_config.num_generations))
 
     # create the reference here (a KL anchor): a bare frozen model on its own group, or the policy
@@ -264,6 +365,7 @@ def initialize_cluster(
             model_id=rl_config.ref_model,
             model_config=model_config,
             template=template,
+            template_config=template_config,
             distributed_config=distributed_config,
             device_mesh=auxiliary_mesh(REF_GROUP, ref_spec, auxiliary_meshes),
             parallel_spec=ref_spec,
@@ -279,6 +381,7 @@ def initialize_cluster(
         model_id=single_teacher_id(rl_config.teacher_model, algo="RLSD/SDAR"),
         model_config=model_config,
         template=template,
+        template_config=template_config,
         distributed_config=distributed_config,
         device_mesh=auxiliary_mesh(TEACHER_GROUP, rl_config.teacher_parallel_spec, auxiliary_meshes),
         parallel_spec=rl_config.teacher_parallel_spec,
@@ -292,6 +395,10 @@ def initialize_cluster(
 
     # create prm & orm here -- the shared channel resolver: one scorer worker per entry, each
     # reward MODEL on its own group; the driver runs them on every finished episode / segment.
+    # Under ray the control group is the CPU actor group the scoring workers / estimator ride;
+    # remotely those are plain in-process objects (a FunctionWorker without a remote group runs
+    # its callable in THIS process, which is exactly the remote run's scoring shape).
+    worker_group = None if remote_run else CONTROL_GROUP
     scorer_kwargs = {
         "reward_config": reward_config,
         "model_config": model_config,
@@ -300,20 +407,16 @@ def initialize_cluster(
         "rollout_config": rollout_config,
         "backend": rollout_config.rollout_sampler,
         "sampler": sampler,
-        "worker_group": CONTROL_GROUP,
+        "worker_group": worker_group,
         "quantize_config": quantize_config,
     }
     orm_scorers, orm_names = resolve_reward_scorers("orm", **scorer_kwargs)
-    prm_scorers, _ = resolve_reward_scorers("prm", **scorer_kwargs)
+    prm_scorers, prm_names = resolve_reward_scorers("prm", **scorer_kwargs)
 
-    # the signal components, each on the control group and only when its option is on: the
-    # per-token lanes they read stay references in the driver.
-    group = {"remote_group": CONTROL_GROUP}
+    # the one advantage handle: estimator + formula knobs, on the control group. The per-token
+    # math (KL / PRM fusion / teacher reweighting) lives inside its call, reading the named score
+    # columns the driver wrote onto the trajectories.
     has_teacher = teacher is not None or teacher_prompt
-    preserve = bool(rl_config.rollout_importance_sampling_mode or rl_config.log_rollout_offpolicy_metrics)
-    kl_in_reward = bool(rl_config.kl_in_reward and rl_config.beta)
-    teacher_mode = has_teacher and not prm_scorers and (
-        rl_config.advantage_reweight == "rlsd" or rl_config.sdar_loss_coef <= 0)
 
     return Cluster(
         model=model,
@@ -326,16 +429,13 @@ def initialize_cluster(
         orm_scorers=orm_scorers,
         orm_names=orm_names,
         prm_scorers=prm_scorers,
+        prm_names=prm_names,
         sampling_params=params,
         colocate=colocate,
-        scores=ResponseScores(**group),
-        kl=KLEstimator(**group) if kl_in_reward else None,
-        process_reward=ProcessReward(**group) if prm_scorers else None,
-        combine=SignalCombine(**group) if prm_scorers else None,
-        teacher_reweight=TeacherReweight(**group) if teacher_mode else None,
-        privileged=PrivilegedView(template=template, **group) if teacher_prompt else None,
-        correction=RolloutCorrection(**group) if preserve else None,
-        routing=RoutingReplay(**group) if rl_config.router_replay_mode == "R2" else None,
+        advantage=build_advantage(rl_config, reward_config, use_prm=bool(prm_scorers),
+                                   has_teacher=has_teacher, remote_group=worker_group),
+        privileged=PrivilegedView(template=template, **{"remote_group": worker_group}) if teacher_prompt else None,
+        routing=RoutingReplay(**{"remote_group": worker_group}) if rl_config.router_replay_mode == "R2" else None,
     )
 
 
@@ -346,7 +446,8 @@ def grpo_on_group(rl_config: "RLConfig", reward_config: "RewardConfig", sampling
     A zero-variance group (its advantage is degenerate) is replaced by ``num_generations`` fresh
     trajectories of the same row, up to ``max_resample_times`` (the driver's regeneration cap);
     remax returns one greedy baseline of the row, run once the group is final. ``None`` when
-    neither is on.
+    neither is on. The verdict reads the group's ``RolloutStatus.orm_reward`` rows -- the light
+    sample records the driver stamps when it scores, never the trajectories themselves.
     """
     dynamic = bool(rl_config.dynamic_sample)
     remax = rl_config.advantage_estimator == "remax"
@@ -362,10 +463,15 @@ def grpo_on_group(rl_config: "RLConfig", reward_config: "RewardConfig", sampling
 
     def on_group(row: Any, samples: List[Any], attempt: int) -> List[Any]:
         trajectories: List[Any] = []
-        if dynamic and group_variance([sample.orm_reward for sample in samples], weights) <= 0.0:
+        if dynamic and group_variance([list(sample.orm_reward or ()) for sample in samples],
+                                      weights) <= 0.0:
             trajectories = [copy.deepcopy(row) for _ in range(num_generations)]
         if remax:
-            trajectories.append(attach_user_data(copy.deepcopy(row), role="baseline", sampling_params=greedy))
+            # the greedy sampling override rides user_data (the driver's per-episode sampling read);
+            # the baseline identity is a top-level role, the same field the driver stamps.
+            baseline = attach_user_data(copy.deepcopy(row), sampling_params=greedy)
+            baseline["role"] = "baseline"
+            trajectories.append(baseline)
         return trajectories
 
     return on_group
@@ -374,8 +480,14 @@ def grpo_on_group(rl_config: "RLConfig", reward_config: "RewardConfig", sampling
 def build_driver(*, cluster: Cluster, rl_config: "RLConfig", rollout_config: "RolloutConfig",
                  reward_config: "RewardConfig", prompt_dataloader: Any, batch_size: int,
                  num_train_epochs: float, max_steps: Optional[int]) -> Any:
-    """Assemble twinkle's StreamingDriver over the cluster; GRPO's own face is the group verdict."""
+    """Assemble twinkle's StreamingDriver over the cluster; GRPO's own face is the group verdict.
+
+    The driver hands out its rows (references under ray -- it never opens one) plus the light
+    batch facts carrying the row-aligned score column (``orm_names`` / ``prm_names`` name the
+    scorers); the group verdict reads the samples' ``orm_reward`` rows.
+    """
     from swift.dev.builders.streaming import build_streaming_driver
+    from swift.dev.rewards.prm import build_prm_segment
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,
@@ -387,7 +499,10 @@ def build_driver(*, cluster: Cluster, rl_config: "RLConfig", rollout_config: "Ro
         max_steps=max_steps,
         checkpoint_manager=cluster.engine,
         orms=cluster.orm_scorers,
+        orm_names=cluster.orm_names,
         prms=cluster.prm_scorers,
+        prm_names=cluster.prm_names,
+        prm_segment=build_prm_segment(reward_config, rollout_config),
         on_group=grpo_on_group(rl_config, reward_config, cluster.sampling_params, len(cluster.orm_scorers)),
         max_group_regenerations=(rl_config.max_resample_times if rl_config.dynamic_sample else 0),
         cluster_adapter=cluster.adapter,

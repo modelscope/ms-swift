@@ -963,6 +963,11 @@ class Template(ProcessorMixin):
             # other. preserve_thinking is pinned for the same reason: the banked ids carry the
             # sampled thinking tokens verbatim, so the renders must keep them.
             sample["chat_template_kwargs"] = {"preserve_thinking": True}
+            # ``EncodeIntent`` alone does not reach the encoder: the jinja path derives the
+            # generation prompt from the last message's role, which is right for a dataset sample
+            # and wrong here, where the ``before`` side is a prefix rather than a complete
+            # conversation. Pin it per sample so the two renders differ only in this flag.
+            sample["add_generation_prompt"] = gen_prompt
             intent = EncodeIntent(
                 add_generation_prompt=gen_prompt,
                 with_labels=False,
@@ -1089,7 +1094,10 @@ class Template(ProcessorMixin):
             return row
         inputs = dict(row)
         inputs["input_ids"] = torch.as_tensor(input_ids, dtype=torch.long).reshape(1, -1)
-        for key in ("mm_token_type_ids", "token_type_ids"):
+        # attention_mask belongs with the sequence fields the mRoPE index reads: get_rope_index
+        # indexes it per batch row (attention_mask[batch_idx].bool()), so leaving it a flat list
+        # would hand that expression an int. This copy is local to the position-id derivation.
+        for key in ("attention_mask", "mm_token_type_ids", "token_type_ids"):
             if inputs.get(key) is not None:
                 inputs[key] = torch.as_tensor(inputs[key], dtype=torch.long).reshape(1, -1)
         for key, value in list(inputs.items()):
@@ -1871,7 +1879,16 @@ class Template(ProcessorMixin):
             messages.insert(0, {"role": "system", "content": inputs.system})
         if messages[-1]["content"] is None:
             messages.pop()
-        add_generation_prompt = messages[-1]["role"] != "assistant"
+        # The role-derived default is what a dataset sample wants: a trailing query segment is an
+        # inference prompt, a trailing assistant turn is a complete conversation. A caller that
+        # renders a message list as the PREFIX of a longer one needs the opposite -- no generation
+        # prompt on a list ending in a query -- and says so per sample, the same channel ``add_eos``
+        # travels. Without the override ``render_delta`` cannot render its ``before`` side as a bare
+        # prefix: the opener and thinking prefill it forces in land where the longer render has the
+        # appended turns, so no append is a prefix-extension of it and every thinking-template
+        # episode dies at its first ``observe``.
+        requested = inputs.extra_kwargs.get("add_generation_prompt")
+        add_generation_prompt = messages[-1]["role"] != "assistant" if requested is None else bool(requested)
         kwargs = {}
         if inputs.tools:
             kwargs["tools"] = inputs.tools
@@ -2123,7 +2140,15 @@ class Template(ProcessorMixin):
         # trailing run of queries with no response is the inference generation prompt.
         rounds = split_rounds(inputs.messages)
 
-        response_prefix = self._get_response_prefix(inputs)
+        # A trailing run of queries normally renders as the generation prompt: opener plus the
+        # family's response prefix. A caller that renders this list as the PREFIX of a longer one
+        # asks for neither, per sample, because they would land where the longer render has its
+        # appended turns -- and then no append is a prefix-extension of the shorter render. Absent
+        # the request the role-derived default stands, which is what a dataset sample wants.
+        requested_prompt = inputs.extra_kwargs.get("add_generation_prompt")
+        wants_generation_prompt = True if requested_prompt is None else bool(requested_prompt)
+
+        response_prefix = self._get_response_prefix(inputs) if wants_generation_prompt else None
         for round_idx, (query_messages, response_message) in enumerate(rounds):
             last_round = round_idx == len(rounds) - 1
             # Each query message renders its own block, in message order. The opener is not part
@@ -2162,7 +2187,11 @@ class Template(ProcessorMixin):
             )
             if template_meta.response_opener and not opener_suppressed:
                 opener = template_meta.response_opener.copy()
-                if response_message is None and template_meta.generation_opener is not None:
+                if response_message is None and not wants_generation_prompt:
+                    # The caller asked for no generation prompt, so the trailing queries render
+                    # bare: no opener, matching the response_prefix suppressed above.
+                    opener = []
+                elif response_message is None and template_meta.generation_opener is not None:
                     # the jinja ends the prompt with a different opener than the one it puts
                     # before a response
                     opener = template_meta.generation_opener.copy()

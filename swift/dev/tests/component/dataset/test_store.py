@@ -58,7 +58,7 @@ def test_core_fields_are_the_materialised_anchor():
 def test_known_fields_cover_the_infer_emit_and_recorder_payload():
     """The vocabulary names the columns infer's emit and rollout recorder produce, so a ``store_fields``
     entry for any of them validates rather than being rejected as unrecognised."""
-    for field in ('completion_mask', 'response_token_ids', 'response_loss_mask', 'rollout_logprobs', 'messages',
+    for field in ('completion_mask', 'response_token_ids', 'response_loss_mask', 'rollout_logps', 'messages',
                   'all_messages', 'completions', 'rejected_response', 'rollout_tokens', 'id', 'num_generations',
                   'scores', 'reward_score', 'images', 'videos', 'audios'):
         assert field in KNOWN_STORE_FIELDS, field
@@ -82,7 +82,7 @@ def test_validate_rejects_known_field_absent_from_this_data():
     """A real store field that THIS encoding did not produce is a different error than an unknown name:
     the message says it is known-but-absent so the caller knows the command, not the spelling, is wrong."""
     with pytest.raises(ValueError, match='not produced by this encoding'):
-        validate_store_fields(['rollout_logprobs'], ['input_ids', 'labels', 'lengths'])
+        validate_store_fields(['rollout_logps'], ['input_ids', 'labels', 'lengths'])
 
 
 def test_validate_warns_when_lengths_dropped(caplog):

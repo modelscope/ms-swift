@@ -2,7 +2,7 @@
 
 ``plan_device_groups`` is the placement truth source (colocate overlays the sampler on the trainer's
 GPUs; disaggregated gives the sampler its own disjoint ranks; auxiliary groups never overlap), and
-the scoring half (``weighted_reward`` / ``build_reward_weights`` / ``weighted_rewards`` /
+the scoring half (``weighted_score`` / ``build_reward_weights`` / ``weighted_rewards`` /
 ``accumulate_reward_metric``) is the [N, n_scorers] -> per-sample-scalar collapse every RL family
 shares. All hand-computed; no Ray, no GPU.
 
@@ -55,15 +55,15 @@ class TestWeightedReward:
     not poison the whole sample)."""
 
     def test_weighted_nansum(self):
-        from swift.dev.recipe.grpo.assembly import weighted_reward
+        from twinkle.advantage import weighted_score
 
         # 8*0.25 + nan*2.0 -- the None judge score contributes nothing, not NaN.
-        assert weighted_reward([8.0, None], torch.tensor([0.25, 2.0])) == pytest.approx(2.0)
+        assert weighted_score([8.0, None], torch.tensor([0.25, 2.0])) == pytest.approx(2.0)
 
     def test_all_nan_is_zero(self):
-        from swift.dev.recipe.grpo.assembly import weighted_reward
+        from twinkle.advantage import weighted_score
 
-        assert weighted_reward([None, None], torch.tensor([1.0, 1.0])) == pytest.approx(0.0)
+        assert weighted_score([None, None], torch.tensor([1.0, 1.0])) == pytest.approx(0.0)
 
 
 class TestBuildRewardWeights:
@@ -120,19 +120,13 @@ class TestAccumulateRewardMetric:
             self.accumulated = True
             self.batches.append((rewards, completion_lengths))
 
-    class _Sample:
-
-        def __init__(self, n):
-            self.response_token_ids = list(range(n))
-
     def test_reset_then_accumulate_with_named_columns(self):
         from swift.dev.utils.scoring import accumulate_reward_metric
 
         metric = self._Metric()
         metric.batches.append('stale')  # a previous batch's data
-        samples = [self._Sample(2), self._Sample(3)]
         rewards = torch.tensor([[1.0, 4.0], [2.0, 6.0]])
-        accumulate_reward_metric(metric, samples, rewards,
+        accumulate_reward_metric(metric, rewards, [2, 3],
                                  scorer_names=['acc', 'fmt'], reward_weights=[1.0, 1.0])
         assert 'stale' not in metric.batches  # the stale batch is gone after reset
         rewards_dict, lengths = metric.batches[0]
@@ -144,7 +138,7 @@ class TestAccumulateRewardMetric:
         from swift.dev.utils.scoring import accumulate_reward_metric
 
         metric = self._Metric()
-        accumulate_reward_metric(metric, [self._Sample(1)], torch.tensor([[2.0, 3.0]]),
+        accumulate_reward_metric(metric, torch.tensor([[2.0, 3.0]]), [1],
                                  scorer_names=[], reward_weights=None)
         rewards_dict, _ = metric.batches[0]
         assert rewards_dict == {'total': [5.0]}

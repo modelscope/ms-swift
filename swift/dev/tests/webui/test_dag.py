@@ -95,8 +95,8 @@ class TestParallelism:
                                           'outputs': ['logps']})]
         declaration['edges'] += [
             edge('e17', 'policy2', 'model', 'fwd', 'model'),
-            edge('e18', 'driver', 'samples', 'fwd', 'traj'),
-            edge('e19', 'fwd', 'logps', 'train', 'arguments', slot='old_logps'),
+            edge('e18', 'driver', 'traj', 'fwd', 'traj'),
+            edge('e19', 'fwd', 'out', 'train', 'lanes', slot='old_logps'),
             edge('x4', 'policy2', 'model', 'sync', 'model')]
         for frame in declaration['frames']:
             if frame['id'] == 'loop':

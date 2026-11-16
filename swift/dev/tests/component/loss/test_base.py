@@ -42,8 +42,16 @@ def test_is_megatron_is_detected_from_the_trainer_mro():
     assert loss_map['cross_entropy'](args=None, trainer=_MegatronTrainer()).is_megatron is True
 
 
-def test_loss_map_keys_are_the_loss_type_choices():
-    assert set(loss_map) == {
+def test_loss_map_still_registers_the_long_standing_names():
+    """The registry's keys are CLI surface (``TrainConfig.loss`` is a free string, so nothing else
+    declares the accepted names): a long-standing one must not disappear or be renamed silently.
+
+    Membership, not exact equality -- ``loss_map`` grows as losses are added (the decision family
+    ``scoring`` / ``distill_rps`` / ``smooth_brier`` / ``ce_rps``), and an equality snapshot fires on
+    every addition, which is maintenance noise rather than a defect. Removal is what breaks a user's
+    ``--loss``, and that is what this pins.
+    """
+    assert set(loss_map) >= {
         'cross_entropy',
         'cosine_similarity',
         'contrastive',

@@ -14,7 +14,6 @@ import pytest
 
 from swift.dev.recipe import utils as batch_metrics
 from swift.dev.recipe.utils import RunTracker, rollout_metrics
-from swift.dev.utils.scoring import sample_token_lengths
 
 
 def sample(prompt=3, response=2, *, tool=0):
@@ -72,17 +71,6 @@ def iteration_rows(path, state):
     ]
 
 
-def test_lengths_include_tool_observations_and_exclude_padding():
-    assert sample_token_lengths(sample(tool=4)) == (3, 6)
-    assert sample_token_lengths(sample(response=0)) == (3, 0)
-    row = sample(tool=4)
-    row.encoded["input_ids"] += [0, 0]
-    labels = [-100] * 3 + [3, 4] + [-100] * 6
-    row.encoded["labels"] = labels[1:] + labels[:1]
-    row.encoded["attention_mask"] = [1] * 9 + [0, 0]
-    assert sample_token_lengths(row) == (3, 6)
-
-
 def test_shared_batch_statistics_do_not_require_rewards_or_recipe_state():
     values = rollout_metrics(
         prompt_lengths=[3, 6, 4], response_lengths=[0, 2, 5],
@@ -114,7 +102,7 @@ def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path, [("model", [0, 1]), ("shared", [0])])
-    state.observe_rollout_samples([sample(), sample(prompt=4, response=3)])
+    state.observe_rollout_batch({'prompt_lengths': [3, 4], 'response_lengths': [2, 3]})
     for _ in range(4):
         state.record_rollout_training([0, 1])
     state.global_step = 4
@@ -133,8 +121,8 @@ def test_replay_counts_visits_but_tokens_once_and_devices_without_duplicates(tmp
 
 def test_shared_batch_lifecycle_accepts_another_sample_format(tmp_path):
     state = observed_state(tmp_path)
-    rows = [NS(lengths=(3, 2), truncated=False), NS(lengths=(4, 3), truncated=True)]
-    state.observe_rollout_samples(iter(rows), length_fn=lambda row: row.lengths)
+    state.observe_rollout_batch({'prompt_lengths': [3, 4], 'response_lengths': [2, 3],
+                                 'truncated': [False, True]})
     state.global_step = 1
     state.record_rollout_training([0])
     state.fold_iteration_metrics(publications=1)
@@ -156,7 +144,7 @@ def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
     state = make_state(ga=2)
     # Adopt the statistics methods without StepState.__init__ (make_state's namespace is
     # the micro-batch harness under test here): plain unbound-method attachment.
-    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_samples',
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_batch',
                  'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
                  'finish_rollout_metrics'):
         setattr(state, name, getattr(RolloutStepState, name).__get__(state))
@@ -168,13 +156,12 @@ def test_balancing_and_batch_observations_record_the_same_update(tmp_path):
     state._iteration_started_ns = None
     state._iteration_facts = None
     state._memory_rows = None
-    state.balance_batch = True
+    state.dp_balance = True
     state.model.memory_stats = lambda **kwargs: []
     state.tracker = RunTracker(None, str(tmp_path))
     state.setup_rollout_metrics([('model', [0, 1])], num_generations=8)
     state.begin_rollout_iteration()
-    samples = [NS(encoded={'input_ids': [i] * n, 'labels': [i] * n}) for i, n in enumerate(lengths)]
-    state.observe_rollout_samples(samples)
+    state.observe_rollout_batch({'prompt_lengths': [0] * len(lengths), 'response_lengths': lengths})
     try:
         assert train(state, 8, lengths=lengths) == 1
         state.fold_iteration_metrics()
@@ -194,7 +181,7 @@ def test_batch_completion_can_run_on_a_different_thread(tmp_path, perf_clock):
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path)
-    state.observe_rollout_samples([sample()])
+    state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
     with default_recorder.span('forward_backward'):
         perf_clock.advance(2)
     with ThreadPoolExecutor(max_workers=1) as pool:
@@ -221,7 +208,7 @@ def test_batch_helpers_are_noops_without_initialization():
     state._iteration_facts = None
     state._memory_rows = None
     state.begin_rollout_iteration()
-    state.observe_rollout_samples([NS()])
+    state.observe_rollout_batch({})
     state.record_rollout_training([0])
     assert state.rollout_memory_metrics() == {}
     assert state.fold_iteration_metrics() == {}
@@ -235,7 +222,7 @@ def test_nested_logging_excludes_overlap_once(tmp_path, perf_clock):
     from twinkle.perf import default_recorder
 
     state = observed_state(tmp_path)
-    state.observe_rollout_samples([sample()])
+    state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
     with default_recorder.span("update_actor"):
         perf_clock.advance(1)
         with default_recorder.span("_logging"):
@@ -258,7 +245,7 @@ def test_publication_counter_deltas_and_terminal_summary_use_existing_tracker(tm
             state.begin_rollout_iteration()
         # one second until the pulled samples arrive: the 'gen' fallback window end
         perf_clock.advance(1)
-        state.observe_rollout_samples([sample()])
+        state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
         perf_clock.advance(1)
         state.global_step = step
         state.fold_iteration_metrics(
@@ -280,7 +267,7 @@ def test_default_worker_recorder_reset_does_not_erase_iteration_observations(tmp
     from twinkle.perf import Perf, default_recorder
 
     state = observed_state(tmp_path)
-    state.observe_rollout_samples([sample()])
+    state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
     with default_recorder.span("gen"):
         perf_clock.advance(2)
     # The logging-cadence dump resets the window aggregates but must not erase the
@@ -289,3 +276,111 @@ def test_default_worker_recorder_reset_does_not_erase_iteration_observations(tmp
     state.fold_iteration_metrics()
     assert iteration_rows(tmp_path, state)[0]["data"]["timing_s/gen"] == 2
     state.tracker.close()
+
+
+def raw_rollout_rows(path, state):
+    """Raw ``stage='rollout'`` rows, keeping the record-level fields ``iteration_rows`` drops.
+
+    ``policy_version`` is a field of the record rather than an entry of ``values`` or ``attributes``,
+    and the reporter serializes it at the top level, so the summary-folding contract can only be
+    checked against the raw line.
+    """
+    state.tracker._metric_reporter.flush()
+    rows = [json.loads(line) for line in (path / "metrics_raw.jsonl").read_text().splitlines()]
+    return [row for row in rows if row["stage"] == "rollout"]
+
+
+def folded_policy_version(tmp_path, state):
+    """The version the run summary reports for this context: the max over the iteration records."""
+    state.finish_rollout_metrics()
+    state.tracker.close()
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    versions = [context.get("policy_version") for context in (summary.get("per_context") or {}).values()]
+    return versions
+
+
+@pytest.mark.parametrize(
+    "versions, expected",
+    [
+        ([9, 3, 7], 3),  # unsorted: the anchor is the minimum, not the first, last or largest
+        ([None, 5, None, 2], 2),  # a producer that could not resolve some rows must not poison it
+        (["4", "2"], 2),  # versions arriving as JSON strings still order numerically, not lexically
+    ],
+)
+def test_iteration_record_stamps_the_conservative_batch_version(tmp_path, versions, expected):
+    state = observed_state(tmp_path)
+    state.observe_rollout_batch({'prompt_lengths': [3, 4], 'response_lengths': [2, 3],
+                                 'policy_versions': versions})
+    state.global_step = 1
+    state.record_rollout_training([0, 1])
+    state.fold_iteration_metrics(publications=1)
+    assert raw_rollout_rows(tmp_path, state)[0]["policy_version"] == expected
+    state.tracker.close()
+
+
+@pytest.mark.parametrize("summary", [{'prompt_lengths': [3], 'response_lengths': [2]},
+                                     {'prompt_lengths': [3], 'response_lengths': [2],
+                                      'policy_versions': []}])
+def test_iteration_record_leaves_the_version_unset_when_the_batch_carries_none(tmp_path, summary):
+    """An uninstrumented producer stays visibly uninstrumented instead of reporting version 0.
+
+    A missing key and an empty list are the two shapes a summary without versions takes; neither may
+    raise (``min()`` of an empty sequence does) and neither may stamp 0, which would read as "this
+    batch came from the initial policy" -- a claim nothing observed.
+    """
+    state = observed_state(tmp_path)
+    state.observe_rollout_batch(summary)
+    state.global_step = 1
+    state.record_rollout_training([0])
+    state.fold_iteration_metrics(publications=1)
+    assert raw_rollout_rows(tmp_path, state)[0]["policy_version"] is None
+    state.tracker.close()
+
+
+def test_each_iteration_stamps_its_own_version_and_the_summary_folds_the_latest(tmp_path):
+    """Two iterations, two versions: each record carries its own, the run summary carries the max.
+
+    This is the contract that was broken end to end. The version was only ever written into the
+    step-log value channel, so the record field stayed None and the reporter -- which folds
+    ``record.policy_version`` -- had nothing to fold, leaving a completed run unable to say which
+    policy version it ended on while every step logged one.
+    """
+    state = observed_state(tmp_path)
+    for step, version in [(1, 3), (2, 7)]:
+        if step > 1:
+            state.begin_rollout_iteration()
+        state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2],
+                                     'policy_versions': [version]})
+        state.global_step = step
+        state.record_rollout_training([0])
+        state.fold_iteration_metrics(publications=1)
+    assert [row["policy_version"] for row in raw_rollout_rows(tmp_path, state)] == [3, 7]
+    assert folded_policy_version(tmp_path, state) == [7]
+
+
+def test_grpo_extra_metrics_reports_advantage_degeneracy():
+    """A batch whose groups all scored the same must be distinguishable from one that trained.
+
+    ``loss=0.0000`` with a zero grad_norm is what GRPO prints for both, since a group with one score
+    is centered to exactly zero and contributes no gradient. These two keys are what separate them, so
+    they have to survive the trip from the estimator's summary into the record the step logs.
+    """
+    from swift.dev.recipe.grpo.run_grpo import _grpo_extra_metrics
+
+    reward_metric = NS(calculate=lambda: {})
+    extra = _grpo_extra_metrics([], [], {}, reward_metric,
+                               {'absmean': 0.5, 'zero_rows': 0.25})
+    assert extra['advantage/absmean'] == 0.5
+    assert extra['advantage/zero_rows'] == 0.25
+
+
+def test_grpo_extra_metrics_omits_advantage_keys_when_nothing_was_estimated():
+    """An unmeasured batch must not report a degenerate-looking zero.
+
+    ``zero_rows=0.0`` says every row contributed a gradient, which is a claim; an empty holder means
+    no advantage call has landed yet, and the keys stay absent instead of asserting either way.
+    """
+    from swift.dev.recipe.grpo.run_grpo import _grpo_extra_metrics
+
+    extra = _grpo_extra_metrics([], [], {}, NS(calculate=lambda: {}), {})
+    assert not [key for key in extra if key.startswith('advantage/')]

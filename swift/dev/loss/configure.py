@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.model import TrainableModel
     from swift.dev.config import RLConfig, TrainConfig
+    from swift.dev.model import TrainableModel
 
 # Losses that read ``outputs['embeddings']`` (the pooled, L2-normalized sentence vector) rather
 # than logits. Keys are swift loss names as they appear in TrainConfig.loss_type.
@@ -174,7 +174,11 @@ def configure_rl_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
     The heavy losses live in twinkle (GRPO family, DPO family, GKD, RewardLoss); this maps the dev
     Config onto the right constructor and forwards only the fields each algorithm reads, so a recipe
     never hand-picks a loss class or its argument names. twinkle owns the numerics and the guard
-    refusing to pair the GRPO advanced controls with a ``_reduce_loss``-overriding variant.
+    refusing to pair the GRPO advanced controls with a ``_reduce_loss``-overriding variant. The loss
+    rides ``set_loss`` as the CLASS NAME + constructor kwargs -- the one form every transport takes
+    (in-process ``construct_class``, the Ray boundary, HTTP to a served model), so the local and the
+    remote runs cannot drift; the name must live in twinkle.loss, or a typo would be routed to the
+    hub-plugin loader instead of failing.
     """
     from swift.dev.utils.naming import resolve_loss
 
@@ -190,30 +194,31 @@ def configure_rl_loss(model: TrainableModel, rl_config: 'RLConfig') -> None:
         # both resolve to a base class here while the variant rides in via ``grpo_loss_type``.
         loss_name = {'dapo': 'bnpo', 'fipo': 'grpo'}.get(grpo_loss_type, grpo_loss_type)
     loss_cls = resolve_loss(loss_name)
-    loss = loss_cls(**_rl_loss_kwargs(rl_type, rl_config, grpo_loss_type))
     if rl_type == 'grpo' and rl_config.chord_sft_dataset:
+        # CHORD mixes the policy gradient with a supervised CE term on dataset rounds: BOTH are
+        # registered under their loss_keys (the metrics key on ``loss_key='grpo'`` the same way),
+        # or the mixture silently degrades to plain GRPO.
         from twinkle.loss import CrossEntropyLoss
-        model.set_loss(loss, loss_key='grpo')
+
         model.set_loss(
-            CrossEntropyLoss(
-                reduction='sum',
-                probability_weight=('p_one_minus_p' if rl_config.chord_enable_phi_function else None),
-            ),
-            loss_key='sft')
-    else:
-        model.set_loss(loss)
+            loss_cls.__name__, loss_key='grpo', **_rl_loss_kwargs(rl_type, rl_config, grpo_loss_type))
+        model.set_loss(
+            CrossEntropyLoss.__name__, loss_key='sft', reduction='sum',
+            probability_weight=('p_one_minus_p' if rl_config.chord_enable_phi_function else None))
+        return
+    model.set_loss(loss_cls.__name__, **_rl_loss_kwargs(rl_type, rl_config, grpo_loss_type))
 
 
 def configure_ppo_value_loss(value_model: TrainableModel, rl_config: 'RLConfig') -> None:
     """Set PPO's clipped value-regression loss on the critic (a seq_cls num_labels=1 value model).
 
-    PPO trains two models with two objectives: the policy (configure_rl_loss) and the critic (this).
     Forwards ``cliprange_value`` and ``vf_coef``; the loop supplies ``returns``/``old_values`` per step.
+    The CLASS NAME + kwargs form (see :func:`configure_rl_loss`) rides every transport alike.
     """
     from swift.dev.utils.naming import resolve_loss
 
     loss_cls = resolve_loss('ppo_value')
-    value_model.set_loss(loss_cls(cliprange_value=rl_config.cliprange_value, vf_coef=rl_config.vf_coef))
+    value_model.set_loss(loss_cls.__name__, cliprange_value=rl_config.cliprange_value, vf_coef=rl_config.vf_coef)
 
 
 def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig',
@@ -222,8 +227,10 @@ def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig',
 
     Adds ONLY the component the default ``LossMetric`` cannot express (GRPO family's
     ratio/clip/entropy stats, the DPO family's rewards/margins/accuracies, PPO's policy stats).
-    MUST be called AFTER ``configure_optimizer``; metric classes are passed as CLASS objects,
-    never name strings (a str is routed to ``Plugin.load_plugin`` hub download).
+    MUST be called AFTER ``configure_optimizer``. The metric rides ``add_metric`` as the CLASS NAME
+    + constructor kwargs -- the one wire form every transport takes (in-process
+    ``construct_class``, the Ray boundary, HTTP to a served model); the name must live in
+    twinkle.metric, or a typo would be routed to the hub-plugin loader instead of failing.
     """
     from twinkle.metric import CISPOMetric, DPOMetric, GRPOMetric, GSPOMetric, PPOMetric
 
@@ -240,16 +247,16 @@ def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig',
             kwargs['epsilon_high'] = rl_config.epsilon_high
         if rl_config.chord_sft_dataset:
             kwargs['loss_key'] = 'grpo'
-        model.add_metric(metric_cls, is_training=True, **kwargs)
+        model.add_metric(metric_cls.__name__, is_training=True, **kwargs)
     elif rl_type == 'ppo':
         # PPO's policy loss is the shared clipped surrogate with clip range ``cliprange``; PPOMetric
         # reports the same token-level ratio/clip stats.
         model.add_metric(
-            PPOMetric, is_training=True, epsilon=rl_config.cliprange, temperature=sampling_temperature)
+            PPOMetric.__name__, is_training=True, epsilon=rl_config.cliprange, temperature=sampling_temperature)
     elif rl_type in ('dpo', 'cpo', 'orpo', 'simpo'):
         # Paired preference objectives: forward beta only when set so twinkle's default stands.
         kwargs = {'beta': rl_config.beta} if rl_config.beta is not None else {}
-        model.add_metric(DPOMetric, is_training=True, **kwargs)
+        model.add_metric(DPOMetric.__name__, is_training=True, **kwargs)
     # gkd / opsd / mopd / kto / rm: no algorithm-specific component (the training loss IS the
     # teacher-student divergence for the distill family; kto is unpaired; rm is a score head).
 
@@ -259,11 +266,12 @@ def configure_ppo_value_metric(value_model: TrainableModel, rl_config: 'RLConfig
 
     Surfaces value_mean / return_mean / value_clip_ratio / explained_variance from the same
     ``returns``/``old_values`` the value loss reads. MUST be called after the critic's
-    ``configure_optimizer`` (see :func:`configure_rl_metrics`).
+    ``configure_optimizer`` (see :func:`configure_rl_metrics`); the NAME + kwargs wire form
+    (see :func:`configure_rl_loss`) rides every transport alike.
     """
     from twinkle.metric import PPOValueMetric
 
-    value_model.add_metric(PPOValueMetric, is_training=True, epsilon=rl_config.cliprange_value)
+    value_model.add_metric(PPOValueMetric.__name__, is_training=True, epsilon=rl_config.cliprange_value)
 
 
 def configure_embedding_metric(model: TrainableModel) -> None:

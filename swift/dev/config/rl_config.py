@@ -50,11 +50,6 @@ class RLConfig:
     gamma: float = 1.0
     lam: float = 0.95
 
-    # === Online rollout training ===
-    # Post-rollout DP balancing for online RL / distillation / RFT (Ray dispatch).
-    # Dataset-completion branches and auxiliary SFT retain their existing order.
-    balance_batch: bool = False
-
     # === GRPO ===
     num_generations: int = 8
     log_completions: bool = False
@@ -66,6 +61,10 @@ class RLConfig:
         'grpo', 'rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline', 'remax', 'opo', 'gpg', 'grpo_passk'
     ] = 'grpo'
     f_norm: float = 1.0  # GPG advantage normalization divisor; 1.0 disables
+    # Discount of an earlier collected segment's broadcast advantage by the trainable tokens its
+    # episode still generates after it (gamma ** N, CompactionRL's trajectory-position
+    # correction); 1.0 is the uniform broadcast. Needs segment_policy='collect'.
+    segment_discount: float = 1.0
     kl_in_reward: Optional[bool] = None
     scale_rewards: Optional[Literal['group', 'batch', 'none', 'gdpo']] = None
     importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'

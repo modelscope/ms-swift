@@ -71,31 +71,33 @@ def parse_rl_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
         tuner_config = select_tuner(tuner_config)
 
     _apply_rl_compat(passed, generation_config, rl_config, rlhf_compat)
-    # Refuse BEFORE the unconditional mode='ray' overrides below, which would otherwise silently
-    # turn a remote request into a local Ray run.
-    if distributed_config.mode == 'remote':
-        raise ValueError(
-            "--mode remote does not support RL yet: the rollout side needs the StreamingDriver "
-            'client port (in progress). Run RL with mode=ray as today, or train the supervised '
-            'family remotely.')
-    # The online family rolls out on a separate vLLM/SGLang sampler over Ray and syncs weights into it;
-    # on-policy generation must be backend-general (in-process ``model.generate`` is transformers-only).
-    # Default DISAGGREGATED: the sampler gets its own GPUs (no trainer/sampler time-sharing, no
-    # colocate interrupt/restore dance); pass --sampler_mode colocate to fold it onto the trainer's.
-    if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}:
-        rollout_config.sampler_mode = rollout_config.sampler_mode or 'disaggregated'
-        distributed_config.mode = 'ray'
-    # The offline RLHF family runs mode='ray' with the policy and a full-param frozen reference as
-    # separate actors; it rolls out nothing, so only the mode is forced.
-    elif rl_config.rl_type in {'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'}:
-        distributed_config.mode = 'ray'
-    else:
-        # Fail loudly: the two sets above are hand-kept in sync with RLConfig.rl_type's Literal, and a
-        # value missing from both would otherwise silently fall back to mode='local', which RL never supports.
-        raise ValueError(
-            f'--rl_type {rl_config.rl_type!r} is not classified in parse_rl_configs. Every rl_type must '
-            f"force distributed_config.mode='ray' (RL has no mode='local' path): add it to the online family "
-            f'(rolls out on a separate vLLM sampler) or the offline RLHF family (mode only) above.')
+    # mode='remote' stays remote for every rl_type: the recipes drive a twinkle-server through
+    # twinkle_client with the SAME loop code (only the object sources -- model / sampler / weight
+    # sync -- swap at assembly time), and validate refuses, knob by knob, the combinations whose
+    # implementation has no client port yet. This must precede the mode='ray' overrides below,
+    # which would otherwise silently turn a remote request into a local Ray run.
+    if distributed_config.mode != 'remote':
+        # The online family rolls out on a separate vLLM/SGLang sampler over Ray and syncs weights
+        # into it; on-policy generation must be backend-general (in-process ``model.generate`` is
+        # transformers-only). Default DISAGGREGATED: the sampler gets its own GPUs (no trainer/
+        # sampler time-sharing, no colocate interrupt/restore dance); pass --sampler_mode colocate
+        # to fold it onto the trainer's.
+        if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'}:
+            rollout_config.sampler_mode = rollout_config.sampler_mode or 'disaggregated'
+            distributed_config.mode = 'ray'
+        # The offline RLHF family runs mode='ray' with the policy and a full-param frozen
+        # reference as separate actors; it rolls out nothing, so only the mode is forced.
+        elif rl_config.rl_type in {'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'}:
+            distributed_config.mode = 'ray'
+        else:
+            # Fail loudly: the two sets above are hand-kept in sync with RLConfig.rl_type's Literal, and a
+            # value missing from both would otherwise silently fall back to mode='local', which RL never
+            # supports. (mode='remote' is exempt: the remote recipes dispatch by rl_type themselves and
+            # never read these family sets -- the guard would otherwise fire on EVERY remote parse.)
+            raise ValueError(
+                f'--rl_type {rl_config.rl_type!r} is not classified in parse_rl_configs. Every rl_type must '
+                f"force distributed_config.mode='ray' (RL has no mode='local' path): add it to the online family "
+                f'(rolls out on a separate vLLM sampler) or the offline RLHF family (mode only) above.')
 
     return {
         'model_config': model_config,

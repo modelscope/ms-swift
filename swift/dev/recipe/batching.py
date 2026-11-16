@@ -2,50 +2,65 @@
 """Controller-side DP balancing for post-rollout training batches."""
 
 from __future__ import annotations
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
+
+from swift.dev.utils.logger import get_logger
+
+logger = get_logger()
 
 
-def plan_rollout_batch(
-    state: Any, inputs, *, samples=None, model=None, micro_batch_kwargs=None, metric_prefix="dp_balance"
-):
-    """Plan one complete optimizer batch after generation has revealed sequence lengths.
+def balance_update(state: Any, update: List[Any], lengths: Optional[List[int]],
+                   *, micro_batch_kwargs: Optional[Dict[str, Any]] = None) -> Tuple[List[Any], Dict[str, float]]:
+    """Reorder one optimizer batch's trajectories so ``slice_dp`` splits the workload evenly.
 
-    Callers apply the same permutation to every per-sample training signal, or reorder whole
-    records before building teacher signals. Dataset completions and auxiliary SFT bypass this.
-    Streaming samples carry token_lengths alongside the trajectory references; plan from that
-    metadata without fetching the trajectories. Local/synthesized features fall back to their length.
+    Every per-sample training signal rides the trajectories, so reordering the list is the
+    whole permutation: callers hand back the returned list and every field stays aligned.
+    Balancing is skipped (the batch keeps its order, no metrics) when ``state.dp_balance``
+    is off, when ``lengths`` is None (dataset rows whose reference features are never
+    materialised), or by the planner itself for DP=1 / uneven batches. The PPO value model
+    is never reordered: its rank-local token mean is not permutation-invariant.
     """
-    if not getattr(state, "balance_batch", False) or not inputs:
-        return None
+    if not getattr(state, 'dp_balance', False) or lengths is None:
+        return update, {}
     from twinkle.model import MicroBatchConfig
-    from twinkle.model.dp_balance import DPBalancePlan, plan_dp_balance_for_lengths
-    from twinkle.model.micro_batch import sequence_length
+    from twinkle.model.dp_balance import plan_dp_balance_for_lengths
 
-    model = state.model if model is None else model
-    config = MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {}))
-    if samples is not None and len(samples) != len(inputs):
-        raise ValueError("Rollout samples and encoded inputs must have the same length for batch balancing.")
-    lengths = []
-    for index, feature in enumerate(inputs):
-        counts = getattr(samples[index], "token_lengths", None) if samples is not None else None
-        if counts is None and not isinstance(feature, dict):
-            raise ValueError(
-                "balance_batch needs token_lengths on samples whose trajectories are references "
-                f"(missing metadata at batch index {index})."
-            )
-        lengths.append(sum(counts) if counts is not None else sequence_length(feature))
+    if len(lengths) != len(update):
+        raise ValueError(f'batch balancing needs one row length per trajectory ({len(lengths)} for {len(update)}).')
     plan = plan_dp_balance_for_lengths(
-        lengths, model.device_mesh.data_world_size, padding_free=state.padding_free, micro_batch_config=config
-    )
-    metrics = {key.replace("dp_balance/", metric_prefix + "/", 1): value for key, value in plan.metrics.items()}
-    return DPBalancePlan(order=plan.order, strategy=plan.strategy, metrics=metrics)
+        lengths, state.model.device_mesh.data_world_size, padding_free=state.padding_free,
+        micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})))
+    return [update[index] for index in plan.order], dict(plan.metrics)
 
 
-def record_rollout_step(state, *plans):
-    """Record independent policy/value plans without carrying metrics across updates."""
-    metrics = {key: value for plan in plans if plan is not None for key, value in plan.metrics.items()}
-    return state.record(extra_metrics=metrics) if metrics else state.record()
+def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
+                  group_size: int, micro_batch_kwargs: Optional[Dict[str, Any]] = None
+                  ) -> Tuple[List[Any], Optional[List[int]], Optional[List[int]]]:
+    """Plan the DP-balanced order for the whole-batch forwards (reference/teacher/old-logps lanes).
 
+    Returns ``(permuted, order, restore)``: feed the lanes ``permuted``, permute every row-aligned
+    argument their consumer reads alongside them (the batch's score rows) with ``order``, and
+    row-align its returned rows back to the caller's order with ``restore``. Whole groups of
+    ``group_size`` consecutive rows move as blocks, so positional group math stays correct.
+    ``(trajs, None, None)`` keeps the caller's order when balancing is off, when the batch has no
+    row lengths, or when the shape cannot keep groups whole on equal ranks (warned, not raised).
+    """
+    if not getattr(state, 'dp_balance', False) or not lengths:
+        return trajs, None, None
+    if len(lengths) != len(trajs):
+        raise ValueError(f'lane balancing needs one row length per trajectory ({len(lengths)} for {len(trajs)}).')
+    from twinkle.model import MicroBatchConfig
+    from twinkle.model.dp_balance import plan_dp_balance_for_lengths
 
-def apply_rollout_plan(plan, values):
-    return values if plan is None else plan.apply(values)
+    try:
+        plan = plan_dp_balance_for_lengths(
+            lengths, state.model.device_mesh.data_world_size, padding_free=state.padding_free,
+            micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})),
+            group_size=group_size)
+    except ValueError as exc:
+        logger.warning('DP lane balancing skipped for this batch (%s); the forwards keep the caller order.', exc)
+        return trajs, None, None
+    restore = [0] * len(plan.order)
+    for position, index in enumerate(plan.order):
+        restore[index] = position
+    return [trajs[index] for index in plan.order], plan.order, restore

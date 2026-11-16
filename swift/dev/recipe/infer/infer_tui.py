@@ -177,8 +177,8 @@ def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any]) -> str:
             # The next turn generates a fresh reply; give it its own speaker prefix.
             print(f'{_CYAN}Agent:{_RESET} ', end='', flush=True)
         elif isinstance(event, StreamDone):
-            # StreamDone carries the MESSAGE-level transcript trajectory (a dict), not a
-            # RolloutSample: the reply is the final assistant turn's text.
+            # StreamDone carries the MESSAGE-level transcript trajectory (a plain dict), not
+            # a rollout-internal record: the reply is the final assistant turn's text.
             trajectory = event.trajectory
             assistant_turns = [m for m in trajectory.get('messages', []) if m.get('role') == 'assistant']
             response = (assistant_turns[-1].get('content') or '') if assistant_turns else ''

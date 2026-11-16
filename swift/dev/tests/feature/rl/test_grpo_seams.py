@@ -3,7 +3,8 @@
 Two seams between the GRPO recipe and the reward/template layers:
 ``_messages_with_token_ids`` splices each assistant turn's exact sampled token ids back into the
 messages (the teacher view must score the tokens the policy PRODUCED, not a re-encode of their
-text), and ``_load_chord_features`` encodes CHORD's expert SFT rows once at recipe start. The
+text); 78a1a1c55 moved it from the deleted ``rewards/worker.py`` to ``twinkle.processor.trajectory``,
+which is where the privileged teacher view that consumes it now lives, and ``_load_chord_features`` encodes CHORD's expert SFT rows once at recipe start. The
 latter drives the REAL ``load_prompt_only_rows`` -> ``swift.dev.dataset.load_dataset`` path on a
 real jsonl -- it is also the regression anchor for the stale ``trust_remote_code`` kwarg that
 crashed every dataset load through the builders' kwargs.
@@ -32,7 +33,7 @@ class TestMessagesWithTokenIds:
         """S8-37: each assistant turn's content becomes its exact sampled ids ({token_ids,
         loss_scale}); the OLDEST turn gets the FIRST span, the newest the LAST; non-assistant
         messages pass through untouched."""
-        from swift.dev.rewards.worker import _messages_with_token_ids
+        from twinkle.processor.trajectory import _messages_with_token_ids
 
         messages = [
             {'role': 'user', 'content': 'q1'},
@@ -49,7 +50,7 @@ class TestMessagesWithTokenIds:
     def test_run_count_mismatch_is_a_hard_error(self):
         """S8-37 guard: more trainable token runs than assistant turns means a turn produced no
         trainable token or a mask split one turn in two -- raise, never silently mis-assign ids."""
-        from swift.dev.rewards.worker import _messages_with_token_ids
+        from twinkle.processor.trajectory import _messages_with_token_ids
 
         messages = [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}]
         with pytest.raises(RuntimeError, match='trainable token runs'):

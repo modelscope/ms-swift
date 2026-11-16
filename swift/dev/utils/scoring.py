@@ -5,11 +5,8 @@ import copy
 from typing import Any, Dict, List, Optional, Sequence
 
 import torch
-from twinkle import remote_class, remote_function
-from twinkle.data_format import ground_truth
-from twinkle.signals import response_positions
 
-_MULTIMODAL_KEYS = ('images', 'videos', 'audios', 'tools', 'objects', 'chat_template_kwargs')
+from twinkle.processor import PrivilegedView, encode_privileged_feature, encode_privileged_view
 
 
 def collect(result: Any) -> Any:
@@ -29,133 +26,6 @@ def copy_inputs(features: Sequence[Any]) -> List[Any]:
     Remotely the copies are of references, so the cost is small.
     """
     return [copy.deepcopy(feature) for feature in features]
-
-
-def encode_privileged_view(
-    template: Any,
-    messages: List[dict],
-    response_ids: List[int],
-    extra: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Encode a privileged teacher view (``messages`` carrying the shared ``response_ids``) and assert alignment.
-
-    Shared by GRPO's RLSD/SDAR teacher view and OPSD's, which differ only in HOW ``messages`` is built
-    (multi-turn reconstruction vs. a single privileged user turn) but not in the encode-and-check tail.
-    Encoded in ``train`` mode with ``add_eos=False`` so the assistant turn is exactly ``response_ids`` (no
-    extra end-of-sequence token), then checked: the encoded feature must expose the SAME number of trainable
-    response positions as ``response_ids``. If a template or tokenizer difference changes that count, teacher
-    and student would no longer score identical tokens and the alignment would be silently wrong -- so it is
-    a hard error, not a truncation.
-    """
-    if template is None:
-        raise ValueError('teacher_prompt requires a template to build the privileged teacher view.')
-    extra = extra or {}
-    row: Dict[str, Any] = {'messages': messages, 'add_eos': False}
-    for key in _MULTIMODAL_KEYS:
-        if extra.get(key) is not None:
-            row[key] = extra[key]
-    teacher_template = copy.copy(template)
-    teacher_template.set_mode('train')
-    feature = teacher_template.encode(row)
-    if len(response_positions(feature)) != len(response_ids):
-        raise RuntimeError('teacher_prompt encoding changed the response-token count; teacher and student must '
-                           'share a tokenizer and score exactly the same response tokens.')
-    return feature
-
-
-def encode_privileged_feature(template: Any, prompt_messages: List[dict], teacher_prompt: Any,
-                              response_ids: List[int], extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Encode one single-turn privileged teacher view (RLSD / OPSD share the exact contract).
-
-    Replaces the FIRST user turn's content with the privileged ``teacher_prompt``, appends the
-    assistant turn carrying the student's response token ids verbatim, then delegates the
-    encode-and-align-check tail to :func:`encode_privileged_view` -- teacher and student must score
-    exactly the same response tokens.
-    """
-    messages = [dict(message) for message in prompt_messages]
-    if messages and messages[-1].get('role') == 'assistant':
-        messages = messages[:-1]
-    for message in messages:
-        if message.get('role') == 'user':
-            message['content'] = teacher_prompt
-            break
-    else:
-        raise ValueError('teacher_prompt requires a user turn in the prompt to carry the privileged context.')
-    messages.append({'role': 'assistant', 'content': list(response_ids)})
-    return encode_privileged_view(template, messages, response_ids, extra)
-
-
-def _messages_with_token_ids(messages: List[dict], response_ids: List[int],
-                             encoded: Dict[str, Any]) -> List[dict]:
-    """Splice each assistant turn's exact sampled tokens back into the messages.
-
-    The teacher view re-encodes under a different prompt but must score the *same* tokens the
-    policy produced, so each turn carries its ids verbatim rather than its text (re-encoding text
-    can drift to different ids). ``encoded`` is the policy's flat feature: twinkle's
-    ``turn_token_spans`` splits ``response_ids`` into one contiguous slice per assistant turn, and
-    the newest slice maps to the newest assistant message.
-    """
-    from twinkle_agentic.rollout import turn_token_spans
-
-    turn_token_ids = [list(response_ids[start:end]) for start, end in turn_token_spans(encoded)]
-    result = [dict(message) for message in messages]
-    completion_index = 0
-    for message in reversed(result):
-        if message.get('role') != 'assistant':
-            continue
-        if completion_index >= len(turn_token_ids):
-            break
-        ids = turn_token_ids[-1 - completion_index]
-        message['content'] = {'token_ids': ids, 'loss_scale': [1] * len(ids)}
-        completion_index += 1
-    if completion_index != len(turn_token_ids):
-        raise RuntimeError(
-            f'multi-turn messages contain {completion_index} generated assistant turns, but the '
-            f'trajectory has {len(turn_token_ids)} trainable token runs. A run-splitting mismatch '
-            'means an assistant turn produced no trainable token (an empty generation) or a '
-            'completion_mask split one turn in two.')
-    return result
-
-
-@remote_class(execute='first')
-class PrivilegedView:
-    """Re-encode each response under its privileged ``teacher_prompt`` column, for the teacher forward.
-
-    A trajectory without a ``teacher_prompt`` is returned unchanged; with one, the SAME response
-    tokens are re-encoded from the privileged view (the first user turn carries the hint), so the
-    teacher grades the policy's answer hint-augmented. Single-turn rows go through
-    :func:`encode_privileged_feature`, multi-turn rows pin every assistant turn to its sampled ids.
-    """
-
-    def __init__(self, *, template: Any):
-        self.template = template
-
-    @remote_function(dispatch='all', collect='first', lazy_collect=True)
-    def __call__(self, trajs: List[Dict[str, Any]], **kwargs) -> List[Dict[str, Any]]:
-        features = []
-        for traj in trajs:
-            teacher_prompt = ground_truth(traj, 'teacher_prompt') or traj.get('teacher_prompt')
-            if not teacher_prompt:
-                features.append(traj)
-                continue
-            response_ids = [int(t) for t in traj['response_token_ids']]
-            messages = list(traj.get('messages') or [])
-            assistant = [i for i, message in enumerate(messages) if message.get('role') == 'assistant']
-            if len(assistant) == 1:
-                features.append(encode_privileged_feature(
-                    self.template, messages[:assistant[0]], teacher_prompt, response_ids, traj))
-                continue
-            pinned = [dict(message) for message in messages]
-            for message in pinned:
-                if message.get('role') == 'user':
-                    message['content'] = teacher_prompt
-                    break
-            else:
-                raise ValueError('teacher_prompt requires a user turn in the prompt to carry the '
-                                 'privileged context.')
-            features.append(encode_privileged_view(
-                self.template, _messages_with_token_ids(pinned, response_ids, traj), response_ids, traj))
-        return features
 
 
 def build_reward_weights(reward_weights: Optional[Sequence[float]], n_funcs: int) -> torch.Tensor:
@@ -186,16 +56,17 @@ def weighted_rewards(rewards_per_func: Any, reward_weights: Optional[List[float]
 
 
 def accumulate_reward_metric(metric: Any,
-                             samples: List[Any],
                              rewards_per_func: Any,
+                             completion_lengths: List[int],
                              *,
                              scorer_names: List[str],
                              reward_weights: Optional[List[float]]) -> None:
     """Feed one batch's rewards + completion lengths into a CompletionRewardMetric.
 
-    Reset first, so the metric reflects exactly the batch the upcoming optimizer step(s) train on. Per-scorer
-    columns keep their resolved names; a single-callable fallback resolves no names, so only the weighted
-    ``total`` is reported there.
+    Reset first, so the metric reflects exactly the batch the upcoming optimizer step(s) train on. The
+    matrix is the collected ORM score rows (the driver's batch summary carries them row by row);
+    per-scorer columns keep their resolved names; a single-callable fallback resolves no names, so
+    only the weighted ``total`` is reported there.
     """
     metric.reset()
     names = scorer_names
@@ -204,8 +75,7 @@ def accumulate_reward_metric(metric: Any,
         if col < len(names):
             rewards[names[col]] = [float(v) for v in rewards_per_func[:, col].tolist()]
     rewards['total'] = [float(v) for v in weighted_rewards(rewards_per_func, reward_weights).tolist()]
-    completion_lengths = [sample.token_lengths[1] if sample.token_lengths else 0 for sample in samples]
-    metric.accumulate(rewards=rewards, completion_lengths=completion_lengths)
+    metric.accumulate(rewards=rewards, completion_lengths=list(completion_lengths))
 
 
 def brier_per_question(probs: "torch.Tensor", target: "torch.Tensor", mask: "torch.Tensor") -> "torch.Tensor":
@@ -256,4 +126,3 @@ def ece_score(confidences: List[float], correct: List[bool], n_bins: int = 15) -
         if cnt > 0:
             ece += (cnt / n) * abs(float(conf[m].mean()) - float(corr[m].mean()))
     return float(ece)
-

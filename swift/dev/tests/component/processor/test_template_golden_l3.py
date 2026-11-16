@@ -140,8 +140,12 @@ def test_tool_observe_bridge_matches_the_shipped_jinja(family):
         )
 
     if not monotonic:
-        # the jinja rewrites the turn it already rendered (Qwen3's empty think block follows the last
-        # message), so the appended turns are not a prefix extension: the incremental path must say so
+        # The jinja rewrites a turn it already rendered -- Qwen3's empty think block follows the
+        # last message -- so no delta can be measured against the closed history. render_delta then
+        # tries an anchor, but an anchor bridge is only returned once it is verified to equal the
+        # tail of the full render; a tool turn fails that check, because its block depends on the
+        # assistant tool_calls turn it answers and the anchor has no such turn. The incremental path
+        # must say so rather than splice a wrong bridge into a training sequence.
         with pytest.raises(RuntimeError, match="non-monotonic"):
             observe()
         with pytest.raises(RuntimeError, match="non-monotonic"):

@@ -148,7 +148,8 @@ def _run_episode(template, tool_manager, replies, prompt='Where am I? Use the to
         sampling_params=SamplingParams(),
         max_turns=6,
     )
-    outputs = rollout([{'messages': [{'role': 'user', 'content': prompt}]}], sampling_params=SamplingParams())
+    # __call__ takes the trajectories only; the sampling params are the rollout's, fixed at construction.
+    outputs = rollout([{'messages': [{'role': 'user', 'content': prompt}]}])
     assert len(outputs) == 1
     return outputs[0], sampler
 

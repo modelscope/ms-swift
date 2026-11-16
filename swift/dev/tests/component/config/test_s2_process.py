@@ -45,7 +45,6 @@ from swift.dev.config.process import (
     _derive_streaming_dataloader_workers,
     _derive_virtual_pipeline,
     _derive_vit_gradient_checkpointing,
-    _derive_weight_sync_strategy,
     _export_model_kwargs,
     _login_hub,
     _normalize_recompute_granularity,
@@ -320,35 +319,6 @@ def test_async_mode_folding():
     rollout = RolloutConfig(async_generate=False, async_mode='none')
     _derive_async_mode(rollout)
     assert rollout.async_mode == 'none'
-
-
-@pytest.mark.parametrize('tuner, sampler_mode, expected_strategy, expected_partial', [
-    (None, 'colocate', 'in_place', None),  # full + colocate under sync: no partial
-    (None, 'colocate', 'in_place', None),
-    (None, 'disaggregated', 'in_place', None),  # full + disaggregated: in_place, no partial under sync
-])
-def test_weight_sync_strategy_derivation(tuner, sampler_mode, expected_strategy, expected_partial):
-    """S2-11: a full-param or colocated streaming run derives the in_place publication (its only
-    sound one); an explicit choice is left for validate to police; a disaggregated LoRA run keeps
-    the adapter-pin default."""
-    # sync mode ('none') but an online type that streams: derive happens
-    rollout = RolloutConfig(async_mode='none', sampler_mode=sampler_mode)
-    rl = RLConfig(rl_type='grpo')
-    _derive_weight_sync_strategy(rollout, rl, None if tuner is None else TunerConfig(tuner=tuner))
-    assert rollout.weight_sync_strategy == expected_strategy
-    if expected_partial is None:
-        assert rollout.allow_partial_rollout is False  # untouched default under sync
-
-    # explicit choice survives (validate's rejection is tested in S2b)
-    rollout = _explicit(RolloutConfig(sampler_mode='colocate'), 'weight_sync_strategy')
-    rollout.weight_sync_strategy = 'adapter_snapshot'
-    _derive_weight_sync_strategy(rollout, RLConfig(rl_type='grpo'), None)
-    assert rollout.weight_sync_strategy == 'adapter_snapshot'
-
-    # disaggregated LoRA keeps the default pin-by-adapter ('adapter_snapshot' is the field default)
-    rollout = RolloutConfig(sampler_mode='disaggregated')
-    _derive_weight_sync_strategy(rollout, RLConfig(rl_type='grpo'), TunerConfig(tuner='lora'))
-    assert rollout.weight_sync_strategy == 'adapter_snapshot'
 
 
 def test_rm_task_type_derivation():

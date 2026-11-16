@@ -67,8 +67,28 @@ class _StubModel:
     def __init__(self):
         self.loss = None
 
-    def set_loss(self, loss):
+    def set_loss(self, loss, **kwargs):
+        # Mirrors TransformersModel.set_loss(loss_cls, **kwargs): the loss hyperparameters ride in
+        # as keyword arguments, so a stub that names only the loss rejects every real call.
         self.loss = loss
+        self.loss_kwargs = kwargs
+
+
+def _constructed(model):
+    """The loss instance ``TransformersModel.set_loss`` would build from what the stub captured.
+
+    ``configure_rl_loss`` hands ``set_loss`` a registry-resolved class NAME plus the loss
+    hyperparameters as keyword arguments -- the serializable form that crosses the ray boundary --
+    so anything needing the loss as an object has to construct it. Asserting against the captured
+    name alone would pass with every hyperparameter dropped on the floor. ``loss_key`` and
+    ``adapter_name`` are excluded because ``set_loss`` pops both before constructing.
+    """
+    import twinkle.loss
+    from twinkle.loss import Loss
+    from twinkle.utils import construct_class
+    kwargs = {k: v for k, v in model.loss_kwargs.items() if k not in ('loss_key', 'adapter_name')}
+    return construct_class(model.loss, Loss, twinkle.loss, **kwargs)
+
 
 
 @pytest.mark.parametrize('rl_type, cls_name', [
@@ -90,7 +110,7 @@ def test_configure_rl_loss_maps_type_to_loss(rl_type, cls_name):
 
     model = _StubModel()
     configure_rl_loss(model, RLConfig(rl_type=rl_type))
-    assert type(model.loss).__name__ == cls_name
+    assert type(_constructed(model)).__name__ == cls_name
 
 
 def test_configure_ppo_value_loss_sets_value_loss():
@@ -101,9 +121,10 @@ def test_configure_ppo_value_loss_sets_value_loss():
 
     value_model = _StubModel()
     configure_ppo_value_loss(value_model, RLConfig(rl_type='ppo', cliprange_value=0.3, vf_coef=0.5))
-    assert type(value_model.loss).__name__ == 'PPOValueLoss'
-    assert value_model.loss.cliprange_value == 0.3
-    assert value_model.loss.vf_coef == 0.5
+    value_loss = _constructed(value_model)
+    assert type(value_loss).__name__ == 'PPOValueLoss'
+    assert value_loss.cliprange_value == 0.3
+    assert value_loss.vf_coef == 0.5
 
 
 # REMOVED test_ppo_checkpoint_saves_policy_and_value_and_validates_resume: it drove PPOLoop.save/resume
@@ -137,9 +158,10 @@ def test_gkd_sft_alpha_only_applies_to_dataset_batches():
     labels = torch.tensor([[-100, 1, 2]])
     student_logits = torch.randn(1, 3, 4, requires_grad=True)
     teacher_logits = torch.randn(1, 3, 4)
-    base = model.loss(
+    gkd_loss = _constructed(model)
+    base = gkd_loss(
         {'labels': labels}, {'logits': student_logits}, teacher_logits=teacher_logits, apply_sft_loss=False)['loss']
-    mixed = model.loss(
+    mixed = gkd_loss(
         {'labels': labels}, {'logits': student_logits}, teacher_logits=teacher_logits, apply_sft_loss=True)['loss']
     expected_ce = torch.nn.functional.cross_entropy(
         student_logits.reshape(-1, 4), labels.reshape(-1), ignore_index=-100)
@@ -173,7 +195,7 @@ def _advanced_grpo_loss(**overrides):
     config = RLConfig(rl_type='grpo', **overrides)
     model = _StubModel()
     configure_rl_loss(model, config)
-    return model.loss
+    return _constructed(model)
 
 
 def test_grpo_dual_clip_preserves_unclamped_ppo_branch():
@@ -287,10 +309,11 @@ def test_gae_full_lambda_credits_all_tokens():
 
     # normalize=False asserts the RAW recursion (hand-computed below); the production default
     # normalize=True would standardize the batch and hide the per-token credit assignment.
-    advantages, returns = GAEAdvantage(gamma=1.0, gae_lambda=1.0, normalize=False)([0.0, 0.0, 1.0], [0.5, 0.5, 0.5])
+    gae = GAEAdvantage(gamma=1.0, gae_lambda=1.0, normalize=False)
+    advantages, returns = gae.token_advantages([[0.0, 0.0, 1.0]], [[0.5, 0.5, 0.5]])
     # delta_t = r_t + gamma*V_{t+1} - V_t ; last-to-first: 0.5, 0.5, 0.5 (full carry at lam=1).
-    assert advantages.flatten().tolist() == pytest.approx([0.5, 0.5, 0.5])
-    assert returns.flatten().tolist() == pytest.approx([1.0, 1.0, 1.0])  # advantage + value
+    assert advantages[0] == pytest.approx([0.5, 0.5, 0.5])
+    assert returns[0] == pytest.approx([1.0, 1.0, 1.0])  # advantage + value
 
 
 def test_gae_zero_lambda_is_one_step_td():
@@ -298,10 +321,11 @@ def test_gae_zero_lambda_is_one_step_td():
     pytest.importorskip('twinkle.advantage')
     from twinkle.advantage import GAEAdvantage
 
-    advantages, returns = GAEAdvantage(gamma=1.0, gae_lambda=0.0, normalize=False)([0.0, 0.0, 1.0], [0.5, 0.5, 0.5])
+    gae = GAEAdvantage(gamma=1.0, gae_lambda=0.0, normalize=False)
+    advantages, returns = gae.token_advantages([[0.0, 0.0, 1.0]], [[0.5, 0.5, 0.5]])
     # No carry: delta = [0+0.5-0.5, 0+0.5-0.5, 1+0-0.5] = [0.0, 0.0, 0.5].
-    assert advantages.flatten().tolist() == pytest.approx([0.0, 0.0, 0.5])
-    assert returns.flatten().tolist() == pytest.approx([0.5, 0.5, 1.0])
+    assert advantages[0] == pytest.approx([0.0, 0.0, 0.5])
+    assert returns[0] == pytest.approx([0.5, 0.5, 1.0])
 
 
 def test_gae_length_matches_response_and_requires_values():
@@ -309,11 +333,13 @@ def test_gae_length_matches_response_and_requires_values():
     pytest.importorskip('twinkle.advantage')
     from twinkle.advantage import GAEAdvantage
 
-    advantages, returns = GAEAdvantage(gamma=0.9, gae_lambda=0.95,
-                                       normalize=False)([1.0, 2.0, 3.0, 4.0], [0.0, 0.0, 0.0, 0.0])
-    assert advantages.shape == (1, 4) and returns.shape == (1, 4)  # one advantage/return per token
+    gae = GAEAdvantage(gamma=0.9, gae_lambda=0.95, normalize=False)
+    advantages, returns = gae.token_advantages([[1.0, 2.0, 3.0, 4.0]], [[0.0, 0.0, 0.0, 0.0]])
+    # One advantage/return per response token: rows are ragged lists, not a padded tensor.
+    assert len(advantages) == 1 and len(advantages[0]) == 4
+    assert len(returns) == 1 and len(returns[0]) == 4
     with pytest.raises(TypeError):
-        GAEAdvantage()([1.0, 2.0])  # value function is mandatory for GAE (positional `values`)
+        gae.token_advantages([[1.0, 2.0]])  # value function is mandatory for GAE (positional `values`)
 
 
 # ----------------------------------------------------------------------

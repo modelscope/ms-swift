@@ -11,7 +11,7 @@ import json
 import pytest
 
 from swift.dev.webui.graph import Graph, GraphUpgrade, GraphValidationError
-from swift.dev.webui.registry import REGISTRY, validate_registry
+from swift.dev.webui.registry import REGISTRY, REGISTRY_VERSION, validate_registry
 from swift.dev.webui.schema import CHANNEL_SCHEMAS
 
 from ._fakes import MODEL_ID, base_declaration, edge, node, v3_declaration, with_second_model
@@ -37,13 +37,17 @@ class TestKindMatrix:
         assert 'ea' in message and 'ENDPOINT' in message
         assert 'score.scorers' in message and 'SCORER' in message
 
-    def test_reward_cannot_feed_forward_traj(self):  # S20-02
+    def test_metric_cannot_feed_forward_traj(self):  # S20-02
+        # v5 removed the REWARD channel: a scorer writes its named columns back onto the trajectory
+        # and ``score`` exports only traj/metric. The guard this case targets -- a kind mismatch on a
+        # TRAJ input must be refused naming both kinds -- is therefore driven with the METRIC summary,
+        # which is the port that still exists and still must not be accepted as sample data.
         declaration = base_declaration()
         declaration['nodes'].append(node('fwd', 'model_forward',
                                          {'tokenizer': MODEL_ID, 'outputs': ['logps']}))
-        declaration['edges'].append(edge('er', 'score', 'reward', 'fwd', 'traj'))
+        declaration['edges'].append(edge('er', 'score', 'metric', 'fwd', 'traj'))
         message = str(refusal(declaration))
-        assert 'er' in message and 'REWARD' in message
+        assert 'er' in message and 'METRIC' in message
         assert 'fwd.traj' in message and 'TRAJ' in message
 
     def test_single_input_rejects_slot(self):  # S20-03
@@ -92,7 +96,7 @@ class TestKindMatrix:
         declaration = copy.deepcopy(base_declaration())
         declaration['version'] = 99
         message = str(refusal(declaration))
-        assert 'version' in message and '仅运行 v4' in message
+        assert 'version' in message and f'仅运行 v{REGISTRY_VERSION}' in message
 
     def test_to_dict_is_field_lossless(self):  # S20-10
         """Serialization must not rewrite anything the user declared: every

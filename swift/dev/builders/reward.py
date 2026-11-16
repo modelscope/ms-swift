@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-
 import copy
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -17,7 +16,7 @@ def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
                        rollout_config: Any, backend: str = 'vllm', sampler: Any = None,
                        engine_args: Optional[dict] = None, remote_group: Optional[str] = None,
                        worker_group: Optional[str] = None, judge_template: Optional[str] = None,
-                       quantize_config: Optional['QuantizeConfig'] = None) -> Any:
+                       quantize_config: Optional['QuantizeConfig'] = None, instance_id: str = '') -> Any:
     """One resolved reward spec -> ONE scorer worker (``worker(trajectories) -> scores``), whatever its kind.
 
     ``scalar`` builds the frozen seq-cls model on ``remote_group`` and wraps it in a ``FunctionWorker``;
@@ -27,6 +26,9 @@ def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
     ``api`` is a ``FunctionWorker`` around :class:`ApiJudgeReward`. The worker itself is placed on
     ``worker_group`` (a CPU group: it only calls the handles it holds). Rule scorers are NOT built
     here -- :func:`swift.dev.recipe.utils.resolve_reward_scorers` wraps them directly.
+
+    ``instance_id`` distinguishes this worker from the other specs' workers: ray derives an actor
+    name from the construction call site, which is the same line for every spec built in a loop.
     """
     from twinkle.reward import FunctionWorker
 
@@ -35,7 +37,7 @@ def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
 
         return FunctionWorker(
             ApiJudgeReward(spec.model_id, model=(engine_args or {}).get('model'), judge_template=judge_template),
-            remote_group=worker_group)
+            remote_group=worker_group, instance_id=instance_id)
 
     if spec.kind != 'scalar':
         import functools
@@ -57,14 +59,15 @@ def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
             parse_judge_score,
             sampling_params=to_sampling_params(None, temperature=0.0, max_tokens=JUDGE_MAX_NEW_TOKENS),
             adapter_path=spec.adapter,
-            remote_group=worker_group)
+            remote_group=worker_group, instance_id=instance_id)
 
     from swift.dev.rewards.scorer import RewardModel
 
     frozen, template = _build_frozen_reward_model(
         spec, model_config, template_config, distributed_config=distributed_config,
         remote_group=remote_group)
-    return FunctionWorker(RewardModel(frozen, template, display_name=spec.display_name), remote_group=worker_group)
+    return FunctionWorker(RewardModel(frozen, template, display_name=spec.display_name),
+                          remote_group=worker_group, instance_id=instance_id)
 
 
 def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
@@ -79,9 +82,9 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
     so the frozen model is not truncated to the policy's budget; an optional frozen LoRA is attached.
     """
     from swift.dev.builders import build_model, build_template, load_model_processor
+    from swift.dev.builders.adapter import configure_frozen_adapter
     from swift.dev.builders.model import frozen_auxiliary_distributed_config
     from swift.dev.config import DistributedConfig
-    from swift.dev.builders.adapter import configure_frozen_adapter
     from swift.dev.model.loader import resolve_model_info
 
     # Re-resolve with the spec's OWN task_type/num_labels: a plain checkpoint reused as a scalar RM was
@@ -109,6 +112,31 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
 
     device_mesh = DeviceMesh.from_spec(spec.parallel_spec) if spec.parallel_spec else None
     dist = distributed_config or DistributedConfig(mode='local')
+    if dist.mode == 'remote':
+        from swift.dev.builders.remote import _remote_task_head_kwargs, build_remote_model
+        reward_model = build_remote_model(reward_model_config, distributed_config)
+        if spec.adapter:
+            if spec.adapter.startswith('twinkle://'):
+                from peft import LoraConfig
+                from swift.dev.builders.adapter import _lora_common_kwargs
+                from swift.dev.config import TunerConfig
+
+                adapter_config = LoraConfig(**_lora_common_kwargs(TunerConfig(), task_type=None))
+            else:
+                from peft import PeftConfig
+
+                try:
+                    adapter_config = PeftConfig.from_pretrained(spec.adapter)
+                except Exception as e:
+                    raise ValueError(
+                        f'reward model {spec.model_id!r}: --mode remote cannot read the frozen '
+                        f'adapter {spec.adapter!r} ({e}). The client must read the checkpoint to '
+                        'build the matching LoRA config: use a hub id, a client-visible path, or '
+                        'the server store\'s twinkle:// URI.') from e
+            reward_model.add_adapter_to_model(
+                'reward', adapter_config, **_remote_task_head_kwargs(model_info.task_type, reward_model_config))
+            reward_model.load(spec.adapter, load_optimizer=False)
+        return reward_model, reward_template
     if spec.parallel_spec:
         dist = frozen_auxiliary_distributed_config(dist, device_mesh.world_size, parallel_spec=spec.parallel_spec)
     reward_model = build_model(

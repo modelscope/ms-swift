@@ -38,6 +38,7 @@ capability, not a hook.
 from __future__ import annotations
 import json
 import os
+import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -146,8 +147,10 @@ class PluginKind:
 #: so the loader must guarantee those kinds are declared BEFORE it imports the user file. Nothing in the
 #: CLI's config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before
 #: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
-_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.builders.sandbox',
-                         'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins')
+_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm',
+                         'swift.dev.builders.sandbox',
+                         'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins',
+                         'swift.dev.harnesses')
 
 
 def _declare_builtin_kinds() -> None:
@@ -340,6 +343,20 @@ def _reload_external_in_worker() -> None:
     reference resolve. ``load_external`` is idempotent (twinkle caches each resolved source), and declaring
     the built-in kinds first is what lets an external file ``@register`` against a built-in kind.
     """
-    sources = json.loads(os.environ.get(_EXTERNAL_PLUGINS_ENV, '[]'))
-    if sources:
-        PluginRegistry.load_external(sources)
+    raw = os.environ.get(_EXTERNAL_PLUGINS_ENV)
+    sources = json.loads(raw) if raw else []
+    if not sources:
+        # Absent here means the driver's publication did not reach this worker's runtime_env. That is a
+        # different failure from the hook never running at all, and both surface as the same
+        # ModuleNotFoundError on a plugin module an actor argument named -- so the distinction has to be
+        # logged to be recoverable from a run's stdout after the fact.
+        logger.warning(f'worker plugin hook ran with nothing to reload: {_EXTERNAL_PLUGINS_ENV} is '
+                       f'{"unset" if raw is None else "empty"}. A plugin the driver imported will fail '
+                       'to deserialize in this worker.')
+        return
+    PluginRegistry.load_external(sources)
+    # The names a plugin is imported under are derived from its resolved absolute path, so printing what
+    # this worker actually holds is what separates "the hook reloaded a different path than the driver"
+    # from "the hook reloaded the right path and the failure is elsewhere".
+    logger.info(f'worker plugin hook reloaded {len(sources)} source(s) {sources}; '
+                f'modules now {sorted(n for n in sys.modules if n.startswith("twinkle_plugin_"))}')

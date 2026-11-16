@@ -46,15 +46,18 @@ def _force_rl_placement(configs: Dict[str, Any]) -> None:
 
     ``run_rl_configs`` runs process+validate+dispatch but NOT this forcing -- it lives in the argv
     parser, which a programmatic caller bypasses. Applying it here keeps ``run_rl`` on the exact
-    production placement: every online type gets a vLLM sampler (colocate by default) and Ray mode; the
-    offline family is Ray too (its policy is a Ray actor) but rolls out nothing, so it sets no sampler.
+    production placement: every online type gets a vLLM sampler on its OWN GPUs (disaggregated by
+    default, matching ``cli/rl.py``) and Ray mode; the offline family is Ray too (its policy is a Ray
+    actor) but rolls out nothing, so it sets no sampler. A test that wants the trainer/sampler
+    time-sharing regime must ask for ``sampler_mode='colocate'`` explicitly -- defaulting to it here
+    would leave the shipped default untested.
     """
     rl_config = configs['rl_config']
     rollout_config = configs['rollout_config']
     distributed_config = configs['distributed_config']
     if rl_config.rl_type in ONLINE_TYPES:
         rollout_config.use_vllm = True
-        rollout_config.sampler_mode = rollout_config.sampler_mode or 'colocate'
+        rollout_config.sampler_mode = rollout_config.sampler_mode or 'disaggregated'
         distributed_config.mode = 'ray'
     elif rl_config.rl_type in OFFLINE_TYPES:
         distributed_config.mode = 'ray'

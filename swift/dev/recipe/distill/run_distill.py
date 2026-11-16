@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 from itertools import count
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from swift.dev.recipe.batching import apply_rollout_plan, plan_rollout_batch, record_rollout_step
+from swift.dev.recipe.batching import balance_update
 from swift.dev.utils.logger import get_logger
 from swift.dev.utils.scoring import copy_inputs
 
@@ -28,12 +29,12 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], samples: Optional[List[Any]],
+def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], lengths: Optional[List[int]],
                 use_student: bool, *, train_batch_size: int, save: Optional[Callable[[str], Any]]) -> int:
     """Submit full GA updates, dropping the tail; both models split micro-batches internally.
 
-    ``trajs`` are the driver's trajectories (on-policy, with their ``samples``) or encoded dataset
-    rows (off-policy, ``samples`` None).
+    ``trajs`` are the driver's trajectories (on-policy, with the batch summary's row lengths) or
+    encoded dataset rows (off-policy, ``lengths`` None).
     """
     update_batch_size = train_batch_size * state.ga
     dropped = len(trajs) % update_batch_size
@@ -48,17 +49,16 @@ def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], samples: O
             break
         update = trajs[lo:hi]
         state.micro_step += (hi - lo) // train_batch_size
-        plan = (plan_rollout_batch(state, update, samples=samples[lo:hi],
-                                   micro_batch_kwargs={'micro_batch_size': micro_batch_size})
-                if samples is not None else None)
-        update = apply_rollout_plan(plan, update)
+        update, balance_metrics = balance_update(
+            state, update, None if lengths is None else lengths[lo:hi],
+            micro_batch_kwargs={'micro_batch_size': micro_batch_size})
         # The worker runs the teacher forward -- the driver never sees the full-vocab logits or the
         # logps, only the light kwargs carrying them as refs.
         signal = dict(cluster.worker.forward_kwargs(update, use_student))
         cluster.model.forward_backward(
             inputs=copy_inputs(update), gradient_accumulation_steps=1, micro_batch_size=micro_batch_size, **signal)
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        record_rollout_step(state, plan)
+        state.record(extra_metrics=balance_metrics)
         optimizer_steps += 1
         state.step_tail(save=save)
     return optimizer_steps
@@ -99,12 +99,14 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig', rollout_co
         # the initial publication: a resumed policy differs from the weights the sampler loaded
         cluster.engine.sync_weights()
         lent = cluster.colocate
-        for trajs, samples in driver:
+        for batch, batch_facts in driver:
             if cluster.colocate:
                 sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
                 cluster.model.reload_to_gpu()
                 lent = False
-            _train_rows(cluster, state, trajs, samples, True, train_batch_size=train_batch_size, save=save)
+            lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
+                                            batch_facts.get('response_lengths') or ())]
+            _train_rows(cluster, state, batch, lengths, True, train_batch_size=train_batch_size, save=save)
             batches += 1
             if not train_off_policy():
                 break
@@ -162,7 +164,12 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # the optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer.
     from swift.dev.builders import build_dp_mesh
 
-    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    remote_run = distributed_config.mode == 'remote'
+    if remote_run:
+        # One client process drives the server: the student handle's own mesh sizes the batches.
+        dp_size = 1
+    else:
+        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
     # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
@@ -217,7 +224,7 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     state = StepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
-        balance_batch=rl_config.balance_batch,
+        dp_balance=train_config.dp_balance,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,
@@ -245,7 +252,7 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({
+    if not remote_run and Perf.initialize(filter_perf_actors({
             'model': cluster.model,
             'sampler': cluster.sampler,
             **{f'teacher_{index}': teacher for index, teacher in enumerate(cluster.teachers)},
@@ -259,7 +266,11 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     finally:
         Perf.shutdown()
         cluster.rollout.close()
-        cluster.sampler.shutdown()
+        # A served sampler's lifecycle is the server session's, not this client's.
+        cluster.sampler.shutdown() if not remote_run else None
+        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+        # record, and close() is what writes the summary.
+        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.

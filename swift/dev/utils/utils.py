@@ -274,6 +274,20 @@ def deepspeed_zero_stage(spec: Union[str, Dict, None]) -> Optional[int]:
     return int(stage) if stage is not None else None
 
 
+def deepspeed_cpu_offload(spec: Union[str, Dict, None]) -> bool:
+    """Whether a ``DistributedConfig.deepspeed`` spec puts optimizer state or parameters on the CPU.
+
+    The bundled presets spell this as ``offload_optimizer.device`` / ``offload_param.device``: ``cpu`` for
+    zero2_offload and zero3_offload, ``none`` for the plain zero0-zero3 presets. A custom JSON is read the
+    same way, so the answer does not depend on the preset name.
+    """
+    config = resolve_deepspeed_config(spec)
+    if not config:
+        return False
+    zero = config.get('zero_optimization') or {}
+    return any((zero.get(key) or {}).get('device') == 'cpu' for key in ('offload_optimizer', 'offload_param'))
+
+
 # The FSDP2 preset maps to the bundled JSON (swift/config/fsdp2.json), exactly like the legacy CLI's
 # ``_init_fsdp``; any other existing path is read as a custom FSDP config file. Shared by the model
 # builder so the preset and the file semantics live in one place.

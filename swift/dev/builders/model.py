@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         ModelConfig,
         MoEConfig,
         QuantizeConfig,
+        TemplateConfig,
         TrainConfig,
         TunerConfig,
     )
@@ -437,6 +438,15 @@ def build_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size:
 
     Local reads Platform.get_world_size(), ray reads nproc_per_node; local + sp=1 with no spec
     returns None. dp spans ALL ranks, so SP peers share one data rank (identical samples).
+
+    This is also the ONLY seam that reads and validates ``parallel_spec`` on the supervised local
+    path, so callers must not gate it behind ``sequence_parallel_size > 1``: with SP=1 nothing else
+    parses the spec (``_twinkle_loader_layout`` returns early when ``nproc_per_node`` is None,
+    leaving the loader mesh None), and a local run then trains on the default mesh whatever
+    ``--parallel_spec`` said -- an unknown value is not even rejected. The ray-mode supervised
+    assemblies DO keep that gate, because there the spec is honored through ``build_parallel_mesh``
+    on the loader side while the model's mesh is sized by the DeviceGroup; handing build_model a
+    second mesh would change every ray chain for no gain.
     """
     from twinkle import DeviceMesh
 
@@ -590,6 +600,7 @@ def build_ref_model(
     model_revision: Optional[str] = None,
     instance_id: Optional[str] = None,
     deepspeed: Optional[str] = None,
+    template_config: Optional['TemplateConfig'] = None,
 ) -> Optional[Any]:
     """One frozen auxiliary (reference / teacher), as the BARE twinkle model (cookbook shape).
 
@@ -609,6 +620,33 @@ def build_ref_model(
         return policy_model
     if not model_id:
         return None
+    if distributed_config.mode == 'remote':
+        # mode='remote': the frozen auxiliary is ANOTHER served-model handle (the multi-tenant
+        # server hosts the reference / teacher next to the policy). The SAME caller contract --
+        # the bare model is the auxiliary, ``forward_only`` rides the handle -- and the same
+        # dev TemplateSpec the policy's processor was set with keeps the two encodes identical.
+        # A frozen ADAPTER preload is the server deployment's own configuration, not a client
+        # call: refusing it here keeps the knobs from silently not applying.
+        if template_config is None:
+            raise ValueError(
+                f'{name}: build_ref_model needs template_config under mode=remote: the served '
+                'auxiliary rebuilds the dev Template server-side from its serialized spec.')
+        from swift.dev.builders.remote import build_remote_model, configure_remote_processor
+
+        if adapters:
+            raise ValueError(
+                f'{name}: --mode remote does not support frozen adapter lists ({list(adapters)!r}): a '
+                'served auxiliary carries its adapter in the server-side deployment. Bake it into '
+                'the served model, or run mode=ray.')
+        config = copy.copy(model_config)
+        config.model = model_id
+        if model_type is not None:
+            config.model_type = model_type
+        if model_revision is not None:
+            config.model_revision = model_revision
+        frozen = build_remote_model(config, distributed_config)
+        configure_remote_processor(frozen, template_config, model_config, distributed_config)
+        return frozen
     from swift.dev.processor import InputProcessor, processor_kwargs
 
     config = copy.copy(model_config)
@@ -1025,12 +1063,32 @@ def _build_transformers_model(
         # Trainer (trainer_config_process) nor accelerate's dataloader-carrying prepare ever
         # executes on this path, and a raw "auto" string crashes DeepSpeed's batch assertion
         # (in ZeRO-3's zero.Init at model construction, or at Accelerator.prepare).
-        world = distributed_config.nproc_per_node or 1
+        # The world size lives in the config on the ray path and in the environment on the local
+        # torchrun path (NPROC_PER_NODE/WORLD_SIZE), which is the same split build_dp_mesh documents.
+        # Reading only nproc_per_node with an `or 1` fallback sized train_batch_size for a single rank
+        # on every local DeepSpeed run, and DeepSpeed then rejected it against the real world
+        # ("train_batch_size is not equal to micro_batch_per_gpu * gradient_acc_step * world_size
+        # 4 != 1 * 4 * 2"), so ZeRO was unreachable through the standard local launch.
+        world = distributed_config.nproc_per_node
+        if not world:
+            from twinkle.utils import Platform
+
+            world = Platform.get_world_size() if distributed_config.mode != 'ray' else 1
         micro_bs = (train_config.per_device_train_batch_size if train_config is not None else 1) or 1
         ga = (train_config.gradient_accumulation_steps if train_config is not None else 1) or 1
+        # gradient_clipping is the one "auto" placeholder that decides numerics rather than batch
+        # geometry. Neither HF Trainer nor accelerate's dataloader-carrying prepare runs here, and
+        # accelerate's own prepare fills this key with a hardcoded 1.0 (accelerator.py config_kwargs ->
+        # deepspeed_config_process(must_match=False)), while twinkle's fill_auto resolves only the batch
+        # keys. Left as "auto" it therefore becomes 1.0 no matter what the user asked for, and
+        # --max_grad_norm / --clip_grad are silently inert on the DeepSpeed path -- the engine's step does
+        # the clipping there, and the loop's clip_grad_and_step is a no-op on DeepSpeedOptimizerWrapper.
+        from swift.dev.builders.optimizer import resolve_max_grad_norm
+        clip = resolve_max_grad_norm(train_config) if train_config is not None else 1.0
         for key, value in (('train_micro_batch_size_per_gpu', micro_bs),
                            ('gradient_accumulation_steps', ga),
-                           ('train_batch_size', world * micro_bs * ga)):
+                           ('train_batch_size', world * micro_bs * ga),
+                           ('gradient_clipping', clip)):
             if config.get(key) == 'auto':
                 config[key] = value
         # ZeRO-3 bucket sizes: HF Trainer fills these "auto" values from config.hidden_size; a
