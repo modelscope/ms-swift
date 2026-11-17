@@ -238,12 +238,10 @@ class RewardModel:
     ``disable_adapter`` marks a policy-actor owner whose ``logps`` forwards ``disable_lora=True``.
     """
 
-    def __init__(self, model: Any, template: Any = None, *, placement_key: Any = None,
+    def __init__(self, model: Any, template: Any = None, *,
                  disable_adapter: bool = False, display_name: Optional[str] = None):
         self.model = model
         self.template = template
-        #: The DeviceGroup identity this handle forwards on; None means the policy actor itself.
-        self.placement_key = placement_key
         #: The metric-column label (the RewardSpec's display name); rules carry the registry's.
         self.display_name = display_name or 'reward'
         self.disable_adapter = disable_adapter
@@ -253,14 +251,21 @@ class RewardModel:
 
         task='seq_cls' routes both backends through the score head: forwarding the default
         'causal_lm' would gather label logps out of a pooled [B, 1] score (a shape error on
-        transformers, and megatron would miss the seq_cls pooling branch entirely).
+        transformers, and megatron would miss the seq_cls pooling branch entirely). A row is
+        re-encoded with this model's template from its conversation alone (``conversation``
+        drops the policy's token fields).
         """
-        features = [self.template.encode(copy.deepcopy(row)) for row in rows]
+        from twinkle.data_format import conversation
+
+        features = [self.template.encode(copy.deepcopy(conversation(row))) for row in rows]
         outputs = self.model.forward_only(inputs=features, return_logits=True, task='seq_cls')
         logits = outputs.get('logits')
         if logits is None:
             raise RuntimeError('reward model forward returned no logits.')
         return torch.as_tensor(logits).reshape(-1).tolist()
+
+    #: The reward protocol (``scorer(trajectories)``) a ``FunctionWorker`` calls.
+    __call__ = score
 
     def logps(self, features: List[Any], **kwargs: Any) -> Any:
         """Per-token response logps over ``features`` (per-sample refs or plain features)."""
@@ -317,58 +322,24 @@ def judge_query(template: str, prompt_messages: Optional[List[Dict[str, Any]]], 
     return template.format(prompt=render_conversation(messages), completion=completion)
 
 
-class GenerativeJudgeReward:
-    """LLM-as-judge reward: prompt a generative model to score each candidate, parse the number out.
+def judge_trajectory(template: str, trajectory: Dict[str, Any]) -> Dict[str, Any]:
+    """The judge's input for one candidate: its trailing assistant turn, under the conversation before it.
 
-    When the judge's base is the sampler's own model it REUSES that engine (the reward LoRA is
-    resident in the sampler's adapter list and selected per request via ``adapter_path``); otherwise
-    it owns a standalone engine (``owns_sampler=True``), released by :meth:`shutdown`.
+    ``GenerativeWorker``'s ``prompt_fn`` (bound with ``functools.partial``) and :class:`ApiJudgeReward`
+    both read the candidate this way.
     """
-
-    def __init__(self,
-                 sampler: Any,
-                 *,
-                 judge_template: Optional[str] = None,
-                 adapter_path: Optional[str] = None,
-                 params: Any = None,
-                 owns_sampler: bool = False):
-        self.sampler = sampler
-        self.template = judge_template or DEFAULT_JUDGE_TEMPLATE
-        self.adapter_path = adapter_path
-        self.params = params
-        self.owns_sampler = owns_sampler
-        #: An independent judge is its own placement (two such judges overlap); a sampler-reusing judge
-        #: shares the rollout engine, so it declares no dedicated placement and serializes with rules.
-        self.placement_key = id(sampler) if owns_sampler else None
-
-    def __call__(self, rows: List[Dict[str, Any]], **kwargs) -> List[Optional[float]]:
-        from swift.dev.builders import sampled_texts
-
-        # A row is a trajectory: the trailing assistant turn is the candidate, the rest the
-        # conversation that produced it (the same view every scorer kind sees).
-        trajectories = [
-            {
-                'messages': [{
-                    'role': 'user',
-                    'content': judge_query(self.template, row.get('messages')[:-1], row['messages'][-1]['content'])
-                }]
-            } for row in rows
-        ]
-        sample_kwargs = {'adapter_path': self.adapter_path} if self.adapter_path is not None else {}
-        texts = sampled_texts(self.sampler.sample(trajectories, self.params, **sample_kwargs))
-        return [parse_judge_score(group[0] if group else '') for group in texts]
-
-    def shutdown(self) -> None:
-        if self.owns_sampler and self.sampler is not None:
-            self.sampler.shutdown()
+    messages = trajectory.get('messages') or []
+    query = judge_query(template, messages[:-1], messages[-1]['content'] if messages else '')
+    return {'messages': [{'role': 'user', 'content': query}]}
 
 
 class ApiJudgeReward:
     """LLM-as-judge reward served by a remote OpenAI-compatible endpoint.
 
-    Same judge template and score parser as :class:`GenerativeJudgeReward`, but generation happens on
-    a remote server. Chosen when the channel's model id is an http(s) URL; the judge model name is
-    taken from ``engine_args['model']``.
+    Same judge prompt (:func:`judge_trajectory`) and score parser as the local judge
+    (``GenerativeWorker``), but generation happens on a remote server. Chosen when the channel's
+    model id is an http(s) URL; the judge model name is taken from ``engine_args['model']``. The
+    client is opened on first use, so the reward pickles into the scorer worker that runs it.
     """
 
     def __init__(self,
@@ -381,46 +352,42 @@ class ApiJudgeReward:
                  timeout: float = 600.0):
         from twinkle import requires
         requires('openai')
-        from openai import OpenAI
 
         if not model:
             raise ValueError('an API judge reward needs the judge model name; put it in engine_args '
                              "({'model': ..., 'base_url': ...}).")
         self.model = model
-        self.client = OpenAI(
-            base_url=base_url, api_key=api_key or os.environ.get('OPENAI_API_KEY'), timeout=timeout)
+        self.base_url = base_url
+        self.api_key = api_key or os.environ.get('OPENAI_API_KEY')
+        self.timeout = timeout
         self.template = judge_template or DEFAULT_JUDGE_TEMPLATE
         self.max_workers = max_workers
-        #: No GPU and no local engine -- this scorer already overlaps its own requests internally.
-        self.placement_key = None
 
-    def __call__(self, rows: List[Dict[str, Any]], **kwargs) -> List[Optional[float]]:
+    def __call__(self, trajectories: List[Dict[str, Any]], **kwargs) -> List[Optional[float]]:
         from concurrent.futures import ThreadPoolExecutor
 
-        queries = [judge_query(self.template, row.get('messages')[:-1], row['messages'][-1]['content'])
-                   for row in rows]
+        requests = [judge_trajectory(self.template, trajectory)['messages'] for trajectory in trajectories]
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            texts = list(pool.map(self._one, queries))
+            texts = list(pool.map(self._one, requests))
         return [parse_judge_score(text) for text in texts]
 
-    def _one(self, query: str) -> str:
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state.pop('_client', None)
+        return state
+
+    def _one(self, messages: List[Dict[str, Any]]) -> str:
+        client = self.__dict__.get('_client')
+        if client is None:
+            from openai import OpenAI
+            client = self.__dict__.setdefault(
+                '_client', OpenAI(base_url=self.base_url, api_key=self.api_key, timeout=self.timeout))
         try:
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{
-                    'role': 'user',
-                    'content': query
-                }],
-                temperature=0.0,
-                max_tokens=JUDGE_MAX_NEW_TOKENS)
+            completion = client.chat.completions.create(
+                model=self.model, messages=messages, temperature=0.0, max_tokens=JUDGE_MAX_NEW_TOKENS)
         except Exception as exc:  # noqa: BLE001
             # Degrade to an unparseable (nan) score rather than ending a long run: a rate-limited
             # judge on one candidate must not abort the whole run.
             logger.warning(f'API judge request failed, scoring this candidate as unparseable: {exc}')
             return ''
         return completion.choices[0].message.content or ''
-
-    def shutdown(self) -> None:
-        """Nothing to release: the OpenAI client holds no GPU and closes its own connections."""
-
-

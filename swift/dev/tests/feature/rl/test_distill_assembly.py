@@ -18,7 +18,7 @@ the disable-adapter form.
 """
 import pytest
 
-from swift.dev.config import ModelConfig, RLConfig, TunerConfig
+from swift.dev.config import ModelConfig, RLConfig, TunerConfig, DistributedConfig
 from swift.dev.recipe.distill.assembly import DISTILL_SIGNALS, _build_teachers, distill_group_requests
 
 # --- row 11: signal forms ---------------------------------------------------------------------
@@ -73,7 +73,12 @@ def _build(rl_config, model='POLICY', tuner='lora'):
         template=None,
         rl_config=rl_config,
         tuner_config=(TunerConfig(tuner=tuner) if tuner else None),
-        distributed_config=None,
+        # _build_teachers declares distributed_config as a required DistributedConfig, not an
+        # Optional one: every production caller passes a real config, and the GKD offload branch
+        # reads .mode to refuse the combination with mode='remote'. Passing None here would only
+        # exercise an AttributeError, so the helper supplies the default (mode='local'), which is
+        # the non-remote path these cases are about.
+        distributed_config=DistributedConfig(),
         signal=DISTILL_SIGNALS[rl_config.rl_type],
         auxiliary_meshes=None,
     )

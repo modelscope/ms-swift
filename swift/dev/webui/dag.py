@@ -74,7 +74,7 @@ def _collect_refs(value: Any, depth: int = 0) -> List[Any]:
     elif isinstance(value, (list, tuple)):
         for item in value:
             refs.extend(_collect_refs(item, depth + 1))
-    elif callable(value) and getattr(value, '_is_lazy_collect', False):
+    elif hasattr(value, 'result') and hasattr(value, 'done'):
         refs.append(value)
     return refs
 
@@ -695,14 +695,14 @@ class DAGController:
     def _await_stage_outputs(node_id: str, outputs: Any) -> None:
         """Hold 'running' until the stage's reference outputs are truly done.
 
-        Remote-execution stages return LazyCollect handles; a handle is
-        completion-probed with the public ``ready()`` (a non-materialising
-        ray.wait(timeout=0)) so 'completed' always means the computation
+        Remote-execution stages return pending handles; a handle is
+        completion-probed with the Future-protocol ``done()`` (non-materialising)
+        so 'completed' always means the computation
         finished -- never merely that the call was submitted. A FAILED task
-        also reports ready: the exception surfaces at the consuming collect,
+        also reports done: the exception surfaces at the consuming collect,
         exactly like the kernel's own handle semantics."""
         refs = _collect_refs(outputs)
-        while refs and not all(ref.ready() for ref in refs):
+        while refs and not all(ref.done() for ref in refs):
             time.sleep(0.05)
 
     # -- inputs and projections ------------------------------------------------

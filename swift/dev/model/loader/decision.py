@@ -37,8 +37,13 @@ from swift.dev.model.decision_head import (
     maybe_load_trained_scoring_head,
 )
 from swift.model.patcher import patch_module_forward  # v5's own patcher lacks get_original_forward
-from .base import ModelLoader, register_model
+from .base import ModelArch, ModelLoader, register_model
 from .qwen import Qwen3_5Loader
+
+
+def _is_text_layout(config: PretrainedConfig) -> bool:
+    """True for the family's text-only checkpoints (a bare ``Qwen3_5TextConfig``)."""
+    return str(getattr(config, "model_type", "")).lower() == "qwen3_5_text"
 
 
 def _register_thx02_autoconfig() -> None:
@@ -89,10 +94,19 @@ class ScoringLoader(ModelLoader):
     head_cls = None  # subclasses declare
 
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
-        model = super().build_model(model_dir, config, processor, **kwargs)
+        model = self.build_backbone(model_dir, config, processor, **kwargs)
         head = self.build_head(model, model_dir, config, processor)
         self._attach_and_load(model, head, model_dir)
         return model
+
+    def build_backbone(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
+        """The backbone construction alone; families with a second checkpoint layout override this.
+
+        Split out of :meth:`build_model` so a family that ships both a multimodal and a text-only
+        layout (e.g. JEV) can substitute the model class for one layout while the head build /
+        attach / trained-head reload tail stays shared.
+        """
+        return super().build_model(model_dir, config, processor, **kwargs)
 
     def build_head(self, model: PreTrainedModel, model_dir: str, config: PretrainedConfig, processor) -> ScoringHead:
         if self.head_cls is None:
@@ -168,11 +182,16 @@ class ScoringLoader(ModelLoader):
 
 @register_model
 class JevLoader(ScoringLoader, Qwen3_5Loader):
-    """JEV: Qwen3.5-27B-VL backbone + a verbalizer head reading option-token logits."""
+    """JEV: Qwen3.5 backbone + a verbalizer head reading option-token logits.
+
+    One family, two checkpoint layouts: JEV-27B-VL ships the full multimodal layout (``qwen3_5``),
+    while JEV-9B / JEV-27B ship the text-only one (``qwen3_5_text``, a bare ``Qwen3_5ForCausalLM``
+    checkpoint with no visual tower); the layout is detected from the loaded config.
+    """
 
     model_type = "jev"
     head_cls = JevVerbalizerHead
-    models = ["autotrust/JEV-27B-VL"]
+    models = ["autotrust/JEV-9B", "autotrust/JEV-27B", "autotrust/JEV-27B-VL"]
     # A decision family is a template/behaviour variant of its backbone, so it stays reachable by
     # id match or an explicit `--model_type` only: reverse lookup from the backbone's architecture
     # class name must keep landing on the one base family (qwen3_5).
@@ -180,6 +199,25 @@ class JevLoader(ScoringLoader, Qwen3_5Loader):
     architectures = ()
     requires = ["transformers>=5.2.0", "qwen_vl_utils>=0.0.14", "decord"]
     tags = ["vision", "decision"]
+
+    @property
+    def model_arch(self) -> ModelArch:
+        if self.model_info is not None and _is_text_layout(self.model_info.config):
+            return ModelArch()
+        if getattr(self, "_text_layout", False):
+            return ModelArch()
+        return super().model_arch
+
+    def process_config(self, config: PretrainedConfig) -> PretrainedConfig:
+        self._text_layout = _is_text_layout(config)
+        return config
+
+    def build_backbone(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
+        if not _is_text_layout(config):
+            return super().build_backbone(model_dir, config, processor, **kwargs)
+        from transformers import Qwen3_5ForCausalLM
+
+        return Qwen3_5ForCausalLM.from_pretrained(model_dir, config=config, **kwargs)
 
 
 @register_model
@@ -207,6 +245,38 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
     requires = ["transformers>=5.2.0", "qwen_vl_utils>=0.0.14", "decord"]
     tags = ["vision", "decision"]
 
+    @staticmethod
+    def _prepare_option_tokens(model, processor, model_dir: str) -> None:
+        saved_ids = getattr(model.config, "omnijev_option_token_ids", None)
+        if saved_ids is not None:
+            tokenizer = processor.tokenizer
+            tokens = [OPT_OPEN, OPT_CLOSE]
+            vocab = tokenizer.get_vocab()
+            actual_ids = [vocab.get(token) for token in tokens]
+            vocab_size = model.get_input_embeddings().weight.shape[0]
+            if (
+                not isinstance(saved_ids, list)
+                or len(saved_ids) != 2
+                or actual_ids != saved_ids
+                or any(type(idx) is not int or not 0 <= idx < vocab_size for idx in saved_ids)
+                or saved_ids[0] == saved_ids[1]
+                or any(
+                    tokenizer(token, add_special_tokens=False)["input_ids"] != [idx]
+                    for token, idx in zip(tokens, saved_ids)
+                )
+            ):
+                raise ValueError("OmniJev checkpoint option-token IDs do not match its tokenizer and embeddings.")
+            return
+        emb_path = OmniJevHead._locate(model_dir, "new_tok_emb.pt", "OMNIJEV_NEW_TOK_EMB")
+        if emb_path is None:
+            raise FileNotFoundError(
+                f"OmniJev new_tok_emb.pt not found under {model_dir!r}. The option-token embeddings are "
+                "not in the LoRA adapter (modules_to_save=None), so they must be restored from "
+                "new_tok_emb.pt; set OMNIJEV_NEW_TOK_EMB to its path (it ships beside head.pt in the "
+                "AI-ModelScope/OmniJev adapter dir)."
+            )
+        model.config.omnijev_option_token_ids = add_option_tokens(model, processor, emb_path)
+
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
         model = Qwen3_5Loader.build_model(self, model_dir, config, processor, **kwargs)
         if not is_hybrid(model):
@@ -216,15 +286,7 @@ class OmniJevLoader(ScoringLoader, Qwen3_5Loader):
                 "forward is mandatory. The loaded base reports no linear-attention layers "
                 "(config.text_config.layer_types); point --model at the OmniJev base checkpoint."
             )
-        emb_path = OmniJevHead._locate(model_dir, "new_tok_emb.pt", "OMNIJEV_NEW_TOK_EMB")
-        if emb_path is None:
-            raise FileNotFoundError(
-                f"OmniJev new_tok_emb.pt not found under {model_dir!r}. The option-token embeddings are "
-                "not in the LoRA adapter (modules_to_save=None), so they must be restored from "
-                "new_tok_emb.pt; set OMNIJEV_NEW_TOK_EMB to its path (it ships beside head.pt in the "
-                "AI-ModelScope/OmniJev adapter dir)."
-            )
-        add_option_tokens(model, processor, emb_path)
+        self._prepare_option_tokens(model, processor, model_dir)
         tokenizer = processor.tokenizer
         self._omnijev_open_ids = tokenizer(OPT_OPEN, add_special_tokens=False)["input_ids"]
         self._omnijev_close_ids = tokenizer(OPT_CLOSE, add_special_tokens=False)["input_ids"]
@@ -500,6 +562,9 @@ class Thx02Loader(ScoringLoader, Qwen3_5Loader):
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
         processor = super().build_processor(model_dir, config, **kwargs)
         decision_config = load_thx02_decision_config(model_dir)
+        # Preserve the effective processor settings (including an environment override)
+        # in full checkpoints, which do not carry the factory decision_config.json.
+        config.thx02_decision_config = decision_config
         processor.thx02_codes = list(decision_config["codes"])
         max_pixels = int(decision_config.get("max_pixels") or 262144)
         processor.image_processor.size = {"shortest_edge": 65536, "longest_edge": max_pixels}

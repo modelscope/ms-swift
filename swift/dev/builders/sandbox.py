@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# Sandbox envs and tool plugins for a multi-turn rollout (config -> twinkle EnvLeases/ToolManager).
+# Sandbox env and tool plugins for a multi-turn rollout (config -> twinkle Env / ToolManager).
 from __future__ import annotations
 
+import math
 import os
-import tempfile
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
@@ -11,43 +11,54 @@ from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
 if TYPE_CHECKING:
     from swift.dev.config import RolloutConfig
 
-__all__ = ['TOOL', 'SandboxTools', 'build_env_pool', 'build_tool_sandbox', 'resolve_tool_plugins',
-           'tool_manager_for', 'tools_factory']
+__all__ = ['TOOL', 'SandboxTools', 'build_env_pool', 'build_tools', 'resolve_tool_plugins']
 
 #: The ``tool`` extension point. Implementations subclass :class:`ToolPlugin` and a run selects them
 #: by name through ``RolloutConfig.tools`` (the ``config_field``), resolved via :meth:`resolve_tool_plugins`.
 TOOL = PluginRegistry.register_kind('tool', ToolPlugin, config_field='tools')
 
+#: The tool name that turns the sandbox env on.
+SANDBOX = 'sandbox'
 
-@PluginRegistry.register('tool', 'sandbox')
+
+@PluginRegistry.register('tool', SANDBOX)
 class SandboxTools(ToolPlugin):
-    """Expose the sandbox env's own default tools (``run_command`` / ``write_file`` / ``read_file``).
+    """Expose the sandbox env's own tools (``run_command`` / ``write_file`` / ``read_file``).
 
-    The env advertises its tool schemas through ``env.tools()``; ``EnvTool.from_env`` wraps each into a
-    callable bound to that exact env, so every call an episode makes lands in the workspace it leased.
+    Naming it builds the run's env (:func:`build_env_pool`); the rollout binds the env's tools to each
+    episode's session itself, so this plugin contributes nothing to the shared tool manager.
     """
 
-    def build(self, env: Any) -> List[Any]:
-        from twinkle_agentic.envs import EnvTool
-        return EnvTool.from_env(env)
+    def build(self) -> List[Any]:
+        return []
 
 
-def build_env_pool(rollout_config: 'RolloutConfig') -> Any:
-    """RolloutConfig -> an ``EnvLeases`` pool of sandbox environments.
+def build_env_pool(rollout_config: 'RolloutConfig', *, remote_group: Optional[str] = None,
+                   inflight: Optional[int] = None) -> Any:
+    """RolloutConfig -> one sandbox ``Env`` component, a session per episode.
 
-    ``sandbox_num_envs`` envs are built; one is leased per concurrent episode (a lease never blocks
-    when the pool has at least as many members as there are workers). The family is picked by
-    ``sandbox_kind``: 'local' slots under ``sandbox_workspace_root`` (a fresh temp dir when unset);
-    'agentenv' microVMs (``sandbox_template``), which boot on first use; 'openenv' embeds an
-    OpenEnv environment package in-process; 'openenv_client' connects each slot to a running
-    OpenEnv server. Leaving the kind at 'local' while naming a template still infers agentenv
-    (back-compat).
+    ``sandbox_num_envs`` is the session cap over all replicas; each of the ``sandbox_num_workers``
+    replicas (the ``remote_group``'s ranks) takes ``ceil(sandbox_num_envs / sandbox_num_workers)``.
+    ``inflight`` bounds the episodes that may call the env at once: a replica then takes that many
+    calls beyond its sessions, so the ``reset`` calls waiting for a session never hold every thread
+    while ``close`` waits to free one. The family is picked by ``sandbox_kind``: 'local' sessions
+    under ``sandbox_workspace_root`` (a fresh temp dir when unset); 'agentenv' microVMs
+    (``sandbox_template``); 'openenv' embeds an OpenEnv environment package in-process;
+    'openenv_client' connects to a running OpenEnv server. Leaving the kind at 'local' while naming a
+    template still infers agentenv (back-compat).
     """
-    from twinkle_agentic.envs import AgentEnv, EnvLeases, LocalEnv, OpenEnv, OpenEnvClient
+    from twinkle_agentic.envs import AgentEnv, LocalEnv, OpenEnv, OpenEnvClient
 
     num_envs = rollout_config.sandbox_num_envs
     if num_envs < 1:
         raise ValueError(f'RolloutConfig.sandbox_num_envs must be >= 1, got {num_envs}.')
+    workers = rollout_config.sandbox_num_workers if remote_group is not None else 1
+    max_sessions = math.ceil(num_envs / workers)
+    common: dict = {'max_sessions': max_sessions}
+    if remote_group is not None:
+        common['remote_group'] = remote_group
+    if inflight is not None:
+        common['max_concurrency'] = max_sessions + inflight
     template = rollout_config.sandbox_template
     kind = rollout_config.sandbox_kind
     if kind in ('openenv', 'openenv_client'):
@@ -57,17 +68,13 @@ def build_env_pool(rollout_config: 'RolloutConfig') -> Any:
                 f"sandbox_kind='{kind}' needs sandbox_env_name (the OpenEnv environment package, "
                 "e.g. 'coding_env'; pip install openenv-<name>).")
         if kind == 'openenv':
-            envs = [OpenEnv(env_name=env_name) for _ in range(num_envs)]
-        else:
-            base_url = rollout_config.sandbox_api_url
-            if not base_url and not os.environ.get('OPENENV_BASE_URL'):
-                raise ValueError(
-                    "sandbox_kind='openenv_client' needs sandbox_api_url (or the OPENENV_BASE_URL "
-                    'env var) pointing at a running OpenEnv server.')
-            envs = [
-                OpenEnvClient(env_name=env_name, base_url=base_url) for _ in range(num_envs)
-            ]
-        return EnvLeases(envs)
+            return OpenEnv(env_name=env_name, **common)
+        base_url = rollout_config.sandbox_api_url
+        if not base_url and not os.environ.get('OPENENV_BASE_URL'):
+            raise ValueError(
+                "sandbox_kind='openenv_client' needs sandbox_api_url (or the OPENENV_BASE_URL "
+                'env var) pointing at a running OpenEnv server.')
+        return OpenEnvClient(env_name=env_name, base_url=base_url, **common)
     if kind == 'agentenv' or (kind == 'local' and template):
         if template is None:
             raise ValueError(
@@ -78,22 +85,17 @@ def build_env_pool(rollout_config: 'RolloutConfig') -> Any:
             kwargs['api_url'] = rollout_config.sandbox_api_url
         if rollout_config.sandbox_timeout is not None:
             kwargs['sandbox_timeout'] = rollout_config.sandbox_timeout
-        envs = [
-            AgentEnv(
-                template=template,
-                command_timeout=rollout_config.sandbox_command_timeout,
-                metadata={'run': 'swift', 'slot': str(i)},
-                **kwargs) for i in range(num_envs)
-        ]
-    else:
-        root = rollout_config.sandbox_workspace_root or tempfile.mkdtemp(prefix='swift_sandbox_')
-        envs = [
-            LocalEnv(
-                workspace=os.path.join(root, f'slot_{i}'),
-                command_timeout=rollout_config.sandbox_command_timeout,
-                memory_limit_gb=rollout_config.sandbox_memory_limit_gb) for i in range(num_envs)
-        ]
-    return EnvLeases(envs)
+        return AgentEnv(
+            template=template,
+            command_timeout=rollout_config.sandbox_command_timeout,
+            metadata={'run': 'swift'},
+            **kwargs,
+            **common)
+    return LocalEnv(
+        root=rollout_config.sandbox_workspace_root,
+        command_timeout=rollout_config.sandbox_command_timeout,
+        memory_limit_gb=rollout_config.sandbox_memory_limit_gb,
+        **common)
 
 
 def resolve_tool_plugins(names: Optional[List[str]], rollout_config: 'RolloutConfig') -> List[ToolPlugin]:
@@ -106,36 +108,20 @@ def resolve_tool_plugins(names: Optional[List[str]], rollout_config: 'RolloutCon
     return [PluginRegistry.resolve(TOOL, name, config=rollout_config) for name in (names or [])]
 
 
-def tool_manager_for(env: Any, plugins: List[ToolPlugin]) -> Optional[Any]:
-    """The ``ToolManager`` exposing every plugin's tools for one leased env, or None when there are none.
+def build_tools(rollout_config: Optional['RolloutConfig'], *, env_group: Optional[str] = None,
+                inflight: Optional[int] = None) -> Tuple[Any, Optional[Any]]:
+    """The ``(env, tool_manager)`` a multi-turn rollout is built with; ``(None, None)`` when tools are off.
 
-    Built per env, not per run: a plugin's tools are bound to the exact workspace this episode
-    leased, so crossing managers between envs would act in one workspace and be judged in another.
+    Tools are opt-in through ``RolloutConfig.tools``: naming ``sandbox`` builds the env (see
+    :func:`build_env_pool`, ``env_group`` / ``inflight`` go there); every other plugin's tools go into
+    one ``ToolManager`` the rollout copies per episode.
     """
     from twinkle_agentic.tools.tool_manager import ToolManager
 
-    tools = [tool for plugin in plugins for tool in plugin.build(env)]
-    return ToolManager(tools) if tools else None
-
-
-def build_tool_sandbox(rollout_config: Optional['RolloutConfig']) -> Tuple[Any, List[ToolPlugin]]:
-    """The ``(env_pool, tool_plugins)`` for a multi-turn rollout, or ``(None, [])`` when tools are off.
-
-    Tools are opt-in: an empty ``RolloutConfig.tools`` (the default), or no RolloutConfig at all,
-    yields no plugins and no env pool. When tools are named, a sandbox env pool is built and the
-    plugins resolved against the RolloutConfig; each episode then leases its own env.
-    """
-    if rollout_config is None or not getattr(rollout_config, 'tools', None):
-        return None, []
-    return build_env_pool(rollout_config), resolve_tool_plugins(rollout_config.tools, rollout_config)
-
-
-def tools_factory(config: Any) -> Tuple[Any, List[ToolPlugin], Any]:
-    """The ``MultiTurnRollout`` tools_factory protocol: (env_pool, tool_plugins, tool_manager_for).
-
-    The engine calls it with the rollout config, so every caller that builds a multi-turn rollout
-    (a training recipe, the infer component, the TUI) hands this one function over instead of
-    re-stating the same three-piece wiring.
-    """
-    env_pool, plugins = build_tool_sandbox(config)
-    return env_pool, plugins, tool_manager_for
+    names = list(getattr(rollout_config, 'tools', None) or [])
+    if not names:
+        return None, None
+    env = (build_env_pool(rollout_config, remote_group=env_group, inflight=inflight)
+           if SANDBOX in names else None)
+    tools = [tool for plugin in resolve_tool_plugins(names, rollout_config) for tool in plugin.build()]
+    return env, (ToolManager(tools) if tools else None)

@@ -62,15 +62,6 @@ class BaseWeightTransform(RecipeComponent):
         raise NotImplementedError
 
 
-def _stream_partition(transform, partition_keys, rank, world_size, output_dir):
-    """Ray task body: run one keyspace partition of a streaming transform, returning its manifest.
-
-    Module-level (not a bound method or closure) so Ray pickles and ships it by reference; all
-    state travels in the ``transform`` clone and the scalar arguments.
-    """
-    return transform.run_partition(partition_keys, rank, world_size, output_dir)
-
-
 class StreamingWeightTransform(BaseWeightTransform):
     """A weight transform that reads and writes tensors one at a time, never holding the model.
 
@@ -117,12 +108,17 @@ class StreamingWeightTransform(BaseWeightTransform):
         """Split the keyspace across ``parallel_size`` Ray workers, each streaming its own shards.
 
         Keyspace streaming is embarrassingly parallel (disjoint partitions, no collective), so it
-        runs through ``remote_map`` CPU tasks. The driver resolves the source keyspace, ships each worker an
-        unprepared clone (config only, cheap to pickle) plus its key list, then assembles the
-        per-rank manifests into one global index and writes the metadata once.
+        runs on a CPU group of ``PartitionWorker`` actors, one per partition. The driver resolves the
+        source keyspace, ships each worker an unprepared clone (config only, cheap to pickle) plus its
+        key list, then assembles the per-rank manifests into one global index and writes the metadata
+        once.
         """
-        from twinkle.infra import remote_map
+        import twinkle
+        from twinkle import DeviceGroup
         from twinkle.utils.safetensors import SafetensorLazyLoader, StreamingSafetensorSaver
+
+        from swift.dev.utils.scoring import collect
+        from .partition_worker import PARTITION_GROUP, PartitionWorker
 
         # prepare() on the driver only resolves the source directory; the per-tensor work stays in
         # the workers.
@@ -131,12 +127,16 @@ class StreamingWeightTransform(BaseWeightTransform):
             partitions = loader.partition_keyspace(self.parallel_size)
         world_size = len(partitions)
 
-        manifests = [
-            manifest for manifest in remote_map(
-                _stream_partition,
-                [(self._clone_for_worker(), keys, rank, world_size, output_dir)
-                 for rank, keys in enumerate(partitions)]) if manifest is not None
-        ]
+        twinkle.initialize(
+            mode='ray', ncpu_proc_per_node=world_size,
+            groups=[DeviceGroup(name=PARTITION_GROUP, ranks=world_size, device_type='CPU')])
+        try:
+            worker = PartitionWorker(remote_group=PARTITION_GROUP)
+            jobs = [(self._clone_for_worker(), keys, rank, world_size, output_dir)
+                    for rank, keys in enumerate(partitions)]
+            manifests = [manifest for manifest in collect(worker(jobs)) if manifest is not None]
+        finally:
+            twinkle.shutdown()
         StreamingSafetensorSaver.assemble_sharded_index(output_dir, manifests)
         self.save_metadata(output_dir)
         return output_dir

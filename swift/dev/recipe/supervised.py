@@ -2,6 +2,8 @@
 """Shared supervised training for SFT, classification, embedding, ranking, and preference recipes."""
 
 from __future__ import annotations
+
+import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from swift.dev.recipe.utils import (
@@ -43,6 +45,57 @@ def _is_vpp_megatron(distributed_config: "DistributedConfig") -> bool:
 
     return (is_megatron_backend(distributed_config)
             and (distributed_config.virtual_pipeline_model_parallel_size or 1) > 1)
+
+
+def _probe_batch_identity(global_step: int, samples: list) -> None:
+    """Record which data one update consumed, so a resume can be compared against its source run.
+
+    Gated by ``SWIFT_BATCH_IDENTITY_PROBE`` (a path prefix). A resumed run that trains on a different
+    batch than the source run did at the same global step diverges for a reason that has nothing to do
+    with weights or optimizer state, and no amount of parameter inspection can tell the two apart: both
+    show up as a loss that no longer matches. Digesting the batch itself separates them -- equal
+    digests with unequal loss point at the model state, unequal digests point at the dataloader
+    position. The digest covers tensor bytes and the sorted scalar structure, so a reorder, a truncation
+    and a different sample all change it.
+    """
+    import hashlib
+    import json
+    import os
+
+    prefix = os.environ.get('SWIFT_BATCH_IDENTITY_PROBE')
+    if not prefix:
+        return
+    import torch
+
+    def digest(value) -> str:
+        hasher = hashlib.blake2b(digest_size=8)
+        if torch.is_tensor(value):
+            tensor = value.detach().to('cpu').contiguous().flatten()
+            hasher.update(str(tuple(value.shape)).encode())
+            hasher.update(str(value.dtype).encode())
+            # A byte view rather than ``.numpy()``: bfloat16 has no numpy counterpart, and the digest
+            # must cover every dtype the dataloader can emit.
+            hasher.update(tensor.view(torch.uint8).numpy().tobytes())
+        elif isinstance(value, dict):
+            for key in sorted(value):
+                hasher.update(str(key).encode())
+                hasher.update(digest(value[key]).encode())
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                hasher.update(digest(item).encode())
+        else:
+            hasher.update(repr(value).encode())
+        return hasher.hexdigest()
+
+    record = {
+        'rank': int(os.environ.get('RANK') or os.environ.get('LOCAL_RANK') or 0),
+        'global_step': int(global_step),
+        'num_samples': len(samples),
+        'batch': digest(samples),
+        'per_sample': [digest(sample) for sample in samples],
+    }
+    with open(f'{prefix}.rank{record["rank"]}.jsonl', 'a') as handle:
+        handle.write(json.dumps(record) + '\n')
 
 
 #: Forward tasks whose eval must submit each dataloader batch as ONE whole forward: their
@@ -278,15 +331,13 @@ def run_supervised(
         """Submit one update; every backend schedules its micro-batches internally."""
         state.publish_state()
         handler.on_step_begin()
+        _probe_batch_identity(state.global_step, samples)
         # forward_backward / clip_grad_and_step carry @timed at their twinkle definition
-        # site, so the span is recorded on the rank that actually runs them.
-        outputs = model.forward_backward(
+        # site, so the span is recorded on the rank that actually runs them. forward_backward is
+        # declared sync=True on the model: an actor-side failure raises at this call, failing THIS
+        # step instead of riding an unread handle into a green-looking failed run.
+        model.forward_backward(
             **micro_step_fn(samples, micro_batch_size=train_config.per_device_train_batch_size))
-        # Force the lazy handle: an actor-side failure in forward_backward must fail THIS step,
-        # not surface later as a Ray background error while the driver keeps recording loss=0
-        # and reports a fully failed run as success.
-        if getattr(outputs, '_is_lazy_collect', False):
-            outputs()
         handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         handler.on_optimizer_step()
@@ -358,6 +409,11 @@ def run_supervised(
         if callable(shutdown):
             shutdown()
         finish_manual_gc(gc_was_enabled)
+        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+        # record, and close() is what writes the summary. sys.exc_info() is the in-flight exception,
+        # which inside a finally block is the only signal that distinguishes a loop that finished from
+        # one that was raised out of -- the same reading run_grpo uses for its own terminal record.
+        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         state.tracker.close()
     ckpt_dir = save_final_checkpoint(model, save, enabled=_save_final)
     # A remote ckpt_dir is a twinkle:// URI in the SERVER's store: the server-side checkpoint has

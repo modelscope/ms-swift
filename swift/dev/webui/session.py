@@ -473,10 +473,9 @@ class GraphSession:
 
 
 def _deref(value: Any) -> Any:
-    """Resolve a LazyCollect handle (inlined to keep this module import-light)."""
-    if callable(value) and getattr(value, '_is_lazy_collect', False):
-        return value()
-    return value
+    """Resolve a maybe-lazy remote result to its value."""
+    from swift.dev.utils.scoring import collect
+    return collect(value)
 
 
 def _lane_summary(value: Any) -> Any:
@@ -544,7 +543,7 @@ def _bootstrap(declaration: Dict[str, Any]) -> None:
 
     Local: the resource page's cards become the process's visible GPUs (ray
     maps its slots onto them). Cluster: attach to the given address; groups
-    are numbered over the announced GPU count. The numeric worker's CPU
+    are numbered over the announced GPU count. The numeric components' CPU
     group rides along -- every group must exist here because twinkle only
     declares groups at init time.
     """
@@ -556,27 +555,16 @@ def _bootstrap(declaration: Dict[str, Any]) -> None:
     from twinkle import DeviceGroup, Platform
 
     if graph.resource.mode == 'cluster':
-        import ray
         # One namespace PER SESSION PROCESS: actor names are deterministic
         # (remote class + call site), so two concurrent sessions sharing one
         # cluster would collide on the first named actor. The pid keeps the
-        # namespace unique yet traceable in logs. The env var is the control
-        # point twinkle's worker creation actually reads (TWINKLE_RAY_
-        # NAMESPACE); ray.init's namespace is kept aligned for lookups.
-        namespace = f'webui_session_{os.getpid()}'
-        os.environ['TWINKLE_RAY_NAMESPACE'] = namespace
-        init_kwargs: Dict[str, Any] = {
-            'address': graph.resource.cluster_address,
-            'ignore_reinit_error': True,
-            'namespace': namespace,
-        }
-        # The driver's import paths must reach the workers: a dev checkout
-        # (twinkle/src + the repo ride on PYTHONPATH) is not pip-installed on
-        # the cluster nodes, and ray does not propagate PYTHONPATH by itself.
-        pythonpath = os.environ.get('PYTHONPATH', '')
-        if pythonpath:
-            init_kwargs['runtime_env'] = {'env_vars': {'PYTHONPATH': pythonpath}}
-        ray.init(**init_kwargs)
+        # namespace unique yet traceable in logs; twinkle reads it when it
+        # names and looks up actors (TWINKLE_RAY_NAMESPACE). RAY_ADDRESS makes
+        # twinkle.initialize attach to the cluster instead of starting one; the
+        # workers inherit this process's env (PYTHONPATH included), so a dev
+        # checkout that is not pip-installed on the nodes still imports there.
+        os.environ['TWINKLE_RAY_NAMESPACE'] = f'webui_session_{os.getpid()}'
+        os.environ['RAY_ADDRESS'] = graph.resource.cluster_address
     else:
         # Ray's local slots map onto exactly the selected physical cards.
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(card) for card in graph.resource.cards)
@@ -663,9 +651,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     # ray actor teardown and segfaults the driver on exit. _release already released the
     # resident actors; this stops the local ray runtime so the process exits cleanly.
     try:
-        import ray
-        if ray.is_initialized():
-            ray.shutdown()
+        import twinkle
+        twinkle.shutdown()
     except Exception:  # noqa: BLE001
         pass
     return 0

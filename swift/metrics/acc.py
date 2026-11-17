@@ -58,9 +58,7 @@ class AccMetrics(EvalMetrics):
             eval_prediction.label_ids,
             acc_strategy=self.args.acc_strategy,
             is_encoder_decoder=self.trainer.is_encoder_decoder)
-        if len(metric) == 0:
-            return {}
-        return {k: sum(v) / len(v) for k, v in metric.items()}
+        return {k: sum(v) / len(v) for k, v in metric.items() if v}
 
     def preprocess_logits_for_metrics(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         if isinstance(logits, (list, tuple)):

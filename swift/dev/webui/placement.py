@@ -28,7 +28,7 @@ from typing import Dict, Tuple
 
 from .graph import Graph, GraphValidationError
 
-#: The CPU group the numeric worker's ``remote_group`` names.
+#: The CPU group the numeric components' ``remote_group`` names.
 NUMERIC_GROUP = 'webui_numeric'
 
 _GROUP_NAME = re.compile(r'[^0-9a-zA-Z_]')

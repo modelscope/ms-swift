@@ -25,7 +25,7 @@ class TestComputeAdvantages:
     def test_group_scale_uses_unbiased_std(self):
         """rewards [1,2,3,4], one group of 4: mean 2.5, sample std sqrt(5/3) -- hand-computed oracle
         (a population-std fork would give sqrt(1.25) and shift every value)."""
-        from swift.dev.rewards.advantage import compute_advantages
+        from twinkle.advantage import compute_advantages
 
         std = (5.0 / 3.0) ** 0.5
         oracle = [(r - 2.5) / std for r in (1.0, 2.0, 3.0, 4.0)]
@@ -35,7 +35,7 @@ class TestComputeAdvantages:
     def test_groups_are_independent(self):
         """Two groups of 2 zero-center within their OWN group, not across the batch (scale='none'
         isolates the centering; group [10, 30] centers to +-10, a batch-wide center would not)."""
-        from swift.dev.rewards.advantage import compute_advantages
+        from twinkle.advantage import compute_advantages
 
         out = list(compute_advantages([0.0, 2.0, 10.0, 30.0], num_generations=2, scale_rewards='none'))
         assert out == pytest.approx([-1.0, 1.0, -10.0, 10.0])
@@ -47,7 +47,7 @@ class TestComputeAdvantages:
         dict(kl_in_reward=True, beta=0.1),  # KL-in-reward without kl_values
     ])
     def test_validation_rejects_bad_knobs(self, kwargs):
-        from swift.dev.rewards.advantage import compute_advantages
+        from twinkle.advantage import compute_advantages
 
         with pytest.raises((ValueError, TypeError)):
             compute_advantages([1.0, 2.0, 3.0, 4.0], num_generations=4, **kwargs)
@@ -71,7 +71,7 @@ class TestComputeAdvantages:
 def test_advantage_estimator_family(estimator, kwargs, oracle):
     """S8-42: every estimator resolves through the same entry and matches its hand-computed formula
     (scale='none' isolates the estimator from the std normalization)."""
-    from swift.dev.rewards.advantage import compute_advantages
+    from twinkle.advantage import compute_advantages
 
     out = compute_advantages([1.0, 2.0, 3.0, 4.0], num_generations=4, scale_rewards='none',
                              advantage_estimator=estimator, **kwargs)
@@ -177,17 +177,28 @@ class _StubPrivilegedTemplate:
     """Stands in for the dev Template: records the encoded row and the mode, exposes exactly
     ``len(response_ids)`` trainable label positions so the alignment check can pass or fail on cue."""
 
-    def __init__(self, trainable_positions=3):
+    def __init__(self, trainable_positions=3, response_ids=None):
         self.modes = []
         self.rows = []
         self._trainable = trainable_positions
+        # encode_privileged_feature appends the assistant turn carrying the ids, so the row is
+        # enough; a direct encode_privileged_view call hands the messages alone, so the ids come
+        # from here instead.
+        self._response_ids = response_ids
 
     def set_mode(self, mode):
         self.modes.append(mode)
 
     def encode(self, row):
         self.rows.append(row)
-        labels = [-100] * 2 + list(range(100, 100 + self._trainable))
+        # The align-check compares each trainable label against the student's response id verbatim,
+        # so the trainable tail must BE those ids: a fabricated placeholder fails the guard. Taking
+        # only the first ``_trainable`` of them is what makes the count mismatch reproducible.
+        messages = row.get("messages") or []
+        from_row = (messages[-1].get("content")
+                    if messages and messages[-1].get("role") == "assistant" else None)
+        response_ids = self._response_ids if self._response_ids is not None else (from_row or [])
+        labels = [-100] * 2 + list(response_ids)[: self._trainable]
         return {'input_ids': [1, 2, 3, 4, 5], 'labels': labels}
 
 
@@ -199,9 +210,9 @@ class TestEncodePrivilegedView:
         identical tokens)."""
         from swift.dev.utils.scoring import encode_privileged_view
 
-        template = _StubPrivilegedTemplate(trainable_positions=3)
+        template = _StubPrivilegedTemplate(trainable_positions=3, response_ids=[11, 12, 13])
         feature = encode_privileged_view(template, [{'role': 'user', 'content': 'q'}], [11, 12, 13])
-        assert feature['labels'] == [-100, -100, 100, 101, 102]
+        assert feature['labels'] == [-100, -100, 11, 12, 13]
         assert template.modes == ['train']  # the copy is switched to train; row seen once
         assert template.rows[0]['add_eos'] is False  # the assistant turn is exactly response_ids
 
@@ -234,7 +245,7 @@ class TestEncodePrivilegedFeature:
             [{'role': 'user', 'content': 'original question'}],
             teacher_prompt='privileged teacher hint',
             response_ids=[21, 22])
-        assert feature['labels'] == [-100, -100, 100, 101]
+        assert feature['labels'] == [-100, -100, 21, 22]
         row = template.rows[0]
         assert row['messages'] == [
             {'role': 'user', 'content': 'privileged teacher hint'},

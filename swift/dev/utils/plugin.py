@@ -38,6 +38,7 @@ capability, not a hook.
 from __future__ import annotations
 import json
 import os
+import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -97,23 +98,23 @@ class RewardPlugin(SwiftPlugin):
 
 
 class ToolPlugin(SwiftPlugin):
-    """Build the tools a multi-turn rollout exposes to the model, bound to one sandbox env.
+    """Build the tools a multi-turn rollout exposes to the model.
 
-    A tool plugin is constructed once per run (``cls(args=RolloutConfig)``) and then asked for its tools
-    per episode: :meth:`build` receives the leased twinkle ``Env`` and returns the twinkle ``Tool``
-    instances (usually ``EnvTool``s) the agent may call that turn. Returning ``[]`` means the plugin
-    contributes nothing for that env, so a run with no tool plugins -- the default -- rolls out with no
-    tools at all.
+    A tool plugin is constructed once per run (``cls(args=RolloutConfig)``) and asked for its tools once:
+    :meth:`build` returns the twinkle ``Tool`` instances every episode may call (the rollout copies them
+    per episode). The sandbox env's own tools are not built here: naming the ``sandbox`` tool builds the
+    env, and the rollout binds its tools to each episode's session. Returning ``[]`` contributes nothing,
+    so a run with no tool plugins -- the default -- rolls out with no tools at all.
 
     Example::
 
         @PluginRegistry.register('tool', 'my_tools')
         class MyTools(ToolPlugin):
-            def build(self, env):
-                return [MyTool(env)]
+            def build(self):
+                return [MyTool()]
     """
 
-    def build(self, env: Any) -> List[Any]:
+    def build(self) -> List[Any]:
         raise NotImplementedError
 
 
@@ -141,13 +142,15 @@ class PluginKind:
 
 #: Modules whose import declares swift's built-in plugin kinds (each runs ``register_kind`` at module
 #: top level). A user's ``--external_plugins`` file may ``@register`` against any built-in kind -- the
-#: ``tool`` kind (``swift.dev.builders.sandbox``), the ``reward`` kind (``swift.dev.rewards.orm``), the
-#: ``prm_scorer`` kind (``swift.dev.rewards.prm``) or the ``callback`` kind (``swift.dev.callbacks``) --
+#: ``tool`` kind (``swift.dev.builders.sandbox``), the ``reward`` kind (``swift.dev.rewards.orm``) or
+#: the ``callback`` kind (``swift.dev.callbacks``) --
 #: so the loader must guarantee those kinds are declared BEFORE it imports the user file. Nothing in the
 #: CLI's config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before
 #: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
-_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm', 'swift.dev.builders.sandbox',
-                         'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins')
+_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm',
+                         'swift.dev.builders.sandbox',
+                         'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins',
+                         'swift.dev.harnesses')
 
 
 def _declare_builtin_kinds() -> None:
@@ -340,6 +343,20 @@ def _reload_external_in_worker() -> None:
     reference resolve. ``load_external`` is idempotent (twinkle caches each resolved source), and declaring
     the built-in kinds first is what lets an external file ``@register`` against a built-in kind.
     """
-    sources = json.loads(os.environ.get(_EXTERNAL_PLUGINS_ENV, '[]'))
-    if sources:
-        PluginRegistry.load_external(sources)
+    raw = os.environ.get(_EXTERNAL_PLUGINS_ENV)
+    sources = json.loads(raw) if raw else []
+    if not sources:
+        # Absent here means the driver's publication did not reach this worker's runtime_env. That is a
+        # different failure from the hook never running at all, and both surface as the same
+        # ModuleNotFoundError on a plugin module an actor argument named -- so the distinction has to be
+        # logged to be recoverable from a run's stdout after the fact.
+        logger.warning(f'worker plugin hook ran with nothing to reload: {_EXTERNAL_PLUGINS_ENV} is '
+                       f'{"unset" if raw is None else "empty"}. A plugin the driver imported will fail '
+                       'to deserialize in this worker.')
+        return
+    PluginRegistry.load_external(sources)
+    # The names a plugin is imported under are derived from its resolved absolute path, so printing what
+    # this worker actually holds is what separates "the hook reloaded a different path than the driver"
+    # from "the hook reloaded the right path and the failure is elsewhere".
+    logger.info(f'worker plugin hook reloaded {len(sources)} source(s) {sources}; '
+                f'modules now {sorted(n for n in sys.modules if n.startswith("twinkle_plugin_"))}')

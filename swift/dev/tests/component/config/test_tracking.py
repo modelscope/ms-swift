@@ -95,11 +95,15 @@ def test_wandb_unique_prompts_are_logged_once(tmp_path):
     tracker = RunTracker(
         LoggingConfig(report_to=['none'], wandb_log_unique_prompts=True), str(tmp_path))
     tracker._writers['wandb'] = writer
-    prompts = [[{'role': 'user', 'content': 'one'}], [{'role': 'user', 'content': 'two'}]]
-    samples = [SimpleNamespace(decoded='a'), SimpleNamespace(decoded='b')]
+    # The tracker receives the rows CompletionLog already built -- a (prompt, decoded completion)
+    # pair per sample -- so the decoding is the caller's job, not the tracker's.
+    rows = [
+        ([{'role': 'user', 'content': 'one'}], 'a'),
+        ([{'role': 'user', 'content': 'two'}], 'b'),
+    ]
 
-    tracker.log_prompts(prompts, samples, step=1)
-    tracker.log_prompts(prompts, samples, step=2)
+    tracker.log_prompts(rows, 1)
+    tracker.log_prompts(rows, 2)
 
     assert len(writer.records) == 1
     assert writer.records[0][0]['completions']['data'][0][1] == 'a'

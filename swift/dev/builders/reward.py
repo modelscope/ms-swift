@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-
 import copy
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -16,47 +15,59 @@ def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
                        template_config: 'TemplateConfig', distributed_config: 'DistributedConfig',
                        rollout_config: Any, backend: str = 'vllm', sampler: Any = None,
                        engine_args: Optional[dict] = None, remote_group: Optional[str] = None,
-                       judge_template: Optional[str] = None,
-                       quantize_config: Optional['QuantizeConfig'] = None) -> Any:
-    """One resolved reward spec -> ONE scorer, whatever its serving kind.
+                       worker_group: Optional[str] = None, judge_template: Optional[str] = None,
+                       quantize_config: Optional['QuantizeConfig'] = None, instance_id: str = '') -> Any:
+    """One resolved reward spec -> ONE scorer worker (``worker(trajectories) -> scores``), whatever its kind.
 
-    ``scalar`` builds the frozen seq-cls model (its own DeviceGroup when ``remote_group`` is given,
-    with the elasticity inputs ``remote_class`` recorded attached to the handle); the judge kinds
-    (``api`` / ``generative_reuse`` / ``generative_independent``) share the judge branch, whose
-    engine starts from the same SHAPED engine args the sampler got (rollout-derived knobs + the
-    caller's overrides). Rule scorers are NOT built here -- they resolve locally in the recipe
-    and never see a device.
+    ``scalar`` builds the frozen seq-cls model on ``remote_group`` and wraps it in a ``FunctionWorker``;
+    the judge kinds become a ``GenerativeWorker`` over the sampler (``generative_reuse``) or over a
+    judge engine of their own on ``remote_group`` (``generative_independent``), whose engine starts
+    from the same SHAPED engine args the sampler got (rollout-derived knobs + the caller's overrides);
+    ``api`` is a ``FunctionWorker`` around :class:`ApiJudgeReward`. The worker itself is placed on
+    ``worker_group`` (a CPU group: it only calls the handles it holds). Rule scorers are NOT built
+    here -- :func:`swift.dev.recipe.utils.resolve_reward_scorers` wraps them directly.
+
+    ``instance_id`` distinguishes this worker from the other specs' workers: ray derives an actor
+    name from the construction call site, which is the same line for every spec built in a loop.
     """
+    from twinkle.reward import FunctionWorker
+
     if spec.kind == 'api':
         from swift.dev.rewards.scorer import ApiJudgeReward
 
-        return ApiJudgeReward(
-            spec.model_id, model=(engine_args or {}).get('model'), judge_template=judge_template)
+        return FunctionWorker(
+            ApiJudgeReward(spec.model_id, model=(engine_args or {}).get('model'), judge_template=judge_template),
+            remote_group=worker_group, instance_id=instance_id)
 
     if spec.kind != 'scalar':
-        from swift.dev.builders import to_sampling_params
-        from swift.dev.rewards.scorer import GenerativeJudgeReward
+        import functools
 
-        judge_params = to_sampling_params(None, temperature=0.0, max_tokens=JUDGE_MAX_NEW_TOKENS)
-        if spec.kind == 'generative_reuse':
-            return GenerativeJudgeReward(
-                sampler, judge_template=judge_template, adapter_path=spec.adapter, params=judge_params)
-        judge_sampler = _build_judge_sampler(
-            spec, model_config, template_config, backend, _shaped_engine_args(backend, rollout_config, engine_args),
-            distributed_config, quantize_config, remote_group)
-        return GenerativeJudgeReward(
-            judge_sampler, judge_template=judge_template, adapter_path=spec.adapter,
-            params=judge_params, owns_sampler=True)
+        from twinkle.reward import GenerativeWorker
+
+        from swift.dev.builders import to_sampling_params
+        from swift.dev.rewards.scorer import DEFAULT_JUDGE_TEMPLATE, judge_trajectory, parse_judge_score
+
+        judge_sampler = sampler
+        if spec.kind != 'generative_reuse':
+            judge_sampler = _build_judge_sampler(
+                spec, model_config, template_config, backend,
+                _shaped_engine_args(backend, rollout_config, engine_args), distributed_config, quantize_config,
+                remote_group)
+        return GenerativeWorker(
+            judge_sampler,
+            functools.partial(judge_trajectory, judge_template or DEFAULT_JUDGE_TEMPLATE),
+            parse_judge_score,
+            sampling_params=to_sampling_params(None, temperature=0.0, max_tokens=JUDGE_MAX_NEW_TOKENS),
+            adapter_path=spec.adapter,
+            remote_group=worker_group, instance_id=instance_id)
 
     from swift.dev.rewards.scorer import RewardModel
 
     frozen, template = _build_frozen_reward_model(
         spec, model_config, template_config, distributed_config=distributed_config,
         remote_group=remote_group)
-    # placement_key carries the group name out (the elastic registration reads it); replica
-    # elasticity (add_replicas/remove_replicas) is the mounted worker-pool contract on the proxy.
-    return RewardModel(
-        frozen, template, placement_key=remote_group, display_name=spec.display_name)
+    return FunctionWorker(RewardModel(frozen, template, display_name=spec.display_name),
+                          remote_group=worker_group, instance_id=instance_id)
 
 
 def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
@@ -71,9 +82,9 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
     so the frozen model is not truncated to the policy's budget; an optional frozen LoRA is attached.
     """
     from swift.dev.builders import build_model, build_template, load_model_processor
+    from swift.dev.builders.adapter import configure_frozen_adapter
     from swift.dev.builders.model import frozen_auxiliary_distributed_config
     from swift.dev.config import DistributedConfig
-    from swift.dev.builders.adapter import configure_frozen_adapter
     from swift.dev.model.loader import resolve_model_info
 
     # Re-resolve with the spec's OWN task_type/num_labels: a plain checkpoint reused as a scalar RM was
@@ -101,6 +112,31 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
 
     device_mesh = DeviceMesh.from_spec(spec.parallel_spec) if spec.parallel_spec else None
     dist = distributed_config or DistributedConfig(mode='local')
+    if dist.mode == 'remote':
+        from swift.dev.builders.remote import _remote_task_head_kwargs, build_remote_model
+        reward_model = build_remote_model(reward_model_config, distributed_config)
+        if spec.adapter:
+            if spec.adapter.startswith('twinkle://'):
+                from peft import LoraConfig
+                from swift.dev.builders.adapter import _lora_common_kwargs
+                from swift.dev.config import TunerConfig
+
+                adapter_config = LoraConfig(**_lora_common_kwargs(TunerConfig(), task_type=None))
+            else:
+                from peft import PeftConfig
+
+                try:
+                    adapter_config = PeftConfig.from_pretrained(spec.adapter)
+                except Exception as e:
+                    raise ValueError(
+                        f'reward model {spec.model_id!r}: --mode remote cannot read the frozen '
+                        f'adapter {spec.adapter!r} ({e}). The client must read the checkpoint to '
+                        'build the matching LoRA config: use a hub id, a client-visible path, or '
+                        'the server store\'s twinkle:// URI.') from e
+            reward_model.add_adapter_to_model(
+                'reward', adapter_config, **_remote_task_head_kwargs(model_info.task_type, reward_model_config))
+            reward_model.load(spec.adapter, load_optimizer=False)
+        return reward_model, reward_template
     if spec.parallel_spec:
         dist = frozen_auxiliary_distributed_config(dist, device_mesh.world_size, parallel_spec=spec.parallel_spec)
     reward_model = build_model(

@@ -51,7 +51,6 @@ class RFTCluster(NamedTuple):
     sampler: Any
     rollout: Any
     engine: Any
-    worker: Any
     sampling_params: Dict[str, Any]
     colocate: bool
     orm_scorers: List[Any]
@@ -77,29 +76,27 @@ def initialize_rft_cluster(
     moe_config: Optional["MoEConfig"] = None,
     generation_config: Optional[Any] = None,
     resource_plan: Any = None,
-    output_dir: str = "output",
+    inflight: Optional[int] = None,
 ) -> RFTCluster:
     """Build every actor RFT trains with: the policy, the sampler, the orm reward channel.
 
     GRPO's :func:`~swift.dev.recipe.grpo.assembly.initialize_cluster` mirrored minus the
     auxiliaries RFT does not have (no reference, no teacher, no PRM, no elastic adapter) and with
     the SFT cross-entropy loss instead of an RL one; ``max_steps`` is the resolved step budget
-    (the LR-scheduler horizon), derived by the caller BEFORE this stage.
+    (the LR-scheduler horizon), derived by the caller BEFORE this stage. ``inflight`` is the
+    episodes a round runs at once (see :func:`~swift.dev.builders.streaming.inflight_rows`).
     """
-    from twinkle.checkpoint_engine import CheckpointEngineManager
-    from twinkle.data_format import SamplingParams
-    from twinkle_agentic.async_rl import REF_ONLY_REMOTE_GROUP
-    from twinkle_agentic.rollout import MultiTurnRollout
-
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
-    from swift.dev.builders.sandbox import tools_factory
+    from swift.dev.builders.streaming import (
+        CONTROL_GROUP,
+        build_checkpoint_manager,
+        build_rollout,
+        rollout_sampling_params,
+    )
     from swift.dev.loss import configure_loss
     from swift.dev.processor import InputProcessor, processor_kwargs
-    from swift.dev.rewards.scorer import ApiJudgeReward, GenerativeJudgeReward, RewardModel
-    from swift.dev.rewards.worker import RewardWorker
-    from swift.dev.utils.plugin import PluginRegistry
 
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         raise ValueError(
@@ -107,43 +104,72 @@ def initialize_rft_cluster(
             "use 'manual' or 'estimate' for a static plan."
         )
     sp = template_config.sequence_parallel_size
-    sp_mesh = build_dp_mesh(distributed_config, sp) if sp > 1 else None
+    # mode='remote' runs ONE client process (the sft assembly's remote shape for the model;
+    # the sampler / weight sync / rollout take their remote object sources below).
+    remote_run = distributed_config.mode == 'remote'
+    # build_dp_mesh is the only seam that reads and validates parallel_spec on the local path, so
+    # it must not be gated behind SP>1; ray keeps the gate (see its docstring) so no ray chain moves.
+    sp_mesh = (None if remote_run or (distributed_config.mode == 'ray' and sp <= 1)
+               else build_dp_mesh(distributed_config, sp))
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None:
+    if resume_dir and tuner_config is None and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
         policy_config = copy(model_config)
         policy_config.model = resume_dir
-    model = build_model(
-        policy_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
-    )
-    if tuner_config is not None:
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=1,
-            task_type=model_config.task_type,
+    if remote_run:
+        from swift.dev.builders.remote import (
+            apply_remote_tuner,
+            build_remote_model,
+            configure_remote_loss,
+            configure_remote_processor,
         )
+
+        model = build_remote_model(model_config, distributed_config)
+        if tuner_config is not None:
+            apply_remote_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+                model_config=model_config,
+            )
+        configure_remote_processor(model, template_config, model_config, distributed_config)
+        # RFT trains the kept completions with plain cross-entropy SFT -- the same causal_lm
+        # cross-entropy the remote supervised path sets by name (reduction='sum', no DFT).
+        configure_remote_loss(model, train_config, task_type=model_config.task_type,
+                              model_config=model_config)
     else:
-        apply_full_param_freeze(model, train_config)
-    model.set_processor(
-        InputProcessor,
-        padding_free=template_config.padding_free,
-        padding_side=template_config.padding_side,
-        cp_partition_mode=distributed_config.cp_partition_mode,
-        **processor_kwargs(template),
-    )
-    model.set_template(template)
-    # RFT trains the kept completions with plain cross-entropy SFT -- NOT an RL loss.
-    configure_loss(model, loss_type="cross_entropy", reduction="sum")
+        model = build_model(
+            policy_config,
+            distributed_config,
+            train_config,
+            tuner_config,
+            device_mesh=sp_mesh,
+            quantize_config=quantize_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+        )
+        if tuner_config is not None:
+            apply_tuner(
+                model,
+                tuner_config,
+                gradient_accumulation_steps=1,
+                task_type=model_config.task_type,
+            )
+        else:
+            apply_full_param_freeze(model, train_config)
+        model.set_processor(
+            InputProcessor,
+            padding_free=template_config.padding_free,
+            padding_side=template_config.padding_side,
+            cp_partition_mode=distributed_config.cp_partition_mode,
+            **processor_kwargs(template),
+        )
+        model.set_template(template)
+        # RFT trains the kept completions with plain cross-entropy SFT -- NOT an RL loss.
+        configure_loss(model, loss_type="cross_entropy", reduction="sum")
     configure_optimizer(
         model,
         train_config,
@@ -161,31 +187,22 @@ def initialize_rft_cluster(
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
+        distributed_config=distributed_config,
+        template_config=template_config,
     )
-    params: Dict[str, Any] = {"max_tokens": rl_config.max_completion_length}
-    if generation_config is not None:
-        for key in ("temperature", "top_p", "top_k"):
-            value = getattr(generation_config, key, None)
-            if value is not None:
-                params[key] = value
-    # One engine for every generation entry (single-turn is the one-turn degenerate): disaggregated
-    # places it on the CPU payload group; colocate keeps it local for the visible loop's generate.
-    rollout = MultiTurnRollout(
-        sampler,
-        template,
-        sampling_params=SamplingParams(**params),
-        allow_partial_rollout=rollout_config.allow_partial_rollout,
-        max_turns=(rollout_config.max_turns or 1),
-        max_trajectory_tokens=rollout_config.max_trajectory_tokens,
-        tools_factory=tools_factory,
-        tools_config=rollout_config,
-        remote_group=(None if colocate else REF_ONLY_REMOTE_GROUP),
-    )
-    engine = CheckpointEngineManager(
-        model=model, sampler=sampler, mode=("colocate" if colocate else "standalone"),
-        sync_backend=rollout_config.weight_sync_backend,
-    )
-    orm_scorers = resolve_reward_scorers(
+    params = rollout_sampling_params(rl_config.max_completion_length, generation_config)
+    # One rollout for every generation (single-turn is the one-turn degenerate); under ray it is
+    # an actor on the CPU rollout group, remotely a plain in-process object over the client
+    # sampler handle.
+    rollout = build_rollout(sampler, template, rollout_config, sampling_params=params,
+                            remote=not remote_run, inflight=inflight)
+    if remote_run:
+        from swift.dev.builders.remote import RemoteWeightSync
+
+        engine = RemoteWeightSync(model, sampler)
+    else:
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+    orm_scorers, orm_scorer_names = resolve_reward_scorers(
         "orm",
         reward_config=reward_config,
         model_config=model_config,
@@ -194,6 +211,7 @@ def initialize_rft_cluster(
         rollout_config=rollout_config,
         backend=rollout_config.rollout_sampler,
         sampler=sampler,
+        worker_group=None if remote_run else CONTROL_GROUP,
         quantize_config=quantize_config,
     )
     if not orm_scorers:
@@ -207,25 +225,40 @@ def initialize_rft_cluster(
             "RFT does not consume a --prm channel (it trains on whole completions); put the "
             "reward in --orm, or use run_grpo for per-token process rewards."
         )
-    for scorer in orm_scorers:
-        if isinstance(scorer, (ApiJudgeReward, GenerativeJudgeReward)):
-            raise ValueError(
-                f"--orm judge {type(scorer).__name__} is not placeable in RFT: rejection sampling needs a "
-                "SCALAR reward column to filter on. Use a scalar seq_cls/reranker reward model or a rule."
-            )
-    orm_scorer_names = [
-        scorer.display_name if isinstance(scorer, RewardModel) else PluginRegistry.display_name(scorer)
-        for scorer in orm_scorers
-    ]
-    worker = RewardWorker(orm_scorers=orm_scorers, template=template)
     return RFTCluster(
         model=model,
         sampler=sampler,
         rollout=rollout,
         engine=engine,
-        worker=worker,
         sampling_params=params,
         colocate=colocate,
         orm_scorers=orm_scorers,
         orm_scorer_names=orm_scorer_names,
+    )
+
+
+def build_rft_driver(*, cluster: RFTCluster, rollout_config: "RolloutConfig", prompt_dataloader: Any,
+                     num_samples: int, window: int) -> Any:
+    """One round's StreamingDriver: every prompt once, one group of ``num_samples`` per batch.
+
+    No checkpoint manager: the policy is frozen for the round (synced once before it), so nothing is
+    stale and every group is handed out, the last one included; about ``window`` groups run ahead.
+    The orm channel scores every finished episode; ``orm_scorer_names`` name the scores the
+    batches' summaries carry.
+    """
+    import math
+
+    from swift.dev.builders.streaming import build_streaming_driver
+
+    return build_streaming_driver(
+        dataloader=prompt_dataloader,
+        rollout=cluster.rollout,
+        rollout_config=rollout_config,
+        batch_size=num_samples,
+        num_generations=num_samples,
+        num_train_epochs=1,
+        orms=cluster.orm_scorers,
+        orm_names=cluster.orm_scorer_names,
+        max_staleness=max(0, math.ceil(window / rollout_config.parameter_sync_step) - 1),
+        remote=True,
     )

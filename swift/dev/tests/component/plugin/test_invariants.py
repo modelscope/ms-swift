@@ -152,6 +152,22 @@ _TWINKLE_SETTERS = re.compile(r'\.(set_loss|set_template|set_processor|set_optim
                               r'\(\s*[\'"]')
 
 
+#: Call sites that hand a NAME to a twinkle_client HTTP handle, whose setters are name-typed by
+#: design: a class cannot cross HTTP, so the server resolves the name in its own registry (e.g.
+#: 'EmbeddingMetric' -> twinkle.metric.EmbeddingMetric). Nothing here reaches twinkle's local
+#: construct_class/load_plugin, which is the misroute this test guards. Keyed by the call itself
+#: rather than by the file, so a new misroute anywhere -- including in these same two files -- is
+#: still caught; the local counterparts pass CLASS objects and are scanned normally.
+_CLIENT_NAME_SETTERS = {
+    "builders/remote.py:model.add_metric('EmbeddingMetric', is_training=True)":
+        'model is the _RemoteModelAdapter over a twinkle_client MultiLoraTransformersModel handle.',
+    "recipe/utils.py:sampler.set_template('swift.dev.template.Template', **{'template_spec': spec})":
+        'Under --mode remote, sampler is twinkle_client.sampler.vLLMSampler; its set_template is '
+        'declared (template_cls: str) and posts the name to the server, which rebuilds the dev '
+        'Template from the serialized TemplateSpec beside it.',
+}
+
+
 def test_no_name_string_is_handed_to_twinkles_loader():
     """dev resolves plugin names itself; twinkle receives objects or classes, never a name.
 
@@ -159,18 +175,25 @@ def test_no_name_string_is_handed_to_twinkles_loader():
     ``hf://`` / ``ms://`` ids and forces trust_remote_code -- so a swift plugin name would fail to
     resolve, or worse, resolve to something fetched from a hub.
     """
-    offenders = []
+    offenders, covered = [], set()
     for path in dev_sources():
-        rel = path.relative_to(DEV)
-        # builders/remote.py drives a twinkle_client HTTP handle (MultiLoraTransformersModel), whose
-        # setters are name-typed by design: a class cannot cross HTTP, so the server resolves the name
-        # in its own registry (e.g. 'EmbeddingMetric' -> twinkle.metric.EmbeddingMetric). Nothing there
-        # reaches twinkle's local construct_class/load_plugin, which is the misroute this test guards.
-        # The local counterpart (configure_embedding_metric) passes the CLASS object and is still scanned.
-        if rel.as_posix() == 'builders/remote.py':
-            continue
+        rel = path.relative_to(DEV).as_posix()
         for lineno, line in enumerate(path.read_text(encoding='utf-8').splitlines(), start=1):
-            if _TWINKLE_SETTERS.search(line):
-                offenders.append(f'{rel}:{lineno}: {line.strip()}')
-    assert not offenders, ('these call sites hand twinkle a name string; resolve it to a class or instance '
-                           'first (PluginRegistry.get / .resolve):\n' + '\n'.join(offenders))
+            if not _TWINKLE_SETTERS.search(line):
+                continue
+            key = f'{rel}:{line.strip()}'
+            if key in _CLIENT_NAME_SETTERS:
+                covered.add(key)
+                continue
+            offenders.append(f'{rel}:{lineno}: {line.strip()}')
+    message = ('these call sites hand twinkle a name string; resolve it to a class or instance '
+               'first (PluginRegistry.get / .resolve), or -- if the receiver is a twinkle_client '
+               'HTTP handle whose setter is name-typed by design -- add the call to '
+               '_CLIENT_NAME_SETTERS with a reason:')
+    assert not offenders, message + chr(10) + chr(10).join(offenders)
+    # The allowlist rots the moment a call site is rewritten, and a stale entry would silently stop
+    # covering anything while looking like a review decision.
+    stale = sorted(set(_CLIENT_NAME_SETTERS) - covered)
+    assert not stale, f'these _CLIENT_NAME_SETTERS entries match no line any more: {stale}. Delete them.'
+    for key, reason in _CLIENT_NAME_SETTERS.items():
+        assert reason.strip(), f'{key} needs a reason, not an empty string.'

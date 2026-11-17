@@ -94,8 +94,8 @@ from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
 
 @PluginRegistry.register('tool', 'my_tools')
 class MyTools(ToolPlugin):
-    def build(self, env):                 # env = the sandbox this episode leased
-        return [MyTool(env)]              # [] = contributes nothing
+    def build(self):                      # called once per run; the rollout copies the tools per episode
+        return [MyTool()]                 # [] = contributes nothing
 
 class MyTool:
     def tool_info(self):                  # OpenAI-shaped function schema
@@ -107,10 +107,11 @@ class MyTool:
 ```
 
 - Select: `--tools my_tools` — requires `--max_turns` (tools are injected per turn).
-- Built-in `--tools sandbox` exposes the env's own run_command / write_file / read_file —
-  no plugin code needed.
+- Built-in `--tools sandbox` builds the sandbox env; the rollout binds its run_command /
+  write_file / read_file to each episode's session — no plugin code needed.
 - Env choice: default `LocalEnv` (in-process); `--sandbox_template <id>` switches to an
-  E2B microVM `AgentEnv`. Pool size `--sandbox_num_envs` caps concurrent episodes.
+  E2B microVM `AgentEnv`. `--sandbox_num_envs` caps the episodes holding a session at once,
+  `--sandbox_num_workers` sets the env replicas under Ray.
 - Avoid eval/exec in tools — the sandbox caps memory/time, keep tools narrow.
 
 ### callback — training-loop hooks

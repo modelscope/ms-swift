@@ -59,7 +59,7 @@ class DataloaderComponent(IteratorComponent):
     def take_batch(self) -> Any:
         batch = next(self._iterator)
         # The batch port projects the LAST delivered batch (the same live-view
-        # contract the streaming driver's samples lane follows), so consumers
+        # contract the streaming driver's traj lane follows), so consumers
         # wired to it read batch data, not the resident loader object.
         self._current = batch
         return batch
@@ -87,13 +87,37 @@ class DataloaderComponent(IteratorComponent):
         self._iterator = None
 
 
+def _orm_adapter(scorer: Any) -> Any:
+    """One wired scorer as a driver ORM callable: a Future resolving to ``[score]``.
+
+    The driver's orm channel expects ``scorer([traj]) -> Future`` (it registers completion
+    callbacks and reads ``future.result()[0]``); a webui scorer is a plain
+    ``scorer(rows) -> list[float]`` callable, so the adapter resolves synchronously into a
+    completed Future -- the driver's event thread never blocks on it and a raising scorer
+    fails the run through the driver's own error path.
+    """
+    from concurrent.futures import Future
+
+    def orm(trajs: List[Any]) -> Any:
+        future: Future = Future()
+        try:
+            future.set_result([scorer(trajs)])
+        except Exception as exc:  # noqa: BLE001 -- the driver's error path re-raises it
+            future.set_exception(exc)
+        return future
+
+    return orm
+
+
 class StreamingDriverComponent(IteratorComponent):
     """The async control plane as an on-demand batch source.
 
-    Construction uses the existing assembly (build_driver) with the TOTAL
-    budget; iteration starts once. ``take_batch`` returns the native
-    List[RolloutSample] (as an infra reference when the source runs remotely);
-    ``commit`` reports the REAL optimizer steps of the consumption.
+    Construction uses the existing builder with the TOTAL budget; iteration
+    starts once. ``take_batch`` returns the batch's trajectories (the rollout's
+    ledger-merged dicts); ``commit`` records the real optimizer steps of the
+    consumption. The driver gets no checkpoint manager -- weight pushes are the
+    graph's own weight_sync stage -- so it runs ``max_staleness`` batches ahead
+    of the consumer and never drops a group as stale.
     """
 
     type = 'streaming_driver'
@@ -104,15 +128,21 @@ class StreamingDriverComponent(IteratorComponent):
             self._build_driver(inputs)
         self._iterator = iter(self.obj)
         self._current: Optional[Any] = None
+        self.last_steps: int = 0
 
     def _build_driver(self, inputs: Dict[str, Any]) -> None:
-        from swift.dev.builders.streaming import build_streaming_driver
+        import math
+        from dataclasses import asdict
+
+        from swift.dev.builders.sampler import to_sampling_params
+        from swift.dev.builders.streaming import build_rollout, build_streaming_driver
         from .resources import _configs, _fill
         engines = slot_values(inputs.get('engine'))
-        cluster = engines[0] if engines else None
-        if cluster is None:
+        episode = inputs.get('episode')
+        if bool(engines) == (episode is not None):
             raise ComponentError(
-                f'{self.node_id}: streaming_driver needs a wired engine (the cluster)')
+                f'{self.node_id}: streaming_driver needs exactly one of a wired engine (a sampler) '
+                'or a wired episode (a rollout)')
         # The prompt stream is the wired dataloader's SOURCE handle: the native
         # loader rides on its ``obj`` (batching, seed and the face choice live
         # on THAT node, not here). The batch port is the data face -- the rows
@@ -127,84 +157,113 @@ class StreamingDriverComponent(IteratorComponent):
             raise ComponentError(
                 f'{self.node_id}: the wired dataloader is not started yet')
         config_pkg = _configs()
-        # The rollout encodes episodes with a template held HERE: under a
-        # disaggregated ray placement the sampler's own template lives on its
-        # remote actor and cannot be read off the driver-side proxy, so this
-        # node builds its own (the tokenizer/model_config params carry the
-        # identity, the same contract train_step and model_forward follow).
-        from .resources import build_template_from
-        template = build_template_from(
-            str(self.params.get('tokenizer') or ''),
-            dict(self.params.get('template_config') or {}), self.node_id,
-            model_kv=dict(self.params.get('model_config') or {}))
         # The panel's scalar knobs are the REAL Config fields' convenience face
         # (dict params win; the scalars fill their Config's field when unset).
-        # The click budget is NOT passed here: max_steps is the frame's total
-        # budget owner; a click must never make the driver terminate.
         rl_kv = dict(self.params.get('rl_config') or {})
         rl_kv.setdefault('num_generations', self.params.get('num_generations', 8))
         rollout_kv = dict(self.params.get('rollout_config') or {})
         rollout_kv.setdefault('async_mode', self.params.get('async_mode', 'none'))
         rollout_kv.setdefault('max_staleness', self.params.get('max_staleness', 1))
         gen_kv = dict(self.params.get('generation_config') or {})
-        # Scoring, regeneration and snapshots are the graph's own stages; the
-        # builder assembles the algorithm-free control plane only.
+        rollout_config = _fill(config_pkg.RolloutConfig, rollout_kv, self.node_id)
+        num_generations = _fill(config_pkg.RLConfig, rl_kv, self.node_id).num_generations
+        self._owned_rollout = None
+        if episode is not None:
+            if gen_kv:
+                raise ComponentError(
+                    f'{self.node_id}: a wired episode samples with its own generation_config; '
+                    'set it on the rollout node')
+            rollout = episode
+        else:
+            # The rollout encodes episodes with a template held HERE: under a
+            # disaggregated ray placement the sampler's own template lives on its
+            # remote actor and cannot be read off the driver-side proxy, so this
+            # node builds its own (the tokenizer/model_config params carry the
+            # identity, the same contract train_step and model_forward follow).
+            from .resources import build_template_from
+            template = build_template_from(
+                str(self.params.get('tokenizer') or ''),
+                dict(self.params.get('template_config') or {}), self.node_id,
+                model_kv=dict(self.params.get('model_config') or {}))
+            gen_config = _fill(config_pkg.GenerationConfig, gen_kv, self.node_id) if gen_kv else None
+            rollout = self._owned_rollout = build_rollout(
+                engines[0], template, rollout_config, sampling_params=asdict(to_sampling_params(gen_config)))
+        # One batch is whole groups and whole optimizer updates; max_steps counts
+        # optimizer steps, the driver counts batches. The click budget is NOT
+        # passed here: a click must never make the driver terminate.
+        update_rows = int(self.params.get('train_batch_size', 8) or 8) * int(
+            self.params.get('gradient_accumulation_steps', 1) or 1)
+        batch_size = math.lcm(update_rows, num_generations)
+        max_steps = int(self.params.get('max_steps', 0) or 0)
+        # The admission scoring binding (W5): wired scorers run per episode inside
+        # the driver under their slot names, so the group verdict rules on real
+        # scores and every delivered batch's facts carry its named score columns -- the
+        # same scorer identity a downstream score node reuses instead of rescoring.
+        scorers = inputs.get('scorers') or []
+        orm_names = [str(slot) for slot, _scorer in scorers]
+        orms = tuple(_orm_adapter(scorer) for _slot, scorer in scorers)
         self.obj = build_streaming_driver(
-            engine=cluster,
-            prompt_dataloader=prompt_loader,
-            template=template,
-            rollout_config=_fill(config_pkg.RolloutConfig, rollout_kv, self.node_id),
-            rl_config=_fill(config_pkg.RLConfig, rl_kv, self.node_id),
-            generation_config=(
-                _fill(config_pkg.GenerationConfig, gen_kv, self.node_id) if gen_kv else None),
-            train_batch_size=int(self.params.get('train_batch_size', 8) or 8),
-            gradient_accumulation_steps=int(
-                self.params.get('gradient_accumulation_steps', 1) or 1),
+            dataloader=prompt_loader,
+            rollout=rollout,
+            rollout_config=rollout_config,
+            batch_size=batch_size,
+            num_generations=num_generations,
             num_train_epochs=float(self.params.get('num_train_epochs', 1.0) or 1.0),
-            max_steps=int(self.params.get('max_steps', 0) or 0))
+            max_steps=math.ceil(max_steps * update_rows / batch_size) if max_steps else None,
+            orms=orms,
+            orm_names=orm_names or None)
 
     def take_batch(self) -> Any:
-        batch = next(self._iterator)
-        # The samples port projects the LAST delivered batch: downstream stages
+        # The single-return contract: one next() hands the batch as the driver delivers it --
+        # the rows plus the light facts carrying the row-aligned score column. The webui
+        # runs the driver IN-PROCESS, so its rows are plain dicts this component owns: the
+        # admission scores are merged onto row copies HERE (the write-back post sits with
+        # the executor holding the row bodies) and the downstream row-shaped stages -- the
+        # score stage's no-rescore reuse, select's criterion, the advantage seam -- keep
+        # reading the named columns off the rows.
+        rows, facts = next(self._iterator)
+        scores = facts.get('scores') or ()
+        if scores:
+            merged = [dict(row) if isinstance(row, dict) else row for row in rows]
+            for row, score in zip(merged, scores):
+                if not isinstance(row, dict):
+                    continue
+                rewards = dict(row.get('rewards') or {})
+                rewards.update(score.get('rewards') or {})
+                row['rewards'] = rewards
+                if score.get('prm_segments') is not None:
+                    row['prm_segments'] = score['prm_segments']
+            rows = merged
+        # The traj port projects the LAST delivered batch: downstream stages
         # wired to this port read batch data, not the control-plane object.
-        self._current = batch
-        return batch
+        self._current = rows
+        return rows
 
     def port_value(self, key: str) -> Any:
-        """The iterator's lanes: samples = the last delivered batch, source =
+        """The iterator's lanes: traj = the last delivered batch, source =
         this control handle (for ports that name the driver itself)."""
         if key == 'source':
             return self
         return getattr(self, '_current', None) or []
 
     def commit(self, steps: int) -> None:
-        self.obj.commit(int(steps))
-
-    def skip_batch(self) -> None:
-        self.obj.commit(0)
-
-    def request_publish(self, push: Any = None) -> None:
-        """Register the real push through the existing public entry. The push
-        runs in the driver's next pass -- never awaited before commit."""
-        self.obj.request_publish(push)
+        self.last_steps = int(steps)
 
     def release(self) -> None:
-        """Terminate the source.
-
-        The driver's abort drains its own single-slot queue while joining:
-        neither a queued-but-undelivered batch (a full queue the run thread
-        cannot put past) nor an empty queue (nothing to receive, the run
-        thread waiting on its bridge ack) can hang the release. The private
-        queue is never touched here."""
+        """Terminate the source: stop the driver, then the rollout this node built."""
         driver = self.obj
         if driver is None:
             return
         self.obj = None
         self._iterator = None
-        try:
-            driver.abort()
-        except Exception:
-            pass
+        for closeable in (driver, getattr(self, '_owned_rollout', None)):
+            if closeable is None:
+                continue
+            try:
+                closeable.close()
+            except Exception:
+                pass
+        self._owned_rollout = None
 
 
 class ChallengerComponent(IteratorComponent):
@@ -237,11 +296,17 @@ class ChallengerComponent(IteratorComponent):
             dict(self.params.get('template_config') or {}), self.node_id,
             model_kv=dict(self.params.get('model_config') or {}))
         cfg = dict(self.params.get('challenger_config') or {})
+        api = inputs.get('api')
+        if api is not None:
+            # The challenger samples the extra API through the sampler interface; the
+            # local template tokenises its turns the way the trainer reads them back.
+            from twinkle_agentic.protocol.api_sampler import APISampler
+            api = APISampler(api, template)
         try:
             self.obj = AgenticChallenger(
-                backend, api=inputs.get('api'),
+                backend, api=api,
                 seed_fn=(lambda text=seed: text) if seed else None,
-                envs=[env], solver_rollout=inputs.get('solver_rollout'),
+                env=env, solver_rollout=inputs.get('solver_rollout'),
                 template=template, **cfg)
         except TypeError as exc:
             raise ComponentError(f'{self.node_id}: challenger_config: {exc}') from None
@@ -292,67 +357,97 @@ class ChallengerComponent(IteratorComponent):
 class GenerateStage(StageComponent):
     """One blocking batch generation over the prompt rows.
 
-    The engine face is whichever the wire carries: a rollout/cluster component
-    already IS the episode engine (its ``rollout`` attribute); a bare sampler
-    gets a cached MultiTurnRollout wrapper -- the same class the streaming
-    driver uses, so the sample objects downstream (score/advantage/train)
-    see one shape regardless of who generated them."""
+    The engine face is whichever the wire carries: a wired episode IS the
+    episode engine; a bare sampler gets a cached MultiTurnRollout wrapper --
+    the same class the streaming driver uses, so the trajectories downstream
+    (score/advantage/train) have one shape regardless of who generated them."""
 
     type = 'generate'
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
-        engine = inputs.get('engine') or inputs.get('episode')
-        if engine is None:
-            raise ComponentError(f'{self.node_id}: generate needs a wired engine')
+        from twinkle.data_format import attach_user_data
+
+        from swift.dev.utils.scoring import collect
+        episode = inputs.get('episode')
+        engine = inputs.get('engine')
+        if (episode is None) == (engine is None):
+            raise ComponentError(f'{self.node_id}: generate needs exactly one wired engine or episode')
         rows = batch if isinstance(batch, list) else (batch or {}).get('rows', [])
         if not rows:
             raise ComponentError(f'{self.node_id}: generate received an empty batch')
-        prompts = [row['messages'] for row in rows]
-        extras = [{k: v for k, v in row.items() if k != 'messages'} for row in rows]
         # Sampling knobs are the REAL GenerationConfig fields (the typed
         # generation_config param), translated through the SAME builder the
-        # recipes use; no config means the engine's construction-time
-        # defaults stand (None is passed, not an empty override).
+        # recipes use; each episode carries them in user_data, which the
+        # rollout reads over its own defaults. No config means the engine's
+        # construction-time defaults stand.
+        from dataclasses import asdict
+
         from swift.dev.builders.sampler import to_sampling_params
         from .resources import _configs, _fill
         gen_kv = dict(self.params.get('generation_config') or {})
-        gen_config = _fill(_configs().GenerationConfig, gen_kv, self.node_id) if gen_kv else None
-        samples, encodings = self._rollout_for(engine).generate(
-            prompts,
-            num_samples=int(self.params.get('num_generations', '8') or 8),
-            sampling_params=to_sampling_params(gen_config) if gen_config is not None else None,
-            prompt_extras=extras or None)
-        for sample, encoded in zip(samples, encodings):
-            sample.encoded = encoded
-        return {'samples': samples}
+        if gen_kv:
+            params = asdict(to_sampling_params(_fill(_configs().GenerationConfig, gen_kv, self.node_id)))
+            rows = [attach_user_data(row, sampling_params=params) for row in rows]
+        num_generations = int(self.params.get('num_generations', '8') or 8)
+        # One episode per (row, generation): a group is num_generations consecutive trajectories.
+        trajs = [dict(row) for row in rows for _ in range(num_generations)]
+        rollout = episode if episode is not None else self._rollout_for(engine)
+        return {'traj': collect(rollout(trajs))}
 
     def _rollout_for(self, engine: Any) -> Any:
-        """One resident episode engine per wired engine object."""
+        """One resident episode engine per wired sampler."""
         rollouts = getattr(self, '_rollouts', None)
         if rollouts is None:
             rollouts = self._rollouts = {}
         rollout = rollouts.get(id(engine))
         if rollout is None:
-            native = getattr(engine, 'rollout', None)
-            if native is not None:
-                rollout = native  # a cluster face: the rollout it assembled
-            elif callable(getattr(engine, 'generate', None)):
-                rollout = engine  # already an episode engine (a rollout component)
-            else:
-                from twinkle_agentic.rollout import MultiTurnRollout
-                rollout = MultiTurnRollout(engine, getattr(engine, 'template', None))
+            from twinkle_agentic.rollout import MultiTurnRollout
+            rollout = MultiTurnRollout(engine, getattr(engine, 'template', None))
             rollouts[id(engine)] = rollout
         return rollout
 
 
-class ScoreStage(StageComponent):
-    """Actually call r(tau): every wired scorer contributes one column.
+def _slice_output(value: Any, keep: List[int]) -> Any:
+    """Slice one MODEL_OUTPUT value's per-row channels by the selection mask.
 
-    The scorers arrive on the many-port as ``(slot, scorer)`` pairs -- the
-    slot names its column. Each scorer is called once over the SAME row
-    protocol; the reward port carries ``values[B, C]`` with ``scorer_ids``
-    naming the columns in wire order. A scorer that does not score every row
-    fails loudly -- no silent truncation, no padding."""
+    A whole ModelOutput's data channels (and its per-row identity lists) carry one entry
+    per row: they are sliced by ``keep``. ``field_frames`` is per-FIELD metadata and
+    scalars ride whole -- neither is row-indexed. A bare per-row list slices directly.
+    """
+    value = _deref(value)
+    if isinstance(value, dict):
+        sliced = {}
+        for key, item in value.items():
+            if key == 'field_frames':
+                sliced[key] = item
+            elif isinstance(item, list):
+                sliced[key] = [item[i] for i in keep]
+            else:
+                sliced[key] = item
+        return sliced
+    if isinstance(value, list):
+        return [value[i] for i in keep]
+    return value
+
+
+def _deref(value: Any) -> Any:
+    """Resolve a maybe-lazy remote result to its value (the shared dual-mode shim)."""
+    from swift.dev.utils.scoring import collect
+
+    return collect(value)
+
+
+class ScoreStage(StageComponent):
+    """Actually call r(tau): every wired scorer contributes one named column.
+
+    The scorers arrive on the many-port as ``(slot, scorer)`` pairs -- the slot
+    names its column. Each scorer is called once over the SAME row protocol;
+    the named columns are written onto copies of the trajectories as
+    ``rewards.orm`` (a scorer that does not score every row fails loudly -- no
+    silent truncation, no padding). Rows already carrying a slot's column
+    from the driver's admission scoring are NOT rescored: one episode, one
+    scorer, one score. The metric port carries this batch's per-column means.
+    """
 
     type = 'score'
 
@@ -360,104 +455,121 @@ class ScoreStage(StageComponent):
         scorers = inputs.get('scorers')
         if not scorers:
             raise ComponentError(f'{self.node_id}: score needs wired scorers (one per column)')
-        # The sample list rides the wired samples port when the frame source is
-        # a loader (dict rows) or when the producer is an explicit upstream; a
-        # driver-sourced frame already carries the rollout samples in ``batch``.
-        # The port is single-entry: its value IS the sample list.
-        port_samples = inputs.get('samples')
-        if port_samples is not None:
-            samples = port_samples if isinstance(port_samples, list) else []
-        else:
-            samples = batch if isinstance(batch, list) else []
-        # 行协议（ScoreWorker._score_rows 同一形态）：messages + flat extras +
-        # response_token_ids；messages 缺失的样本用 prompt+decoded 合成——
-        # 规则 / RM / judge 都读这一种行，绑层只做载荷转协议。一个原生
-        # Trajectory dict（challenger 两路出流的载荷形态）已经是评分器的
-        # 原生输入，逐字直通，不做任何转写。
-        rows = []
-        for sample in samples:
-            if isinstance(sample, dict):
-                rows.append(sample)
-                continue
-            row = {**(getattr(sample, 'extra', None) or {}),
-                   'response_token_ids': list(getattr(sample, 'response_token_ids', None) or [])}
-            messages = getattr(sample, 'messages', None)
-            if messages is None:
-                prompt = list(getattr(sample, 'prompt', None) or [])
-                if not prompt or prompt[-1].get('role') != 'assistant':
-                    prompt = prompt + [{'role': 'assistant', 'content': sample.decoded}]
-                messages = prompt
-            row['messages'] = list(messages)
-            rows.append(row)
+        # The sample list rides the wired traj port when the frame source is
+        # a driver or generate (trajectory rows); the positional batch is the
+        # loader shape. The port is single-entry: its value IS the sample list.
+        port_samples = inputs.get('traj')
+        samples = port_samples if isinstance(port_samples, list) else (
+            batch if isinstance(batch, list) else [])
+        if not samples:
+            # Refuse rather than return an empty batch: with no rows the per-slot check below is
+            # vacuously true, so every scorer is skipped and the stage reports a clean result.
+            # The sibling stages (advantage, privileged_view) already fail loudly on an unwired
+            # traj, and a silently empty score batch is indistinguishable downstream from a batch
+            # that was legitimately drained.
+            raise ComponentError(f'{self.node_id}: score needs a wired traj batch')
+        # Every producer (generate, the streaming driver, the challenger lanes)
+        # hands over trajectory dicts -- the scorers' native input, passed verbatim.
+        rows = [sample for sample in samples if isinstance(sample, dict)]
+        if len(rows) != len(samples):
+            raise ComponentError(f'{self.node_id}: score takes trajectory dicts')
         columns: List[List[Any]] = []
         scorer_ids: List[str] = []
+        new_rows = [dict(row) for row in rows]
         for slot, scorer in scorers:
             if not callable(scorer):
                 raise ComponentError(f'{self.node_id}: scorer slot {slot!r} is not callable')
-            rewards = scorer(rows)
-            column = list(rewards) if rewards is not None else []
-            if len(column) != len(rows):
+            name = str(slot)
+            has_column = [name in ((row.get('rewards') or {}).get('orm') or {}) for row in rows]
+            if all(has_column):
+                # The admission binding already scored every row under this slot: reuse,
+                # never rescore (overwriting would have to be an explicit request).
+                column = [((row.get('rewards') or {}).get('orm') or {}).get(name) for row in rows]
+            elif any(has_column):
                 raise ComponentError(
-                    f'{self.node_id}: scorer {slot!r} returned {len(column)} scores '
-                    f'for {len(rows)} rows -- a scorer scores every row')
+                    f'{self.node_id}: scorer {name!r} has already scored SOME of the rows '
+                    '(the admission binding); a partial column is inconsistent -- either '
+                    'the driver scored the whole batch or none of it.')
+            else:
+                rewards = scorer(rows)
+                column = list(rewards) if rewards is not None else []
+                if len(column) != len(rows):
+                    raise ComponentError(
+                        f'{self.node_id}: scorer {name!r} returned {len(column)} scores '
+                        f'for {len(rows)} rows -- a scorer scores every row')
+            for row, value in zip(new_rows, column):
+                rewards = dict(row.get('rewards') or {})
+                orm = dict(rewards.get('orm') or {})
+                orm[name] = value
+                rewards['orm'] = orm
+                row['rewards'] = rewards
             columns.append(column)
-            scorer_ids.append(str(slot))
-        # values[B, C]: one row per sample, one column per wired scorer.
-        values = [[column[i] for column in columns] for i in range(len(rows))]
-        # The reward curve lives on the component instance: the receipt is
-        # replaced every round, the history must survive it. One point per
-        # round per column -- the column mean over this round's batch.
-        history = getattr(self, '_reward_history', None)
-        if history is None:
-            history = self._reward_history = []
-        point: Dict[str, Any] = {'round': len(history) + 1}
-        for slot, column in zip(scorer_ids, columns):
-            point[str(slot)] = (sum(column) / len(column)) if column else None
-        history.append(point)
-        return {'reward': {'values': values, 'scorer_ids': scorer_ids,
-                           'history': list(history)}}
+            scorer_ids.append(name)
+        # The metric port's summary: one mean per named column; None / nan counted separately.
+        values: Dict[str, Any] = {}
+        invalid = 0
+        for name, column in zip(scorer_ids, columns):
+            finite = [float(v) for v in column if v is not None and v == v]
+            invalid += len(column) - len(finite)
+            values[name] = (sum(finite) / len(finite)) if finite else None
+        return {'traj': new_rows,
+                'metric': {'values': values, 'invalid_count': invalid}}
 
 
 class SelectStage(StageComponent):
-    """Keep rows / whole groups / pairs by the declared criterion; every
-    aligned signal is co-selected with the same mask."""
+    """Keep rows / whole groups by the declared criterion; every aligned
+    ModelOutput lane is co-selected with the same mask.
+
+    The criterion is the trajectories' single named score column
+    (``rewards.orm``); a multi-column reward is an ambiguous criterion --
+    combine the columns first. The kept rows keep their rewards (nothing is
+    stripped), and each wired signal lane's rows are sliced by the same mask.
+    """
 
     type = 'select'
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
-        samples = batch if isinstance(batch, list) else []
-        reward = inputs.get('reward') or {}
-        values = reward.get('values') if isinstance(reward, dict) else None
+        port_batch = inputs.get('batch')
+        samples = port_batch if isinstance(port_batch, list) else (
+            batch if isinstance(batch, list) else [])
         mode = self.params.get('select', 'best_of_n')
         num_generations = int(self.params.get('num_generations', '8') or 8)
-        # One criterion column only: a multi-scorer reward is [N][n_scorers] and the old code
-        # silently ranked/thresholded on column 0, ignoring every other scorer. That is a wrong
-        # answer dressed as a selection -- reduce to one column (signal_combine / a single scorer)
-        # before selecting.
-        if values and any(isinstance(row, list) and len(row) > 1 for row in values):
+        if not samples:
+            raise ComponentError(f'{self.node_id}: select received an empty batch')
+        # The criterion column: every row carries the SAME named scorer set, and the
+        # set has exactly one column -- a wider set is ambiguous.
+        column_sets = {tuple(sorted((row.get('rewards') or {}).get('orm') or {})) for row in samples}
+        if len(column_sets) != 1 or not next(iter(column_sets), ()):
             raise ComponentError(
-                f'{self.node_id}: select received a multi-column reward ({len(values[0])} scorers); '
+                f'{self.node_id}: select needs the trajectories to carry one named score '
+                'column (rewards.orm); score them first')
+        names = next(iter(column_sets))
+        if len(names) > 1:
+            raise ComponentError(
+                f'{self.node_id}: select received a multi-column reward ({len(names)} scorers); '
                 'it selects on ONE criterion. Combine the columns into a single score first.')
+        rewards = [((row.get('rewards') or {}).get('orm') or {}).get(names[0]) for row in samples]
         keep: List[int] = []
-        if values is not None and mode in ('best_of_n', 'top_k'):
+        if mode in ('best_of_n', 'top_k'):
             top_k = 1 if mode == 'best_of_n' else int(self.params.get('top_k', '1') or 1)
             for start in range(0, len(samples), num_generations):
                 group = list(range(start, min(start + num_generations, len(samples))))
-                ranked = sorted(group, key=lambda i: -(values[i][0] if values[i] else 0.0))
+                ranked = sorted(group, key=lambda i: -(rewards[i] or 0.0))
                 keep.extend(ranked[:top_k])
-        elif values is not None and mode == 'threshold':
+        elif mode == 'threshold':
             threshold = float(self.params.get('threshold', '0.0') or 0.0)
-            keep = [i for i, row in enumerate(values)
-                    if row and (row[0] if isinstance(row, list) else row) >= threshold]
+            keep = [i for i, value in enumerate(rewards)
+                    if value is not None and value == value and value >= threshold]
         else:
-            raise ComponentError(
-                f'{self.node_id}: select needs a wired reward (the criterion scores)')
+            raise ComponentError(f'{self.node_id}: unknown select mode {mode!r}')
         kept = [samples[i] for i in keep]
-        signals = slot_values(inputs.get('signals'))
         kept_signals = None
+        signals = inputs.get('signals')
         if signals:
-            kept_signals = [signals[i] for i in keep] if hasattr(signals, '__getitem__') else signals
-        out = {'batch': kept}
+            kept_signals = [_slice_output(value, keep) for _slot, value in signals]
+        out: Dict[str, Any] = {'batch': kept,
+                               'metric': {'values': {'kept': len(keep), 'dropped': len(samples) - len(keep)},
+                                          'invalid_count': 0}}
         if kept_signals is not None:
             out['signals'] = kept_signals
         return out

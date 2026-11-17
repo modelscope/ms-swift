@@ -17,9 +17,9 @@ def _register_all() -> None:
     from .resources import (ApiEndpointComponent, CodeComponent, DatasetComponent,
                             GroupRuleComponent, LossComponent, ModelComponent,
                             RolloutComponent, SamplerComponent, SandboxEnvComponent,
-                            PolicyEndpointComponent, ScorerComponent, ToolsetComponent)
-    from .signals import (AdvantageStage, ModelForwardStage, ReduceStage,
-                          RewardShapeStage, SignalCombineStage)
+                            ScorerComponent, ToolsetComponent)
+    from .signals import (AdvantageStage, ModelForwardStage, PrivilegedViewStage,
+                          SignalCombineStage)
     from .tasks import (DeployTask, EvalTask, HubPushTask, InferTask, MergeTask,
                         QuantizeTask)
     from .training import (CheckpointStage, TrainStepStage, WeightAverageStage,
@@ -28,10 +28,10 @@ def _register_all() -> None:
             ModelComponent, DatasetComponent, SamplerComponent,
             RolloutComponent, GroupRuleComponent, LossComponent, ScorerComponent,
             ToolsetComponent, SandboxEnvComponent,
-            PolicyEndpointComponent, ApiEndpointComponent, CodeComponent,
+            ApiEndpointComponent, CodeComponent,
             DataloaderComponent, StreamingDriverComponent, ChallengerComponent,
             GenerateStage, ScoreStage, SelectStage,
-            ModelForwardStage, ReduceStage, RewardShapeStage, AdvantageStage,
+            ModelForwardStage, PrivilegedViewStage, AdvantageStage,
             SignalCombineStage, TrainStepStage, WeightSyncStage, WeightAverageStage,
             CheckpointStage, MergeTask, QuantizeTask, EvalTask, InferTask,
             DeployTask, HubPushTask):

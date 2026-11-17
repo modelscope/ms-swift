@@ -148,12 +148,9 @@ def process_and_validate_configs(
         # Fold the legacy ``async_generate`` bool into ``async_mode`` BEFORE validation reads it, so
         # ``async_mode`` is the one source of truth downstream (process modifies, validate only reads).
         _derive_async_mode(rollout_config)
-        # A full-parameter or colocated run's only sound publication is in_place; derive from the
-        # defaults BEFORE validation reads them, so a legacy colocated script needs no extra flags.
-        _derive_weight_sync_strategy(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
-        # max_turns lives on the RolloutConfig itself; rl_config/tuner_config tell _check_async_mode and
-        # _check_rollout_tools the training/tuner surface (None = sampling).
-        validate_rollout_config(rollout_config, configs.get('rl_config'), configs.get('tuner_config'))
+        # max_turns lives on the RolloutConfig itself; rl_config tells _check_async_mode and
+        # _check_rollout_tools the training surface (None = sampling).
+        validate_rollout_config(rollout_config, configs.get('rl_config'))
     infer_config = configs.get('infer_config')
     if infer_config is not None:
         from .validate import validate_infer_config
@@ -518,40 +515,6 @@ def _derive_async_mode(rollout_config: 'RolloutConfig') -> None:
     """
     if rollout_config.async_generate and rollout_config.async_mode == 'none':
         rollout_config.async_mode = 'one_step_off'
-
-
-def _derive_weight_sync_strategy(rollout_config: 'RolloutConfig', rl_config: Optional['RLConfig'],
-                                 tuner_config: Optional['TunerConfig']) -> None:
-    """Default a run that rides the streaming driver to the only publication its placement/tuner allow.
-
-    A full-param or colocated run derives in_place; an overlapping regime adds partial rollout. A
-    merge-only round loop (RFT, sync-only distillation) has no adapter-snapshot publication path at all,
-    so it derives in_place at every placement/tuner.
-    """
-    from .validate import _changed_fields, _merges_every_round, _streams_under_none
-    changed = _changed_fields(rollout_config)
-    if 'weight_sync_strategy' in changed:
-        # An explicit choice is left alone, so an adapter_snapshot on a full-param/colocated run
-        # still reaches validate._check_streaming_publication and is rejected there.
-        return
-    if _merges_every_round(rl_config):
-        # The loop ships the full LoRA-merged base every round (sync_weights(merge_and_sync=True)); an
-        # enable_lora sampler would park the base under .base_layer and the canonical-name merge would
-        # miss it. in_place is the only sound publication, independent of placement/tuner.
-        rollout_config.weight_sync_strategy = 'in_place'
-        return
-    mode = rollout_config.async_mode
-    # Under 'none' the publication knob is read only if the config actually rides the streaming
-    # driver; an overlapping mode always does. Skip the sync-only / non-online fallback.
-    if mode == 'none' and not _streams_under_none(rl_config):
-        return
-    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    colocate = rollout_config.sampler_mode == 'colocate'
-    if not (colocate or tuner == 'full'):
-        return  # a disaggregated LoRA run pins each version by adapter path (the default) -- sound as-is.
-    rollout_config.weight_sync_strategy = 'in_place'
-    if mode != 'none' and 'allow_partial_rollout' not in changed:
-        rollout_config.allow_partial_rollout = True
 
 
 def _derive_rl_task_type(model_config: 'ModelConfig', rl_config: Optional['RLConfig']) -> None:

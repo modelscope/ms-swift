@@ -751,6 +751,24 @@ class ModelLoader:
             expose_nested_multimodal_attrs(model)
         return model
 
+    def build_model_from_config(self, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
+        """Build the same family without loading weights; Twinkle owns the meta context."""
+        if (type(self).build_model is not ModelLoader.build_model
+                and type(self).build_model_from_config is ModelLoader.build_model_from_config):
+            raise ValueError(
+                f"{type(self).__name__} overrides build_model(); implement build_model_from_config() "
+                "with the same construction adaptations before enabling memory_efficient_init."
+            )
+        model_cls = self.resolve_model_cls()
+        if hasattr(model_cls, "from_config"):
+            self._apply_trust_remote_code(kwargs)
+            model = model_cls.from_config(config, **kwargs)
+        else:
+            model = model_cls._from_config(config, **kwargs)
+        if self.is_multimodal:
+            expose_nested_multimodal_attrs(model)
+        return model
+
     def process_config(self, config):
         return config
 

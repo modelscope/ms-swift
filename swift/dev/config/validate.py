@@ -52,7 +52,8 @@ def validate_configs(
 
     _check_remote_mode(distributed_config, is_megatron, rl_config,
                        train_config=train_config, tuner_config=tuner_config,
-                       quantize_config=quantize_config)
+                       quantize_config=quantize_config, rollout_config=rollout_config,
+                       checkpoint_config=checkpoint_config)
     _check_group_by_length(dataset_config, template_config)
     _check_lazy_tokenize(dataset_config)
     _check_data_sharding(dataset_config)
@@ -66,6 +67,7 @@ def validate_configs(
     _check_unsloth_strategy(distributed_config, template_config, tuner_config)
     _check_unsloth_eval(train_config, distributed_config)
     _check_deepspeed_autotp(distributed_config)
+    _check_weight_sync_deepspeed(distributed_config, rl_config)
     _check_eval_generation(train_config, template_config, distributed_config)
     _check_megatron_runtime_configs(megatron_config, moe_config, is_megatron)
     _check_megatron_optimizer(train_config, is_megatron)
@@ -154,7 +156,10 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
                        rl_config: Optional['RLConfig'],
                        train_config: Optional['TrainConfig'] = None,
                        tuner_config: Optional['TunerConfig'] = None,
-                       quantize_config: Optional['QuantizeConfig'] = None) -> None:
+                       quantize_config: Optional['QuantizeConfig'] = None,
+                       rollout_config: Optional['RolloutConfig'] = None,
+                       reward_config: Optional['RewardConfig'] = None,
+                       checkpoint_config: Optional['CheckpointConfig'] = None) -> None:
     """mode='remote' preconditions: a server to talk to, and a path the client port covers.
 
     The remote mode drives a twinkle-server through twinkle_client, so everything that assumes
@@ -180,10 +185,7 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             "with --route_prefix /api/v1 and the base URL should carry no path (or exactly "
             "'/api/v1').")
     if rl_config is not None:
-        raise ValueError(
-            "--mode remote does not support RL yet: the rollout side needs the StreamingDriver "
-            "client port (in progress). Train the supervised family remotely, or run RL with "
-            "mode=ray as today.")
+        _check_remote_rl(rl_config, rollout_config, checkpoint_config, tuner_config)
     # backend under remote names the SERVER-side model app's engine (hf or megatron): both are
     # legal, because configure_optimizer's two branches are already descriptions that cross HTTP
     # ('AdamW' for the transformers app, 'MegatronOptimizer' + its kwargs for the megatron one).
@@ -237,6 +239,85 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             '--mode remote does not support --predict_with_generate yet: the generative-eval '
             'sampler is built in-process. Evaluate the saved twinkle:// checkpoint with '
             '`swift infer --sampler twinkle`, or use val-loss eval (the default) remotely.')
+
+
+def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutConfig'],
+                     checkpoint_config: Optional['CheckpointConfig'] = None,
+                     tuner_config: Optional['TunerConfig'] = None) -> None:
+    """mode='remote' + RL: the coverage of the client object sources, refused gap by gap.
+
+    Every recipe algorithm runs remotely with the SAME loop code: the policy, the critic, the
+    frozen reference / teacher / reward models are each a twinkle_client model handle (the
+    multi-tenant server hosts as many served models as the run needs), the rollout rides a served
+    sampler handle, and the weight channel is the save -> adapter_uri hand-off. Refused here is
+    only what genuinely lives in the LOCAL actor fabric with no client port: the colocate /
+    elastic devices, the delta weight transports, the in-process routing-replay and
+    sampling-replay engines, the EMA reference sync, and the multi-turn sandbox.
+    """
+    if rl_config.router_replay_mode != 'disabled':
+        raise ValueError(
+            f"--mode remote does not support router_replay_mode={rl_config.router_replay_mode!r}: "
+            "the recording forward replays the training model's own expert routing in-process. "
+            "Use the default 'disabled', or mode=ray.")
+    if rl_config.enable_sampling_replay:
+        raise ValueError(
+            '--mode remote does not support --enable_sampling_replay (the replay engine is a '
+            'local sampler-construction flag; a served sampler is configured server-side). Drop '
+            'it, or run mode=ray.')
+    if (rl_config.rl_type == 'ppo' and checkpoint_config is not None
+            and checkpoint_config.resume_from_checkpoint):
+        # PPO's two-model save nests the critic at <policy-ckpt>/value_model locally; remotely the
+        # critic checkpoint lives in its OWN server-side training run, and no protocol channel links
+        # the two, so a remote PPO resume cannot find the step-aligned critic.
+        raise ValueError(
+            '--mode remote does not support PPO resume yet: the critic checkpoint sits in its own '
+            'server-side training run and no policy->value checkpoint association crosses the '
+            'protocol. Restart the remote run, or resume with mode=ray.')
+    if rl_config.sync_ref_model:
+        # The EMA pair streams the policy's weights into the reference through a checkpoint-engine
+        # channel; remotely the policy and the reference are separate served models, so the sync
+        # would have to ride a server-side path that does not exist yet.
+        raise ValueError(
+            "--mode remote does not support --sync_ref_model (the EMA policy->reference weight stream "
+            'is a checkpoint-engine channel between local actors). Drop it, or run mode=ray.')
+    if rollout_config is not None:
+        colocate = rollout_config.sampler_mode == 'colocate'
+        if colocate:
+            # The colocate dance (sleep/wake, offload, KV release) time-shares ONE process's devices;
+            # remotely the sampler is a separate served app that already owns its own.
+            raise ValueError(
+                "--mode remote does not support sampler_mode='colocate' (the served sampler owns its "
+                "own devices; there is no borrow-and-return loop). Use the default disaggregated "
+                "placement, or run mode=ray.")
+        if rollout_config.resource_mode == 'adaptive':
+            raise ValueError(
+                "--mode remote does not support resource_mode='adaptive' (the elastic cluster adapter "
+                "grows sampler replicas on local ranks). Use the static layout, or run mode=ray.")
+        if rollout_config.weight_sync_backend != 'full':
+            # delta_{sharded,rpc} stream trainer-side deltas through in-process engines; the remote
+            # sync channel IS the save -> adapter_uri checkpoint hand-off.
+            raise ValueError(
+                f"--mode remote does not support weight_sync_backend={rollout_config.weight_sync_backend!r}: "
+                'the remote weight channel is the saved twinkle:// adapter_uri. Use the default '
+                "'full' (via save), or run mode=ray.")
+        if tuner_config is not None and tuner_config.tuner == 'full':
+            # RemoteWeightSync.sync_weights publishes by handing the served sampler a twinkle://
+            # adapter_uri, which the server loads as an adapter on top of its own base weights. A
+            # full-parameter run saves no adapter, so the sampler would keep serving its base
+            # weights while training moved on -- a silently frozen rollout policy. Gated on having a
+            # rollout at all: the offline preference family has no sampler and no weight ring, so
+            # --tuner full stays legal there (as it does for remote supervised training).
+            raise ValueError(
+                '--mode remote does not support --tuner full for online RL: the weight channel to '
+                'the served sampler is the save -> adapter_uri hand-off and the server loads that '
+                'URI as an adapter over its own base weights, so a full-parameter run would leave '
+                'the sampler serving stale weights. Use --tuner lora, or run mode=ray.')
+        if (getattr(rollout_config, 'max_turns', None) or 1) > 1 or (rollout_config.tools or ()):
+            # The multi-turn rollout's sandbox env replicas are local CPU actors; the single-turn
+            # rollout runs fine over the served sampler.
+            raise ValueError(
+                '--mode remote does not support the multi-turn rollout / tools (the sandbox lives on '
+                'local CPU groups). Drop the knobs for single-turn rollouts, or run mode=ray.')
 
 
 def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'], moe_config: Optional['MoEConfig'],
@@ -304,6 +385,7 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
     _check_chord(cfg)
     _check_router_replay(cfg)
     _check_sampling_replay(cfg, rollout_config)
+    _check_segments(cfg, rollout_config, reward_config)
     _check_prm(cfg, reward_config)
     _check_self_distillation(cfg, train_config, reward_config)
     _check_distillation(cfg, model_config)
@@ -356,19 +438,18 @@ def _check_multi_turn(rollout_config: Optional['RolloutConfig']) -> None:
 
 
 def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
-                            rl_config: Optional['RLConfig'] = None,
-                            tuner_config: Optional['TunerConfig'] = None) -> None:
+                            rl_config: Optional['RLConfig'] = None) -> None:
     """Validate the rollout tools/sandbox surface without RL-training-only constraints.
 
     max_turns lives on the rollout_config itself; its GRPO-only gate runs here too
-    (_check_rollout_tools). rl_config/tuner_config are read only by _check_rollout_tools and
-    _check_async_mode (no-op at async_mode='none').
+    (_check_rollout_tools). rl_config is read by _check_rollout_tools, _check_resource_mode and
+    _check_async_mode.
     """
     _check_rollout_sampler(rollout_config)
     _check_rollout_tools(rollout_config, rl_config)
     _check_offload_knobs(rollout_config)
     _check_resource_mode(rollout_config, rl_config)
-    _check_async_mode(rollout_config, rl_config, tuner_config)
+    _check_async_mode(rollout_config, rl_config)
     _check_weight_sync_backend(rollout_config, rl_config)
 
 
@@ -393,14 +474,54 @@ def _check_weight_sync_backend(rollout_config: Optional['RolloutConfig'],
             '--weight_sync_backend delta_sharded needs disjoint trainer/rollout GPUs: a colocated sampler '
             'time-shares one device group with the trainer, while the delta transport addresses the rollout '
             'ranks as their own worker set. Set --sampler_mode disaggregated (or server) instead.')
-    if rollout_config.rollout_sampler != 'vllm':
+    if rollout_config.rollout_sampler not in ('vllm', 'sglang'):
         raise ValueError(
-            f"--weight_sync_backend delta_sharded currently reaches only vllm rollout samplers; got "
-            f"rollout_sampler={rollout_config.rollout_sampler!r}. Keep the full backend or switch to vllm.")
+            f"--weight_sync_backend delta_sharded currently reaches only vllm and sglang rollout samplers; "
+            f"got rollout_sampler={rollout_config.rollout_sampler!r}. Keep the full backend or switch.")
     if rollout_config.resource_mode == 'adaptive':
         raise ValueError(
             '--weight_sync_backend delta_sharded is not wired through the adaptive resource controller\'s '
             'weight-sync channels; use resource_mode manual or estimate.')
+
+
+def _check_weight_sync_deepspeed(distributed_config: 'DistributedConfig',
+                                 rl_config: Optional['RLConfig']) -> None:
+    """Reject checkpoint-engine weight sync on the DeepSpeed tiers it cannot serve correctly.
+
+    Two distinct failures, both measured end to end rather than inferred:
+
+    CPU offload (zero2_offload / zero3_offload): the fp32 master lives on the CPU and the bf16
+    parameters are written back from it with a non-blocking copy, so a sync that reads the model's
+    parameters can read values that do not yet reflect the update that just finished. The same tier
+    also fails to reproduce a run bitwise when resumed from a checkpoint taken after five or more
+    updates, while non-offload ZeRO-2 and FSDP2 reproduce it exactly; that divergence is inside
+    DeepSpeed's cpu_offload branch, not in this stack.
+
+    ZeRO-3, offload or not: stage 3 partitions parameters across ranks, and the sync's
+    ``merge_adapter`` reads the LoRA matrices before anything gathers them, so peft's
+    ``weight_B @ weight_A`` receives an empty local shard and raises ``size mismatch ... vec (0)``.
+    The publisher then dies and the receiver reports a ZMQ metadata timeout, which names the
+    transport instead of the cause. ZeRO-2 does not partition parameters and syncs correctly.
+    """
+    from swift.dev.utils.utils import deepspeed_cpu_offload, deepspeed_zero_stage
+    rl_type = None if rl_config is None else rl_config.rl_type
+    if rl_type not in _ROLLOUT_SYNC_TYPES:
+        return
+    spec = distributed_config.deepspeed
+    alternatives = ('Use --deepspeed zero2, FSDP2 (--fsdp fsdp2), or the default strategy; '
+                    'all three are measured to sync weights correctly.')
+    if deepspeed_cpu_offload(spec):
+        raise ValueError(
+            f'Weight sync into a rollout sampler is not supported with DeepSpeed CPU offload '
+            f'(--deepspeed {spec!r}, rl_type={rl_type!r}): the offload tier keeps the fp32 master on the '
+            'CPU and writes the bf16 parameters back asynchronously, so the sampler can be handed weights '
+            f'that lag the last update. {alternatives}')
+    if deepspeed_zero_stage(spec) == 3:
+        raise ValueError(
+            f'Weight sync into a rollout sampler is not supported with ZeRO-3 '
+            f'(--deepspeed {spec!r}, rl_type={rl_type!r}): stage 3 partitions parameters across ranks and '
+            'the sync merges the LoRA adapter before gathering them, so the merge reads an empty local '
+            f'shard and fails with a size mismatch. {alternatives}')
 
 
 def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
@@ -447,21 +568,11 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
         raise ValueError('resource_mode="adaptive" keeps dedicated sampler actors and optionally borrows the '
                          'complete trainer world; set sampler_mode="disaggregated" instead of configuring the '
                          'legacy exclusive colocate path.')
-    if rollout_config.max_turns is not None:
-        raise ValueError('resource_mode="adaptive" does not support multi-turn rollout in the first version; '
-                         'use resource_mode="estimate" or disable max_turns.')
     if rl_config.rl_type in {'gkd', 'opsd', 'mopd'} and rl_config.lmbda != 1.0:
         raise ValueError('resource_mode="adaptive" requires lmbda=1 for distillation recipes: off-policy '
                          'dataset rounds use the synchronous round loop and have no streaming publish boundary '
                          'where the adaptive controller can move a complete replica. Set lmbda=1 or use '
                          'resource_mode="estimate".')
-    if rollout_config.weight_sync_strategy != 'in_place' or not rollout_config.allow_partial_rollout:
-        raise ValueError('resource_mode="adaptive" requires weight_sync_strategy="in_place" and '
-                         'allow_partial_rollout=true so shared generations can pause across handovers.')
-    if rollout_config.sleep_level not in (0, 1):
-        raise ValueError('resource_mode="adaptive" supports only sleep_level 0 or 1. 0 leaves the shared '
-                         'sampler resident; 1 offloads its weights. Level 2 discards weights the shared '
-                         'sampler handover still needs.')
 
 
 # Online recipes that roll out per prompt batch and train on the collected samples (overlap generation
@@ -469,27 +580,18 @@ def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: O
 _ASYNC_RLHF_TYPES = frozenset({'grpo', 'ppo', 'gkd', 'opsd', 'mopd'})
 
 
-# Streaming knobs read ONLY by the per-sample streaming driver: all four under an OVERLAPPING
-# async_mode; staleness-0 streaming all but max_staleness/allow_partial_rollout; sync-only none.
+# Streaming knobs read ONLY by the streaming driver: both under an OVERLAPPING async_mode; staleness-0
+# streaming all but max_staleness; the round loops (RFT, sync-only distillation) and non-online none.
 _FULLY_ASYNC_ONLY_DEFAULTS = {
     'max_staleness': 1,
-    'weight_sync_strategy': 'adapter_snapshot',
-    'allow_partial_rollout': False,
     'parameter_sync_step': 1
 }
 
 # The subset inert even when async_mode='none' rides the streaming driver: the dispatch pins max_staleness
-# to 0 and the staleness-0 drain makes allow_partial_rollout a no-op, so neither is read on that path.
+# to 0, so it is not read on that path.
 _INERT_UNDER_NONE_STREAMING = {
     'max_staleness': _FULLY_ASYNC_ONLY_DEFAULTS['max_staleness'],
-    'allow_partial_rollout': _FULLY_ASYNC_ONLY_DEFAULTS['allow_partial_rollout'],
 }
-
-# A merge-only round loop (RFT, sync-only distillation) rides no streaming driver, so it reads none of the
-# streaming knobs EXCEPT weight_sync_strategy -- which stays live as a sampler-construction gate (it decides
-# enable_lora) and is forced to in_place by process._derive_weight_sync_strategy. It is therefore validated
-# on its own (an explicit non-in_place choice has no publication path), not folded into the inert set.
-_MERGE_LOOP_INERT_KNOBS = {k: v for k, v in _FULLY_ASYNC_ONLY_DEFAULTS.items() if k != 'weight_sync_strategy'}
 
 
 def _sync_only_feature(rl_config: Optional['RLConfig']) -> bool:
@@ -514,69 +616,25 @@ def _streams_under_none(rl_config: Optional['RLConfig']) -> bool:
     return not _sync_only_feature(rl_config)
 
 
-def _merges_every_round(rl_config: Optional['RLConfig']) -> bool:
-    """Whether the loop pushes the FULL LoRA-merged base into the sampler every round.
-
-    RFT and the synchronous distillation round loops (``gkd``/``opsd``/``mopd`` at ``lmbda != 1.0``)
-    call ``CheckpointEngineManager.sync_weights(merge_and_sync=True)`` unconditionally -- they ride no
-    streaming driver and have NO adapter-snapshot publication path -- so the sampler must not be built
-    with ``enable_lora`` (whose ``*WithLoRA`` wrappers park the base weight under ``.base_layer`` while a
-    merge sync ships canonical names, which the receiver then cannot find). Such a run is ``in_place``-only
-    at every placement/tuner, unlike the streaming family where a disaggregated LoRA run may pin adapters.
-    """
-    if rl_config is None:
-        return False
-    if rl_config.rl_type == 'rft':
-        return True
-    if rl_config.rl_type in {'gkd', 'opsd', 'mopd'}:
-        return rl_config.lmbda != 1.0
-    return False
-
-
-def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig'],
-                      tuner_config: Optional['TunerConfig'] = None) -> None:
+def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
     """Reject async_mode combinations the online loops cannot honour (fail-loudly).
 
     Refused, not degraded: non-online recipes, no IS correction, colocate, remax, off-policy mix.
     """
     if rollout_config is None:
         return
-    # allow_partial_rollout is only MEANINGFUL under an OVERLAPPING streaming publish; at staleness 0 the
-    # drain empties the in-flight set, so it is inert there (refused below if set explicitly).
     mode = rollout_config.async_mode
     if mode == 'none':
         # An online loop with no sync-only feature rides the StreamingDriver at staleness 0; only the
         # distillation off-policy mix (lmbda != 1.0) runs its synchronous round loop instead.
         if _streams_under_none(rl_config):
-            # max_staleness (pinned to 0) and allow_partial_rollout (inert at staleness 0) are never read on
-            # this path; weight_sync_strategy and parameter_sync_step ARE, validated by the publication check.
-            inert = _INERT_UNDER_NONE_STREAMING
-            if rollout_config.resource_mode == 'adaptive':
-                # Adaptive shared handover may pause a long request at every batch boundary even at
-                # staleness 0, so partial rollout is active and required there.
-                inert = {'max_staleness': _INERT_UNDER_NONE_STREAMING['max_staleness']}
-            _reject_inert_streaming_knobs(rollout_config, mode, inert)
-            _check_streaming_publication(rollout_config, rl_config, tuner_config, mode)
+            # max_staleness (pinned to 0) is never read on this path; parameter_sync_step is, validated
+            # by the publication check.
+            _reject_inert_streaming_knobs(rollout_config, mode, _INERT_UNDER_NONE_STREAMING)
+            _check_streaming_publication(rollout_config, mode)
         else:
-            if _merges_every_round(rl_config):
-                # A merge-only round loop (RFT, sync-only distillation) publishes by pushing the full
-                # LoRA-merged base into the sampler every round (sync_weights(merge_and_sync=True)); it has
-                # no streaming driver and no per-version adapter path, so weight_sync_strategy is live only
-                # as the enable_lora gate and is forced to in_place. Reject an explicit other choice rather
-                # than let it build an enable_lora sampler whose .base_layer names the merge cannot find.
-                if ('weight_sync_strategy' in _changed_fields(rollout_config)
-                        and rollout_config.weight_sync_strategy != 'in_place'):
-                    raise ValueError(
-                        f"--weight_sync_strategy={rollout_config.weight_sync_strategy!r} has no publication "
-                        f"path on {rl_config.rl_type}'s synchronous round loop: it pushes the full "
-                        "LoRA-merged base into the sampler every round and never pins a per-version adapter, "
-                        "so only 'in_place' (the derived default) is sound. Drop the flag, or use a streaming "
-                        "recipe (grpo/ppo, or distillation at --lmbda 1) that publishes adapter snapshots.")
-                _reject_inert_streaming_knobs(rollout_config, mode, _MERGE_LOOP_INERT_KNOBS)
-            else:
-                # A non-online recipe (or no rl_config) syncs nothing into a sampler, so it reads none of
-                # the streaming knobs -- weight_sync_strategy included.
-                _reject_inert_streaming_knobs(rollout_config, mode, _FULLY_ASYNC_ONLY_DEFAULTS)
+            # A round loop (RFT, sync-only distillation) or a non-online recipe rides no streaming driver.
+            _reject_inert_streaming_knobs(rollout_config, mode, _FULLY_ASYNC_ONLY_DEFAULTS)
         return
     # The legacy bool is the old spelling of 'one_step_off'; process folds it in when async_mode is
     # unset, so reaching here with async_generate True AND a different explicit mode is ambiguous.
@@ -627,7 +685,7 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
             'distillation loops overlap a single step -- use --async_mode one_step_off for them.')
     # Every surviving overlapping regime runs the SAME per-sample StreamingDriver (differing only in the
     # staleness knob), so all validate their publication identically below.
-    _check_streaming_publication(rollout_config, rl_config, tuner_config, mode)
+    _check_streaming_publication(rollout_config, mode)
 
 
 def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, inert_defaults: dict) -> None:
@@ -644,11 +702,10 @@ def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, in
                 'nothing. Drop it, or use a regime that reads it.')
 
 
-def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
-                                 tuner_config: Optional['TunerConfig'], mode: str) -> None:
-    """Publication guards for the per-sample streaming driver (every online regime that rides it).
+def _check_streaming_publication(rollout_config: 'RolloutConfig', mode: str) -> None:
+    """Publication guards for the streaming driver (every online regime that rides it).
 
-    Checks sync_step>=1, staleness per regime, colocate->in_place, and the strategy/partial pairing.
+    Checks sync_step>=1, staleness per regime, and colocate's one sync per step.
     """
     if rollout_config.parameter_sync_step < 1:
         raise ValueError(
@@ -666,55 +723,11 @@ def _check_streaming_publication(rollout_config: 'RolloutConfig', rl_config: 'RL
         raise ValueError(
             f'--max_staleness must be >= 1 under --async_mode fully_async (0 would admit nothing ahead of '
             f'the oldest untrained window, i.e. the synchronous loop); got {rollout_config.max_staleness}.')
-    strategy = rollout_config.weight_sync_strategy
-    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    if rollout_config.sampler_mode == 'colocate' and strategy != 'in_place':
+    if rollout_config.sampler_mode == 'colocate' and rollout_config.parameter_sync_step != 1:
         raise ValueError(
-            f"--sampler_mode colocate with --weight_sync_strategy {strategy!r} cannot hand the shared device "
-            "back to the sampler each cycle: a colocated sampler time-shares ONE DeviceGroup with the trainer, "
-            "and the per-cycle wake+sync that returns it to generation rides in_place's publish, whereas "
-            "adapter_snapshot publishes by writing a new adapter path with no weight sync. Use "
-            "--weight_sync_strategy in_place (what dev derives for a colocated run); a colocated run is "
-            "synchronous (--async_mode none), so in_place needs no --allow_partial_rollout there.")
-    if strategy == 'adapter_snapshot':
-        if rollout_config.weight_sync_backend == 'delta_sharded':
-            raise ValueError(
-                '--weight_sync_strategy adapter_snapshot publishes by writing adapter paths and performs '
-                'no weight sync at all, so --weight_sync_backend delta_sharded would never be read on this '
-                'path. Publish with --weight_sync_strategy in_place to overwrite the live weights (the '
-                'delta backend then ships only the changed elements), or drop the backend setting.')
-        # Per-version LoRA pinning needs an adapter to pin; a full-parameter policy has none. The sound
-        # full-parameter stream is in_place (below), so point the user there.
-        if tuner == 'full':
-            raise ValueError(
-                f"--async_mode {mode} with --weight_sync_strategy adapter_snapshot pins each trained "
-                "version as a LoRA adapter path, but this is a full-parameter run (tuner='full') with no "
-                'adapter to pin. Configure an adapter-based tuner (e.g. LoRA), or use --weight_sync_strategy '
-                'in_place, which overwrites the sampler\'s live merged base weights (add '
-                '--allow_partial_rollout for an overlapping regime, which resumes each in-flight generation).')
-        if rollout_config.allow_partial_rollout:
-            raise ValueError(
-                '--allow_partial_rollout is inert under --weight_sync_strategy adapter_snapshot: each version '
-                'is pinned as its own adapter path, so publishing never overwrites a weight copy an in-flight '
-                'generation decodes and there is nothing to interrupt and resume. Drop --allow_partial_rollout, '
-                'or use --weight_sync_strategy in_place (which overwrites one live copy and so needs it).')
-    elif strategy == 'in_place':
-        # Overwriting the live copy under an in-flight generation is unsound unless each is aborted and
-        # resumed on fresh weights (allow_partial_rollout); the staleness-0 drain makes it a no-op there.
-        if mode != 'none' and not rollout_config.allow_partial_rollout:
-            raise ValueError(
-                f"--async_mode {mode} with --weight_sync_strategy in_place overwrites the sampler's single "
-                'live weight copy while the streaming buffer still has generations in flight, so it needs '
-                '--allow_partial_rollout: each publish then aborts every in-flight generation and resumes it '
-                'from its own tokens on the fresh weights (twinkle PartialRolloutMixin + abort-on-publish). '
-                'Without it the rest of an in-flight generation would decode under half-updated weights whose '
-                'logprobs match no consistent policy, which importance sampling cannot correct. Set '
-                '--allow_partial_rollout, or use --weight_sync_strategy adapter_snapshot (per-version LoRA '
-                'pinning, no interrupt).')
-    else:
-        raise ValueError(
-            f"--weight_sync_strategy must be 'adapter_snapshot' or 'in_place' under --async_mode {mode}; "
-            f'got {strategy!r}.')
+            f'--sampler_mode colocate needs --parameter_sync_step 1, got {rollout_config.parameter_sync_step}: '
+            'the sampler sleeps while the trainer holds the shared GPUs and only the weight sync after each '
+            'step wakes it, so every step must sync.')
 
 
 def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
@@ -739,11 +752,11 @@ def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
             'sampler_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer '
             'to make room for it does not apply: ignoring --offload_model/--offload_optimizer.',
             rollout_config.sampler_mode)
-    if 'sleep_level' in changed and rollout_config.resource_mode != 'adaptive':
+    if 'sleep_level' in changed:
         logger.warning(
             'sampler_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put '
             'to sleep between steps: --sleep_level is inert here (it only takes effect under '
-            "--sampler_mode colocate, or resource_mode adaptive).", rollout_config.sampler_mode)
+            "--sampler_mode colocate).", rollout_config.sampler_mode)
 
 
 def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
@@ -764,8 +777,9 @@ def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
                          rl_config: Optional['RLConfig'] = None) -> None:
     if rollout_config is None:
         return
-    if rollout_config.sandbox_num_envs < 1:
-        raise ValueError(f'sandbox_num_envs must be >= 1, got {rollout_config.sandbox_num_envs}.')
+    for name in ('sandbox_num_envs', 'sandbox_num_workers', 'rollout_num_workers'):
+        if getattr(rollout_config, name) < 1:
+            raise ValueError(f'{name} must be >= 1, got {getattr(rollout_config, name)}.')
     # Multi-turn is orchestrated by the GRPO recipe only; sampling (rl_config is None, the TUI) is exempt.
     if rollout_config.max_turns is not None and rl_config is not None and rl_config.rl_type != 'grpo':
         raise ValueError(f'multi-turn rollout (max_turns) is GRPO-only, but rl_type={rl_config.rl_type!r}: the '
@@ -1060,10 +1074,47 @@ def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutCon
                          'max_turns=None, or disable enable_sampling_replay.')
 
 
+def _check_segments(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'],
+                    reward_config: Optional['RewardConfig'] = None) -> None:
+    """Reject collected-segment combinations the loop cannot honour (no silently dead knob).
+
+    ``segment_policy='collect'`` delivers one episode as several training rows; the PRM segment
+    accounting is episode-level and is not re-mapped onto those rows, and the discount only has
+    rows to act on under collect. The uniform-broadcast warning notes the sequence-mean loss
+    default weights a multi-row episode by its row count (CompactionRL's token-level ablation).
+    """
+    if rollout_config is None:
+        return
+    collecting = rollout_config.segment_policy == 'collect'
+    if collecting and reward_config is not None and reward_config.prm:
+        raise ValueError(
+            "segment_policy='collect' does not accept --prm: the PRM segment accounting is episode-level "
+            'and is not mapped onto a compacted episode\'s several rows. Drop --prm, or keep the default '
+            "segment_policy='drop'.")
+    if getattr(cfg, 'segment_discount', 1.0) != 1.0 and not collecting:
+        raise ValueError(
+            f'segment_discount={cfg.segment_discount} discounts the rows a compacted episode delivers, but '
+            "segment_policy is 'drop': every episode is one row and there is nothing to discount. Pass "
+            "--segment_policy collect, or leave segment_discount at 1.0.")
+    if collecting and getattr(cfg, 'advantage_estimator', 'grpo') == 'gae':
+        raise ValueError(
+            "segment_policy='collect' feeds the scalar advantage family (the episode's advantage is "
+            'computed once and broadcast onto its rows); the GAE token-level path has no episode fold. '
+            'Pick a GRPO-family estimator, or drop.')
+    if collecting:
+        from swift.dev.utils import get_logger
+
+        get_logger().warning(
+            "segment_policy='collect' trains every compacted segment; with the default sequence-mean loss a "
+            'multi-row episode weighs by its row count -- consider a token-level normalization '
+            "(loss_type='bnpo', token_mean_scope='global') as CompactionRL's ablation does.")
+
+
 def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
     """Reject GRPO process-reward (PRM) combinations the loop cannot honour (no silently dead knob).
 
-    Refuses RLSD/SDAR overlap, scorer knobs with no --prm channel, prm_orm_mix outside [0, 1].
+    Refuses RLSD/SDAR overlap, prm_orm_mix with no --prm channel or outside [0, 1], and the
+    segmentation knobs (prm_scorer / prm_step_delimiter) with no channel either.
     The prm channel and its knobs all live on the RewardConfig; a missing one counts as "no channel".
     """
     if cfg.rl_type != 'grpo':
@@ -1794,6 +1845,8 @@ def _check_attn_impl_availability(model_config: 'ModelConfig') -> None:
         return
     from transformers.utils import (
         is_flash_attn_2_available as _fa2,  # noqa: N813
+    )
+    from transformers.utils import (
         is_torch_npu_available,
     )
     if probe_name == 'flash_attention_2':

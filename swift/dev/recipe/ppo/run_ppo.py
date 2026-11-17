@@ -1,30 +1,47 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# PPO's visible training main: five segments, then ONE loop body picked by placement.
+# PPO's visible training main: five segments, then ONE loop over the streaming driver.
 from __future__ import annotations
-
 import math
 import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+import sys
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-import torch
-
-from swift.dev.utils.scoring import batch_input_lengths
-from swift.dev.recipe.streaming import publish_rollout_weights
-from swift.dev.utils.logger import get_logger
-
-from swift.dev.recipe.ppo.assembly import (
-    Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests)
+from swift.dev.recipe.ppo.assembly import Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests
 from swift.dev.recipe.utils import (
-    StepState, build_save_knobs, collect, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_rollout_max_steps, resume_training, rollout_step_budget, resolve_generation_batch_size,
+    RolloutStepState,
+    StepState,
+    build_save_knobs,
+    initialize_rl_devices,
+    optimizer_batch_slices,
+    prompt_rows_from_dataset,
+    resolve_generation_batch_size,
+    resolve_rollout_max_steps,
+    resume_training,
+    rollout_step_budget,
     save_training_step,
-    snapshot_initial_adapter)
+    snapshot_initial_adapter,
+    stream_batch_size,
+)
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
-        TrainConfig, TunerConfig)
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        GenerationConfig,
+        LoggingConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
+        RewardConfig,
+        RLConfig,
+        RolloutConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = get_logger()
 
@@ -43,64 +60,21 @@ def _check_policy_value_step_alignment(global_step: int, value_state: Optional[D
         raise ValueError('PPO policy and value checkpoints contain different completed-step counts.')
 
 
-def _gae_pipeline(cluster: Cluster, reward_config: 'RewardConfig', rl_config: 'RLConfig',
-                  samples: List[Any], train_batch_size: int, reward_metric: Any
-                  ) -> Tuple[List[Any], List[List[float]], List[List[float]], List[List[float]], List[List[float]]]:
-    """The shared GAE anchors: forwards called HERE, handles consumed on the worker.
-
-    The critic's values and the reference's logps are two whole-batch ``forward_only`` calls made
-    in this loop (the dispatch splits each per rank; ``micro_batch_size`` keeps each rank's forward
-    at one per-device block); the handles are handed to ``gae`` / ``reward_metrics`` -- key-read,
-    row-aligned and folded on the worker, so the per-token rewards and the GAE anchors never touch
-    the driver. Returns ``(kept, advantages, returns, values, old_logps)``.
-    """
-    features = [sample.encoded for sample in samples]
-    if not features:
-        raise RuntimeError('the pulled batch has no response tokens to train on.')
-    # one per-device block per rank: train_batch_size (per_device x dp) spread over the dp ranks
-    micro_batch_size = max(1, train_batch_size // cluster.model.device_mesh.data_world_size)
-    # The reference's logps must be taken at the SAMPLING temperature, like every logps the ratio
-    # math compares against (the sampler's own logps are T-scaled; a T=1 forward skews them).
-    temperature = float(cluster.sampling_params.get('temperature', 1.0))
-    ref_shared = cluster.reference is cluster.model
-    # the critic's values (the value head via task='value') and the reference's logps; the policy
-    # actor chains its own disable_lora pass when the reference IS the policy object.
-    scored = {
-        'values': cluster.value_model.forward_only(
-            inputs=features, micro_batch_size=micro_batch_size,
-            task='value', return_logits=True),
-        'ref': cluster.reference.forward_only(
-            inputs=features, micro_batch_size=micro_batch_size, temperature=temperature,
-            **({'disable_lora': True} if ref_shared else {})),
-    }
-    # collect once at the training consumption point; the lanes crossed driver->worker as references
-    indices, advantages, returns, values, old_logps = collect(
-        cluster.worker.gae(samples, scored, reward_config, rl_config))
-    kept = [samples[i] for i in indices]
-    # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
-    metrics = cluster.worker.reward_metrics(samples, scored, reward_config, rl_config)
-    reward_metric.reset()
-    reward_metric.accumulate(
-        rewards={'total': metrics['total']}, completion_lengths=metrics['completion_lengths'])
-    return kept, advantages, returns, values, old_logps
-
-
-def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', samples: List[Any],
-                     advantages: List[List[float]], returns: List[List[float]],
-                     values: List[List[float]], old_logps: List[List[float]], *,
-                     train_batch_size: int, temperature: float, ema_manager: Any,
+def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', trajs: List[Any],
+                     lengths: List[int], *, train_batch_size: int, temperature: float, ema_manager: Any,
                      save: Callable[[str], Any]) -> int:
-    """Repeat one pull continuously, then drop only the final incomplete optimizer batch.
+    """Repeat one batch continuously, then drop only the final incomplete optimizer batch.
 
-    Each update steps the policy (the clipped surrogate: advantages + old_logps) and then the
-    critic (the clipped value loss: ``task='value'`` + returns + old_values) within the SAME
-    update; the GAE anchors stay fixed across every replay (PPO's batch re-use). Returns the
-    optimizer steps actually run.
+    The trajectories carry every GAE anchor as top-level response-framed fields, so each update
+    steps the policy (the clipped surrogate: ``advantages`` / ``old_logps`` off its inputs) and
+    then the critic (the clipped value loss: ``task='value'`` over ``returns`` / ``old_values``)
+    within the SAME update; the anchors stay fixed across every replay (PPO's batch re-use).
+    Returns the optimizer steps actually run.
     """
     model = cluster.model
     value_model = cluster.value_model
     update_batch_size = train_batch_size * state.ga
-    total_samples = len(samples) * max(1, rl_config.num_ppo_epochs)
+    total_samples = len(trajs) * max(1, rl_config.num_ppo_epochs)
     dropped = total_samples % update_batch_size
     if dropped:
         logger.warning(
@@ -112,27 +86,28 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
     for lo, hi in optimizer_batch_slices(total_samples, train_batch_size, state.ga):
         if state.reached_max() or state.should_stop():
             break
-        indices = [index % len(samples) for index in range(lo, hi)]
-        lengths = batch_input_lengths([samples[index] for index in indices])
+        indices = [index % len(trajs) for index in range(lo, hi)]
+        update = [trajs[index] for index in indices]
+        # Both models take the batch in the same order with its row lengths; each model decides
+        # for itself whether its loss allows DP balancing.
+        update_lengths = [lengths[index] for index in indices] if lengths else None
         state.micro_step += (hi - lo) // train_batch_size
+        # forward_backward is declared sync=True on the model: a worker-side failure raises
+        # at this call, failing THIS step instead of riding an unread handle.
         model.forward_backward(
-            inputs=[samples[index].encoded for index in indices],
-            input_lengths=lengths,
+            inputs=update,
+            input_lengths=update_lengths,
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             temperature=temperature,
-            advantages=[advantages[index] for index in indices],
-            old_logps=[old_logps[index] for index in indices],
         )
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         value_model.forward_backward(
-            inputs=[samples[index].encoded for index in indices],
-            input_lengths=lengths,
+            inputs=update,
+            input_lengths=update_lengths,
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             task='value',
-            returns=[returns[index] for index in indices],
-            old_values=[values[index] for index in indices],
         )
         value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.record()
@@ -143,119 +118,114 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
     return optimizer_steps
 
 
-def _colocate_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'RewardConfig',
-                   rollout_config: 'RolloutConfig', dataloader: Any, state: StepState,
-                   reward_metric: Any, *, train_batch_size: int, ema_manager: Any,
-                   save: Callable[[str], Any]) -> None:
-    """The colocate branch: a plain loop over generation batches, the device borrowed per batch.
+def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
+                rollout_config: 'RolloutConfig', state: RolloutStepState, reward_metric: Any, *,
+                train_batch_size: int, ema_manager: Any, save: Callable[[str], Any],
+                versions_cell: List[List[int]]) -> None:
+    """One loop for every placement: take a scored batch, lift it through GAE, train both models.
 
-    The sampler time-shares one device with BOTH training models, so the borrow offloads the
-    policy and the critic before generation and reloads both after it. The ORM scoring is ONE
-    batched worker pass per batch -- the same field the driver's prefix path writes.
+    Colocate time-shares the devices with BOTH training models: the critic is offloaded before the
+    sync (which wakes the sampler, pushes the policy, offloads it and wakes the KV cache), and both
+    are reloaded once a batch is handed out.
     """
-    entered = False
+    from swift.dev.builders.streaming import offload_kwargs
+    from swift.dev.recipe.offload import sleep_for_rollout
+
+    temperature = float(cluster.sampling_params.get('temperature', 1.0))
+    # one per-device block per rank: train_batch_size (per_device x dp) spread over the dp ranks
+    micro_batch_size = max(1, train_batch_size // cluster.model.device_mesh.data_world_size)
+    # The reference's logps must be taken at the SAMPLING temperature, like every logps the ratio
+    # math compares against (the sampler's own logps are T-scaled; a T=1 forward skews them).
+    ref_shared = cluster.reference is cluster.model
+    lent = False
+
+    def sync() -> None:
+        nonlocal lent
+        if cluster.colocate:
+            cluster.value_model.offload_to_cpu(**offload_kwargs(rollout_config))
+            lent = True
+        cluster.engine.sync_weights()
+
+    def reclaim() -> None:
+        nonlocal lent
+        sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
+        cluster.model.reload_to_gpu()
+        cluster.value_model.reload_to_gpu()
+        lent = False
+
+    batches = 0
     try:
-        for batch_rows in dataloader:
-            if state.reached_max() or state.should_stop():
+        # the initial publication: a resumed policy differs from the weights the sampler loaded
+        sync()
+        # The window opens before the pull, not after it: iterating the driver blocks until the
+        # sampler has a batch, so that wait is generation time and belongs to the iteration that
+        # consumes it. The initial publication deliberately stays outside the first window.
+        state.begin_rollout_iteration()
+        for trajs, batch_facts in driver:
+            if cluster.colocate:
+                reclaim()
+            versions_cell[:] = batch_facts.get('version_spans') or []
+            # The delivery facts are sample-based (the driver never opens its own rows), which is what
+            # this call wants: lengths / truncation / turns for the whole delivered batch, so
+            # throughput is measured against everything the sampler generated.
+            state.observe_rollout_batch(batch_facts)
+            # the nonempty-response rule runs in the worker on the real rows; the kept rows'
+            # summary replaces the batch facts (its metrics describe exactly what trains), and its
+            # kept ``indices`` slice the row-aligned score column to the rows that train.
+            trajs, kept_facts = cluster.traj_filter.select(
+                trajs, where=lambda traj: bool(traj.get('response_token_ids')))
+            if not trajs:
+                raise RuntimeError('the pulled batch has no response tokens to train on.')
+            # Only the kept rows train, so only they count as sample visits. The indices are positions
+            # in the delivered batch, which is what keeps a row dropped here out of the trained total
+            # while it still counts toward the generated one above.
+            state.record_rollout_training(kept_facts['indices'])
+            scores = [batch_facts['scores'][index] for index in kept_facts['indices']]
+            lengths = [p + r for p, r in zip(kept_facts.get('prompt_lengths') or (),
+                                            kept_facts.get('response_lengths') or ())]
+            # The lanes stay in the caller's order: the model balances each forward across DP ranks
+            # from `input_lengths` and returns its rows in the order they were submitted.
+            lane_lengths = lengths or None
+            # the critic's values (``task='value'``) and the reference's logps: two whole-batch
+            # response-framed forwards over the kept rows; the policy actor chains its own
+            # disable_lora pass when the reference IS the policy object.
+            values_out = cluster.value_model.forward_only(
+                inputs=trajs, input_lengths=lane_lengths, output_frame='response', output_fields=('values',),
+                micro_batch_size=micro_batch_size, task='value')
+            ref_out = cluster.reference.forward_only(
+                inputs=trajs, input_lengths=lane_lengths, output_frame='response', output_fields=('logps',),
+                temperature=temperature, micro_batch_size=micro_batch_size,
+                **({'disable_lora': True} if ref_shared else {}))
+            # ONE advantage call (estimator=gae, kl=k1): token rewards ``r - kl_coef*KL`` with the
+            # weighted ORM score on the last token, GAE over the pre-update critic values; the
+            # trajectories come back carrying advantages / returns / old_logps / old_values.
+            trajs, gae_summary = cluster.advantage(
+                trajs, ref_out=ref_out, value_out=values_out, scores=scores)
+            # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
+            reward_metric.reset()
+            reward_metric.accumulate(
+                rewards={'total': list(gae_summary.get('reward_totals') or ())},
+                completion_lengths=list(kept_facts.get('response_lengths') or ()))
+            _train_ppo_batch(
+                cluster, state, rl_config, trajs, lengths,
+                train_batch_size=train_batch_size, temperature=temperature, ema_manager=ema_manager, save=save)
+            batches += 1
+            finished = state.reached_max() or state.should_stop()
+            publishes = batches % rollout_config.parameter_sync_step == 0 and not finished
+            if publishes:
+                # Synced inside the window it serves, so the publication's span and its count land on
+                # the iteration that paid for them instead of falling between two windows.
+                sync()
+            state.fold_iteration_metrics(publications=int(publishes), terminal=finished)
+            if finished:
                 break
-            # borrow the device: wake the sampler's weights so the sync has somewhere to write,
-            # sync the trained policy in, step BOTH trainers aside, wake ONLY the kv cache.
-            from swift.dev.recipe.offload import wake_for_rollout
-            wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['weights'])
-            cluster.engine.sync_weights(merge_and_sync=True)
-            from swift.dev.recipe.offload import offload_for_rollout
-            offload_for_rollout(cluster.model, rollout_config)
-            offload_for_rollout(cluster.value_model, rollout_config)
-            wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ['kv_cache'])
-            entered = True
-            prompts = [row['messages'] for row in batch_rows]
-            extras = [{key: value for key, value in row.items() if key != 'messages'} for row in batch_rows]
-            samples, encodings = cluster.rollout.generate(
-                prompts, num_samples=rl_config.num_generations, sampling_params=cluster.sampling_params,
-                prompt_extras=extras or None)
-            for sample, encoded in zip(samples, encodings):
-                sample.encoded = encoded
-            rows = (cluster.worker.score_group(samples) if cluster.worker.orm_scorers
-                    else [[] for _ in samples])
-            for sample, row in zip(samples, rows):
-                sample.orm_reward = row
-            # return the device: sleep the sampler, then reload both trainers' weights.
-            from swift.dev.recipe.offload import sleep_for_rollout
-            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-            cluster.model.reload_to_gpu()
-            cluster.value_model.reload_to_gpu()
-            entered = False
-            kept, advantages, returns, values, old_logps = _gae_pipeline(
-                cluster, reward_config, rl_config, samples, train_batch_size, reward_metric)
-            _train_ppo_batch(cluster, state, rl_config, kept, advantages, returns, values, old_logps,
-                             train_batch_size=train_batch_size,
-                             temperature=float(cluster.sampling_params.get('temperature', 1.0)),
-                             ema_manager=ema_manager, save=save)
-            if state.reached_max() or state.should_stop():
-                break
+            state.begin_rollout_iteration()
     finally:
-        if entered:
-            # ended mid-window (a budget hit during generation): give the device back so the
-            # final save finds both models resident.
-            from swift.dev.recipe.offload import sleep_for_rollout
-            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-            cluster.model.reload_to_gpu()
-            cluster.value_model.reload_to_gpu()
-
-
-def _streaming_loop(cluster: Cluster, rl_config: 'RLConfig', reward_config: 'RewardConfig',
-                    rollout_config: 'RolloutConfig', tuner_config: Optional['TunerConfig'],
-                    dataloader: Any, state: StepState, reward_metric: Any, *,
-                    train_batch_size: int, num_train_epochs: float, output_dir: str,
-                    ema_manager: Any, save: Callable[[str], Any],
-                    versions_cell: List[List[int]]) -> None:
-    """The disaggregated branch: the StreamingDriver streams scored samples, the body trains.
-
-    Per pull (the driver has ALREADY batched the ORM scoring at the pull boundary): lift the
-    samples through the GAE pipeline, train both models, then the visible publish --
-    ``in_place`` aborts in-flight generations and pushes the live weights, ``adapter_snapshot``
-    hands the driver the next version's save.
-    """
-    driver = build_ppo_driver(
-        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config, tuner_config=tuner_config,
-        train_batch_size=train_batch_size, gradient_accumulation_steps=state.ga,
-        prompt_dataloader=dataloader, num_train_epochs=num_train_epochs, max_steps=state.max_steps,
-        output_dir=output_dir)
-    strategy = rollout_config.weight_sync_strategy
-    steps_since_publish = 0
-    try:
-        for samples in driver:
-            versions_cell[:] = [getattr(sample, 'version_span', 0) for sample in samples]
-            kept, advantages, returns, values, old_logps = _gae_pipeline(
-                cluster, reward_config, rl_config, samples, train_batch_size, reward_metric)
-            optimizer_steps = _train_ppo_batch(
-                cluster, state, rl_config, kept, advantages, returns, values, old_logps,
-                train_batch_size=train_batch_size,
-                temperature=float(cluster.sampling_params.get('temperature', 1.0)),
-                ema_manager=ema_manager, save=save)
-            # the visible publish: cadence inline, then one request; the driver brackets the push with
-            # its version accounting and the adapter's decide/register (commit releases its thread).
-            steps_since_publish += optimizer_steps
-            if steps_since_publish >= rollout_config.parameter_sync_step:
-                if strategy == 'in_place':
-                    # Park in-flight generation across the update, then resume on the new weights.
-                    def _visible_sync(window: Any) -> None:
-                        publish_rollout_weights(
-                            sampler=cluster.sampler, engine=cluster.engine, adapter=cluster.adapter
-                        )
-
-                    driver.request_publish(_visible_sync)
-                else:
-                    # adapter_snapshot: the default push (snapshot_model) saves the next version's adapter.
-                    driver.request_publish()
-                steps_since_publish = 0
-            driver.commit(optimizer_steps)
-            if state.reached_max() or state.should_stop():
-                break
-    finally:
-        # Release the driver thread before the caller's teardown shuts the rollout/sampler:
-        # an exception on the recipe thread otherwise leaves it blocked on the bridge ack.
-        driver.abort()
+        # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
+        driver.close()
+        if lent:
+            # ended with the devices lent: give them back so the final save finds both models resident
+            reclaim()
 
 
 def _save_value_checkpoint(value_model: Any, checkpoint_dir: str, checkpoint_config: Any,
@@ -317,7 +287,7 @@ def _ppo_extra_metrics(cluster, reward_metric, _versions_cell) -> Dict[str, Any]
     return extra
 
 
-def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
             dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
             distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
             rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
@@ -346,7 +316,12 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # the optimizer's LR-scheduler horizon (num_ppo_epochs replays per rollout), derived BEFORE the build.
     from swift.dev.builders import build_dp_mesh
 
-    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    remote_run = distributed_config.mode == 'remote'
+    if remote_run:
+        # One client process drives the server: the policy handle's own mesh sizes the batches.
+        dp_size = 1
+    else:
+        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
     # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
@@ -355,14 +330,20 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         num_generations=rl_config.num_generations, num_iterations=rl_config.num_ppo_epochs,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+    num_generations = max(1, rl_config.num_generations)
+    batch_size = stream_batch_size(
+        colocate=rollout_config.sampler_mode == "colocate", generation_batch_size=generation_batch_size,
+        num_generations=num_generations, train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+    num_train_epochs = math.ceil(train_config.num_train_epochs)
     budget = rollout_step_budget(
         num_prompts=len(prompts), num_generations=rl_config.num_generations,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
-        num_train_epochs=math.ceil(train_config.num_train_epochs) if rollout_config.sampler_mode != "colocate" else 1,
+        num_train_epochs=num_train_epochs,
         generation_batch_size=generation_batch_size,
         num_iterations=rl_config.num_ppo_epochs,
-        streaming=rollout_config.sampler_mode != "colocate",
+        stream_batch_rows=batch_size,
     )
     max_steps = resolve_rollout_max_steps(train_config.max_steps, budget, recipe='run_ppo')
     # segment 3: the cluster -- policy, critic, frozen reference, reward channel, built explicitly.
@@ -371,19 +352,26 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         train_config=train_config, distributed_config=distributed_config,
         checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
         reward_config=reward_config, tuner_config=tuner_config, max_steps=max_steps,
-        quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
-        generation_config=generation_config, resource_plan=resource_plan,
-        auxiliary_meshes=auxiliary_meshes, output_dir=output_dir)
-    # segment 4: dataloader + the dissolved step cadence + the save closure.
+        batch_size=batch_size, quantize_config=quantize_config, megatron_config=megatron_config,
+        moe_config=moe_config, generation_config=generation_config, resource_plan=resource_plan,
+        auxiliary_meshes=auxiliary_meshes)
+    # segment 4: dataloader + driver + the step cadence + the save closure.
+    from twinkle.metric import CompletionRewardMetric
+
     from swift.dev.builders import build_prompt_dataloader, is_megatron_backend
     from swift.dev.builders.optimizer import resolve_max_grad_norm
-    from twinkle.metric import CompletionRewardMetric
 
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=train_config.seed,
         shuffle=dataset_config.train_dataloader_shuffle,
         batch_size=generation_batch_size,
     )
+    # A batch feeds batch_size * num_ppo_epochs / (train_batch_size * GA) optimizer steps.
+    steps_per_batch = max(1, batch_size * max(1, rl_config.num_ppo_epochs)
+                          // (train_batch_size * train_config.gradient_accumulation_steps))
+    driver = build_ppo_driver(
+        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config, prompt_dataloader=dataloader,
+        batch_size=batch_size, num_train_epochs=num_train_epochs, max_steps=math.ceil(max_steps / steps_per_batch))
     reward_metric = CompletionRewardMetric()
     _versions_cell: List[List[int]] = []
 
@@ -391,7 +379,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         """The critic's namespaced metrics + the batch's reward aggregate and version spans."""
         return _ppo_extra_metrics(cluster, reward_metric, _versions_cell)
 
-    state = StepState(
+    state = RolloutStepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
@@ -402,6 +390,19 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
         empty_cache_steps=train_config.torch_empty_cache_steps,
         extra_metrics_fn=_extra_metrics, log_formatter=_ppo_log_line)
+    # The iteration-level accounting layer (per-update ``[perf]`` line, phase timings, rollout /
+    # trained sample totals) is shared rollout infrastructure, not a GRPO extra: without this setup
+    # the state has no run metric and every observe / fold call in the loop is a silent no-op, which
+    # is how a PPO run used to finish reporting zero throughput and no segmented timing at all.
+    state.setup_rollout_metrics(
+        template.performance_device_groups,
+        mode='colocate' if cluster.colocate else rollout_config.resource_mode,
+        parameter_sync_step=rollout_config.parameter_sync_step,
+        num_generations=rl_config.num_generations,
+        attributes={
+            'adv_pipeline_scope': 'critic_and_reference_forwards_and_gae_resolution',
+            'unavailable_metrics': ['perf/mfu/actor'],
+        }) if not remote_run else None
 
     save_knobs = build_save_knobs(
         checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir)
@@ -416,6 +417,17 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         """
         ckpt_dir = save_training_step(cluster.model, state.handler, name, save_knobs,
                                       consumed_train_samples=state.global_step, is_final=is_final)
+        if remote_run:
+            # The critic rides its OWN server-side training run's store entry under the SAME
+            # save name (step-aligned): the local <ckpt>/value_model directory nesting has no
+            # remote counterpart, and the local save kwargs (output_dir / component_states /
+            # async_save ...) cannot cross the SaveRequest protocol face.
+            response = cluster.value_model.save(
+                name,
+                save_optimizer=not (checkpoint_config.no_save_optim or checkpoint_config.save_only_model),
+                consumed_train_samples=state.global_step)
+            logger.info('[remote] value checkpoint: %s', getattr(response, 'twinkle_path', name))
+            return ckpt_dir
         _save_value_checkpoint(
             cluster.value_model, ckpt_dir, checkpoint_config, state.global_step,
             async_save=(checkpoint_config.async_save and not is_final))
@@ -450,30 +462,36 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({
+    if not remote_run and Perf.initialize(filter_perf_actors({
             'model': cluster.model,
             'value_model': cluster.value_model,
             'sampler': cluster.sampler,
             'reference': cluster.reference,
     })):
         logger.info('[perf] profiling enabled for the online PPO loop.')
-    # segment 5: ONE visible loop, picked by placement (every async_mode rides the stream).
+    # segment 5: ONE visible loop (every placement and async_mode rides the stream).
     state.handler.on_train_begin()
     try:
-        if cluster.colocate:
-            _colocate_loop(cluster, rl_config, reward_config, rollout_config, dataloader, state,
-                           reward_metric, train_batch_size=train_batch_size, ema_manager=ema_manager,
-                           save=save)
-        else:
-            _streaming_loop(cluster, rl_config, reward_config, rollout_config, tuner_config,
-                            dataloader, state, reward_metric, train_batch_size=train_batch_size,
-                            num_train_epochs=train_config.num_train_epochs, output_dir=output_dir,
-                            ema_manager=ema_manager, save=save, versions_cell=_versions_cell)
+        if not (state.reached_max() or state.should_stop()):
+            _train_loop(cluster, driver, rl_config, rollout_config, state, reward_metric,
+                        train_batch_size=train_batch_size, ema_manager=ema_manager, save=save,
+                        versions_cell=_versions_cell)
     finally:
-        Perf.shutdown()
-        cluster.rollout.close()
-        cluster.sampler.shutdown()
-        state.tracker.close()
+        try:
+            # The terminal run totals (rollout / trained samples, throughput, wall time) go through the
+            # same reporter as the per-iteration records. Without this call the run summary reports zero
+            # for every throughput field even though the loop folded each iteration, and a run that died
+            # mid-loop would leave no totals at all -- so it runs first and cannot be skipped by, nor
+            # skip, the teardown below it.
+            state.finish_rollout_metrics(
+                stream_stats=driver.stats(),
+                status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None
+        finally:
+            Perf.shutdown()
+            cluster.rollout.close()
+            # A served sampler's lifecycle is the server session's, not this client's.
+            cluster.sampler.shutdown() if not remote_run else None
+            state.tracker.close()
     state.handler.on_train_end()
     if _save_final:
         # The final checkpoint is synchronous on BOTH models; its args.json is written by

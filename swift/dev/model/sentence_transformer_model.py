@@ -3,10 +3,9 @@ import os
 from typing import Any, Dict, List, Optional, Union
 
 from transformers import PreTrainedModel
-from twinkle import Platform, remote_function
+from twinkle import DeviceMesh, Platform, remote_class, remote_function
 from twinkle.data_format import InputFeature, Trajectory
 from twinkle.hub import HubOperation
-from twinkle.infra import collect_tensor_dict, get_device_mesh
 from twinkle.model.transformers.transformers import TransformersModel as TwinkleTransformersModel
 from twinkle.model.transformers.transformers import _default_adapter_name
 from twinkle.processor import InputProcessor
@@ -19,6 +18,7 @@ logger = get_logger()
 _ST_FEATURE_KEYS = ("input_ids", "attention_mask", "token_type_ids", "position_ids")
 
 
+@remote_class()
 class SentenceTransformerModel(TwinkleTransformersModel):
     """Train a ``sentence-transformers`` model on twinkle's embedding pipeline.
 
@@ -50,7 +50,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         model_id: Optional[str] = None,
         *,
         config: Any = None,
-        device_mesh: Any = None,
+        device_mesh: Optional[DeviceMesh] = None,
         mixed_precision: str = "bf16",
         strategy: str = "accelerate",
         ddp_config: Optional[Dict[str, Any]] = None,
@@ -71,10 +71,8 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         super(PreTrainedModel, self).__init__()
         self._init_dp_balance(kwargs.pop("dp_balance", True))
         self._default_tokenizer = None
-        # This __init__ overrides the @remote_class-wrapped base, so it does NOT receive the base's
-        # automatic device_mesh injection; resolve the global default here to uphold the same invariant
-        # (a constructed model holds a real mesh) the wrapped TransformersModel.__init__ guarantees.
-        self.device_mesh = device_mesh if device_mesh is not None else get_device_mesh()
+        # @remote_class injects the global default mesh when the caller passes none.
+        self.device_mesh = device_mesh
         self.mixed_precision = mixed_precision
         self._fsdp_config = dict(fsdp_config or {})
         self._ddp_config = ddp_config or {}
@@ -232,7 +230,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         optimizer_config.train_status.loss_value = outputs.get("aux_loss", 0)
         return {"embeddings": embeddings}
 
-    @remote_function(dispatch="slice_dp", collect=collect_tensor_dict)
+    @remote_function(dispatch="slice_dp", collect='tensor_dict')
     def forward_only(self, *, inputs: Union[InputFeature, List[InputFeature], List[Trajectory]], **kwargs):
         import torch
 

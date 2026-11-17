@@ -60,7 +60,7 @@ def state(model=None, max_steps=100):
     )
     result.tracker = SimpleNamespace(log=lambda *args, **kwargs: None)
 
-    def record():
+    def record(extra_metrics=None):
         result.global_step += 1
 
     result.record = record
@@ -278,18 +278,25 @@ def test_ppo_updates_policy_and_critic_with_aligned_auxiliary_data():
     recipe = import_module("swift.dev.recipe.ppo.run_ppo")
     policy, critic = Model(2), Model(2)
     progress = state(policy)
-    samples = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(44)]
-    signals = [[float(i)] for i in range(44)]
+    # The GAE anchors ride each trajectory as response-framed fields (cluster.advantage writes them
+    # there before the batch is handed in), so the call takes the trajectories plus one length each.
+    samples = [
+        SimpleNamespace(
+            encoded={"input_ids": [i]},
+            advantages=[float(i)],
+            returns=[float(i)],
+            old_logps=[float(i)],
+            old_values=[float(i)],
+        )
+        for i in range(44)
+    ]
     assert (
         recipe._train_ppo_batch(
             SimpleNamespace(model=policy, value_model=critic),
             progress,
             RLConfig(rl_type="ppo", num_ppo_epochs=1),
             samples,
-            signals,
-            signals,
-            signals,
-            signals,
+            [1] * 44,
             train_batch_size=4,
             temperature=0.7,
             ema_manager=None,
@@ -299,8 +306,9 @@ def test_ppo_updates_policy_and_critic_with_aligned_auxiliary_data():
     )
     assert [len(call["inputs"]) for call in policy.calls] == [16, 16]
     assert [call["micro_batch_size"] for call in policy.calls + critic.calls] == [2] * 4
-    assert critic.calls[1]["returns"] == signals[16:32]
-    assert policy.calls[1]["old_logps"] == signals[16:32]
+    # The critic trains the batch in its original order; the policy's is the balanced permutation.
+    assert [traj.returns for traj in critic.calls[1]["inputs"]] == [[float(i)] for i in range(16, 32)]
+    assert [traj.old_logps for traj in policy.calls[1]["inputs"]] == [[float(i)] for i in range(16, 32)]
     assert policy.steps == critic.steps == progress.global_step == 2
     assert progress.micro_step == 8
 
@@ -310,19 +318,18 @@ def test_ppo_continuous_replay_keeps_all_signals_aligned(count, replays):
     recipe = import_module("swift.dev.recipe.ppo.run_ppo")
     policy, critic = Model(2), Model(2)
     progress = state(policy)
-    samples = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(count)]
-    advantages, returns, values, old_logps = [
-        [[float(offset + i)] for i in range(count)] for offset in (100, 200, 300, 400)
+    offsets = {"advantages": 100.0, "returns": 200.0, "old_values": 300.0, "old_logps": 400.0}
+    samples = [
+        SimpleNamespace(encoded={"input_ids": [i]},
+                        **{field: [offset + i] for field, offset in offsets.items()})
+        for i in range(count)
     ]
     steps = recipe._train_ppo_batch(
         SimpleNamespace(model=policy, value_model=critic),
         progress,
         RLConfig(rl_type="ppo", num_ppo_epochs=replays),
         samples,
-        advantages,
-        returns,
-        values,
-        old_logps,
+        [1] * count,
         train_batch_size=4,
         temperature=0.7,
         ema_manager=None,
@@ -331,14 +338,14 @@ def test_ppo_continuous_replay_keeps_all_signals_aligned(count, replays):
     expected = (list(range(count)) * replays)[: count * replays // 16 * 16]
     assert steps == policy.steps == critic.steps == len(expected) // 16
     assert progress.micro_step == steps * 4
-    assert [row["input_ids"][0] for call in policy.calls for row in call["inputs"]] == expected
+    assert [traj.encoded["input_ids"][0] for call in policy.calls for traj in call["inputs"]] == expected
     for policy_call, critic_call in zip(policy.calls, critic.calls):
-        indices = [row["input_ids"][0] for row in policy_call["inputs"]]
-        assert critic_call["inputs"] == policy_call["inputs"]
-        assert policy_call["advantages"] == [advantages[i] for i in indices]
-        assert policy_call["old_logps"] == [old_logps[i] for i in indices]
-        assert critic_call["returns"] == [returns[i] for i in indices]
-        assert critic_call["old_values"] == [values[i] for i in indices]
+        indices = [traj.encoded["input_ids"][0] for traj in policy_call["inputs"]]
+        assert [traj.encoded for traj in critic_call["inputs"]] == [traj.encoded for traj in policy_call["inputs"]]
+        assert [traj.advantages for traj in policy_call["inputs"]] == [[offsets["advantages"] + i] for i in indices]
+        assert [traj.old_logps for traj in policy_call["inputs"]] == [[offsets["old_logps"] + i] for i in indices]
+        assert [traj.returns for traj in critic_call["inputs"]] == [[offsets["returns"] + i] for i in indices]
+        assert [traj.old_values for traj in critic_call["inputs"]] == [[offsets["old_values"] + i] for i in indices]
     if count:
         assert (
             rollout_step_budget(
@@ -359,14 +366,12 @@ def test_distillation_submits_one_teacher_signal_batch_per_update():
     model = Model(2)
     progress = state(model)
     worker = SimpleNamespace(
-        forward_kwargs=lambda rows, use_student: {
-            "inputs": rows,
-            "teacher_logits": tuple(rows),
-        }
+        forward_kwargs=lambda rows, use_student: {"teacher_logits": tuple(rows)}
     )
     assert (
         recipe._train_rows(
-            SimpleNamespace(model=model, worker=worker), progress, list(range(44)), True, train_batch_size=4, save=None
+            SimpleNamespace(model=model, worker=worker), progress, list(range(44)), None, True,
+            train_batch_size=4, save=None
         )
         == 2
     )
@@ -375,234 +380,17 @@ def test_distillation_submits_one_teacher_signal_batch_per_update():
     assert progress.micro_step == 8
 
 
-@pytest.mark.parametrize("use_student", [False, True])
-@pytest.mark.parametrize("colocate", [False, True])
-@pytest.mark.parametrize("batch_size,generations", [(1, 4), (4, 4), (9, 4), (2, 3), (3, 6)])
-def test_distill_prepares_one_global_batch_per_update(use_student, colocate, batch_size, generations, monkeypatch):
-    recipe = import_module("swift.dev.recipe.distill.run_distill")
-    offload = import_module("swift.dev.recipe.offload")
-    from swift.dev.recipe.distill.worker import DistillRow
-
-    progress, epochs, borrowed, generated = state(), [], [False], [0]
-    sources, generation_sizes, generated_prompts = [], [], []
-    prompt_count = 9
-
-    class Loader:
-        set_epoch = staticmethod(epochs.append)
-
-        def __iter__(self):
-            for start in range(0, prompt_count, batch_size):
-                yield [
-                    {"messages": [{"role": "user", "content": str(i)}], "row_id": i}
-                    for i in range(start, min(start + batch_size, prompt_count))
-                ]
-
-    def borrow(*args):
-        borrowed[0] = True
-
-    def reload():
-        borrowed[0] = False
-
-    def forward_kwargs(rows, on_policy):
-        assert not borrowed[0], "Teacher/student forwards must run after the rollout device is returned."
-        sources.append(on_policy)
-        return {"inputs": [row.feature for row in rows]}
-
-    def generate(prompts, *, num_samples, **kwargs):
-        prompt_ids = [int(messages[0]["content"]) for messages in prompts]
-        assert prompt_ids == [extra["row_id"] for extra in kwargs["prompt_extras"]]
-        generated_prompts.extend(i for i in prompt_ids for _ in range(num_samples))
-        generation_sizes.append(len(prompts) * num_samples)
-        start = generated[0]
-        generated[0] += len(prompts) * num_samples
-        samples = [
-            SimpleNamespace(encoded={"input_ids": [i]}, messages=[], prompt=[], extra={})
-            for i in range(start, generated[0])
-        ]
-        # generate's contract is (samples, encodings); loops re-attach them.
-        return samples, [sample.encoded for sample in samples]
-
-    monkeypatch.setattr(offload, "offload_for_rollout", borrow)
-    monkeypatch.setattr(offload, "sleep_for_rollout", lambda *args: None)
-    progress.model.reload_to_gpu = reload
-    cluster = SimpleNamespace(
-        model=progress.model,
-        worker=SimpleNamespace(forward_kwargs=forward_kwargs),
-        colocate=colocate,
-        sampler=SimpleNamespace(wake_up=lambda **kwargs: None),
-        engine=SimpleNamespace(sync_weights=lambda **kwargs: None),
-        rollout=SimpleNamespace(generate=generate),
-        sampling_params={},
-    )
-    dataset = [DistillRow({"input_ids": [i]}, [], {}) for i in range(5)]
-    recipe._distill_round_loop(
-        cluster,
-        RLConfig(rl_type="gkd", lmbda=float(use_student), num_generations=generations),
-        SimpleNamespace(sleep_level=0),
-        dataset,
-        Loader(),
-        progress,
-        train_batch_size=4,
-        num_train_epochs=2,
-        seed=0,
-        save=None,
-    )
-    updates_per_epoch = prompt_count * generations // 16
-    expected_steps = updates_per_epoch * 2
-    assert epochs == [0, 1] and sources == [use_student] * expected_steps
-    assert [len(call["inputs"]) for call in progress.model.calls] == [16] * expected_steps
-    assert [call["micro_batch_size"] for call in progress.model.calls] == [2] * expected_steps
-    assert progress.model.steps == progress.global_step == expected_steps
-    assert progress.micro_step == expected_steps * 4
-    actual_ids = [row["input_ids"][0] for call in progress.model.calls for row in call["inputs"]]
-    kept = list(range(expected_steps * 16))
-    assert actual_ids == (kept if use_student else [i % 5 for i in kept])
-    expected_prompts = [i for i in range(prompt_count) for _ in range(generations)][: updates_per_epoch * 16] * 2
-    assert generated_prompts == (expected_prompts if use_student else [])
-    assert generation_sizes == ([16] * expected_steps if use_student else [])
-    assert (
-        rollout_step_budget(
-            num_prompts=prompt_count,
-            num_generations=generations,
-            train_batch_size=4,
-            gradient_accumulation_steps=4,
-            num_train_epochs=2,
-        )
-        == progress.global_step
-    )
-
-
-@pytest.mark.parametrize("max_steps", [1, 4])
-def test_distill_selects_each_update_and_advances_only_the_off_policy_cursor(monkeypatch, max_steps):
-    recipe = import_module("swift.dev.recipe.distill.run_distill")
-    from swift.dev.recipe.distill.worker import DistillRow
-
-    progress = state(Model(), max_steps=max_steps)
-    progress.ga = 2
-    sources, choices, synced_at, generated_prompts = [], [], [], []
-    draws = iter([0.75, 0.25, 0.75, 0.25])
-
-    def choose(seed):
-        # Source selection must happen once after each completed optimizer update.
-        choices.append((seed, progress.model.steps))
-        return SimpleNamespace(random=lambda: next(draws))
-
-    def generate(prompts, *, num_samples, **kwargs):
-        generated_prompts.append(prompts)
-        samples = [
-            SimpleNamespace(encoded={"input_ids": [-int(messages[0]["content"]) - 1]}, messages=messages, extra=extra)
-            for messages, extra in zip(prompts, kwargs["prompt_extras"])
-            for _ in range(num_samples)
-        ]
-        # generate's contract is (samples, encodings); loops re-attach them.
-        return samples, [sample.encoded for sample in samples]
-
-    def forward_kwargs(rows, use_student):
-        sources.append(use_student)
-        return {"inputs": [row.feature for row in rows]}
-
-    class Loader:
-        def set_epoch(self, epoch):
-            assert epoch == 0
-
-        def __iter__(self):
-            for start in (0, 3, 6):
-                yield [{"messages": [{"role": "user", "content": str(i)}]} for i in range(start, min(start + 3, 8))]
-
-    monkeypatch.setattr(recipe.random, "Random", choose)
-    cluster = SimpleNamespace(
-        model=progress.model,
-        worker=SimpleNamespace(forward_kwargs=forward_kwargs),
-        colocate=False,
-        engine=SimpleNamespace(sync_weights=lambda: synced_at.append(progress.model.steps)),
-        rollout=SimpleNamespace(generate=generate),
-        sampling_params={},
-    )
-    dataset = [DistillRow({"input_ids": [i]}, [], {}) for i in range(7)]
-    recipe._distill_round_loop(
-        cluster,
-        RLConfig(rl_type="gkd", lmbda=0.5, num_generations=2),
-        SimpleNamespace(),
-        dataset,
-        Loader(),
-        progress,
-        train_batch_size=2,
-        num_train_epochs=2,
-        seed=10,
-        save=None,
-    )
-    assert choices == [(10 + i, i) for i in range(max_steps)]
-    assert sources == [False, True, False, True][:max_steps]
-    expected_rows = [[0, 1, 2, 3], [-3, -3, -4, -4], [4, 5, 6, 0], [-7, -7, -8, -8]][:max_steps]
-    assert [[row["input_ids"][0] for row in call["inputs"]] for call in progress.model.calls] == expected_rows
-    assert [len(prompts) for prompts in generated_prompts] == [4] * (max_steps // 2)
-    assert synced_at == [1, 3][: max_steps // 2]
-    assert progress.global_step == progress.model.steps == max_steps
-    assert progress.micro_step == max_steps * 2
-
-
-def test_distill_generates_only_four_rows_for_a_global_batch_of_four():
-    recipe = import_module("swift.dev.recipe.distill.run_distill")
-    progress = state(Model())
-    progress.ga = 2
-    generated = []
-
-    def generate(prompts, *, num_samples, **kwargs):
-        ids = [int(messages[0]["content"]) for messages in prompts for _ in range(num_samples)]
-        generated.append(ids)
-        samples = [SimpleNamespace(encoded={"input_ids": [i]}, messages=[], extra={}) for i in ids]
-        # generate's contract is (samples, encodings); loops re-attach them.
-        return samples, [sample.encoded for sample in samples]
-
-    # One input batch has three prompts, but it must result in three separate generation/update calls.
-    batch = [{"messages": [{"role": "user", "content": str(i)}]} for i in range(3)]
-    cluster = SimpleNamespace(
-        model=progress.model,
-        colocate=False,
-        rollout=SimpleNamespace(generate=generate),
-        sampling_params={},
-        engine=SimpleNamespace(sync_weights=lambda: None),
-        worker=SimpleNamespace(forward_kwargs=lambda rows, use_student: {"inputs": [row.feature for row in rows]}),
-    )
-
-    class Loader:
-        def set_epoch(self, epoch):
-            pass
-
-        def __iter__(self):
-            return iter([batch])
-
-    recipe._distill_round_loop(
-        cluster,
-        RLConfig(rl_type="gkd", lmbda=1, num_generations=4),
-        SimpleNamespace(),
-        [],
-        Loader(),
-        progress,
-        train_batch_size=2,
-        num_train_epochs=1,
-        seed=0,
-        save=None,
-    )
-    assert generated == [[0] * 4, [1] * 4, [2] * 4]
-    assert [len(call["inputs"]) for call in progress.model.calls] == [4, 4, 4]
-    assert [call["micro_batch_size"] for call in progress.model.calls] == [2, 2, 2]
-    assert progress.global_step == progress.model.steps == 3
-
-
 @pytest.mark.parametrize(
-    "sampler_mode,lmbda,expected", [("colocate", 1.0, 4), ("disaggregated", 0.5, 4), ("disaggregated", 1.0, 7)]
+    "sampler_mode,lmbda,expected", [("colocate", 1.0, 6), ("disaggregated", 0.5, 6), ("disaggregated", 1.0, 6)]
 )
 def test_distill_entry_budgets_updates_across_prompt_loader_batches(monkeypatch, sampler_mode, lmbda, expected):
-    """The budget must match what the loops actually do, not a nicer arithmetic.
+    """The budget is the driver's whole-batch delivery, and it branches on neither placement nor lmbda.
 
-    5 prompts, generation_batch_size=2, num_generations=3 -> per-epoch batches of [6, 6, 3]
-    samples; 2 epochs -> [6, 6, 3, 6, 6, 3]. Non-streaming (colocate, or disaggregated with
-    lmbda != 1) replays each batch and drops its tail, so each 6-sample batch is one update
-    (GBS = 2 * 2 = 4) and each 3-sample batch none: 4 updates. Streaming (disaggregated,
-    lmbda == 1) combines all 30 samples first: floor(30 / 4) = 7. lmbda itself does not enter
-    the budget -- the GKD replay fraction is a loop-side concern, so a sub-1 lmbda just leaves
-    the budget loose, never tight.
+    5 prompts x 3 generations x 2 epochs = 30 samples. The driver hands out whole
+    ``stream_batch_size`` rows -- the quantum is lcm(train_batch_size * ga, num_generations) =
+    lcm(4, 3) = 12 for both placements -- so 30 samples deliver 24, and one optimizer update is
+    per_device 2 x ga 2 = 4 samples: floor(24 / 4) = 6. The GKD replay fraction is a loop-side
+    concern, so a sub-1 lmbda leaves the budget loose rather than tight.
     """
     recipe = import_module("swift.dev.recipe.distill.run_distill")
     prompts = [[{"role": "user", "content": str(i)}] for i in range(5)]
@@ -632,68 +420,11 @@ def test_distill_entry_budgets_updates_across_prompt_loader_batches(monkeypatch,
         )
 
 
-def test_ppo_colocate_preserves_a_single_prompt_pass_for_both_models(monkeypatch):
-    recipe = import_module("swift.dev.recipe.ppo.run_ppo")
-    offload = import_module("swift.dev.recipe.offload")
-    progress, visits, generated = state(), [], [0]
-    critic = Model(2)
-
-    class Loader:
-        def __iter__(self):
-            visits.append(True)
-            for size in (4, 1):
-                yield [{"messages": []} for _ in range(size)]
-
-    def generate(prompts, *, num_samples, **kwargs):
-        start = generated[0]
-        generated[0] += len(prompts) * num_samples
-        samples = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(start, generated[0])]
-        # generate's contract is (samples, encodings); loops re-attach them.
-        return samples, [sample.encoded for sample in samples]
-
-    def gae(cluster, reward, config, samples, *args):
-        signals = [[float(sample.encoded["input_ids"][0])] for sample in samples]
-        return samples, signals, signals, signals, signals
-
-    monkeypatch.setattr(offload, "offload_for_rollout", lambda *args: None)
-    monkeypatch.setattr(offload, "sleep_for_rollout", lambda *args: None)
-    monkeypatch.setattr(recipe, "_gae_pipeline", gae)
-    progress.model.reload_to_gpu = lambda: None
-    critic.reload_to_gpu = lambda: None
-    cluster = SimpleNamespace(
-        model=progress.model,
-        value_model=critic,
-        worker=SimpleNamespace(orm_scorers=[]),
-        sampler=SimpleNamespace(wake_up=lambda **kwargs: None),
-        engine=SimpleNamespace(sync_weights=lambda **kwargs: None),
-        rollout=SimpleNamespace(generate=generate),
-        sampling_params={},
-    )
-    recipe._colocate_loop(
-        cluster,
-        RLConfig(rl_type="ppo", num_generations=4, num_ppo_epochs=1),
-        SimpleNamespace(),
-        SimpleNamespace(sleep_level=0),
-        Loader(),
-        progress,
-        None,
-        train_batch_size=4,
-        ema_manager=None,
-        save=None,
-    )
-    assert visits == [True]
-    for model in (progress.model, critic):
-        assert [len(call["inputs"]) for call in model.calls] == [16]
-        assert [row["input_ids"][0] for call in model.calls for row in call["inputs"]] == (list(range(16)))
-        assert model.steps == 1
-    assert progress.global_step == 1 and progress.micro_step == 4
-
-
 def test_rft_keeps_round_saves_deferred_when_dropping_the_tail():
     recipe = import_module("swift.dev.recipe.rft.run_rft")
     progress = state()
     samples = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(47)]
-    due = recipe._train_selected_samples(SimpleNamespace(model=progress.model), progress, samples, 4, 2)
+    due = recipe._train_selected_samples(SimpleNamespace(model=progress.model), progress, samples, [1] * 47, 4, 2)
     assert due is True
     assert [len(call["inputs"]) for call in progress.model.calls] == [16, 16]
     assert [call["micro_batch_size"] for call in progress.model.calls] == [2, 2]
@@ -705,20 +436,16 @@ def test_rft_keeps_round_saves_deferred_when_dropping_the_tail():
 def test_online_updates_drop_all_samples_outside_full_ga_windows(recipe_name, count):
     progress = state()
     rows = [SimpleNamespace(encoded={"input_ids": [i]}) for i in range(count)]
-    worker = SimpleNamespace(forward_kwargs=lambda rows, use_student: {"inputs": rows})
+    worker = SimpleNamespace(forward_kwargs=lambda rows, use_student: {"teacher_logits": tuple(rows)})
     cluster = SimpleNamespace(model=progress.model, value_model=Model(2), worker=worker)
     if recipe_name == "ppo":
         recipe = import_module("swift.dev.recipe.ppo.run_ppo")
-        signals = [[float(i)] for i in range(count)]
         recipe._train_ppo_batch(
             cluster,
             progress,
             RLConfig(rl_type="ppo", num_ppo_epochs=1),
             rows,
-            signals,
-            signals,
-            signals,
-            signals,
+            [1] * count,
             train_batch_size=4,
             temperature=1.0,
             ema_manager=None,
@@ -726,10 +453,10 @@ def test_online_updates_drop_all_samples_outside_full_ga_windows(recipe_name, co
         )
     elif recipe_name == "distill":
         recipe = import_module("swift.dev.recipe.distill.run_distill")
-        recipe._train_rows(cluster, progress, rows, True, train_batch_size=4, save=None)
+        recipe._train_rows(cluster, progress, rows, [1] * count, True, train_batch_size=4, save=None)
     else:
         recipe = import_module("swift.dev.recipe.rft.run_rft")
-        recipe._train_selected_samples(cluster, progress, rows, 4, 0)
+        recipe._train_selected_samples(cluster, progress, rows, [1] * count, 4, 0)
     expected_sizes = [16] * (count // 16)
     assert [len(call["inputs"]) for call in progress.model.calls] == expected_sizes
     assert progress.model.steps == progress.global_step == len(expected_sizes)

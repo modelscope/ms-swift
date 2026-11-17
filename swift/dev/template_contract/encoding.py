@@ -228,8 +228,16 @@ def render_delta(
     if not gen_prompt_before:
         anchors.append(_ANCHOR)
     for anchor in anchors:
-        before = list(render(anchor, gen_prompt_before))
-        after = list(render(anchor + list(appended), gen_prompt_after))
-        if after[: len(before)] == before:
-            return after[len(before) :]
+        anchor_before = list(render(anchor, gen_prompt_before))
+        anchor_after = list(render(anchor + list(appended), gen_prompt_after))
+        if anchor_after[: len(anchor_before)] != anchor_before:
+            continue
+        bridge = anchor_after[len(anchor_before) :]
+        # The anchor stands in for a history whose own render is not monotonic, so the bridge it
+        # yields is trustworthy only if the appended turns render the same way after the real
+        # history. A tool turn does not: its block depends on the assistant tool_calls turn it
+        # answers, which the anchor lacks. Reject and fail loudly rather than return a bridge that
+        # would silently splice the wrong tokens into a training sequence.
+        if bridge and after[-len(bridge) :] == bridge:
+            return bridge
     raise RuntimeError("non-monotonic render: appended turns are not a prefix-extension of the history or anchor.")

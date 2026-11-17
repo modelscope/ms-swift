@@ -15,8 +15,8 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 
 ## Supported Models
 
-1. JEV-27B-VL: Qwen3-VL + PEFT adapter
-   - [ModelScope](https://www.modelscope.cn/models/autotrust/JEV-27B-VL)
+1. JEV: Qwen3.5 backbone + PEFT adapter (verbalizer scoring head; JEV-27B-VL ships the full multimodal layout, JEV-27B / JEV-9B ship the text-only layout)
+   - [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL) / [JEV-27B](https://www.modelscope.cn/models/autotrust/JEV-27B) / [JEV-9B](https://www.modelscope.cn/models/autotrust/JEV-9B)
 2. Clef: Full Qwen3-VL with LoRA already merged
    - [ModelScope](https://www.modelscope.cn/models/Cloudflare/clef)
 3. OmniJev: Qwen3.5-4B (hybrid gated-deltanet + VL) + PEFT adapter

@@ -1,6 +1,7 @@
 """Fast tests for dev CLI self-parsing (argv -> atomic Configs)."""
 from __future__ import annotations
 import dataclasses
+import inspect
 
 import pytest
 
@@ -302,3 +303,157 @@ def test_megatron_rlhf_parser_applies_megatron_surface(monkeypatch):
     assert configs['train_config'].gradient_accumulation_steps == 1
     assert configs['model_config'].torch_dtype == 'bfloat16'
     assert configs['model_config'].attn_impl == 'fused'
+
+
+def test_rl_mode_remote_survives_parse_for_every_family():
+    """--mode remote stays remote for every rl_type: the recipes drive a twinkle-server
+    through twinkle_client with the same loop code, so the mode='ray' overrides below must
+    not silently turn a remote request into a local Ray run (and no sampler_mode default is
+    stamped -- the served sampler owns its own placement)."""
+    from swift.dev.cli.rl import parse_rl_configs
+
+    for rl_type in ('grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'):
+        configs = parse_rl_configs([
+            '--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', rl_type, '--mode', 'remote'])
+        assert configs['distributed_config'].mode == 'remote', rl_type
+        assert configs['rollout_config'].sampler_mode is None, rl_type
+
+
+def test_rl_mode_defaults_to_ray_with_a_disaggregated_sampler():
+    """Without --mode remote the online family forces mode='ray' + the disaggregated sampler
+    default; the offline preference family forces the mode only (it rolls out nothing)."""
+    from swift.dev.cli.rl import parse_rl_configs
+
+    online = parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', 'grpo'])
+    assert online['distributed_config'].mode == 'ray'
+    assert online['rollout_config'].sampler_mode == 'disaggregated'
+    offline = parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', 'dpo'])
+    assert offline['distributed_config'].mode == 'ray'
+    assert offline['rollout_config'].sampler_mode is None
+
+
+# --- the CLI <-> recipe call contract (shared positional shape) -----------------------------
+#
+# ``run_rl_configs`` dispatches every online rl_type through ONE call site: eight positionals
+# then a fixed keyword set. That only works while the four online recipes agree on their leading
+# parameter names AND their order. A single recipe losing one parameter shifts every later
+# positional by a place, and the collision surfaces as a TypeError at dispatch -- or, worse, as a
+# config silently landing in the wrong parameter.
+#
+# Both recipes below lost ``template_config`` to a ``# noqa`` placed between the first two
+# parameters, which runs to the end of the line. The file stays valid Python, ``ast.parse`` and
+# import both succeed, and the parameter is simply absent from the AST -- so no structural check
+# can see it. Only pinning the contract and comparing the recipes to each other catches it.
+
+_ONLINE_POSITIONALS = (
+    'model_config', 'template_config', 'dataset_config', 'train_config', 'distributed_config',
+    'checkpoint_config', 'rollout_config', 'rl_config', 'reward_config', 'tuner_config',
+    'generation_config', 'logging_config', 'quantize_config', 'megatron_config', 'moe_config',
+)
+# The offline RLHF family takes no rollout and no generation config (see run_rl_configs' branch).
+_OFFLINE_POSITIONALS = tuple(
+    name for name in _ONLINE_POSITIONALS if name not in ('rollout_config', 'generation_config'))
+# What run_rl_configs actually passes to the online recipes: eight positionals, then these.
+_DISPATCH_POSITIONAL_COUNT = 8
+_DISPATCH_KEYWORDS = ('reward_config', 'tuner_config', 'generation_config', 'logging_config',
+                      'quantize_config', 'megatron_config', 'moe_config', 'output_dir')
+
+
+def _online_recipes():
+    from swift.dev.recipe.distill import run_distill
+    from swift.dev.recipe.grpo import run_grpo
+    from swift.dev.recipe.ppo import run_ppo
+    from swift.dev.recipe.rft import run_rft
+    return {'grpo': run_grpo, 'ppo': run_ppo, 'rft': run_rft,
+            'distill(gkd/opsd/mopd)': run_distill}
+
+
+def _positionals(recipe):
+    return tuple(p.name for p in inspect.signature(recipe).parameters.values()
+                 if p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD)
+
+
+@pytest.mark.parametrize('rl_type', sorted(_online_recipes()))
+def test_every_online_recipe_shares_one_positional_shape(rl_type):
+    """The four online recipes are interchangeable at one call site, so their leading parameters
+    must be identical name-for-name and in the same order."""
+    assert _positionals(_online_recipes()[rl_type]) == _ONLINE_POSITIONALS
+
+
+def test_the_cli_dispatch_binds_against_every_online_recipe():
+    """Replay run_rl_configs' actual call -- eight positionals plus its keyword set -- against each
+    recipe signature. This is the collision the shipped bug produced at runtime."""
+    positional = [object()] * _DISPATCH_POSITIONAL_COUNT
+    keywords = {name: object() for name in _DISPATCH_KEYWORDS}
+    for rl_type, recipe in _online_recipes().items():
+        try:
+            inspect.signature(recipe).bind(*positional, **keywords)
+        except TypeError as exc:
+            raise AssertionError(f'{rl_type}: the CLI dispatch does not bind -- {exc}') from exc
+
+
+@pytest.mark.parametrize('rl_type', sorted(_online_recipes()))
+def test_the_dispatch_tail_is_keyword_only(rl_type):
+    """Everything past the shared shape must stay keyword-only: the CLI passes ``output_dir`` by
+    name, so a recipe that made it positional would take it from the wrong place."""
+    parameters = list(inspect.signature(_online_recipes()[rl_type]).parameters.values())
+    tail = parameters[len(_ONLINE_POSITIONALS):]
+    assert [p.name for p in tail] == ['output_dir', '_save_final']
+    assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in tail)
+
+
+def test_the_offline_family_drops_rollout_and_generation():
+    """The offline branch is a separate contract: same order, minus the two configs it never reads."""
+    from swift.dev.recipe.rlhf import run_dpo
+    assert _positionals(run_dpo) == _OFFLINE_POSITIONALS
+
+
+def test_no_signature_line_carries_a_parameter_after_a_comment():
+    """Repo-wide guard for the defect class itself: a comment inside a ``def`` signature runs to the
+    end of the line, so anything written after it on that line is deleted from the signature while
+    the file stays valid Python.
+
+    The AST cannot report this -- the swallowed parameter is simply not there -- so the parameter
+    list's own source lines are scanned for text after a ``#`` that still looks like an annotated
+    parameter or a default. Only a comment written while the parentheses are still open can swallow
+    anything: a trailing comment after the closing ``)`` is harmless, and so are directive comments
+    (``# noqa: C901``, ``# type: ignore``), which carry no quoted annotation and no assignment.
+    """
+    import ast
+    import re
+    from pathlib import Path
+
+    looks_like_parameter = re.compile(r"""\b\w+\s*:\s*['\["]|(?<![=!<>])\b\w+\s*=\s*[^=]""")
+    offenders = []
+    # parents: [0]=config [1]=component [2]=tests [3]=dev, so dev's own tree is parents[3].
+    root = Path(__file__).resolve().parents[3]
+    scanned = 0
+    for path in sorted(root.rglob('*.py')):
+        source = path.read_text(encoding='utf-8')
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        scanned += 1
+        lines = source.splitlines()
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            depth = 0
+            # Only a comment written while the parameter list's parentheses are still open can
+            # swallow a parameter, so the depth filter -- not the scanned span -- is what decides.
+            # Prose in the body and a trailing comment after the closing ')' both sit at depth 0.
+            for number in range(node.lineno, node.body[0].lineno):
+                line = lines[number - 1]
+                comment_at = line.find('#')
+                open_part = line if comment_at < 0 else line[:comment_at]
+                # Quoted annotation text can legitimately hold parentheses; drop it before counting.
+                depth += len(re.findall(r'[([{]', re.sub(r"'[^']*'|\"[^\"]*\"", '', open_part)))
+                depth -= len(re.findall(r'[)\]}]', re.sub(r"'[^']*'|\"[^\"]*\"", '', open_part)))
+                if comment_at >= 0 and depth > 0 and looks_like_parameter.search(line[comment_at + 1:]):
+                    offenders.append(f'{path.relative_to(root)}:{number}')
+    # Control: a scan that visits nothing passes vacuously, so the visited count is asserted too.
+    assert scanned > 100, f'the signature scan only saw {scanned} files under {root}'
+    assert not offenders, (
+        'a comment inside these parameter lists is followed by parameter-looking text, which Python '
+        f'swallows along with the comment: {offenders}')

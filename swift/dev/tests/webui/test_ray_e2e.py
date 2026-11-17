@@ -119,12 +119,9 @@ def grpo_declaration(model: str, data: str, cards: Tuple[int, ...] = (0, 1)) -> 
             _edge('e1', 'loader', 'source', 'driver', 'prompts'),
             _edge('e3', 'smp', 'sampler', 'driver', 'engine', 'smp'),
             _edge('e_s', 'scorer', 'scorer', 'score', 'scorers', 'scorer'),
-            _edge('e4', 'driver', 'samples', 'score', 'samples'),
-            _edge('e5', 'driver', 'samples', 'adv', 'traj'),
-            _edge('e6', 'score', 'reward', 'adv', 'reward'),
-            _edge('e7', 'adv', 'adv', 'train', 'arguments', 'advantages'),
-            _edge('e7c', 'adv', 'old_logps', 'train', 'arguments', 'old_logps'),
-            _edge('e7b', 'driver', 'samples', 'train', 'batch'),
+            _edge('e4', 'driver', 'traj', 'score', 'traj'),
+            _edge('e6', 'score', 'traj', 'adv', 'traj'),
+            _edge('e7', 'adv', 'traj', 'train', 'batch'),
             _edge('e8', 'loss_n', 'loss', 'train', 'loss'),
             _edge('e9', 'policy', 'model', 'train', 'model'),
             _edge('e10', 'train', 'then', 'sync', 'after'),
@@ -299,8 +296,8 @@ def test_grpo_circle_real_ray(tmp_path: Any) -> None:
         if payload.get('state') == 'completed':
             completed_at.setdefault(payload['node_id'], ts)
     edge_targets = {'e2': 'ds', 'e1': 'loader', 'e3': 'smp', 'e_s': 'scorer',
-                    'e4': 'driver', 'e5': 'driver', 'e6': 'score', 'e7': 'adv',
-                    'e7b': 'driver', 'e7c': 'adv', 'e8': 'loss_n', 'e9': 'policy',
+                    'e4': 'driver', 'e6': 'score', 'e7': 'adv',
+                    'e8': 'loss_n', 'e9': 'policy',
                     'e10': 'train', 'e11': 'smp', 'f1': 'sync'}
     used = {payload['edge_id']: ts for ts, payload in recorder.of('edge')
             if payload.get('state') == 'used'}

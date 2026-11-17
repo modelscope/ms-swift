@@ -1,27 +1,47 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# RFT's visible training main: five segments, then the blocking rejection-sampling round loop.
+# RFT's visible training main: five segments, then the rejection-sampling round loop (one driver per round).
 from __future__ import annotations
-
-import json
-import math
 import os
+import sys
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from swift.dev.utils.scoring import batch_input_lengths
-from swift.dev.utils.logger import get_logger
+import json
 
-from swift.dev.recipe.rft.assembly import initialize_rft_cluster, rft_group_requests
+from swift.dev.recipe.rft.assembly import build_rft_driver, initialize_rft_cluster, rft_group_requests
 from swift.dev.recipe.utils import (
-    StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_generation_batch_size, resolve_rollout_max_steps, resume_training, rollout_step_budget,
-    save_final_checkpoint, save_training_step,
-    snapshot_initial_adapter)
+    StepState,
+    build_save_knobs,
+    initialize_rl_devices,
+    optimizer_batch_slices,
+    prompt_rows_from_dataset,
+    resolve_generation_batch_size,
+    resolve_rollout_max_steps,
+    resume_training,
+    rollout_step_budget,
+    save_final_checkpoint,
+    save_training_step,
+    snapshot_initial_adapter,
+)
+from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
-        TrainConfig, TunerConfig)
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        GenerationConfig,
+        LoggingConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
+        RewardConfig,
+        RLConfig,
+        RolloutConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = get_logger()
 
@@ -110,18 +130,21 @@ class RFTSelector:
         #: The round reward metric, fed once per round and read back by :meth:`step_telemetry`.
         self._reward_metric = None
 
-    def accumulate_metric(self, samples: List[Any], rewards_per_func: Any) -> None:
+    def accumulate_metric(self, rewards_matrix: Any, completion_lengths: List[int]) -> None:
         """Feed one round's WHOLE generated rollout into the reward metric (reset-then-accumulate).
 
         Called before rejection so the logged reward tracks the policy's improving sample quality --
-        filtering first would make the metric read only the kept winners and hide the trend.
+        filtering first would make the metric read only the kept winners and hide the trend. The
+        matrix is the round's collected ORM score rows (straight off the driver's batch summaries,
+        so no trajectory is materialised for it).
         """
-        from swift.dev.utils.scoring import accumulate_reward_metric
         from twinkle.metric import CompletionRewardMetric
+
+        from swift.dev.utils.scoring import accumulate_reward_metric
 
         if self._reward_metric is None:
             self._reward_metric = CompletionRewardMetric()
-        accumulate_reward_metric(self._reward_metric, samples, rewards_per_func,
+        accumulate_reward_metric(self._reward_metric, rewards_matrix, completion_lengths,
                                  scorer_names=self.reward_scorer_names, reward_weights=self.reward_weights)
 
     def step_telemetry(self) -> dict:
@@ -148,22 +171,22 @@ class RFTSelector:
             keep = keep[:self.rft_max_samples_per_prompt]
         return keep
 
-    def select(self, samples: List[Any], rewards: List[float]) -> List[Any]:
-        """Apply the rejection filter across every prompt group, returning the kept samples.
+    def select(self, num_rows: int, rewards: List[float]) -> List[int]:
+        """Apply the rejection filter across every prompt group, returning the kept row indices.
 
-        The kept completions train with plain cross-entropy, so only the sample list is consumed
-        downstream -- no advantage / log-prob columns exist in RFT.
+        Pure numeric rule over the collected score rows: the caller slices its reference list with
+        the returned indices (kept best-first), so the completions stay references end to end --
+        no advantage / log-prob columns exist in RFT.
         """
         n = self.num_generations
-        if len(samples) % n != 0:
-            raise RuntimeError(f'{len(samples)} samples is not a multiple of num_generations={n}; '
+        if num_rows % n != 0:
+            raise RuntimeError(f'{num_rows} rows is not a multiple of num_generations={n}; '
                                'group-wise rejection sampling is impossible.')
-        selected: List[Any] = []
-        for start in range(0, len(samples), n):
-            group = samples[start:start + n]
+        selected: List[int] = []
+        for start in range(0, num_rows, n):
             group_rewards = rewards[start:start + n]
             for local in self._select_keep(group_rewards):
-                selected.append(group[local])
+                selected.append(start + local)
         return selected
 
 
@@ -187,106 +210,82 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
     return rft_state.next_round
 
 
-def _sample_and_select(cluster, rollout_config, reward_config, selector, prompts, prompt_extras,
-                       num_samples, generation_batch_size):
-    """Generate and score one round, returning the sampler's borrowed device on every exit."""
-    entered = False
+def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloader, num_samples, window):
+    """Generate and score one round, returning the kept trajectories (references) and row lengths.
+
+    The driver hands each batch out as it travels (references) with its row-aligned score
+    column riding the facts; the round collects the references plus the facts' numeric columns
+    (score rows, response lengths), so rejection sampling and the reward metric never materialise
+    a trajectory.
+    The round's policy is the one the previous round trained: one sync first (colocated, it hands
+    the devices to the sampler), then one driver over the whole prompt set; the devices come back
+    on every exit.
+    """
+    import torch
+
+    from swift.dev.recipe.offload import sleep_for_rollout
+    from swift.dev.utils.scoring import weighted_rewards
+
+    cluster.engine.sync_weights()
+    driver = build_rft_driver(cluster=cluster, rollout_config=rollout_config, prompt_dataloader=dataloader,
+                              num_samples=num_samples, window=window)
+    trajs, orm_rows, lengths, row_lengths = [], [], [], []
     try:
-        # borrow the device for generation (colocate) / push the trained policy into the
-        # sampler, so this round samples from the policy the previous round produced -- the
-        # rejection-sampling bootstrap.
-        from swift.dev.recipe.offload import wake_for_rollout
-
-        wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ["weights"])
-        cluster.engine.sync_weights(merge_and_sync=True)
-        from swift.dev.recipe.offload import offload_for_rollout
-
-        offload_for_rollout(cluster.model, rollout_config)
-        wake_for_rollout(cluster.sampler, rollout_config.sleep_level, ["kv_cache"])
-        entered = True
-        # The round still generates the WHOLE prompt set before any SFT (the policy is frozen for
-        # the round: weights synced once above, training only after selection), so chunking the
-        # generate call is pure flow control -- it keeps a large prompt set from one giant
-        # in-flight burst and logs per-chunk progress instead of hours of silence.
-        samples = []
-        total_chunks = math.ceil(len(prompts) / generation_batch_size)
-        for chunk_index in range(total_chunks):
-            lo = chunk_index * generation_batch_size
-            hi = min(lo + generation_batch_size, len(prompts))
-            chunk, chunk_encodings = cluster.rollout.generate(
-                prompts[lo:hi],
-                num_samples=num_samples,
-                sampling_params=cluster.sampling_params,
-                prompt_extras=(prompt_extras[lo:hi] if prompt_extras else None),
-            )
-            for sample, encoded in zip(chunk, chunk_encodings):
-                sample.encoded = encoded
-            samples.extend(chunk)
-            logger.info(
-                f'[rft] round generation: {hi}/{len(prompts)} prompts done '
-                f'(chunk {chunk_index + 1}/{total_chunks}, {len(samples)} samples so far).')
-        expected = len(prompts) * num_samples
-        if len(samples) != expected:
-            raise RuntimeError(
-                f"rollout returned {len(samples)} samples, expected {expected} "
-                f"({len(prompts)} prompts * {num_samples} generations)."
-            )
-        import torch
-
-        from swift.dev.utils.scoring import weighted_rewards
-
-        rewards_per_func = cluster.worker.score_group(samples)
-        # None (an unparseable judge verdict) rides as nan: the metric fold and the weighted
-        # sum below consume the same nan-normalized sample-major matrix.
-        rewards_matrix = torch.tensor(
-            [
-                [float("nan") if value is None or value != value else float(value) for value in row]
-                for row in rewards_per_func
-            ],
-            dtype=torch.float32,
-        )
-        # Feed the whole generated rollout (before rejection) into the reward metric, so the
-        # logged train/total_reward tracks the policy's improving sample quality -- the SFT
-        # loss on the kept subset alone hides it.
-        selector.accumulate_metric(samples, rewards_matrix)
-        rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
-        selected = selector.select(samples, rewards)
-        # return the device to the trainer: sleep the sampler, then reload the weights.
-        from swift.dev.recipe.offload import sleep_for_rollout
-
-        sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-        cluster.model.reload_to_gpu()
-        entered = False
+        for batch, batch_facts in driver:
+            trajs.extend(batch)
+            for score in batch_facts.get('scores') or ():
+                # the named ORM column of one row, in the scorer order the driver stamped it; a
+                # no-scorer round leaves it empty and the matrix fold below reads [nan] per row.
+                orm_rows.append(list(((score.get('rewards') or {}).get('orm') or {}).values()))
+            lengths.extend(batch_facts.get('response_lengths') or ())
+            row_lengths.extend(p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
+                                                     batch_facts.get('response_lengths') or ()))
+            if len(trajs) % (window * num_samples) == 0:
+                logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')
     finally:
-        if entered:
-            # ended mid-window (a count-contract failure during generation): give the device
-            # back so the final save finds the model resident.
-            from swift.dev.recipe.offload import sleep_for_rollout
-
+        driver.close()
+        if cluster.colocate:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
-    return selected
+    if not trajs:
+        raise RuntimeError('the RFT round produced no scored group (every episode failed).')
+    # None (an unparseable judge verdict) rides as nan: the metric fold and the weighted sum below
+    # consume the same nan-normalized sample-major matrix.
+    rewards_matrix = torch.tensor(
+        [[float("nan") if value is None or value != value else float(value) for value in (row or ())]
+         or [float("nan")] for row in orm_rows],
+        dtype=torch.float32,
+    )
+    # Feed the whole generated rollout (before rejection) into the reward metric, so the logged
+    # train/total_reward tracks the policy's improving sample quality -- the SFT loss on the kept
+    # subset alone hides it.
+    selector.accumulate_metric(rewards_matrix, lengths)
+    rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
+    kept = selector.select(len(trajs), rewards)
+    # Without the prompt half the totals are unknown, so the model reads row lengths itself.
+    return [trajs[i] for i in kept], [row_lengths[i] for i in kept] if len(row_lengths) == len(trajs) else None
 
 
-def _train_selected_samples(cluster, state, selected, train_batch_size, save_steps):
+def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, save_steps):
     """Train full GA groups, dropping the tail; defer saves to the round boundary."""
     from swift.dev.utils.scoring import copy_inputs
 
     round_save_due = False
     update_batch_size = train_batch_size * state.ga
-    dropped = len(selected) % update_batch_size
+    dropped = len(trajs) % update_batch_size
     if dropped:
         logger.warning(f"Dropping {dropped} RFT samples that cannot fill an optimizer batch of {update_batch_size}.")
-    for start, end in optimizer_batch_slices(len(selected), train_batch_size, state.ga):
+    micro_batch_size = train_batch_size // cluster.model.device_mesh.data_world_size
+    for start, end in optimizer_batch_slices(len(trajs), train_batch_size, state.ga):
         if state.reached_max():
             break
-        update_samples = selected[start:end]
+        update = trajs[start:end]
         state.micro_step += (end - start) // train_batch_size
         cluster.model.forward_backward(
-            inputs=copy_inputs([sample.encoded for sample in update_samples]),
-            input_lengths=batch_input_lengths(update_samples),
+            inputs=copy_inputs(update),
+            input_lengths=lengths[start:end] if lengths else None,
             gradient_accumulation_steps=1,
-            micro_batch_size=train_batch_size // cluster.model.device_mesh.data_world_size,
+            micro_batch_size=micro_batch_size,
         )
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.record()
@@ -302,7 +301,7 @@ def _train_selected_samples(cluster, state, selected, train_batch_size, save_ste
     return round_save_due
 
 
-def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
+def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
             dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
             distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
             rollout_config: 'RolloutConfig', rl_config: 'RLConfig',
@@ -315,9 +314,9 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
             _save_final: bool = True) -> List[dict]:
     """RFT's five-segment main: prompts -> devices -> cluster -> loop scaffolding -> the round loop.
 
-    A synchronous multi-round rejection-sampling loop, no driver: each of ``rft_iterations`` rounds
-    pushes the just-trained policy into the sampler, blocking-generates over the WHOLE prompt set,
-    scores, selects the kept completions (:class:`RFTSelector`) and SFTs them. Checkpoints commit at
+    A multi-round rejection-sampling loop: each of ``rft_iterations`` rounds pushes the just-trained
+    policy into the sampler, streams the WHOLE prompt set through one driver (which scores every
+    episode), selects the kept completions (:class:`RFTSelector`) and SFTs them. Checkpoints commit at
     round boundaries only (the round component rides along), so a resume replays whole rounds.
     """
     # segment 1: prompts (the resource estimator reads the prompt lengths off the raw rows).
@@ -342,7 +341,12 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     # no replay (num_iterations=1); an explicit --max_steps still overrides.
     from swift.dev.builders import build_dp_mesh
 
-    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    remote_run = distributed_config.mode == 'remote'
+    if remote_run:
+        # One client process drives the server: the policy handle's own mesh sizes the batches.
+        dp_size = 1
+    else:
+        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the round's generation chunking: the derived
     # default fills whole optimizer updates on the sampling axis (num_samples per prompt), never the
@@ -372,9 +376,15 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
         reward_config=reward_config, tuner_config=tuner_config, max_steps=max_steps,
         quantize_config=quantize_config, megatron_config=megatron_config, moe_config=moe_config,
-        generation_config=generation_config, resource_plan=resource_plan, output_dir=output_dir)
-    # segment 4: the dissolved step cadence + the save closure (round-atomic, see save below).
+        generation_config=generation_config, resource_plan=resource_plan,
+        inflight=generation_batch_size * num_samples)
+    # segment 4: the prompt loader + the dissolved step cadence + the save closure (round-atomic).
+    from swift.dev.builders import build_prompt_dataloader
     from swift.dev.builders.optimizer import resolve_max_grad_norm
+
+    # Every round reads the whole prompt set once, in order; generation_batch_size prompts run at once.
+    dataloader = build_prompt_dataloader(
+        prompts, prompt_extras, seed=train_config.seed, shuffle=False, batch_size=generation_batch_size)
 
     selector = RFTSelector(
         num_generations=num_samples, rft_select=rl_config.rft_select,
@@ -423,22 +433,19 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
 
     from swift.dev.recipe.utils import filter_perf_actors
 
-    if Perf.initialize(filter_perf_actors({'model': cluster.model, 'sampler': cluster.sampler})):
+    if not remote_run and Perf.initialize(filter_perf_actors({'model': cluster.model, 'sampler': cluster.sampler})):
         logger.info('[perf] profiling enabled for the online RFT loop.')
     # segment 5: the visible round loop.
     save_steps = checkpoint_config.save_steps
-    from swift.dev.utils.scoring import copy_inputs
-
     state.handler.on_train_begin()
     try:
         for round_index in range(start_round, rl_config.rft_iterations):
             if state.reached_max():
                 break
-            selected = _sample_and_select(
-                cluster, rollout_config, reward_config, selector, prompts, prompt_extras, num_samples,
-                generation_batch_size
-            )
-            round_save_due = _train_selected_samples(cluster, state, selected, train_batch_size, save_steps)
+            kept_trajs, kept_lengths = _sample_and_select(
+                cluster, rollout_config, reward_config, selector, dataloader, num_samples, generation_batch_size)
+            round_save_due = _train_selected_samples(
+                cluster, state, kept_trajs, kept_lengths, train_batch_size, save_steps)
             # Commit the round only after its SFT pass has completed (or max_steps deliberately
             # truncated it), then persist at this safe boundary.
             rft_state.next_round = round_index + 1
@@ -459,9 +466,13 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     finally:
         Perf.shutdown()
         # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the Cluster's
-        # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side).
+        # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side). A served
+        # sampler's lifecycle is the server session's, not this client's.
         cluster.rollout.close()
-        cluster.sampler.shutdown()
+        cluster.sampler.shutdown() if not remote_run else None
+        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+        # record, and close() is what writes the summary.
+        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
         state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json was written at initialize_rl_devices.

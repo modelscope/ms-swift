@@ -1,9 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """An EXTERNAL tool plugin: bring your own tools instead of the built-in ``sandbox``.
 
-``--tools`` selects tool plugins by registered name. ``sandbox`` is the built-in one (it exposes the
-leased env's own run_command/write_file/read_file). To use your own, write a ``ToolPlugin`` in a .py
-like this, register it under a name, then point the run at the file and the name::
+``--tools`` selects tool plugins by registered name. ``sandbox`` is the built-in one (it builds the
+sandbox env, whose run_command/write_file/read_file the rollout binds to each episode's session). To
+use your own, write a ``ToolPlugin`` in a .py like this, register it under a name, then point the run
+at the file and the name::
 
     swift infer ... --external_plugins examples/infer/code/custom_tools.py --tools calculator
 
@@ -14,10 +15,9 @@ hub id (``hf://``/``ms://``, downloaded if absent), and imports it before anythi
 needs ``--max_turns``.
 
 Contract (see ``swift.dev.utils.plugin.ToolPlugin`` and ``twinkle_agentic.tools.base.Tool``):
-  * ``ToolPlugin.build(env)`` is called once per episode with the sandbox ``Env`` this episode leased,
-    and returns the twinkle ``Tool`` objects the model may call. A tool that needs no sandbox can ignore
-    ``env`` (the calculator does); one that acts in the workspace wraps ``env`` (see ``EnvTool.from_env``,
-    which is exactly what the built-in ``sandbox`` plugin returns).
+  * ``ToolPlugin.build()`` is called once per run and returns the twinkle ``Tool`` objects every
+    episode may call; the rollout copies them per episode. Tools that act in the sandbox workspace
+    are the env's own (``--tools sandbox``), not built here.
   * Each ``Tool`` implements ``__call__(tool_name, arguments) -> str`` (the observation fed back to the
     model) and ``tool_info() -> {'type': 'function', 'function': {name, description, parameters}}``
     (the OpenAI-shaped schema advertised in the prompt). ``ToolManager`` indexes tools by that name.
@@ -90,7 +90,6 @@ class _Calculator:
 class CalculatorTools(ToolPlugin):
     """Expose the calculator tool. Selected with ``--tools calculator`` after ``--external_plugins`` this file."""
 
-    def build(self, env: Any) -> List[Any]:
-        # This tool is stateless and touches no workspace, so the leased env is ignored. Return one
-        # instance per episode; return [] to contribute nothing, or wrap env (EnvTool) to act in it.
+    def build(self) -> List[Any]:
+        # Stateless and touching no workspace; return [] to contribute nothing.
         return [_Calculator()]

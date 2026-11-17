@@ -279,17 +279,9 @@ def build_sampler(
         if not instance_id:
             raise ValueError("instance_id must be non-empty when provided.")
         extra["instance_id"] = instance_id
-    sampler = sampler_cls(model_config.model, engine_args=kwargs, device_mesh=device_mesh, **extra)
-    try:
-        if template is not None:
-            sampler.set_template(template)
-    except BaseException:
-        try:
-            sampler.close_workers()
-        except Exception:
-            logger.warning("Failed to close sampler workers after template init failed.", exc_info=True)
-        raise
-    return sampler
+    if template is not None:
+        extra["template"] = template
+    return sampler_cls(model_config.model, engine_args=kwargs, device_mesh=device_mesh, **extra)
 
 
 def _build_client_sampler(model_config: "ModelConfig", template: Any,
