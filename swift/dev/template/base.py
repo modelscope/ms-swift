@@ -2548,7 +2548,7 @@ class Template(ProcessorMixin):
                 and k not in kwargs
             ):
                 kwargs[k] = v
-        if "inputs_embeds" in kwargs:
+        if kwargs.get("inputs_embeds") is not None:
             kwargs.pop("input_ids", None)
 
         base_model = self.get_base_model(model)

@@ -104,6 +104,21 @@ class MergeComponent(BaseWeightTransform):
             model = peft_model.merge_and_unload()
 
         logger.info('Saving merged weights...')
+        # A decision base carries its head dual-mounted (twinkle's task_head / scoring_head);
+        # the merged dir must ship a PURE base -- the head rides its own sidecar export below.
+        # head_state_prefixes asks the model which mounts actually exist: a headless base
+        # (causal_lm, or a seq_cls head living in modules_to_save) strips nothing, and a
+        # legacy single-mount checkpoint (THX-02's task_forward attach) strips just its one
+        # prefix -- state_dict emits a key under EVERY mount (it does not dedupe shared
+        # modules), so filtering only 'scoring_head.' would leak 'task_head.*' keys.
+        from twinkle.model.tasks import head_state_prefixes
+
+        prefixes = head_state_prefixes(model)
+        state_dict = None
+        if prefixes:
+            state_dict = {key: value for key, value in model.state_dict().items()
+                          if not any(key == prefix or key.startswith(f'{prefix}.') for prefix in prefixes)}
+
         save_checkpoint(
             model,
             processor,
@@ -113,7 +128,17 @@ class MergeComponent(BaseWeightTransform):
             # Copy the adapter dir's own extra files (args.json, chat template, ...) alongside the
             # weights, so the merged output is self-contained.
             model_dirs=list(self.tuner_config.adapters),
-            additional_saved_files=model.model_meta.additional_saved_files)
+            additional_saved_files=model.model_meta.additional_saved_files,
+            state_dict=state_dict)
+        # The head sidecar: without it the merged model cannot score (the LoRA deltas folded
+        # into the backbone; the head's trained state rides beside the adapter, not inside it).
+        from swift.dev.model.decision_head import export_merged_scoring_head
+
+        export_merged_scoring_head(
+            model,
+            getattr(model, 'model_dir', None) or self.model_config.model,
+            self.tuner_config.adapters,
+            output_dir)
         logger.info(f'Successfully merged LoRA and saved in `{output_dir}`.')
         return output_dir
 
@@ -392,3 +417,6 @@ class StreamingMerge(StreamingWeightTransform):
             output_dir,
             model_dirs=list(self.adapters) + [self._base_dir],
             additional_saved_files=(model_meta.additional_saved_files if model_meta is not None else None))
+        from swift.dev.model.decision_head import export_merged_scoring_head
+
+        export_merged_scoring_head(base, self._base_dir, self.adapters, output_dir)
