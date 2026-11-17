@@ -117,6 +117,18 @@ class JevModelLoader(ScoringModelLoader, Qwen3_5Loader):
             with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel, keep_in_fp32_modules):
                 model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
             return self._attach_head(model, model_dir, config)
+        if str(getattr(config, 'model_type', '')).lower() == 'qwen3_5_moe':
+            from transformers import Qwen3_5MoeForConditionalGeneration, Qwen3_5MoePreTrainedModel
+
+            from .qwen import (Qwen2VLLoader, _get_qwen3_5_keep_in_fp32_modules, _patch_qwen3_5_keep_in_fp32_modules,
+                               _patch_qwen3_5_linear_attention_sequence_parallel, _register_qwen3_5_vision_kwargs_hook)
+            self.auto_model_cls = self.auto_model_cls or Qwen3_5MoeForConditionalGeneration
+            _patch_qwen3_5_linear_attention_sequence_parallel()
+            keep_in_fp32_modules = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+            with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5MoePreTrainedModel, keep_in_fp32_modules):
+                model = Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+            _register_qwen3_5_vision_kwargs_hook(model)
+            return self._attach_head(model, model_dir, config)
         return super().get_model(model_dir, config, processor, model_kwargs)
 
 
@@ -127,6 +139,7 @@ register_model(
                 Model('autotrust/JEV-9B', 'autotrust/JEV-9B'),
                 Model('autotrust/JEV-27B', 'autotrust/JEV-27B'),
                 Model('autotrust/JEV-27B-VL', 'autotrust/JEV-27B-VL'),
+                Model('autotrust/JEV-35B', 'autotrust/JEV-35B'),
             ], TemplateType.jev)
         ],
         JevModelLoader,
