@@ -21,7 +21,7 @@ The following stack was used for the single-host, four-layer, 2K-packed, 10-step
 
 Use the listed MCore fork branch containing the V4.1 / native Engram implementation, and the listed branches for MegatronAdaptor and TransformerEngineNPU. Follow each project's source installation instructions, use editable installs, and verify that runtime imports resolve to those checkouts.
 
-Before running, install the `addsubmuldiv/mcore-bridge:dsv41` branch from the companion [mcore-bridge PR #251](https://github.com/modelscope/mcore-bridge/pull/251), which provides the shared switch and CPU Engram implementation. Meeting the minimum version in `requirements/megatron.txt` alone is insufficient; older bridge versions may ignore the new switch. The example scripts check for this interface before launching training and fail if support is missing.
+Before running, install the `main` branch from the upstream [modelscope/mcore-bridge](https://github.com/modelscope/mcore-bridge/tree/main) repository, which includes the shared switch and CPU Engram implementation from the merged [PR #251](https://github.com/modelscope/mcore-bridge/pull/251). Meeting the minimum version in `requirements/megatron.txt` alone is insufficient; older bridge versions may ignore the new switch. The example scripts check for this interface before launching training and fail if support is missing.
 
 ## Single-host reduced-model validation
 

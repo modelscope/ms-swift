@@ -21,7 +21,7 @@
 
 MCore 使用上述包含 V4.1 / 原生 Engram 实现的 fork 分支。MegatronAdaptor 和 TransformerEngineNPU 分别使用表中的分支，按各项目的安装说明使用源码 editable 安装，并确认运行时导入的是这些 checkout。
 
-运行前需安装配套 [mcore-bridge PR #251](https://github.com/modelscope/mcore-bridge/pull/251) 的 `addsubmuldiv/mcore-bridge:dsv41` 分支，其中包含统一开关及 CPU Engram 实现。仅满足 `requirements/megatron.txt` 的版本下限并不足够；旧版 bridge 可能忽略新开关。示例脚本会在启动训练前检查该接口，缺少支持时直接报错。
+运行前需从官方 [modelscope/mcore-bridge](https://github.com/modelscope/mcore-bridge/tree/main) 仓库的 `main` 分支安装，其中已包含统一开关及 CPU Engram 实现（[PR #251](https://github.com/modelscope/mcore-bridge/pull/251) 已合并）。仅满足 `requirements/megatron.txt` 的版本下限并不足够；旧版 bridge 可能忽略新开关。示例脚本会在启动训练前检查该接口，缺少支持时直接报错。
 
 ## 单机减层验证
 
