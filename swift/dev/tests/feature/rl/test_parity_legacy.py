@@ -111,7 +111,7 @@ _PARITY_GAP = {'cpo', 'orpo'}
 
 
 @pytest.mark.parametrize('rl_type', sorted(_LATER_BAND))
-def test_reference_free_loss_parity_vs_legacy(rl_type, rl_data, tmp_path):
+def test_reference_free_loss_parity_vs_legacy(rl_type, rl_data, tmp_path, request):
     """Row 1: dev's ``<cpo|orpo>`` per-step loss restores legacy ``swift.rlhf_main``'s (same model/data/hparams).
 
     Both sides ride the SAME cached Qwen2.5-0.5B + the SAME 8 preference rows + matched deterministic
