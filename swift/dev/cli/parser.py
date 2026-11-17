@@ -46,6 +46,12 @@ def _patch_type_hints():
             if v is Any:
                 hints[k] = str
                 continue
+            # Optional[Any] (Union[Any, None]) carries the same string spec; the bare-Any branch
+            # above does not cover the Optional wrapper, which would otherwise reach argparse as
+            # type=Any and reject the spec ("invalid Any value").
+            if get_origin(v) is Union and set(get_args(v)) == {Any, type(None)}:
+                hints[k] = Optional[str]
+                continue
             if get_origin(v) is list and get_args(v) == (Any, ):
                 hints[k] = List[str]
                 continue
