@@ -149,10 +149,11 @@ def test_grpo_e2e_colocate_vllm(tiny_qwen2_5, rl_data, tmp_path, assert_rl_train
     This is the on-policy anchor -- the whole online family rides this rollout + weight-sync + group-
     normalized-advantage path. It drives ``run_rl`` under ``mode='ray'`` with a colocated vLLM sampler
     that GENERATES ``num_generations`` completions per prompt (temperature>0 so they differ), scores them
-    with a content-varied ORM, and takes real optimizer steps. Colocate is the PLAIN-loop branch
-    (``run_grpo._colocate_loop``; deep_refactor.md 75-86: no StreamingDriver, that is the disaggregated
-    branch), so the stream-driver fingerprints (``stream_publishes`` / ``version_span_mean``) do NOT exist
-    here -- they are pinned by the disaggregated async suite (``test_async_e2e``). What proves this did not
+    with a content-varied ORM, and takes real optimizer steps. Colocate rides the SAME unified
+    ``StreamingDriver`` as disaggregated (the earlier driver-less ``_colocate_loop`` was unified away) and is
+    strictly on-policy, expressed as a measured ZERO version skew (``version_span_mean == 0``); the live
+    ``policy_version`` counter is present (the retired ``stream_publishes`` tally is not). The zero-skew
+    on-policy cycle is pinned by ``test_async_e2e`` row 1. What proves this did not
     degrade to a non-rollout loop is the GRPO surrogate telemetry the model-registered GRPOMetric emits:
     ``train/approx_kl`` and ``train/clip_ratio`` both need the rollout-time behaviour logps (``old_logp``)
     contrasted against the training forward, so they are absent unless a real on-policy rollout fed the

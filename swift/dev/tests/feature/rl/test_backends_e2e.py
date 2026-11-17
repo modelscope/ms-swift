@@ -196,10 +196,12 @@ def test_megatron_grpo_online_rollout_and_weight_sync(tiny_qwen2_5, rl_data, tmp
     Post-conditions beyond the universal ones: the history carries the GRPO policy-gradient fingerprint
     (``train/approx_kl`` / ``train/clip_ratio`` -- absent if GRPO degraded to a non-rollout loop) and ``lora_B``
     moved (a non-zero group-relative advantage back-propagated through the megatron policy). This is a
-    COLOCATE run, which ``run_grpo`` executes as a driver-less plain loop, so it emits no StreamingDriver
-    telemetry (``stream_publishes`` / ``version_span_mean`` are disaggregated-only); the per-window
-    ``sync_weights(merge_and_sync=True)`` is unconditional in that loop, and the measurable publish cadence is
-    asserted on the disaggregated path in ``test_placement_e2e``. The exact loss is NOT compared to the
+    COLOCATE run, which ``run_grpo`` rides on the SAME unified ``StreamingDriver`` as disaggregated (the
+    earlier driver-less ``_colocate_loop`` was unified away), strictly on-policy with a measured ZERO version
+    skew (``version_span_mean == 0``); the in-place pause/resume publish is unconditional every window
+    (78a1a1c55 retired the ``weight_sync_strategy`` / ``allow_partial_rollout`` knobs), and the measurable
+    publish cadence (``policy_version`` advancing) is asserted on the disaggregated path in
+    ``test_placement_e2e``. The exact loss is NOT compared to the
     transformers backend here: a temperature>0 rollout is sampled, so the two backends' completions differ by
     construction -- the anchor is that the megatron online path trains at all, with the rollout+sync machinery
     live.

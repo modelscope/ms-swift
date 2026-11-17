@@ -97,8 +97,8 @@ def test_vl_grpo_rollout_consumes_image(tiny_vl, rl_data, tmp_path, assert_rl_tr
     independently proves it reached scoring. Post-conditions beyond the universal ones: the GRPO
     policy-gradient fingerprint (``train/approx_kl`` / ``train/clip_ratio`` -- absent if GRPO degraded to a
     non-rollout loop) and a non-zero group-relative advantage moving the adapter. A colocate run rides the
-    driver-less plain loop, so it emits no StreamingDriver telemetry (``stream_publishes`` / ``version_span_mean``
-    are disaggregated-only); the policy-gradient metrics are the on-rollout fingerprint here.
+    unified ``StreamingDriver``, strictly on-policy with a measured ZERO version skew (``version_span_mean ==
+    0``); the policy-gradient metrics are the on-rollout fingerprint here.
     """
     out_dir = str(tmp_path / 'out_vl_grpo')
     configs = rl_configs(
@@ -165,8 +165,8 @@ def test_text_grpo_control_no_media(tiny_qwen2_5, rl_data, tmp_path, assert_rl_t
     the mirror of the VL reward's assertion -- so together the two prove the media column is threaded exactly
     when the row has media (not always, not never). Training a text policy to a moved ``lora_B`` here shows the
     multimodal wiring is additive: it neither breaks the text path nor is required for GRPO to train. The
-    colocate run rides the driver-less plain loop, so the on-rollout fingerprint is the GRPO policy-gradient
-    pair (``train/approx_kl`` / ``train/clip_ratio``), not the disaggregated-only StreamingDriver telemetry.
+    colocate run rides the unified ``StreamingDriver`` (strictly on-policy, zero version skew), so the
+    on-rollout fingerprint is the GRPO policy-gradient pair (``train/approx_kl`` / ``train/clip_ratio``).
     """
     out_dir = str(tmp_path / 'out_text_control')
     configs = rl_configs(

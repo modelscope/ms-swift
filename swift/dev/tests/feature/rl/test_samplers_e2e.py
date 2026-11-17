@@ -16,13 +16,16 @@ each carrying ``sequences[*].tokens``):
 | 1 | vLLM greedy determinism + temperature reaches the engine | one prompt; greedy ``temperature=0`` called twice vs hot ``temperature=1.5`` ``num_samples=4`` | greedy: the two calls return IDENTICAL token sequences; hot: the 4 draws are NOT all identical | sampling_params swallowed by the engine (a fixed default temperature would make greedy non-reproducible or hot collapse); degenerate/empty generation. (greedy uses two ``num_samples=1`` calls, not ``n=4`` in one: vLLM forbids ``n>1`` under greedy) |
 | 2 | transformers in-process generate | a Trajectory row, ``max_tokens>0`` | one ``SampleResponse`` per input, each with a non-empty generated token sequence | the TransformersModel-only in-place generate verb broken/removed (basic principle 1's one allowed backend difference) |
 
-Case 3 (the former "weight publication fires every window" on a colocate GRPO run) is GONE: a colocate run is
-now a driver-less plain loop (``run_grpo._colocate_loop``) that calls ``sync_weights(merge_and_sync=True)``
-UNCONDITIONALLY every window -- there is no StreamingDriver, so no ``stream_publishes`` counter to read, and
-no skip branch that could silently regress. The per-window publication is therefore structural on colocate;
-the MEASURABLE publish cadence (``stream_publishes >= 2``) is asserted on the disaggregated driver path in
-``test_placement_e2e.py``, the colocate on-policy multi-window cycle in ``test_async_e2e.py`` row 1, and the
-colocate weight DELIVERY (synced bytes arriving) in ``test_backends_e2e.py``'s megatron GRPO IPC hand-over.
+Case 3 (the former "weight publication fires every window" on a colocate GRPO run) is GONE: ``run_grpo`` now
+builds the SAME unified ``StreamingDriver`` for colocate and disaggregated (the earlier driver-less
+``_colocate_loop`` was unified away), and the in-place pause/resume publish is UNCONDITIONAL every window
+(78a1a1c55 retired the ``weight_sync_strategy`` / ``allow_partial_rollout`` knobs). A colocate run is strictly
+on-policy, expressed as a measured ZERO version skew (``version_span_mean == 0``), not as telemetry absence.
+The product reports the live ``policy_version`` counter (not a separate ``stream_publishes`` tally); the
+MEASURABLE publish cadence (``policy_version`` advancing >= 2) is asserted on the disaggregated driver path in
+``test_placement_e2e.py``, the colocate on-policy multi-window zero-skew cycle in ``test_async_e2e.py`` row 1,
+and the colocate weight DELIVERY (synced bytes arriving) in ``test_backends_e2e.py``'s megatron GRPO IPC
+hand-over.
 
 N/A -> skip-guarded (S7-21): ``sglang`` is not installed in this environment; case 3 below carries the full
 peer contract behind ``pytest.importorskip('sglang')`` so it SKIPS here (never errors) and runs the real
