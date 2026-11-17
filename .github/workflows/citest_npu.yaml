@@ -39,7 +39,7 @@ concurrency:
 jobs:
   unittest:
     # The type of runner that the job will run on
-    runs-on: [linux-aarch64-a2-1]
+    runs-on: [linux-aarch64-a2-swift-fed-1]
     timeout-minutes: 240
     container:
       image: 'ascendai/cann:8.3.rc2-910b-ubuntu22.04-py3.11'
