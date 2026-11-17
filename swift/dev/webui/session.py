@@ -509,6 +509,10 @@ def _bound(value: Any, depth: int = 0) -> Any:
         return [_bound(v, depth + 1) for v in list(value)[:16]]
     if isinstance(value, (int, float, bool)) or value is None:
         return value
+    # 控制句柄（dataloader/driver/challenger 的 source 口投影出组件实例本体）：
+    # repr 是内存地址，对读者零信息；给出「是什么+属于谁」的摘要。
+    if hasattr(value, 'node_id') and hasattr(value, 'port_value'):
+        return f'<控制句柄：{type(value).__name__} {value.node_id}（source 口的组件引用，非数据）>'
     return str(value)[:256]
 
 

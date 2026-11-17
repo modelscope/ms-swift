@@ -9,6 +9,7 @@ in the session process.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Any, Dict, List
 
 from ..component import ComponentError, StageComponent
@@ -139,7 +140,13 @@ class PrivilegedViewStage(StageComponent):
                 str(self.params.get('tokenizer') or ''),
                 dict(self.params.get('template_config') or {}), self.node_id,
                 model_kv=dict(self.params.get('model_config') or {}))
-            view = self._view_instance = PrivilegedView(template=template, remote_group=NUMERIC_GROUP)
+            # instance_id feeds the actor NAME (group + class + id): the node id
+            # keeps same-type nodes distinct, the random suffix keeps a rebuilt
+            # node from colliding with its predecessor -- whose kill may not have
+            # landed in the GCS yet, and Ray rejects a taken name at creation.
+            view = self._view_instance = PrivilegedView(
+                template=template, instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}',
+                remote_group=NUMERIC_GROUP)
         return view
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
@@ -147,6 +154,19 @@ class PrivilegedViewStage(StageComponent):
         if data is None:
             raise ComponentError(f'{self.node_id}: privileged_view needs a wired traj input')
         return {'traj': self._view()(data)}
+
+    def release(self) -> None:
+        """Kill the view's remote workers: the session calls this on
+        invalidation (param change / graph revision), so the actor never
+        outlives the component that built it."""
+        view = getattr(self, '_view_instance', None)
+        if view is None:
+            return
+        self._view_instance = None
+        try:
+            view.close()
+        except Exception:
+            pass
 
 
 class AdvantageStage(StageComponent):
@@ -180,9 +200,32 @@ class AdvantageStage(StageComponent):
                 raise ComponentError(
                     f'{self.node_id}: unknown estimator {name!r}; one of {sorted(ESTIMATORS)} or gae')
             cls = ESTIMATORS[name]
-        kwargs = dict(num_generations=int(self.params.get('num_generations', 8) or 8),
-                      **dict(self.params.get('kwargs') or {}))
+        kwargs = dict(self.params.get('kwargs') or {})
+        if name != 'gae':
+            # GAE is token-level: its constructor REJECTS num_generations (no group
+            # fold to size). The node param still declares the group width for the
+            # graph's width check; only the scalar family consumes it here. An
+            # explicit kwargs entry always wins over the node param.
+            kwargs.setdefault('num_generations', int(self.params.get('num_generations', 8) or 8))
+        # instance_id feeds the actor NAME (group + class + id): the node id
+        # keeps same-type nodes distinct, the random suffix keeps a rebuilt
+        # node from colliding with its predecessor -- whose kill may not have
+        # landed in the GCS yet, and Ray rejects a taken name at creation.
+        kwargs['instance_id'] = f'{self.node_id}-{uuid.uuid4().hex[:8]}'
         return cls(**kwargs, remote_group=NUMERIC_GROUP)
+
+    def release(self) -> None:
+        """Kill the estimator's remote workers: the session calls this on
+        invalidation (param change / graph revision), so the actor never
+        outlives the component that built it."""
+        estimator = getattr(self, '_estimator_instance', None)
+        if estimator is None:
+            return
+        self._estimator_instance = None
+        try:
+            estimator.close()
+        except Exception:
+            pass
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
         trajs = inputs.get('traj') if inputs.get('traj') is not None else batch
@@ -205,9 +248,26 @@ class AdvantageStage(StageComponent):
         # training loop (train_step encodes them under its own tokenizer), the summary
         # is the light metric port's payload.
         new_trajs, summary = deref(result)
-        metric = {'values': {key: float(value) for key, value in summary.items()
-                             if isinstance(value, (int, float)) and not isinstance(value, bool)},
-                  'invalid_count': 0}
+        # The estimator's return declares stash=(0,): the worker lifts the traj list
+        # ELEMENT-WISE to ObjectRefs, and deref resolves only the top-level handle --
+        # every row would still ride as a reference. This port's contract is plain
+        # dicts (the session owns the row bodies: the driver runs in-process), and the
+        # consumers encode locally, so the rows materialise HERE, once, at the seam
+        # where the remote estimator's output enters the row lane.
+        import ray
+        new_trajs = [ray.get(row) if isinstance(row, ray.ObjectRef) else row for row in new_trajs]
+        # The summary's nested scalar dicts (rollout_correction's train-vs-sampler
+        # logp diagnostics) flatten to prefixed keys: the metric port carries
+        # scalars only, and dropping the dict would silently hide the diagnostics.
+        values: Dict[str, float] = {}
+        for key, value in summary.items():
+            if isinstance(value, dict):
+                for sub, item in value.items():
+                    if isinstance(item, (int, float)) and not isinstance(item, bool):
+                        values[f'{key}/{sub}'] = float(item)
+            elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                values[key] = float(value)
+        metric = {'values': values, 'invalid_count': 0}
         return {'traj': new_trajs, 'metric': metric}
 
 

@@ -86,7 +86,11 @@ GROUP_RULE = D('group_rule', '分组采样规则', 'Resource', '完整组准入�
 LOSS_COMP = D('loss', '损失函数', 'Resource', 'L(theta)：策略更新目标；注册名或自定义公式的损失对象。',
     ports_out=(P('loss', 'LOSS', '损失对象'),),
     params=(Q('kind', '损失函数', 'cross_entropy', options=LOSS_OPTIONS),
-            Q('loss_kwargs', '损失构造参数', {}, type='dict'),
+            Q('loss_kwargs', '损失构造参数', {}, type='dict',
+              doc='键名绑定 kind 对应损失类（twinkle.loss）的构造器，未知键在构造前被拒绝。'
+                  'kind=grpo 常用：epsilon/epsilon_high（ratio 裁剪下/上界）、beta（到参考策略的 KL 罚系数，'
+                  '>0 需 ref_logps 在场——接 advantage.ref_out 或 train_step.reference）、entropy_coef（熵奖励系数）。'
+                  '其它 kind 的旋钮见对应损失类构造器'),
             Q('code', '自定义公式', '',
               doc='用户公式 def loss(**lanes)->float；设置时忽略注册名')),
     surface='algorithm')

@@ -160,7 +160,17 @@ def encode_rows(template: Any, data: Any) -> list:
     with ``rollout_logps``), so it is returned verbatim: re-encoding its
     messages would rebuild the labels from scratch and count turn-boundary
     tokens the ledger never put in the response, misaligning every token-level
-    lane downstream. Anything unrecognised fails loudly."""
+    lane downstream. Anything unrecognised fails loudly.
+
+    Paired preference rows (a ``rejected_messages`` / ``rejected_response``
+    side alongside the chosen conversation) encode into TWO standalone
+    features per row, interleaved ``[chosen_1, rejected_1, chosen_2, ...]`` --
+    the layout the DPO-family loss's even/odd split reads (the recipe's
+    PreferenceEncoder produces the same interleave). The decision is
+    DATA-driven so every encoder of the same rows -- train_step AND the
+    reference model_forward -- yields the identical 2P layout and the
+    reference logps stay aligned; a plain encode would silently drop the
+    rejected side and let the loss pair unrelated rows."""
     items = data if isinstance(data, list) else (
         (data or {}).get('rows', []) if isinstance(data, dict) else [])
     if isinstance(data, dict) and not isinstance(data.get('rows', []), list):
@@ -168,7 +178,11 @@ def encode_rows(template: Any, data: Any) -> list:
             'cannot encode: a dict batch must expose a row list under "rows" '
             f'(got keys {sorted(data.keys())[:8]})')
     if items and not all(isinstance(item, dict) for item in items):
-        raise ComponentError('cannot encode: items are neither message rows nor trajectories')
+        kinds = sorted({type(item).__name__ for item in items if not isinstance(item, dict)})
+        raise ComponentError(
+            'cannot encode: items are neither message rows nor trajectories '
+            f'(got {kinds}; a reference means an upstream stage handed off a stashed '
+            'payload without materialising it)')
     if items and all(item.get('input_ids') is not None for item in items):
         return list(items)
     if any(item.get('input_ids') is not None for item in items):
@@ -176,6 +190,28 @@ def encode_rows(template: Any, data: Any) -> list:
         raise ComponentError(
             f'cannot encode: {len(failed)} of {len(items)} trajectories carry no encoding '
             f'(a failed episode, e.g. {failed[0]!r}); re-encoding them would misalign the batch')
+    paired = [item for item in items
+              if item.get('rejected_messages') is not None or item.get('rejected_response') is not None]
+    if paired:
+        if len(paired) != len(items):
+            raise ComponentError(
+                'cannot encode: the batch mixes preference rows (with a rejected side) and plain '
+                'rows; the interleaved pair layout must stay atomic -- use a fully paired dataset')
+        from swift.dev.template.inputs import preference_sample_from_row
+        features: list = []
+        for row in items:
+            # encode(PreferenceSample) returns {'chosen': feature, 'rejected': feature} --
+            # each side already a standalone finalized feature (prefix stripped by the template).
+            encoded = template.encode(preference_sample_from_row(row))
+            for side in ('chosen', 'rejected'):
+                feature = dict(encoded.get(side) or {})
+                feature.pop('length', None)
+                if 'input_ids' not in feature:
+                    raise ComponentError(
+                        f'cannot encode: the preference row produced no {side!r} sequence; '
+                        'DPO-family losses need paired chosen/rejected data')
+                features.append(feature)
+        return features
     encode = getattr(template, 'batch_encode', None)
     if not callable(encode):
         raise ComponentError(f'the template {template!r} exposes no batch_encode()')
