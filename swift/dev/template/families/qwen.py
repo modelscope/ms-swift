@@ -725,6 +725,21 @@ class Qwen3_5Template(Qwen3VLTemplate):
         image_embeds = visual(pixels, grid_thw=grid).pooler_output
         return inputs_embeds + image_embeds.mean().to(inputs_embeds.device) * 0.0
 
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        mm_types = inputs.get("mm_token_type_ids")
+        if any(inputs.get(key) is not None for key in ("image_grid_thw", "video_grid_thw")) or (
+            mm_types is not None and torch.any(mm_types != 0)
+        ):
+            return super()._get_position_ids(inputs)
+        # With no media all three mRoPE axes are ordinary token positions.
+        mask = inputs.get("attention_mask_2d")
+        if mask is None:
+            mask = inputs.get("attention_mask")
+        if mask is None:
+            mask = torch.ones_like(inputs["input_ids"])
+        positions = (mask.bool().long().cumsum(-1) - 1).masked_fill(~mask.bool(), 0)
+        return {"position_ids": self._concat_text_position_ids(positions.unsqueeze(0).expand(3, -1, -1))}
+
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if self.padding_free and self.sequence_parallel_size <= 1 and not self.transformers_5_9:
             raise RuntimeError(

@@ -1,12 +1,38 @@
-"""Text fast paths must preserve values and the zero-gradient vision graph."""
+"""Text fast paths must preserve positions, values and the zero-gradient vision graph."""
 
+from functools import partial
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 import torch
 from transformers import Qwen3_5Config
+from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5Model
 
-from swift.dev.template.families.qwen import Qwen3_5Template
+from swift.dev.template.families.qwen import Qwen2VLTemplate, Qwen3_5Template
+
+
+@pytest.mark.parametrize("mask", [None, [1, 1, 1, 1], [0, 0, 1, 1], [1, 1, 0, 0], [1, 0, 1, 0]])
+def test_text_positions_match_transformers(mask):
+    template = object.__new__(Qwen3_5Template)
+    model = SimpleNamespace(config=Qwen3_5Config())
+    template._get_get_rope_index = lambda: partial(Qwen3_5Model.get_rope_index, model)
+    inputs = {"input_ids": torch.tensor([[10, 11, 12, 13]]), "mm_token_type_ids": torch.zeros(1, 4, dtype=torch.long)}
+    if mask is not None:
+        inputs["attention_mask"] = torch.tensor([mask])
+    expected = Qwen2VLTemplate._get_position_ids(template, inputs)["position_ids"]
+    actual = template._get_position_ids(inputs)["position_ids"]
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("key", ["image_grid_thw", "video_grid_thw", "mm_token_type_ids"])
+def test_multimodal_positions_keep_original_path(key, monkeypatch):
+    template = object.__new__(Qwen3_5Template)
+    original = Mock(return_value={"position_ids": "multimodal"})
+    monkeypatch.setattr(Qwen2VLTemplate, "_get_position_ids", original)
+    result = template._get_position_ids({key: torch.ones(1, 3, dtype=torch.long)})
+    assert result == {"position_ids": "multimodal"}
+    original.assert_called_once()
 
 
 def test_dummy_preserves_embeddings_and_zero_vision_gradient():
