@@ -137,15 +137,6 @@ def build_server_config(
 
     if deploy_config.merge_lora and adapter_mapping:
         model_config, adapter_mapping = _merge_single_adapter(model_config, template_config, adapter_mapping)
-    if adapter_mapping:
-        # Multi-adapter serving is not wired through yet: the gateway registers the adapter names,
-        # but requests carry only ``adapter_name`` while the sampler resolves LoRA from ``adapter_uri``
-        # -- the mapping's paths never reach the engine, so every request would silently answer from
-        # the BASE model. Fail loudly instead (single adapter: use merge_lora; several: one deploy each).
-        raise ValueError(
-            f'Deploying {len(adapter_mapping)} adapters with per-request routing is not supported yet: the '
-            'adapter paths cannot reach the sampler engine. Use --merge_lora true to fold a single '
-            'adapter into the weights, or start one deployment per adapter.')
     if model_config.model is None:
         raise ValueError('ModelConfig.model is required to deploy (it is the model id/path the sampler loads).')
 
@@ -170,9 +161,13 @@ def build_server_config(
     data_plane_url = (f'{scheme}://127.0.0.1:{deploy_config.port}{route_prefix}/data-plane'
                       if deploy_config.enable_data_plane else None)
 
-    supported_models: List[str] = list(gateway_supported_models or [public_name])
-    if adapter_mapping:
-        supported_models += [name for name in adapter_mapping if name not in supported_models]
+    supported_models: List[Any] = list(gateway_supported_models or [public_name])
+    # Adapter names join the registry as dict entries carrying base_model (str entries stay
+    # plain base models) -- GatewayServer._normalize_models accepts both shapes, and
+    # _resolve_base_model routes an adapter's name to this deployment's sampler through it.
+    supported_models += [
+        {'model_name': name, 'base_model': public_name} for name in adapter_mapping if name not in supported_models
+    ]
     skip = set(skip_apps or ())
     applications: List[Any] = []
     if 'server' not in skip:
@@ -202,6 +197,7 @@ def build_server_config(
                 engine_args=sampler_engine_args or None,
                 data_plane_url=data_plane_url,
                 template=template_spec,
+                adapters=adapter_mapping or None,
             ),
             deployments=[_deployment('SamplerManagement', deploy_config)],
         ))
@@ -352,6 +348,24 @@ def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelCon
 
     apps = _serve_status()
     sampler_app = _sampler_app_name(public_name)
+
+    # Detach-mode teardown: serve.delete below only removes the router application. The
+    # pool controller (a detached actor that outlives the deploying driver) owns the
+    # sampling instances, engine deployment and placement group -- release them first,
+    # so devices are free again even if the router app is already gone (torn state).
+    from twinkle.server.sampler.pool.actor import stop_sampler_controller
+    try:
+        released = stop_sampler_controller(deploy_config.ray_namespace,
+                                           f'{deploy_config.route_prefix}/sampler/{public_name}')
+    except Exception as e:
+        # Pool cleanup must not abort teardown: skipping serve.delete below
+        # would leave the router app behind too (double residue).
+        logger.warning(f'sampling pool cleanup for {public_name!r} failed ({e}); '
+                       'continuing to delete the router app.')
+        released = False
+    if released:
+        logger.info(f'released the sampling pool for {public_name!r} (controller shutdown).')
+
     if sampler_app not in apps:
         running = sorted(n for n in apps if n.startswith('sampler-'))
         raise ValueError(f'no deployment found for model {public_name!r} '

@@ -11,10 +11,12 @@ Execution units:
 
 - ``run_component(target)`` -- one click. A loop-free target runs only what
   has not run yet (a re-click with every prerequisite done runs the target
-  alone); a target inside a frame turns that frame one full circle -- the
-  frame's later members, then its earlier members around the feedback edge --
-  without rebuilding any resident resource. Cross-frame producers turn
-  first: every consuming round reads a fresh production.
+  alone); a target inside a frame advances the frame's circle TO the target:
+  the first click runs the circle up to it and stops there, a re-click turns
+  one full lap back to it -- the frame's later members, then its earlier
+  members around the feedback edge -- without rebuilding any resident
+  resource. Cross-frame producers turn first: every consuming round reads a
+  fresh production.
 - ``run(target=None)`` -- the whole graph: an unceasing sequence of frame
   circles until the sources exhaust, pause or stop; a ``target`` degenerates
   to one click on that node.
@@ -212,6 +214,14 @@ class DAGController:
         #: rounds have not advanced past the consumed marker.
         self._frame_rounds: Dict[str, int] = {}
         self._consumed: Dict[str, int] = {}
+        #: frame_id -> members already fired on the OPEN batch. A click may
+        #: stop mid-circle (WYSIWYG: run up to the clicked member); the next
+        #: click resumes from here. Empty = no open circle. ``_frame_steps``
+        #: accumulates the open batch's REAL optimizer steps as members fire,
+        #: so the acknowledgement survives an observe preview overwriting a
+        #: member's recorded output.
+        self._frame_done: Dict[str, Set[str]] = {}
+        self._frame_steps: Dict[str, int] = {}
         self._frames: Dict[str, FrameSpec] = {frame.id: frame for frame in graph.frames}
         self._turning: Set[str] = set()
         self._lock = threading.Lock()  # guards _outputs and _running cross-thread
@@ -275,6 +285,13 @@ class DAGController:
         with self._lock:
             for node_id in node_ids:
                 self._outputs.pop(node_id, None)
+        dropped = set(node_ids)
+        for frame in self.graph.frames:
+            if dropped & set(frame.members):
+                # A rebuilt member invalidates the open circle's progress: the
+                # next click starts the circle over (on the pending batch).
+                self._frame_done.pop(frame.id, None)
+                self._frame_steps.pop(frame.id, None)
 
     # -- execution entry points (the session's single execution thread) ------
 
@@ -283,9 +300,10 @@ class DAGController:
         """One click on ``target`` (default: the graph's last node).
 
         Loop-free target: run the not-yet-run upstream closure, then the
-        target -- or the target alone on a re-click. Frame target: turn the
-        frame one circle (``steps`` extends the click to that many optimizer
-        steps; one circle is the default).
+        target -- or the target alone on a re-click. Frame target: advance
+        the circle to the target -- the first click runs up to it and stops
+        there, a re-click turns one full lap back to it (``steps`` extends
+        the click to that many optimizer steps; one lap is the default).
 
         The caller hands over a clean control plane (``reset_control`` runs at
         the run's acceptance point, before any pause/stop for THIS run can
@@ -298,7 +316,7 @@ class DAGController:
         self.graph.node(target)  # unknown target fails loudly here
         frame = self.graph.training_frame(target)
         if frame is not None:
-            receipt = self._run_frame_click(frame, steps=steps, observe=observe)
+            receipt = self._run_frame_click(frame, target, steps=steps, observe=observe)
             receipt['target'] = target
             return receipt
         return self._run_segment_click(target, observe=observe)
@@ -360,10 +378,11 @@ class DAGController:
 
     # -- frame rounds ---------------------------------------------------------
 
-    def _run_frame_click(self, frame: FrameSpec, *, steps: Optional[int],
+    def _run_frame_click(self, frame: FrameSpec, target: str, *, steps: Optional[int],
                          observe: bool) -> Dict[str, Any]:
-        """A click on a frame member: the frame's circles (preparation and
-        cross-frame freshening ride each turn)."""
+        """A click on a frame member: advance the circle to the target (an
+        observe click previews one full circle instead, cursor untouched;
+        preparation and cross-frame freshening ride each turn)."""
         # Peek WITHOUT resolving: creating the handle here would build the
         # component before its upstream resources exist, and the resident's
         # fingerprint would then legitimately change at the next resolve.
@@ -376,27 +395,129 @@ class DAGController:
         completed = 0
         while not self._stop.is_set():
             self._check_pause()
-            receipt = self._turn_frame(frame, observe=observe)
+            receipt = (self._turn_frame(frame, observe=True) if observe
+                       else self._click_frame(frame, target))
             rounds += 1
             completed += receipt.get('optimizer_steps', 0)
             if receipt.get('stopped') or receipt.get('exhausted'):
                 break
             if steps is None:
-                break  # one click turns exactly one circle (requirement 8)
+                break  # one click advances exactly to the target (requirement 8)
             if completed >= steps:
                 break
             if rounds > 1 and receipt.get('optimizer_steps', 0) <= 0:
-                break  # no-progress guard: a circle that trains nothing ends the click
+                break  # no-progress guard: a lap that trains nothing ends the click
         handle = self.sources.get(frame.sources[0])
         return {'mode': 'component', 'rounds': rounds,
                 'optimizer_steps': completed,
                 'state': 'stopped' if self._stop.is_set() else 'completed',
                 'exhausted': bool(handle is not None and handle.exhausted)}
 
+    def _click_frame(self, frame: FrameSpec, target: str) -> Dict[str, Any]:
+        """One real click on a frame member: advance the circle to the target.
+
+        No open circle: take a batch and run the members up to the target --
+        the circle stays OPEN there (the batch pending, unacknowledged). A
+        click on a member the open circle already fired (the target itself
+        included) finishes that circle, acknowledges its batch, then turns a
+        fresh circle back to the target: one full lap. A click ahead of the
+        open circle's position advances to it on the SAME batch."""
+        source_id = frame.sources[0]
+        members = set(frame.members)
+        stages = members - {source_id}
+        done = self._frame_done.get(frame.id, set())
+        participation = set().union(*(self.graph.upstream_presence(node_id)
+                                      for node_id in frame.members))
+        self._emit_plan(participation, feedback=frame.feedback)
+        self._prepare_round(participation)
+        handle = self._source(source_id)
+        trained = 0
+        if done and (target in done or target == source_id):
+            receipt = self._complete_circle(frame, handle)
+            trained += receipt['optimizer_steps']
+            if receipt['stopped']:
+                return {'optimizer_steps': trained, 'stopped': True}
+            done = set()
+        if not done:
+            # Freshen only when a NEW batch is admitted: reusing a pending
+            # batch is the same consuming round, not a new one.
+            if not handle.has_pending and self._freshen_producers(frame, observe=False):
+                return {'optimizer_steps': trained, 'exhausted': True}
+            self._check_pause()
+            if self._stop.is_set():
+                return {'optimizer_steps': trained, 'stopped': True}
+            try:
+                batch = self._take_source(source_id)
+            except SourceExhausted:
+                return {'optimizer_steps': trained, 'exhausted': True}
+        else:
+            batch = handle.take()  # the open circle's pending batch
+        self._refresh_iterators()
+        closure = self.graph.upstream_presence(target) & members
+        seg = [node_id for node_id in self.graph.order
+               if node_id in closure and node_id != source_id and node_id not in done]
+        finished = self._execute_wave(seg, batch, observe=False)
+        self._count_steps(frame.id, finished)
+        done = done | finished
+        stopped = len(finished) != len(seg)
+        self._frame_done[frame.id] = done
+        trained += self._trained_steps(finished)
+        if not stopped and stages <= done:
+            # The click landed on the circle's last member: acknowledge now.
+            self._complete_circle(frame, handle)
+        self._event('frame_progress', frame=frame.id,
+                    rounds=self._frame_rounds.get(frame.id, 0),
+                    optimizer_steps=trained, pending=handle.has_pending,
+                    stopped=stopped)
+        return {'optimizer_steps': trained, 'stopped': stopped}
+
+    def _complete_circle(self, frame: FrameSpec, handle: SourceHandle) -> Dict[str, Any]:
+        """Finish the OPEN circle: fire its un-run members on the pending
+        batch, acknowledge with the batch's accumulated REAL steps, fire the
+        feedback edges. Returns the steps fired by THIS call separately from
+        the acknowledged total (earlier clicks already reported their own)."""
+        stages = set(frame.members) - {frame.sources[0]}
+        done = self._frame_done.get(frame.id, set())
+        rest = [node_id for node_id in self.graph.order
+                if node_id in stages and node_id not in done]
+        stopped = False
+        fired = 0
+        if rest:
+            batch = handle.take()  # the pending batch (reuse)
+            self._refresh_iterators()
+            finished = self._execute_wave(rest, batch, observe=False)
+            self._count_steps(frame.id, finished)
+            self._frame_done[frame.id] = done | finished
+            stopped = len(finished) != len(rest)
+            fired = self._trained_steps(finished)
+        committed = self._frame_steps.get(frame.id, 0)
+        if not stopped:
+            handle.commit(committed)
+            self._frame_steps[frame.id] = 0
+            self._frame_done[frame.id] = set()
+            self._frame_rounds[frame.id] = self._frame_rounds.get(frame.id, 0) + 1
+            # The feedback CTRL edge fires with the round's acknowledgement:
+            # the consumers finished and the source may admit the next batch.
+            # It is never resolved through ``_inputs`` (a feedback edge is
+            # skipped there on purpose), so this is its only 'used' event --
+            # without it the frontend keeps the loop's back edge dimmed
+            # forever even though the circle really turned.
+            for edge_id in frame.feedback:
+                self._event('edge', edge_id=edge_id, state='used')
+        return {'optimizer_steps': fired, 'committed': committed, 'stopped': stopped}
+
+    def _count_steps(self, frame_id: str, finished: Set[str]) -> None:
+        """Accumulate the open batch's optimizer steps as members complete."""
+        for node_id in finished:
+            outputs = self._outputs.get(node_id)
+            if isinstance(outputs, dict) and isinstance(outputs.get('optimizer_steps'), int):
+                self._frame_steps[frame_id] = self._frame_steps.get(frame_id, 0) + outputs['optimizer_steps']
+
     def _turn_frame(self, frame: FrameSpec, *, observe: bool = False) -> Dict[str, Any]:
-        """One frame circle: prepare own prerequisites, freshen cross-frame
-        producers, take a batch, run the members as ready sets, commit with
-        the REAL optimizer steps."""
+        """One frame circle. A real turn resumes an OPEN circle (a click that
+        stopped mid-way) before starting a new one; an observe turn previews
+        one circle from the top with side effects suppressed, leaving the
+        open circle's progress and pending batch untouched."""
         source_id = frame.sources[0]
         # Peek without resolving (see _run_frame_click); the handle itself is
         # created only after preparation, when the component's upstream
@@ -417,7 +538,16 @@ class DAGController:
             self._emit_plan(participation, feedback=frame.feedback)
             self._prepare_round(participation)
             handle = self._source(source_id)
-            if self._freshen_producers(frame, observe=observe):
+            if not observe and self._frame_done.get(frame.id):
+                receipt = self._complete_circle(frame, handle)
+                self._event('frame_progress', frame=frame.id,
+                            rounds=self._frame_rounds.get(frame.id, 0),
+                            optimizer_steps=receipt['committed'],
+                            pending=handle.has_pending, stopped=receipt['stopped'])
+                return {'optimizer_steps': receipt['committed'], 'stopped': receipt['stopped']}
+            # Freshen only when a NEW batch is admitted (a pending batch is
+            # the same consuming round -- resume must not double-turn producers).
+            if not handle.has_pending and self._freshen_producers(frame, observe=observe):
                 # Every producer already advanced as far as it ever will: the
                 # consuming loop is starved and stops WITHOUT re-reading stale data.
                 return {'optimizer_steps': 0, 'exhausted': True}
@@ -433,20 +563,38 @@ class DAGController:
             members = set(frame.members)
             plan = [node_id for node_id in self.graph.order
                     if node_id in members and node_id != source_id]
+            # An observe preview must not clobber the REAL outputs of members
+            # that already fired on the open batch: the completing click reads
+            # them as upstream inputs, and a suppressed {'observe': True} has
+            # no data ports. Snapshot them here, restore after the wave.
+            saved: Dict[str, Dict[str, Any]] = {}
+            if observe:
+                with self._lock:
+                    saved = {nid: self._outputs[nid]
+                             for nid in self._frame_done.get(frame.id, set())
+                             if nid in self._outputs}
             done = self._execute_wave(plan, batch, observe=observe)
+            if saved:
+                with self._lock:
+                    self._outputs.update(saved)
+                for nid, outputs in saved.items():
+                    self._record_output(nid, self.graph.descriptor(nid).type, outputs)
             stopped = len(done) != len(plan)
-            trained = self._trained_steps(done)
-            if not observe and not stopped:
-                handle.commit(trained)
-                self._frame_rounds[frame.id] = self._frame_rounds.get(frame.id, 0) + 1
-                # The feedback CTRL edge fires with the round's acknowledgement:
-                # the consumers finished and the source may admit the next batch.
-                # It is never resolved through ``_inputs`` (a feedback edge is
-                # skipped there on purpose), so this is its only 'used' event --
-                # without it the frontend keeps the loop's back edge dimmed
-                # forever even though the circle really turned.
-                for edge_id in frame.feedback:
-                    self._event('edge', edge_id=edge_id, state='used')
+            # Restored outputs are NOT this turn's work: an observe receipt
+            # counts only what actually fired (suppressed nodes train nothing).
+            trained = self._trained_steps(done - set(saved))
+            if not observe:
+                self._count_steps(frame.id, done)
+                if not stopped:
+                    handle.commit(self._frame_steps.get(frame.id, 0))
+                    self._frame_steps[frame.id] = 0
+                    self._frame_rounds[frame.id] = self._frame_rounds.get(frame.id, 0) + 1
+                    for edge_id in frame.feedback:
+                        self._event('edge', edge_id=edge_id, state='used')
+                else:
+                    # Stop leaves the circle open: the next click/turn resumes
+                    # from the members that already fired on this batch.
+                    self._frame_done[frame.id] = done
             self._event('frame_progress', frame=frame.id,
                         rounds=self._frame_rounds.get(frame.id, 0),
                         optimizer_steps=trained, pending=handle.has_pending,

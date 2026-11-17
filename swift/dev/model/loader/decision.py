@@ -46,6 +46,11 @@ def _is_text_layout(config: PretrainedConfig) -> bool:
     return str(getattr(config, "model_type", "")).lower() == "qwen3_5_text"
 
 
+def _is_moe_layout(config: PretrainedConfig) -> bool:
+    """True for the family's MoE checkpoints (top-level ``model_type: qwen3_5_moe``)."""
+    return str(getattr(config, "model_type", "")).lower() == "qwen3_5_moe"
+
+
 def _register_thx02_autoconfig() -> None:
     """Teach ``AutoConfig`` the ``thx02`` model_type (idempotent; module import time).
 
@@ -184,14 +189,15 @@ class ScoringLoader(ModelLoader):
 class JevLoader(ScoringLoader, Qwen3_5Loader):
     """JEV: Qwen3.5 backbone + a verbalizer head reading option-token logits.
 
-    One family, two checkpoint layouts: JEV-27B-VL ships the full multimodal layout (``qwen3_5``),
-    while JEV-9B / JEV-27B ship the text-only one (``qwen3_5_text``, a bare ``Qwen3_5ForCausalLM``
-    checkpoint with no visual tower); the layout is detected from the loaded config.
+    One family, three checkpoint layouts: JEV-27B-VL ships the full multimodal layout (``qwen3_5``),
+    JEV-9B / JEV-27B ship the text-only one (``qwen3_5_text``, a bare ``Qwen3_5ForCausalLM``
+    checkpoint with no visual tower), and JEV-35B ships the multimodal MoE one (``qwen3_5_moe``,
+    ``Qwen3_5MoeForConditionalGeneration``); the layout is detected from the loaded config.
     """
 
     model_type = "jev"
     head_cls = JevVerbalizerHead
-    models = ["autotrust/JEV-9B", "autotrust/JEV-27B", "autotrust/JEV-27B-VL"]
+    models = ["autotrust/JEV-9B", "autotrust/JEV-27B", "autotrust/JEV-27B-VL", "autotrust/JEV-35B"]
     # A decision family is a template/behaviour variant of its backbone, so it stays reachable by
     # id match or an explicit `--model_type` only: reverse lookup from the backbone's architecture
     # class name must keep landing on the one base family (qwen3_5).
@@ -215,17 +221,27 @@ class JevLoader(ScoringLoader, Qwen3_5Loader):
     @classmethod
     def resolve_model_cls(cls, config=None) -> type:
         """Layout-aware: the text-only checkpoints (``qwen3_5_text``) are bare
-        ``Qwen3_5ForCausalLM`` -- the same class ``build_backbone`` loads them with -- while the
-        declared default is the multimodal ``Qwen3_5ForConditionalGeneration``. The weightless
-        dummy build (streaming merge's meta base) bypasses ``build_backbone``, so it resolves
-        the class here; without the config the multimodal default stands (class-level callers)."""
+        ``Qwen3_5ForCausalLM`` and the MoE ones (``qwen3_5_moe``) are
+        ``Qwen3_5MoeForConditionalGeneration`` -- the same classes ``build_backbone`` loads them
+        with -- while the declared default is the dense multimodal
+        ``Qwen3_5ForConditionalGeneration``. The weightless dummy build (streaming merge's meta
+        base) bypasses ``build_backbone``, so it resolves the class here; without the config the
+        dense multimodal default stands (class-level callers)."""
         if config is not None and _is_text_layout(config):
             from transformers import Qwen3_5ForCausalLM
 
             return Qwen3_5ForCausalLM
+        if config is not None and _is_moe_layout(config):
+            from transformers import Qwen3_5MoeForConditionalGeneration
+
+            return Qwen3_5MoeForConditionalGeneration
         return super().resolve_model_cls()
 
     def build_backbone(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
+        if _is_moe_layout(config):
+            from transformers import Qwen3_5MoeForConditionalGeneration
+
+            return Qwen3_5MoeForConditionalGeneration.from_pretrained(model_dir, config=config, **kwargs)
         if not _is_text_layout(config):
             return super().build_backbone(model_dir, config, processor, **kwargs)
         from transformers import Qwen3_5ForCausalLM
