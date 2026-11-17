@@ -46,22 +46,21 @@ _RESUME_BAND = 3e-2
 def _captured_eval_results():
     """Spy the offline preference run's periodic val-loss eval, recording each REAL result dict.
 
-    ``run_dpo``'s flat offline layer no longer builds a capturable ``Evaluator``: eval is inlined as an
-    ``evaluate_loss`` call whose result feeds a discarded ``eval_history`` closure (``_run_supervised``
-    returns only the training history). So this wraps the module-level ``evaluate_loss`` that ``run_dpo``
+    ``run_dpo`` delegates to ``run_supervised`` (swift.dev.recipe.supervised), whose flat offline loop
+    inlines eval as an ``evaluate_loss`` call feeding a discarded ``eval_history`` closure (only the
+    training history is returned). So this wraps the module-level ``evaluate_loss`` that ``supervised``
     imported at load time, recording its return while calling the REAL function through -- it observes the
     actual eval output (a finite ``eval_loss`` produced by ``forward_only`` + ``calculate_metric`` over the
     val split, each batch encoded through the SAME ``PreferenceBatchEncoder.__call__`` seam training uses),
-    not a stub. Patching the recipe module's OWN bound name is what makes the spy land: ``run_dpo`` calls
-    ``evaluate_loss`` from its namespace, so replacing ``swift.dev.recipe.utils.evaluate_loss`` alone would
-    be missed. ``importlib.import_module`` (not ``import ... as``) fetches the MODULE from ``sys.modules``:
-    ``swift.dev.recipe.rlhf.__init__`` rebinds the name ``run_dpo`` to the FUNCTION, so an attribute-style
-    import would hand back the function and miss the module's bound ``evaluate_loss``.
+    not a stub. Patching the calling module's OWN bound name is what makes the spy land: ``supervised``
+    calls ``evaluate_loss`` from its namespace, so replacing ``swift.dev.recipe.utils.evaluate_loss`` alone
+    would be missed. ``importlib.import_module`` fetches the MODULE from ``sys.modules`` so the bound name
+    is reachable regardless of package ``__init__`` rebinding.
     """
     import importlib
-    run_dpo_mod = importlib.import_module('swift.dev.recipe.rlhf.run_dpo')
+    supervised_mod = importlib.import_module('swift.dev.recipe.supervised')
     recorded = []
-    original = run_dpo_mod.evaluate_loss
+    original = supervised_mod.evaluate_loss
 
     def _spy(*args, **kwargs):
         result = original(*args, **kwargs)
@@ -69,11 +68,11 @@ def _captured_eval_results():
             recorded.append(result)
         return result
 
-    run_dpo_mod.evaluate_loss = _spy
+    supervised_mod.evaluate_loss = _spy
     try:
         yield recorded
     finally:
-        run_dpo_mod.evaluate_loss = original
+        supervised_mod.evaluate_loss = original
 
 
 @pytest.mark.slow

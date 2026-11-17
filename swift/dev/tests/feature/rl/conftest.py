@@ -398,7 +398,12 @@ def kto_rows(n: int = 8) -> List[dict]:
                 'content': _PROMPTS[i % len(_PROMPTS)]
             }, {
                 'role': 'assistant',
-                'content': 'a good answer' if i % 2 == 0 else 'a bad answer'
+                # Per-row distinct completion: _encode_kto_batch builds its mismatched KL batch by pairing
+                # each prompt with a DIFFERENT row's completion, so a batch whose completions are all identical
+                # cannot form a KL point (the encoder rightly refuses). Only two distinct strings let length
+                # batching group identical completions into one micro-batch; tagging by i keeps every pair
+                # distinct while the alternating label still exercises both KTO branches.
+                'content': f'a good answer {i}' if i % 2 == 0 else f'a bad answer {i}'
             }],
             'label': i % 2 == 0,
         })
