@@ -470,3 +470,27 @@ def test_unsized_dataloader_submits_its_short_ga_tail():
 
     batches = iter([[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
     assert list(grouped_training_batches(batches, ga=4)) == [(list(range(8)), 4), ([8, 9], 1)]
+
+
+def test_online_recipe_positional_prefix_is_identical():
+    # Every online recipe is dispatched positionally by the CLI/assembly with the same config
+    # prefix. A comment or line-continuation that swallows or reorders one config parameter leaves
+    # ast.parse and import green (the name still binds, just to the wrong slot) -- only a signature
+    # cross-check catches it. Pin the first eight positional parameters across all six recipes.
+    import inspect
+
+    from swift.dev.recipe.distill.run_distill import run_gkd, run_mopd, run_opsd
+    from swift.dev.recipe.grpo.run_grpo import run_grpo
+    from swift.dev.recipe.ppo.run_ppo import run_ppo
+    from swift.dev.recipe.rft.run_rft import run_rft
+
+    expected = [
+        'model_config', 'template_config', 'dataset_config', 'train_config',
+        'distributed_config', 'checkpoint_config', 'rollout_config', 'rl_config',
+    ]
+    for fn in (run_grpo, run_ppo, run_rft, run_gkd, run_opsd, run_mopd):
+        params = list(inspect.signature(fn).parameters.values())
+        positional = [p.name for p in params
+                      if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+        assert positional[:len(expected)] == expected, (
+            f'{fn.__name__} positional prefix drifted: {positional[:len(expected)]} != {expected}')
