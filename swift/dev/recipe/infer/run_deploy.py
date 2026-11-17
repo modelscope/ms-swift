@@ -354,8 +354,16 @@ def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelCon
     # sampling instances, engine deployment and placement group -- release them first,
     # so devices are free again even if the router app is already gone (torn state).
     from twinkle.server.sampler.pool.actor import stop_sampler_controller
-    if stop_sampler_controller(deploy_config.ray_namespace,
-                               f'{deploy_config.route_prefix}/sampler/{public_name}'):
+    try:
+        released = stop_sampler_controller(deploy_config.ray_namespace,
+                                           f'{deploy_config.route_prefix}/sampler/{public_name}')
+    except Exception as e:
+        # Pool cleanup must not abort teardown: skipping serve.delete below
+        # would leave the router app behind too (double residue).
+        logger.warning(f'sampling pool cleanup for {public_name!r} failed ({e}); '
+                       'continuing to delete the router app.')
+        released = False
+    if released:
         logger.info(f'released the sampling pool for {public_name!r} (controller shutdown).')
 
     if sampler_app not in apps:
