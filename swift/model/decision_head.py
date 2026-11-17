@@ -1225,6 +1225,80 @@ def load_thx02_decision_config(model_dir: str) -> Dict[str, Any]:
     return decision_config
 
 
+def load_h2o_serve_config(model_dir: str) -> Dict[str, Any]:
+    """H2O's released `serve_config.json` (option labels + per-kind temperatures); {} when absent."""
+    config_file = os.path.join(model_dir, 'serve_config.json')
+    if not os.path.isfile(config_file):
+        return {}
+    with open(config_file, encoding='utf-8') as f:
+        return json.load(f) or {}
+
+
+def load_h2o_labels(model_dir: str) -> List[str]:
+    """The 255 option labels the released readout was trained with.
+
+    The label order IS the readout's row order (`label_rows`), so they must come from the checkpoint
+    itself rather than a local copy.
+    """
+    labels = load_h2o_serve_config(model_dir).get('labels')
+    if not labels:
+        raise FileNotFoundError(f'H2O needs serve_config.json with a `labels` list under {model_dir!r} '
+                                '(the released h2o-lightning-4b checkpoint ships one).')
+    return list(labels)
+
+
+H2O_TWO_WAY_ENV = 'H2O_TWO_WAY'
+_H2O_TWO_WAY_VALUES = {'1', 'true', 'yes', 'on', 'bidirectional', 'two_way', 'two-way'}
+_H2O_ONE_WAY_VALUES = {'0', 'false', 'no', 'off', 'unidirectional', 'causal', 'one_way', 'one-way'}
+
+
+def _parse_h2o_two_way(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in _H2O_TWO_WAY_VALUES:
+        return True
+    if text in _H2O_ONE_WAY_VALUES:
+        return False
+    return None
+
+
+def load_h2o_two_way_default(model_dir: str) -> bool:
+    """The attention mode the released checkpoint serves with.
+
+    `serve_config.json` declares `two_way.default = bidirectional`, so the checkpoint's own default is
+    followable; a config without a `two_way` block (older layouts, test fixtures) means one-way.
+    """
+    block = load_h2o_serve_config(model_dir).get('two_way') or {}
+    if not isinstance(block, dict):
+        return False
+    return bool(_parse_h2o_two_way(block.get('default')))
+
+
+def resolve_h2o_two_way(model_dir: str) -> bool:
+    """Effective mode: `H2O_TWO_WAY` (1/0, true/false, ...) overrides the checkpoint's default."""
+    override = _parse_h2o_two_way(os.environ.get(H2O_TWO_WAY_ENV, ''))
+    if override is not None:
+        return override
+    return load_h2o_two_way_default(model_dir)
+
+
+def load_h2o_serve_temperatures(model_dir: str, two_way: Optional[bool] = None) -> Dict[str, float]:
+    """Per-kind readout temperatures for the active mode (choice/noul/score).
+
+    The released config calibrates each mode separately: `two_way.temperature` for bidirectional
+    attention and the top-level `temperature` for one-way. Mixing them (two-way attention with the
+    one-way constants) silently shifts every probability, so the block is chosen by the same
+    resolution the model loader uses.
+    """
+    config = load_h2o_serve_config(model_dir)
+    if two_way is None:
+        two_way = resolve_h2o_two_way(model_dir)
+    temps = (config.get('two_way') or {}).get('temperature') if two_way else None
+    temps = temps or config.get('temperature') or {}
+    return {str(k): float(v) for k, v in temps.items() if isinstance(v, (int, float))}
+
+
 class Thx02ReadoutHead(ScoringHead):
     """THX-02 inline readout: one linear readout over the answer codes at each question's marker.
 
@@ -1334,6 +1408,133 @@ class Thx02ReadoutHead(ScoringHead):
         if missing or unexpected:
             raise RuntimeError(f'THX-02 readout strict load failed: missing={missing}, unexpected={unexpected}')
         return head
+
+
+class H2OReadoutHead(ScoringHead):
+    """H2O inline readout: a FIXED 255 x hidden label matrix dotted with the last hidden state.
+
+    H2O ships `label_rows.safetensors` (W + token_ids) instead of a trained linear readout. `label_rows`
+    is a buffer, not an `nn.Linear`: `ScoringTrainer._activate_scoring_head` force-unfreezes every
+    parameter whose name contains `scoring_head`, which would silently change the released label matrix.
+    The option logits are `hidden @ label_rows.T / temperature` sliced to each question's option count.
+    """
+
+    needs_output_embeddings = False
+    needs_lm_logits = False
+    keep_fp32 = True
+
+    def __init__(self,
+                 hidden_size: int,
+                 num_codes: int = 255,
+                 temperature: float = 1.0,
+                 head_temperature: float = 1.0,
+                 temperatures: Optional[Dict[str, float]] = None) -> None:
+        super().__init__()
+        self.hidden_size = int(hidden_size)
+        self.num_codes = int(num_codes)
+        self.temperature = float(temperature)
+        self.register_buffer('label_rows', torch.zeros(self.num_codes, self.hidden_size, dtype=torch.float32))
+        self.register_buffer('label_token_ids', torch.zeros(self.num_codes, dtype=torch.long))
+        self.register_buffer(
+            'head_temperature', torch.as_tensor(float(head_temperature), dtype=torch.float32), persistent=False)
+        temperatures = temperatures or {}
+        self.register_buffer(
+            'temperatures',
+            torch.as_tensor([float(temperatures.get(KIND_NAMES[k], 1.0)) for k in range(len(KIND_NAMES))],
+                            dtype=torch.float32),
+            persistent=False)
+
+    @classmethod
+    def from_pretrained(cls,
+                        model_dir: str,
+                        model: Optional[Any] = None,
+                        config: Optional[Any] = None,
+                        **kwargs) -> 'H2OReadoutHead':
+        from safetensors.torch import load_file
+        weights_file = cls._locate(model_dir, 'label_rows.safetensors', 'H2O_LABEL_ROWS')
+        if not weights_file:
+            raise FileNotFoundError(f'H2O needs label_rows.safetensors in {model_dir!r} (or set H2O_LABEL_ROWS).')
+        state = load_file(weights_file)
+        if 'W' not in state or 'token_ids' not in state:
+            raise ValueError(f'{weights_file} must contain W and token_ids, got {list(state)}')
+        label_rows = state['W'].float()
+        token_ids = state['token_ids'].long()
+        hidden_size = int(label_rows.shape[1])
+        if config is not None:
+            expected = getattr(config, 'hidden_size', None)
+            if expected is None:
+                expected = getattr(getattr(config, 'text_config', None), 'hidden_size', None)
+            if expected is not None and int(expected) != hidden_size:
+                raise ValueError(f'label_rows hidden_size={hidden_size} != config hidden_size={expected}')
+        # `label_rows.safetensors` may come from H2O_LABEL_ROWS while the run reads a fine-tuned output dir;
+        # serve_config.json then lives next to the weights rather than in model_dir.
+        config_dir = model_dir
+        for candidate in (model_dir, os.path.dirname(os.path.abspath(weights_file))):
+            if os.path.isfile(os.path.join(candidate, 'serve_config.json')):
+                config_dir = candidate
+                break
+        head = cls(
+            hidden_size=hidden_size,
+            num_codes=int(label_rows.shape[0]),
+            temperatures=load_h2o_serve_temperatures(config_dir))
+        head.label_rows.copy_(label_rows)
+        head.label_token_ids.copy_(token_ids)
+        return head
+
+    def forward(self, hidden_states: torch.Tensor, lm_logits: Optional[torch.Tensor], meta: Dict[str,
+                                                                                                 Any]) -> ScoringOutput:
+        device = hidden_states.device
+        n_options = [int(n) for n in meta['n_options']]
+        counts = meta.get('counts')
+        counts_t = torch.as_tensor([int(c) for c in counts], dtype=torch.long, device=device) if counts else None
+        max_opt = int(meta.get('max_opt') or max(n_options, default=0))
+        if not n_options:
+            return ScoringOutput(
+                logits=torch.zeros((0, max_opt), device=device, dtype=torch.float32),
+                option_mask=torch.zeros((0, max_opt), dtype=torch.bool, device=device),
+                kinds=torch.zeros((0, ), dtype=torch.long, device=device),
+                counts=counts_t)
+        padded_len = int(hidden_states.shape[1])
+        seq_lens = meta.get('seq_lens') or [padded_len] * int(hidden_states.shape[0])
+        left_padding = bool(meta.get('left_padding', False))
+        rows, cols = [], []
+        for record, position in zip(meta['record_index'], meta['readout_positions']):
+            offset = padded_len - int(seq_lens[int(record)]) if left_padding else 0
+            rows.append(int(record))
+            cols.append(offset + int(position))
+        rows_t = torch.as_tensor(rows, dtype=torch.long, device=device)
+        cols_t = torch.as_tensor(cols, dtype=torch.long, device=device)
+        kinds_t = torch.as_tensor([int(k) for k in meta['kinds']], dtype=torch.long, device=device)
+        calibration = self.head_temperature.to(
+            device=device, dtype=torch.float32) * self.temperatures.to(
+                device=device, dtype=torch.float32)[kinds_t]
+        # label_rows is fp32 and fixed; cast the hidden state instead of the label rows.
+        code_logits = F.linear(hidden_states[rows_t, cols_t].float(), self.label_rows)
+        code_logits = code_logits / self.temperature / calibration[:, None]
+        per_question = [code_logits[i, :n] for i, n in enumerate(n_options)]
+        logits, option_mask = pad_option_logits(per_question, width=max_opt)
+        return ScoringOutput(logits=logits, option_mask=option_mask, kinds=kinds_t, counts=counts_t)
+
+    def extra_state_for_save(self) -> Dict[str, Any]:
+        return {
+            'hidden_size': self.hidden_size,
+            'num_codes': self.num_codes,
+            'temperature': self.temperature,
+            'head_temperature': float(self.head_temperature),
+            'temperatures': {
+                KIND_NAMES[k]: float(self.temperatures[k])
+                for k in range(len(KIND_NAMES))
+            },
+        }
+
+    def _apply_calibration_meta(self, meta: Dict[str, Any]) -> None:
+        if 'head_temperature' in meta:
+            self.head_temperature = torch.as_tensor(float(meta['head_temperature']), dtype=torch.float32)
+        temps = meta.get('temperatures')
+        if temps:
+            for k, name in enumerate(KIND_NAMES):
+                if name in temps:
+                    self.temperatures[k] = float(temps[name])
 
 
 class OmniOptionScorer(nn.Module):
