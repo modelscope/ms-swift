@@ -29,8 +29,8 @@ try:
     from mcore_bridge.utils import use_ngram_embedding_cpu_offload
     from mcore_bridge.model.modules.engram_cpu import CPUEmbeddingTable
 except ImportError as error:
-    raise SystemExit('CPU Engram offload requires mcore-bridge PR #251 '
-                     '(addsubmuldiv/mcore-bridge:dsv41). Install the companion branch first.') from error
+    raise SystemExit('CPU Engram offload requires an updated mcore-bridge. '
+                     'Install the main branch from https://github.com/modelscope/mcore-bridge.') from error
 if not use_ngram_embedding_cpu_offload():
     raise SystemExit('NGRAM_EMBEDDING_CPU_OFFLOAD must be enabled for this example.')
 PY_CHECK_BRIDGE
