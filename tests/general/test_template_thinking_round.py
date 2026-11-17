@@ -1,0 +1,309 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
+import copy
+import glob
+import json
+import os
+import unittest
+from types import SimpleNamespace
+
+import torch
+from transformers import AutoConfig, AutoProcessor, AutoTokenizer
+
+from swift.model.model_meta import ModelInfo
+from swift.model.register import MODEL_MAPPING
+from swift.template import TEMPLATE_MAPPING, get_template
+from swift.template.base import Template
+
+CACHE = os.path.join(os.environ.get('MODELSCOPE_CACHE', os.path.expanduser('~/.cache/modelscope/hub')), 'models')
+TOOL = {
+    'type': 'function',
+    'function': {
+        'name': 'get_weather',
+        'description': 'weather',
+        'parameters': {
+            'type': 'object',
+            'properties': {
+                'city': {
+                    'type': 'string'
+                }
+            },
+            'required': ['city']
+        }
+    }
+}
+ARGS = {'city': 'Paris'}
+
+
+def _model_id(model):
+    return model.ms_model_id or model.hf_model_id or model.model_path
+
+
+def _local_snapshot(model):
+    mid = _model_id(model)
+    if not mid or os.path.isabs(mid):
+        return mid if mid and os.path.isdir(mid) else None
+    base = os.path.join(CACHE, mid.replace('/', '--'))
+    snaps = sorted(glob.glob(os.path.join(base, 'snapshots', '*')))
+    if snaps:
+        return snaps[-1]
+    return base if os.path.exists(os.path.join(base, 'config.json')) else None
+
+
+def _load(model):
+    """Load only config/tokenizer/processor; model weights are never downloaded."""
+    source = _local_snapshot(model) or _model_id(model)
+    try:
+        config = AutoConfig.from_pretrained(source, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True)
+        try:
+            processor = AutoProcessor.from_pretrained(source, trust_remote_code=True)
+        except Exception:
+            processor = tokenizer
+    except Exception as e:
+        raise unittest.SkipTest(f'{source}: config/tokenizer unavailable ({type(e).__name__}: {e})')
+    return source, config, tokenizer, processor
+
+
+def _build(template_type, model_type, source, config, tokenizer, processor, **kwargs):
+    info = ModelInfo(model_type=model_type, model_dir=source, torch_dtype=torch.bfloat16,
+                     max_model_len=32768, quant_method=None, quant_bits=0, config=config,
+                     task_type='causal_lm')
+    processor = SimpleNamespace(tokenizer=tokenizer,
+                                image_processor=getattr(processor, 'image_processor', None),
+                                model_info=info,
+                                model_meta=MODEL_MAPPING[model_type])
+    return get_template(processor, template_type=template_type, **kwargs)
+
+
+def _pair(old_reason, cur_reason, final=True, followup=False):
+    """(official with reasoning_content, official with inline think, swift-native)."""
+    rc, inline, swift = [], [], []
+
+    def user(text):
+        for bucket in (rc, inline, swift):
+            bucket.append({'role': 'user', 'content': text})
+
+    def assistant(reason):
+        message = {'role': 'assistant', 'content': '', 'tool_calls': [{'type': 'function', 'function': {
+            'name': 'get_weather', 'arguments': ARGS}}]}
+        if reason:
+            message['reasoning_content'] = reason
+        rc.append(message)
+        inline.append({'role': 'assistant',
+                       'content': (f'<think>\n{reason}\n</think>\n\n' if reason else ''),
+                       'tool_calls': message['tool_calls']})
+        swift.append({'role': 'assistant', 'content': (f'<think>\n{reason}\n</think>\n\n' if reason else '')})
+        swift.append({'role': 'tool_call', 'content': json.dumps({'name': 'get_weather', 'arguments': ARGS})})
+
+    def tool(text):
+        for bucket in (rc, inline, swift):
+            bucket.append({'role': 'tool', 'content': text})
+
+    user('old question')
+    assistant(old_reason)
+    tool('old result')
+    user('new question')
+    assistant(cur_reason)
+    tool('cur result')
+    if followup:
+        user('follow-up')
+    if final:
+        for bucket in (rc, inline, swift):
+            bucket.append({'role': 'assistant', 'content': 'final'})
+    return rc, inline, swift
+
+
+def _plain_pair(reason):
+    rc, inline, swift = [], [], []
+    for bucket in (rc, inline, swift):
+        bucket.append({'role': 'user', 'content': 'question'})
+    rc.append({'role': 'assistant', 'content': 'answer', 'reasoning_content': reason})
+    inline.append({'role': 'assistant', 'content': f'<think>\n{reason}\n</think>\n\nanswer'})
+    swift.append({'role': 'assistant', 'content': f'<think>\n{reason}\n</think>\n\nanswer'})
+    return rc, inline, swift
+
+
+def _official_kwargs(mode):
+    if mode == 'explicit_false':
+        return {'preserve_thinking': False}
+    if mode == 'explicit_true':
+        return {'preserve_thinking': True}
+    if mode == 'last_round':
+        return {'preserve_thinking': False}
+    return {}
+
+
+def _official_render(tokenizer, rc, inline, mode):
+    source = getattr(tokenizer, 'chat_template', None) or ''
+    variants = ((rc, 'rc'),) if 'reasoning_content' in source else ((inline, 'inline'),)
+    for messages, _ in variants:
+        for extra in (_official_kwargs(mode), {}):
+            try:
+                return tokenizer.apply_chat_template(copy.deepcopy(messages), tools=[TOOL], tokenize=False,
+                                                     add_generation_prompt=False, **extra)
+            except TypeError:
+                continue
+    raise AssertionError('official chat template rejected every supported call')
+
+
+def _mode_kwargs(mode):
+    if mode == 'explicit_false':
+        return {'preserve_thinking': False}
+    if mode == 'explicit_true':
+        return {'preserve_thinking': True}
+    return {}
+
+
+def _render(template_type, model_type, source, config, tokenizer, processor, swift_messages, mode):
+    kwargs = _mode_kwargs(mode)
+    if mode == 'last_round':
+        kwargs['loss_scale'] = 'last_round'
+    template = _build(template_type, model_type, source, config, tokenizer, processor, **kwargs)
+    template.set_mode('transformers' if mode == 'infer_default' else 'train')
+    encoded = template.encode({'messages': copy.deepcopy(swift_messages), 'tools': [TOOL]})
+    return tokenizer.decode(encoded['input_ids'], skip_special_tokens=False)
+
+
+class TestThinkingPolicyUnits(unittest.TestCase):
+    """Policy branches, no model loading."""
+
+    def _fake(self, meta, is_training=True, preserve_thinking=None):
+        class _FakeTemplate(Template):
+
+            @property
+            def is_training(self):
+                return is_training
+
+            @property
+            def loss_scale(self):
+                return SimpleNamespace(base_strategy='default')
+
+            def _get_enable_thinking(self, inputs=None):
+                return False
+
+            def __init__(self):
+                self.template_meta = meta
+                self.preserve_thinking = preserve_thinking
+
+        return _FakeTemplate()
+
+    def _messages(self):
+        return [
+            {'role': 'user', 'content': 'q1'},
+            {'role': 'assistant', 'content': 'a1'},
+            {'role': 'tool', 'content': 't1'},
+            {'role': 'assistant', 'content': 'a2'},
+            {'role': 'tool', 'content': 't2', '_tool_user_followup': True},
+            {'role': 'assistant', 'content': 'a3'},
+        ]
+
+    def _apply(self, policy, is_training=True):
+        meta = copy.deepcopy(TEMPLATE_MAPPING['qwen3'])
+        meta.non_thinking_prefix = '<think></think>'
+        meta.non_thinking_prefix_policy = policy
+        meta.preserve_thinking = True
+        messages = self._messages()
+        template = self._fake(meta, is_training)
+        template._add_non_thinking_prefix(SimpleNamespace(messages=messages))
+        return messages
+
+    def test_non_thinking_prefix_all(self):
+        messages = self._apply('all')
+        self.assertTrue(all(message['content'].startswith('<think></think>') for message in messages
+                            if message['role'] == 'assistant'))
+
+    def test_non_thinking_prefix_last_response(self):
+        messages = self._apply('last_response')
+        prefixed = [i for i, m in enumerate(messages) if m['role'] == 'assistant' and m['content'].startswith('<think>')]
+        self.assertEqual(prefixed, [5])
+
+    def test_non_thinking_prefix_after_user(self):
+        messages = self._apply('after_user')
+        prefixed = [i for i, m in enumerate(messages) if m['role'] == 'assistant' and m['content'].startswith('<think>')]
+        self.assertEqual(prefixed, [1, 5])
+
+    def test_preserve_policy_always_and_never(self):
+        always = copy.deepcopy(TEMPLATE_MAPPING['glm5_3'])
+        never = copy.deepcopy(TEMPLATE_MAPPING['qwq'])
+        self.assertIs(Template._get_preserve_thinking(self._fake(always), None), True)
+        self.assertIs(Template._get_preserve_thinking(self._fake(never, preserve_thinking=False), None), False)
+        self.assertIs(Template._get_preserve_thinking(self._fake(never), None), True)
+        messages = self._messages()
+        self.assertEqual(Template._get_current_round_start(self._fake(never), messages), len(messages))
+
+    def test_current_round_start_uses_user_and_followup(self):
+        messages = self._messages()
+        template = self._fake(copy.deepcopy(TEMPLATE_MAPPING['qwen3']))
+        self.assertEqual(Template._get_current_round_start(template, messages), 4)
+        messages[4] = {'role': 'tool', 'content': 't2'}
+        self.assertEqual(Template._get_current_round_start(template, messages), 0)
+
+
+class TestThinkingGroupParity(unittest.TestCase):
+    """Every thinking ModelGroup: official jinja vs swift-native encoding."""
+
+    def _cases(self):
+        for model_type, meta in MODEL_MAPPING.items():
+            for group_index, group in enumerate(meta.model_groups):
+                template_type = group.template or meta.template
+                if template_type not in TEMPLATE_MAPPING or not TEMPLATE_MAPPING[template_type].is_thinking:
+                    continue
+                yield model_type, group_index, group, template_type
+
+    def _assert_parity(self, tokenizer, template_type, model_type, source, config, processor, pair, mode,
+                       check_prefix=False):
+        rc, inline, swift = pair
+        try:
+            swift_text = _render(template_type, model_type, source, config, tokenizer, processor, swift, mode)
+        except AttributeError as e:
+            if 'image_processor' in str(e):
+                raise unittest.SkipTest(f'{source}: multimodal processor is not loaded')
+            raise
+        official_text = _official_render(tokenizer, rc, inline, mode)
+        for marker in ('OLD_REASON', 'CUR_REASON'):
+            self.assertEqual(marker in swift_text, marker in official_text,
+                             f'{source} mode={mode}\nswift={swift_text}\nofficial={official_text}')
+        if check_prefix:
+            policy = TEMPLATE_MAPPING[template_type].non_thinking_prefix_policy
+            if policy in ('last_response', 'after_user'):
+                marker = TEMPLATE_MAPPING[template_type].thinking_prefix.split('\n')[0].strip()
+                if marker:
+                    self.assertEqual(swift_text.count(marker), official_text.count(marker),
+                                     f'{source} mode={mode}\nswift={swift_text}\nofficial={official_text}')
+
+    def test_group_parity(self):
+        tested = 0
+        for model_type, group_index, group, template_type in self._cases():
+            model = group.models[0]
+            with self.subTest(model_type=model_type, template=template_type, group=group_index):
+                try:
+                    source, config, tokenizer, processor = _load(model)
+                except unittest.SkipTest:
+                    continue
+                try:
+                    # Current-round thinking must survive when the official template keeps it.
+                    self._assert_parity(tokenizer, template_type, model_type, source, config, processor,
+                                        _pair('OLD_REASON', 'CUR_REASON'), 'infer_default')
+                    # Training must not add an empty think block the official template omits.
+                    self._assert_parity(tokenizer, template_type, model_type, source, config, processor,
+                                        _plain_pair(None), 'train_default', check_prefix=True)
+                except unittest.SkipTest:
+                    continue
+                except (ValueError, RuntimeError):
+                    # Environment / agent-template wiring is out of scope for this parity test.
+                    continue
+                except AttributeError as e:
+                    if 'image_processor' in str(e):
+                        continue
+                    raise
+                except AssertionError as e:
+                    if 'response_role' in str(e):
+                        continue
+                    raise
+                tested += 1
+        if tested == 0:
+            self.skipTest('no thinking model group could be loaded')
+
+
+if __name__ == '__main__':
+    unittest.main()

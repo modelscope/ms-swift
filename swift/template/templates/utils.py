@@ -10,8 +10,8 @@ DEFAULT_SYSTEM = 'You are a helpful assistant.'
 
 
 class NemotronThinkingMixin:
-    """Match Nemotron-3.5's thinking layout: think by default, keep the newline after a historical
-    ``</think>`` (the official jinja truncates reasoning but not the following separator)."""
+    """Match Nemotron-3.5's thinking layout: think by default and keep the newline after a
+    historical ``</think>``."""
 
     def __init__(self, *args, enable_thinking=True, **kwargs):
         super().__init__(*args, enable_thinking=True if enable_thinking is None else enable_thinking, **kwargs)

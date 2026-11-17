@@ -417,7 +417,8 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
-        agent_template='hy_v3_preview'))
+        agent_template='hy_v3_preview',
+        preserve_thinking_policy='never'))
 
 
 class HyV3Template(HyV3PreviewTemplate):
@@ -437,7 +438,8 @@ register_template(
         thinking_prefix='<think:opensource>',
         non_thinking_prefix='<think:opensource></think:opensource>',
         history_thinking_prefix='<think:opensource></think:opensource>',
-        agent_template='hy_v3'))
+        agent_template='hy_v3',
+        preserve_thinking_policy='always'))
 
 
 class GptTemplate(Template):
@@ -526,6 +528,7 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         agent_template='ling3',
+        preserve_thinking_policy='always',
     ))
 
 register_template(

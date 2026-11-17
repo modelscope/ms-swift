@@ -249,7 +249,6 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 
 class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
-    non_thinking_prefix_only_after_user = True
     # packing / padding_free: text-only data (checked in `packing_row`). Packed media inputs would need the
     # bidirectional vision mask, which the packed (THD) attention path does not build.
     support_padding_free = True
@@ -375,12 +374,17 @@ class Gemma4TemplateMeta(TemplateMeta):
 
 
 register_template(
-    Gemma4TemplateMeta(MLLMTemplateType.gemma4_nothinking, template_cls=Gemma4Template, agent_template='gemma4'))
+    Gemma4TemplateMeta(
+        MLLMTemplateType.gemma4_nothinking,
+        template_cls=Gemma4Template,
+        non_thinking_prefix_policy='after_user',
+        agent_template='gemma4'))
 
 register_template(
     Gemma4TemplateMeta(
         MLLMTemplateType.gemma4,
         template_cls=Gemma4Template,
+        non_thinking_prefix_policy='after_user',
         agent_template='gemma4',
         is_thinking=True,
         non_thinking_prefix='<|channel>thought\n<channel|>'))

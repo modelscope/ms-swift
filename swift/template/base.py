@@ -70,11 +70,6 @@ class Template(ProcessorMixin):
     # For pure text models, the default is True; for multimodal models, the default is False.
     support_padding_free = None
     jinja_enable_thinking_key = 'enable_thinking'
-    # If True, only inject non_thinking_prefix when the previous turn is a 'user' turn.
-    # Set this in subclasses where thinking / tool_call / tool_response / follow-up
-    # assistant text live in the same logical turn (e.g. Gemma4, DeepSeekV3.1), so
-    # the assistant turn after a tool_response should NOT open a new thinking block.
-    non_thinking_prefix_only_after_user: bool = False
     model_accepts_loss_kwargs: Optional[bool] = None
 
     is_encoder_decoder = False
@@ -171,6 +166,9 @@ class Template(ProcessorMixin):
         return enable_thinking
 
     def _get_preserve_thinking(self, inputs=None):
+        policy = self.template_meta.preserve_thinking_policy
+        if policy == 'always':
+            return True
         preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
@@ -1297,12 +1295,22 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
+    def _get_current_round_start(self, messages) -> int:
+        """Index of the query that starts the current round, after tool/user merging."""
+        if self.template_meta.preserve_thinking_policy == 'never':
+            return len(messages)
+        for i in range(len(messages) - 1, -1, -1):
+            message = messages[i]
+            if message['role'] == 'user' or (message['role'] == 'tool' and message.get('_tool_user_followup')):
+                return i
+        return -1
+
     def _is_add_non_thinking_round(self, messages, i: int, start_idx: int):
         message = messages[i]
         if not (i >= start_idx and message['role'] == 'assistant'):
             return False
-        if self.non_thinking_prefix_only_after_user and not (i > 0 and (messages[i - 1]['role'] == 'user'
-                                                                        or messages[i - 1].get('_tool_user_followup'))):
+        if self.template_meta.non_thinking_prefix_policy == 'after_user' and not (
+                i > 0 and (messages[i - 1]['role'] == 'user' or messages[i - 1].get('_tool_user_followup'))):
             return False
         return True
 
@@ -1315,11 +1323,20 @@ class Template(ProcessorMixin):
             # Otherwise, process all messages (start_idx = -1 means start from the beginning)
             if ((not self.is_training or self.loss_scale.base_strategy == 'last_round')
                     and not self.template_meta.preserve_thinking):
-                start_idx = get_last_user_round(messages)
+                if (self.template_meta.non_thinking_prefix_policy == 'last_response'
+                        or self._get_preserve_thinking(inputs)):
+                    start_idx = get_last_user_round(messages)
+                else:
+                    start_idx = self._get_current_round_start(messages)
             else:
                 start_idx = -1
+            last_assistant_idx = next(
+                (i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
             for i, message in enumerate(messages):
                 if not self._is_add_non_thinking_round(messages, i, start_idx):
+                    continue
+                if (self.template_meta.non_thinking_prefix_policy == 'last_response'
+                        and i != last_assistant_idx):
                     continue
                 content = message['content']
                 # After merge, content may be a list; only process the first element.
@@ -1339,7 +1356,7 @@ class Template(ProcessorMixin):
     def _remove_history_thinking(self, inputs) -> None:
         messages = inputs.messages
         # Delete the previous 'think' entries from the messages.
-        last_user_round = get_last_user_round(messages)
+        last_user_round = self._get_current_round_start(messages)
         for i, message in enumerate(messages):
             # Delete the content before '</think>' in all assistant turns except the last round.
             if message['role'] == 'assistant' and i < last_user_round:

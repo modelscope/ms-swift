@@ -726,7 +726,6 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_think
 
 class DeepseekV3_1Template(Template):
     jinja_enable_thinking_key = 'thinking'
-    non_thinking_prefix_only_after_user = True
 
 
 register_template(
@@ -737,6 +736,7 @@ register_template(
         template_cls=DeepseekV3_1Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
+        non_thinking_prefix_policy='after_user',
         history_thinking_prefix='</think>'))
 
 # Reasoning-effort prefixes, prepended at the very beginning of the conversation

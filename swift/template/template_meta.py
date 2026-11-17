@@ -3,7 +3,7 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
 from transformers import PreTrainedTokenizerBase
-from typing import List, Optional, Type, Union
+from typing import List, Literal, Optional, Type, Union
 
 from .base import Template
 from .utils import Prompt, Word
@@ -47,7 +47,11 @@ class TemplateMeta:
     is_thinking: bool = False  # Automatically remove think content
     thinking_prefix: str = ''
     non_thinking_prefix: str = ''  # Automatically add non_thinking_prefix for hybrid thinking models
+    # Where to add the empty think block: all assistants, only the final one, or only after a user turn.
+    non_thinking_prefix_policy: Literal['all', 'last_response', 'after_user'] = 'all'
     preserve_thinking: Optional[bool] = None  # Whether the model itself keeps historical thinking content.
+    # Model-level handling of historical thinking: default by mode, always keep, or never keep.
+    preserve_thinking_policy: Literal['default', 'always', 'never'] = 'default'
     # During encoding, historical thinking content will be removed.
     # This parameter represents the prefix for the historical part.
     history_thinking_prefix: str = ''
