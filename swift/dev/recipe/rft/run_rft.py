@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 import json
 
-from swift.dev.recipe.batching import balance_update
 from swift.dev.recipe.rft.assembly import build_rft_driver, initialize_rft_cluster, rft_group_requests
 from swift.dev.recipe.utils import (
     StepState,
@@ -230,7 +229,7 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
     cluster.engine.sync_weights()
     driver = build_rft_driver(cluster=cluster, rollout_config=rollout_config, prompt_dataloader=dataloader,
                               num_samples=num_samples, window=window)
-    trajs, orm_rows, lengths = [], [], []
+    trajs, orm_rows, lengths, row_lengths = [], [], [], []
     try:
         for batch, batch_facts in driver:
             trajs.extend(batch)
@@ -239,6 +238,8 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
                 # no-scorer round leaves it empty and the matrix fold below reads [nan] per row.
                 orm_rows.append(list(((score.get('rewards') or {}).get('orm') or {}).values()))
             lengths.extend(batch_facts.get('response_lengths') or ())
+            row_lengths.extend(p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
+                                                     batch_facts.get('response_lengths') or ()))
             if len(trajs) % (window * num_samples) == 0:
                 logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')
     finally:
@@ -261,7 +262,8 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
     selector.accumulate_metric(rewards_matrix, lengths)
     rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
     kept = selector.select(len(trajs), rewards)
-    return [trajs[i] for i in kept], [lengths[i] for i in kept]
+    # Without the prompt half the totals are unknown, so the model reads row lengths itself.
+    return [trajs[i] for i in kept], [row_lengths[i] for i in kept] if len(row_lengths) == len(trajs) else None
 
 
 def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, save_steps):
@@ -278,17 +280,15 @@ def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, sa
         if state.reached_max():
             break
         update = trajs[start:end]
-        update, balance_metrics = balance_update(
-            state, update, lengths[start:end],
-            micro_batch_kwargs={'micro_batch_size': micro_batch_size})
         state.micro_step += (end - start) // train_batch_size
         cluster.model.forward_backward(
             inputs=copy_inputs(update),
+            input_lengths=lengths[start:end] if lengths else None,
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
         )
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        state.record(extra_metrics=balance_metrics)
+        state.record()
         # The periodic save is DEFERRED to the round boundary (the round component
         # commits with it, keeping every checkpoint round-atomic); snapshot the
         # callback's one-shot request before the tail clears it.
@@ -394,7 +394,6 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     state = StepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
-        dp_balance=train_config.dp_balance,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

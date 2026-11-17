@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import torch
 from twinkle.perf import span as perf_span
 
-from swift.dev.recipe.batching import balance_lanes, balance_update
 from swift.dev.recipe.grpo.assembly import build_driver, grpo_group_requests, initialize_cluster
 from swift.dev.recipe.utils import (
     RolloutStepState,
@@ -97,18 +96,21 @@ def _forward_kwargs(
     temperature: float,
     *,
     micro_batch_size: int,
+    input_lengths: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """One optimizer batch's kwargs; Twinkle splits the per-rank micro-batches.
 
     Every per-sample training signal rides the trajectories themselves: the model lifts
     ``advantages`` / ``old_logps`` / ``ref_logps`` / ``teacher_logps`` / ``truncated`` off its
     inputs (the rollout log-probs and sampling masks likewise), so the only kwargs left are the
-    inputs, the batching, the sampling temperature and the routing mode.
+    inputs, the batching, the sampling temperature and the routing mode. ``input_lengths`` is
+    light metadata: the model plans its DP balancing from it without fetching the references.
     """
     from swift.dev.utils.scoring import copy_inputs
 
     kwargs: Dict[str, Any] = {
         'inputs': copy_inputs(update_trajs),
+        'input_lengths': input_lengths,
         'gradient_accumulation_steps': 1,
         "micro_batch_size": micro_batch_size,
         'temperature': temperature,
@@ -182,7 +184,7 @@ def _train_mini_batches(
 
     The trajectories carry every training signal as top-level response-framed fields, so a
     replay slice is nothing but a row index list; ``lengths`` is the batch summary's row token
-    count, the metadata batch balancing plans from without touching the references.
+    count, the metadata the model's DP balancing plans from without touching the references.
     """
     model = state.model
     dp_size = model.device_mesh.data_world_size
@@ -200,11 +202,10 @@ def _train_mini_batches(
             return optimizer_steps
         # Repeat the traversal, including across update boundaries, without copying all replays.
         indices = [index % len(trajs) for index in range(lo, hi)]
-        update, balance_metrics = balance_update(
-            state, [trajs[index] for index in indices], [lengths[index] for index in indices],
-            micro_batch_kwargs={'micro_batch_size': train_batch_size // dp_size, **(batching_kwargs or {})})
-        kwargs = _forward_kwargs(rl_config, update, temperature,
-                                 micro_batch_size=train_batch_size // dp_size)
+        kwargs = _forward_kwargs(
+            rl_config, [trajs[index] for index in indices], temperature,
+            micro_batch_size=train_batch_size // dp_size,
+            input_lengths=[lengths[index] for index in indices] if lengths else None)
         kwargs.update(batching_kwargs or {})
         micro_batches = (hi - lo) // train_batch_size  # Nominal count; DBS schedules physical batches internally.
         if chord_fn is not None:
@@ -217,7 +218,7 @@ def _train_mini_batches(
         # worker-side failure fails THIS step at the call site.
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.micro_step += micro_batches
-        state.record(extra_metrics=balance_metrics)
+        state.record()
         state.record_rollout_training(indices)
         # Sample worker memory for THIS iteration before step_tail can run a periodic
         # checkpoint (rows are cached on the state; later reads reuse them).
@@ -338,48 +339,41 @@ def _train_loop(
                 last_batch_versions[:1] = [batch_facts.get('version_spans') or []]
             # The forwards, flattened into the loop body: each lane is ONE whole-batch
             # response-framed forward, its result passed as a handle straight into the advantage.
-            # The lanes run in the DP-balanced order (whole GRPO groups stay together, so the
-            # advantage's positional group math still sees complete blocks); the score rows are
-            # permuted alongside, and `lane_restore` puts the returned trajectories back into the
-            # caller's order before any downstream consumer.
+            # The lanes stay in the caller's order: the model balances each forward across DP ranks
+            # from `input_lengths` and returns its rows in the order they were submitted.
             lane_lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
-                                                 batch_facts.get('response_lengths') or ())]
-            lane_trajs, lane_order, lane_restore = balance_lanes(
-                state, trajs, lane_lengths, group_size=rl_config.num_generations, micro_batch_kwargs=batching)
-            lane_scores = batch_facts['scores'] if lane_order is None else [
-                batch_facts['scores'][index] for index in lane_order]
+                                                 batch_facts.get('response_lengths') or ())] or None
             ref_out = None
             if cluster.reference is not None:
                 # a disable_adapter auxiliary IS the policy object itself (identity derives disable_lora AND
                 # the policy-group placement).
                 ref_out = cluster.reference.forward_only(
-                    inputs=lane_trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
-                    **batching, **({'disable_lora': True} if cluster.reference is cluster.model else {}))
+                    inputs=trajs, input_lengths=lane_lengths, output_frame='response', output_fields=('logps',),
+                    temperature=temperature, **batching,
+                    **({'disable_lora': True} if cluster.reference is cluster.model else {}))
             teacher_out = None
             if cluster.teacher is not None or teacher_prompt:
                 # teacher_prompt without a dedicated teacher: the policy grades the privileged view itself.
                 t_model = cluster.teacher if cluster.teacher is not None else cluster.model
                 t_disable = cluster.teacher is not None and cluster.teacher is cluster.model
-                view = cluster.privileged(lane_trajs) if cluster.privileged is not None else lane_trajs
+                view = cluster.privileged(trajs) if cluster.privileged is not None else trajs
                 teacher_out = t_model.forward_only(
-                    inputs=view, output_frame='response', output_fields=('logps',), temperature=temperature,
-                    **batching, **({'disable_lora': True} if t_disable else {}))
+                    inputs=view, input_lengths=lane_lengths, output_frame='response', output_fields=('logps',),
+                    temperature=temperature, **batching, **({'disable_lora': True} if t_disable else {}))
             old_out = None
             if rl_config.rollout_importance_sampling_mode or rl_config.log_rollout_offpolicy_metrics:
                 # the pre-update policy lane: old_logps from the training side BEFORE any optimizer
                 # step this batch (the default is the sampler's own logps, already on the rows).
                 old_out = cluster.model.forward_only(
-                    inputs=lane_trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
-                    **batching)
+                    inputs=trajs, input_lengths=lane_lengths, output_frame='response', output_fields=('logps',),
+                    temperature=temperature, **batching)
             # ONE advantage call: reads the rows plus the batch's row-aligned score rows
             # (``facts['scores']``, meeting here inside the worker), returns the trajectories with
             # the training-target columns attached (references) plus a light numeric summary; the
             # caller replaces its old references.
             trajs, adv_summary = cluster.advantage(
-                lane_trajs, ref_out=ref_out, teacher_out=teacher_out, old_out=old_out,
-                global_step=state.global_step, scores=lane_scores)
-            if lane_restore is not None:
-                trajs = [trajs[position] for position in lane_restore]
+                trajs, ref_out=ref_out, teacher_out=teacher_out, old_out=old_out,
+                global_step=state.global_step, scores=batch_facts['scores'])
             if advantage_out is not None:
                 advantage_out.clear()
                 # Short names: the consumer namespaces them under ``advantage/``.
@@ -609,7 +603,6 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
     state = RolloutStepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
-        dp_balance=train_config.dp_balance,
         gradient_accumulation_steps=ga,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

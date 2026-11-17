@@ -8,7 +8,6 @@ import sys
 from itertools import count
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from swift.dev.recipe.batching import balance_update
 from swift.dev.utils.logger import get_logger
 from swift.dev.utils.scoring import copy_inputs
 
@@ -49,16 +48,14 @@ def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], lengths: O
             break
         update = trajs[lo:hi]
         state.micro_step += (hi - lo) // train_batch_size
-        update, balance_metrics = balance_update(
-            state, update, None if lengths is None else lengths[lo:hi],
-            micro_batch_kwargs={'micro_batch_size': micro_batch_size})
         # The worker runs the teacher forward -- the driver never sees the full-vocab logits or the
         # logps, only the light kwargs carrying them as refs.
         signal = dict(cluster.worker.forward_kwargs(update, use_student))
         cluster.model.forward_backward(
-            inputs=copy_inputs(update), gradient_accumulation_steps=1, micro_batch_size=micro_batch_size, **signal)
+            inputs=copy_inputs(update), input_lengths=lengths[lo:hi] if lengths else None,
+            gradient_accumulation_steps=1, micro_batch_size=micro_batch_size, **signal)
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
-        state.record(extra_metrics=balance_metrics)
+        state.record()
         optimizer_steps += 1
         state.step_tail(save=save)
     return optimizer_steps
@@ -224,7 +221,6 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     state = StepState(
         cluster.model, train_config,
         padding_free=template_config.padding_free,
-        dp_balance=train_config.dp_balance,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,
         max_steps=max_steps, max_grad_norm=resolve_max_grad_norm(train_config),
         logging_config=logging_config, output_dir=output_dir,

@@ -138,8 +138,7 @@ class TrainConfig:
     full_determinism: bool = False
     use_liger_kernel: bool = False
     neftune_noise_alpha: Optional[float] = None
-    # Reorder post-rollout batches AND the RL lane forwards (ref/teacher/old-logps) so DP
-    # ranks get even workloads (online RL / distillation / RFT; the PPO value model keeps its order).
+    # Shared TrainableModel DP balancing (Transformers / Megatron); unsafe loss/layout configurations skip.
     dp_balance: bool = True
 
     # === Training Strategy ===
