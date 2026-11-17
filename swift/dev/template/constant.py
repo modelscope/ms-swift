@@ -295,6 +295,7 @@ class MLLMTemplateType:
     kev = "kev"
     thx02 = "thx02"
     startlux = "startlux"
+    h2o = "h2o"
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
