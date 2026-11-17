@@ -733,13 +733,16 @@ class ModelLoader:
         return processor_cls.from_pretrained(model_dir, **kwargs)
 
     @classmethod
-    def resolve_model_cls(cls) -> type:
+    def resolve_model_cls(cls, config=None) -> type:
         """The transformers class this family loads with, resolved from :attr:`model_cls`.
 
         Split out of :meth:`build_model` so a caller that needs the class itself rather than a loaded
         checkpoint -- ``from_config`` on a config with no weights behind it, an ``isinstance`` check --
         does not have to re-resolve the ``'module:ClassName'`` string, which is the one place the
-        lazy-import rule lives.
+        lazy-import rule lives. ``config`` (optional) lets a family with TWO checkpoint layouts
+        (e.g. JEV's multimodal vs text-only Qwen3.5) resolve the layout-correct class -- the
+        weightless dummy build needs exactly that; class-level callers without a config keep the
+        declared default.
         """
         assert cls.model_cls is not None, f"{cls.__name__} must declare `model_cls`."
         return _import_cls(cls.model_cls)

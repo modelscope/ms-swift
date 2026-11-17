@@ -25,8 +25,10 @@ ragged and are stored padded:
                   (one-hot for Clef/OmniJev CE, soft for JEV distillation; pad cols = 0)
 """
 
+import json
 import math
 import os
+import shutil
 import string
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -39,6 +41,10 @@ from transformers.modeling_outputs import ModelOutput
 
 QUESTION_TYPES = {"noul": 0, "choice": 1, "score": 2}
 KIND_NAMES = ("noul", "choice", "score")
+
+#: The subdirectory under a MERGED / exported model dir that carries the head artifacts, so
+#: the merged root stays a pure base checkpoint while loaders still find the head.
+HEAD_EXPORT_SUBDIR = "scoring_head"
 
 
 @dataclass
@@ -113,6 +119,35 @@ def maybe_load_trained_scoring_head(model: nn.Module, adapter_dir: Optional[str]
     return loaded
 
 
+def export_merged_scoring_head(model, base_model_dir: str, adapters, output_dir: str) -> bool:
+    """Export the scoring head a decision-model MERGE must carry into the merged dir"""
+    head = get_scoring_head(model)
+    head_cls = type(head) if head is not None else None
+    if head_cls is None:
+        info = getattr(model, "model_info", None) or getattr(model, "model_meta", None)
+        if info is None or getattr(info, "task_type", None) != "decision":
+            return False
+        from swift.dev.model.loader import get_model_loader
+
+        head_cls = get_model_loader(info.model_type).head_cls
+    config = getattr(model, "config", None)
+    built = None
+    for source in (base_model_dir, *adapters):
+        try:
+            built = head_cls.from_pretrained(source, model=model, config=config)
+        except FileNotFoundError:
+            continue
+        break
+    if built is None:
+        raise FileNotFoundError(
+            f"cannot rebuild the {head_cls.__name__} for the merged export: no factory artifacts under "
+            f"{base_model_dir!r} and no saved head meta under any of {list(adapters)!r}.")
+    for adapter in adapters:
+        built.load_pretrained(adapter)
+    built.save_export(output_dir, source_model_dir=base_model_dir)
+    return True
+
+
 def clef_option_ids(kind: str, criteria: Any) -> List[str]:
     if kind == "noul":
         return ["true", "false"]
@@ -185,6 +220,8 @@ class ScoringHead(nn.Module):
         candidates = [os.path.join(model_dir, filename)]
         if subdir:
             candidates.append(os.path.join(model_dir, subdir, filename))
+        # merged / exported layout: the family artifacts ride under HEAD_EXPORT_SUBDIR
+        candidates.append(os.path.join(model_dir, HEAD_EXPORT_SUBDIR, filename))
         for candidate in candidates:
             if os.path.exists(candidate):
                 return candidate
@@ -235,6 +272,9 @@ class ScoringHead(nn.Module):
     def _read_saved_meta(cls, model_dir: str) -> Optional[Dict[str, Any]]:
         meta_file = os.path.join(model_dir, cls.HEAD_META_NAME)
         if not os.path.isfile(meta_file):
+            # merged / exported layout: the meta rides under HEAD_EXPORT_SUBDIR
+            meta_file = os.path.join(model_dir, HEAD_EXPORT_SUBDIR, cls.HEAD_META_NAME)
+        if not os.path.isfile(meta_file):
             return None
         with open(meta_file, "r", encoding="utf-8") as f:
             meta = json.load(f)
@@ -265,6 +305,26 @@ class ScoringHead(nn.Module):
         with open(os.path.join(save_directory, self.HEAD_META_NAME), "w", encoding="utf-8") as f:
             json.dump({**self.extra_state_for_save(), "head_type": self.head_type}, f, indent=2, ensure_ascii=False)
 
+    def save_export(self, output_dir: str, source_model_dir: Optional[str] = None) -> None:
+        """Export this head for deployment under ``output_dir / HEAD_EXPORT_SUBDIR``"""
+        export_dir = os.path.join(output_dir, HEAD_EXPORT_SUBDIR)
+        os.makedirs(export_dir, exist_ok=True)
+        self.save_pretrained(export_dir)
+        if source_model_dir is None:
+            return
+        for filename, env_var, subdir in self.factory_artifacts:
+            src = self._locate(source_model_dir, filename, env_var, subdir)
+            if src is None or not os.path.isfile(src):
+                continue
+            dst = os.path.join(export_dir, filename)
+            if os.path.exists(dst):
+                # Laya ships two same-named factory variants (typed-decisions / multilingual
+                # subfolders); the FIRST artifact wins, matching `_from_factory`'s resolution
+                # order, so a later variant cannot silently replace the config the head was
+                # actually built from.
+                continue
+            shutil.copy(src, dst)
+
     def load_pretrained(self, load_directory: str) -> bool:
         """Two scenarios:
         - Adapter checkpoint (LoRA): ``HEAD_WEIGHTS_NAME`` exists → load weights from it (the head
@@ -276,13 +336,24 @@ class ScoringHead(nn.Module):
         In both cases, if ``HEAD_META_NAME`` carries non-parameter calibration state (temperatures,
         biases, etc. from ``extra_state_for_save``), it is applied to the head so a reloaded
         TRAINED checkpoint restores its fitted calibration, not the factory defaults.
+
+        Both files are looked up in ``load_directory`` first, then under its
+        ``HEAD_EXPORT_SUBDIR`` subdirectory (a merged / exported model dir carries its head
+        artifacts there).
         """
         from safetensors.torch import load_file
 
-        weights_file = os.path.join(load_directory, self.HEAD_WEIGHTS_NAME)
-        meta_file = os.path.join(load_directory, self.HEAD_META_NAME)
-        has_weights = os.path.exists(weights_file)
-        has_meta = os.path.exists(meta_file)
+        def first_existing(filename: str) -> Optional[str]:
+            for candidate in (os.path.join(load_directory, filename),
+                              os.path.join(load_directory, HEAD_EXPORT_SUBDIR, filename)):
+                if os.path.exists(candidate):
+                    return candidate
+            return None
+
+        weights_file = first_existing(self.HEAD_WEIGHTS_NAME)
+        meta_file = first_existing(self.HEAD_META_NAME)
+        has_weights = weights_file is not None
+        has_meta = meta_file is not None
         if not has_weights and not has_meta:
             return False
         meta = self._read_saved_meta(load_directory) if has_meta else None
@@ -655,8 +726,32 @@ class StartLuxLetterHead(JevVerbalizerHead):
             or len(set(letters)) != len(letters)
         ):
             raise ValueError(f"{head_file}: letter_token_ids must be 26 distinct token ids (A to Z).")
-        bias = [0.0] * len(letters)
+        bias = head.get("letter_bias")
+        if bias is None:
+            bias = [0.0] * len(letters)
+        elif (
+            not isinstance(bias, (list, tuple))
+            or len(bias) != len(letters)
+            or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in bias)
+        ):
+            raise ValueError(
+                f"{head_file}: letter_bias must be {len(letters)} numbers, one per letter_token_ids entry."
+            )
+        bias = [float(v) for v in bias]
         return cls(bias, list(letters), dict(cls.DEFAULT_RANGES), temperatures, head_temperature=1.0)
+
+    def save_export(self, output_dir: str, source_model_dir: Optional[str] = None) -> None:
+        """Export ``decision_config.json`` WITH the trained letter bias beside the sidecar pair"""
+        super().save_export(output_dir, source_model_dir=source_model_dir)
+        export_dir = os.path.join(output_dir, HEAD_EXPORT_SUBDIR)
+        os.makedirs(export_dir, exist_ok=True)
+        config = {
+            "letter_token_ids": [int(token_id) for token_id in self.verbalizer_ids],
+            "temperature_by_type": {KIND_NAMES[k]: float(self.temperatures[k]) for k in range(len(KIND_NAMES))},
+            "letter_bias": self.bias.detach().float().tolist(),
+        }
+        with open(os.path.join(export_dir, "decision_config.json"), "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
 
 
 class EvidenceRoutingLayer(nn.Module):
@@ -1043,7 +1138,7 @@ class ClefJointSchemaHead(ScoringHead):
             option_queries.append(
                 self.option_context_projection(context_vectors)
                 + self.option_lexical_projection(lexical)
-                + self.option_question_projection(question_vectors[question_index]).unsqueeze(0)
+                + self.option_question_projection(question_vectors[question_index].unsqueeze(0))
             )
         routed_options = torch.cat(option_queries, dim=0).unsqueeze(0)
         for layer in self.evidence_layers:
@@ -1059,7 +1154,7 @@ class ClefJointSchemaHead(ScoringHead):
         fields = (
             base_fields
             + self.option_summary_norm(torch.stack(option_summaries))
-            + self.global_projection(global_vector).unsqueeze(0)
+            + self.global_projection(global_vector.unsqueeze(0))
             + self.type_embedding(type_ids)
         )
         fields = fields.unsqueeze(0)

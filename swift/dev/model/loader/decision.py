@@ -212,6 +212,19 @@ class JevLoader(ScoringLoader, Qwen3_5Loader):
         self._text_layout = _is_text_layout(config)
         return config
 
+    @classmethod
+    def resolve_model_cls(cls, config=None) -> type:
+        """Layout-aware: the text-only checkpoints (``qwen3_5_text``) are bare
+        ``Qwen3_5ForCausalLM`` -- the same class ``build_backbone`` loads them with -- while the
+        declared default is the multimodal ``Qwen3_5ForConditionalGeneration``. The weightless
+        dummy build (streaming merge's meta base) bypasses ``build_backbone``, so it resolves
+        the class here; without the config the multimodal default stands (class-level callers)."""
+        if config is not None and _is_text_layout(config):
+            from transformers import Qwen3_5ForCausalLM
+
+            return Qwen3_5ForCausalLM
+        return super().resolve_model_cls()
+
     def build_backbone(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
         if not _is_text_layout(config):
             return super().build_backbone(model_dir, config, processor, **kwargs)
