@@ -15,9 +15,9 @@ pip install "ms-swift>=4.6.0"
 
 ## 支持模型
 
-1. JEV：Qwen3.5 骨干 + PEFT adapter（verbalizer 打分头；JEV-27B-VL 为多模态布局，JEV-27B / JEV-9B 为纯文本布局）
-  - [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL) / [JEV-27B](https://www.modelscope.cn/models/autotrust/JEV-27B) / [JEV-9B](https://www.modelscope.cn/models/autotrust/JEV-9B)
-2. Clef：已合并 LoRA 的完整 Qwen3-VL
+1. JEV：Qwen3.5 骨干 + PEFT adapter（verbalizer 打分头；JEV-27B-VL 为多模态布局，JEV-27B / JEV-9B 为纯文本布局，JEV-35B 为多模态 MoE 布局，决策头已并入权重、无 LoRA adapter）
+  - [JEV-35B](https://www.modelscope.cn/models/autotrust/JEV-35B) / [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL) / [JEV-27B](https://www.modelscope.cn/models/autotrust/JEV-27B) / [JEV-9B](https://www.modelscope.cn/models/autotrust/JEV-9B)
+2. Clef：已合并 LoRA 的完整 Qwen3.5 多模态
   - [ModelScope](https://www.modelscope.cn/models/Cloudflare/clef)
 3. OmniJev：Qwen3.5-4B（hybrid gated-deltanet + VL）+ PEFT adapter
   - [ModelScope](https://modelscope.cn/models/AI-ModelScope/OmniJev)
@@ -33,8 +33,9 @@ pip install "ms-swift>=4.6.0"
 
 | 模型         | `--model_type` | 底座                               | 头制品                                                                            | `--loss_type`  |
 | ---------- | -------------- | -------------------------------- | ------------------------------------------------------------------------------ | -------------- |
-| JEV-27B-VL | `jev`          | Qwen3-VL + PEFT adapter          | `decision_head.json` + `calibration.json`（24 槽 verbalizer bias）                | `distill_rps`  |
-| Clef       | `clef`         | 已合并 LoRA 的 Qwen3-VL              | `joint_head.safetensors` + `joint_head_config.json`                            | `smooth_brier` |
+| JEV-27B-VL | `jev`          | Qwen3.5 多模态 + PEFT adapter     | `decision_head.json` + `calibration.json`（24 槽 verbalizer bias）                | `distill_rps`  |
+| JEV-35B    | `jev`          | Qwen3.5 MoE（35B-A3B），决策头已并入权重（无 LoRA） | `decision_head.json` + `calibration.json`（264 槽 verbalizer bias，单次最多 256 选项） | `distill_rps`  |
+| Clef       | `clef`         | 已合并 LoRA 的 Qwen3.5 多模态        | `joint_head.safetensors` + `joint_head_config.json`                            | `smooth_brier` |
 | OmniJev    | `omnijev`      | Qwen3.5-4B hybrid + PEFT adapter | `head.pt`（FiLM）+ `ord.pt`（有序回归）+ `new_tok_emb.pt`（2 新 token）+ `head_meta.json` | `ce_rps`       |
 | Kev        | `kev`          | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt`（pointer head，fp32）+ 拟合 `temperature`（仅 eval 生效）                 | `scoring`      |
 | THX-02     | `thx02`        | 已合并的 Qwen3.5 hybrid（非因果 full attention） | `readout.safetensors`（255 个答案码上的线性 readout）+ `decision_config.json`（标定温度） | `distill_rps`  |
