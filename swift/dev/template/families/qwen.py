@@ -712,6 +712,34 @@ class Qwen3_5Template(Qwen3VLTemplate):
     image_token_id = 248056
     video_token_id = 248057
 
+    @staticmethod
+    def _get_inputs_embeds_hf(inputs_embeds, inputs, visual, processor, config):
+        if inputs.get("pixel_values") is not None or inputs.get("pixel_values_videos") is not None:
+            return Template._get_inputs_embeds_hf(inputs_embeds, inputs, visual, processor, config)
+        # Keep the zero-gradient vision path for distributed training, without processing a PIL image.
+        # Match verl's Qwen3.5 dummy: 16 patches, already on the model device.
+        vision_config = config.vision_config
+        patch_dim = vision_config.in_channels * vision_config.temporal_patch_size * vision_config.patch_size**2
+        pixels = torch.zeros((16, patch_dim), dtype=visual.dtype, device=inputs_embeds.device)
+        grid = torch.tensor([[1, 4, 4]], dtype=torch.long, device=inputs_embeds.device)
+        image_embeds = visual(pixels, grid_thw=grid).pooler_output
+        return inputs_embeds + image_embeds.mean().to(inputs_embeds.device) * 0.0
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        mm_types = inputs.get("mm_token_type_ids")
+        if any(inputs.get(key) is not None for key in ("image_grid_thw", "video_grid_thw")) or (
+            mm_types is not None and torch.any(mm_types != 0)
+        ):
+            return super()._get_position_ids(inputs)
+        # With no media all three mRoPE axes are ordinary token positions.
+        mask = inputs.get("attention_mask_2d")
+        if mask is None:
+            mask = inputs.get("attention_mask")
+        if mask is None:
+            mask = torch.ones_like(inputs["input_ids"])
+        positions = (mask.bool().long().cumsum(-1) - 1).masked_fill(~mask.bool(), 0)
+        return {"position_ids": self._concat_text_position_ids(positions.unsqueeze(0).expand(3, -1, -1))}
+
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if self.padding_free and self.sequence_parallel_size <= 1 and not self.transformers_5_9:
             raise RuntimeError(
