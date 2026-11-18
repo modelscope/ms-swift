@@ -2111,7 +2111,7 @@ class RunTracker:
             self._metric_reporter.record(record)
 
     def log(self, metrics: Dict[str, Any], step: int, *, epoch_end: bool = False,
-            persist: bool = True) -> Dict[str, Any]:
+            persist: bool = True, stage: str = 'train') -> Dict[str, Any]:
         """Filter and write one metric record; returns the record actually emitted.
 
         ``persist=False`` fans the record out to the console and the tensorboard/wandb/swanlab writers
@@ -2123,11 +2123,11 @@ class RunTracker:
         timing unjudgeable from the persisted metrics.
 
         Declaring the re-emission at the call site is what makes this safe: no deduplication key is
-        needed, and none would work. The eval path legitimately logs a second, different observation at
-        the same ``optimizer_step``, and every record here is written with ``stage='train'`` -- the eval
-        one included -- so neither the step nor ``(stage, step)`` distinguishes a re-emission from a new
-        observation. Comparing values would be worse still: two steps whose metrics happen to be equal
-        are a legitimate outcome, not a duplicate.
+        needed, and none would work. Two train observations at the same ``optimizer_step`` (a
+        re-emission and a genuinely new one) are indistinguishable by step, and comparing values would
+        be worse still: two steps whose metrics happen to be equal are a legitimate outcome, not a
+        duplicate. Evaluation observations carry ``stage='evaluation'`` so they never masquerade as
+        train records in the persisted stream.
         """
         filtered = self._filter_metrics(metrics)
         if self._metric_reporter is not None and persist:
@@ -2136,7 +2136,7 @@ class RunTracker:
             # attributes. Only percentage strings need Swift's legacy conversion.
             raw = {key: _raw_metric_value(value) for key, value in metrics.items()}
             self.record(MetricRecord(
-                stage='train', optimizer_step=step, values=raw, attributes={'step_unit': 'optimizer_update'}))
+                stage=stage, optimizer_step=step, values=raw, attributes={'step_unit': 'optimizer_update'}))
         if not self.should_log(step, epoch_end=epoch_end):
             return filtered
         scalars = {}

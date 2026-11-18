@@ -241,7 +241,7 @@ class _Evaluation:
         if result is None:
             return None
         self.history.append(result)
-        self.state.tracker.log(result, self.state.global_step)
+        self.state.tracker.log(result, self.state.global_step, stage='evaluation')
         self.state.best_metric, self.best_step, self.best_ckpt = track_best(
             result,
             (self.state.best_metric, self.best_step, self.best_ckpt),
