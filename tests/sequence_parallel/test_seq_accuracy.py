@@ -14,8 +14,8 @@ from swift.trainers.mixin import SwiftMixin
 
 class MetricValues(list):
 
-    def update(self, values):
-        self.extend(values)
+    def update_counts(self, values):
+        self.extend(values.tolist())
 
 
 def _check_accuracy(rank, rendezvous, ring_size, sequence_size):
@@ -62,7 +62,8 @@ def _check_accuracy(rank, rendezvous, ring_size, sequence_size):
                         local_labels = labels
                     metric_boundaries = cu_seqlens if strategy == 'seq' else None
                     SwiftMixin._compute_acc(trainer, SimpleNamespace(logits=logits), local_labels, metric_boundaries)
-                    assert metric == expected[f'{strategy}_acc'], (lengths, wrong_token, strategy, metric, expected)
+                    values = expected[f'{strategy}_acc']
+                    assert metric == [sum(values), len(values)], (lengths, wrong_token, strategy, metric, expected)
     finally:
         dist.destroy_process_group()
 
