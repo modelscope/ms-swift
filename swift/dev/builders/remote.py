@@ -74,6 +74,16 @@ class RemoteModel:
         response = self._handle.resume_from_checkpoint(path, **kwargs)
         return getattr(response, 'result', response)
 
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        # The local face returns the ModelOutput dict directly; the client wraps it in
+        # ForwardResponse.result. Downstream consumers (advantage _lane) call .get(field) on it.
+        response = self._handle.forward(*args, **kwargs)
+        return getattr(response, 'result', response)
+
+    def forward_only(self, *args: Any, **kwargs: Any) -> Any:
+        response = self._handle.forward_only(*args, **kwargs)
+        return getattr(response, 'result', response)
+
 
 def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
                        gradient_accumulation_steps: int,
