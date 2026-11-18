@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import numpy as np
 import os
 import random as _random
@@ -357,7 +358,8 @@ def load_dataset(
     use_hf_default = use_hf
     if use_hf_default is None:
         use_hf_default = True if use_hf_hub() else False
-    for dataset in datasets:
+    sources = []
+    for dataset_index, dataset in enumerate(datasets):
         dataset_syntax = DatasetSyntax.parse(dataset)
         use_hf = dataset_syntax.use_hf if dataset_syntax.use_hf is not None else use_hf_default
         # compat dataset_name
@@ -370,6 +372,11 @@ def load_dataset(
                 dataset_syntax.dataset = dataset_meta.hf_dataset_id if use_hf else dataset_meta.ms_dataset_id
         else:
             dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
+        sources.append((dataset_index, dataset, dataset_syntax, use_hf, dataset_meta))
+    infonce_enabled = any(meta.infonce_config is not None for _, _, _, _, meta in sources)
+    if infonce_enabled and streaming:
+        raise ValueError('Dataset-specific InfoNCE requires streaming=False for all datasets.')
+    for dataset_index, dataset, dataset_syntax, use_hf, dataset_meta in sources:
         loader = dataset_meta.loader(
             num_proc=num_proc,
             load_from_cache_file=load_from_cache_file,
@@ -390,6 +397,15 @@ def load_dataset(
         # shared filesystem the ranks then race to write the same file. The tag is constant per
         # dataset, so tagging first is equivalent and keeps add_column() in memory.
         train_dataset = _inject_dataset_routing_tag(train_dataset, dataset_syntax.dataset)
+        if infonce_enabled:
+            metadata = {
+                '_dataset_group': f'{dataset_index}:{dataset}',
+                '_infonce_config': json.dumps(dataset_meta.infonce_config or {}, sort_keys=True),
+            }
+            for key, value in metadata.items():
+                if key in train_dataset.column_names:
+                    train_dataset = train_dataset.remove_columns(key)
+                train_dataset = train_dataset.add_column(key, [value] * len(train_dataset))
         train_dataset, val_dataset = loader.post_process(
             train_dataset,
             dataset_sample=dataset_syntax.dataset_sample,
