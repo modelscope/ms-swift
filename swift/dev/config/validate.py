@@ -2432,7 +2432,8 @@ def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_
 
 
 # rl_type -> whether it trains against a separate reference model. CPO/ORPO fold the reference into
-# their own loss and LoRA uses the adapter-disabled base as reference, so neither takes a ref_model.
+# their own loss and LoRA uses the adapter-disabled base as reference, so neither takes a ref_model
+# -- except LoRA under sync_ref_model, which builds a separate frozen reference (see assembly).
 _RL_USES_REF_MODEL = ('dpo', 'kto', 'ppo', 'grpo')
 
 
@@ -2446,7 +2447,8 @@ def _check_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['Tun
         return
     rl_type = getattr(rl_config, 'rl_type', None)
     tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    uses_ref = rl_type in _RL_USES_REF_MODEL and (tuner == 'full' or bool(rl_config.ref_adapters))
+    uses_ref = rl_type in _RL_USES_REF_MODEL and (tuner == 'full' or bool(rl_config.ref_adapters)
+                                                  or rl_config.sync_ref_model)
     if rl_config.ref_model is None:
         if rl_config.ref_adapters:
             raise ValueError('ref_adapters requires a reference model; call process_configs or set ref_model.')
