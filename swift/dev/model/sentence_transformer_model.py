@@ -223,6 +223,10 @@ class SentenceTransformerModel(TwinkleTransformersModel):
 
         inputs["labels"] = labels
         outputs = {"embeddings": embeddings, "logits": None, "past_key_values": None}
+        # Set the flag explicitly (the base does this in _finalize_forward_outputs): forward_only
+        # now records last_forward_training=False, so a training forward after an interleaved eval
+        # must reset it to True or calculate_loss would read the stale eval_status.
+        optimizer_config.last_forward_training = True
         optimizer_config.train_status.inputs = inputs
         optimizer_config.train_status.outputs = outputs
         optimizer_config.train_status.forward_kwargs = kwargs
@@ -237,9 +241,21 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         kwargs.pop("task", None)
         self.model.eval()
         optimizer_config, inputs = self._prepare_forward(inputs, adapter_name)
-        inputs.pop("labels", None)
+        labels = inputs.pop("labels", None)
+        optimizer_config.accumulate_metrics(False)
         with torch.inference_mode():
             embeddings = self._encode_sentence_embeddings(inputs)
+        # Record into eval_status so the final_eval calculate_loss/calculate_metric can read this
+        # forward. The base TransformersModel fills eval_status in _finalize_forward_outputs, which
+        # this override bypasses; without it calculate_loss hits empty inputs/outputs (defect87).
+        # Keep labels: the embedding loss (InfoNCE) reads inputs['labels'] to locate each positive.
+        inputs["labels"] = labels
+        outputs = {"embeddings": embeddings, "logits": None, "past_key_values": None}
+        optimizer_config.last_forward_training = False
+        optimizer_config.eval_status.inputs = inputs
+        optimizer_config.eval_status.outputs = outputs
+        optimizer_config.eval_status.forward_kwargs = kwargs
+        optimizer_config.eval_status.loss_value = outputs.get("aux_loss", 0)
         return {"embeddings": embeddings}
 
     def _forward_backward_single(self, *, inputs, loss_key, loss_weight, normalize_globally,
