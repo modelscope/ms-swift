@@ -20,7 +20,16 @@ import json as _json
 import logging
 import os
 import torch
-from typing import Any, Dict
+from PIL import Image as PILImage
+from typing import Any, Dict, List, Literal, Optional
+
+from swift.model import Model, ModelGroup, ModelMeta, register_model
+from swift.model.model_arch import MultiModelKeys, register_model_arch
+from swift.model.register import ModelLoader
+from swift.template import TemplateMeta, register_template
+from swift.template.base import Template
+from swift.template.template_inputs import StdTemplateInputs
+from swift.template.utils import Context, findall
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +39,6 @@ logger = logging.getLogger(__name__)
 # Register HY4-Flash-VL as a multimodal model in ms-swift. The VL model uses
 # HYV4FlashForConditionalGeneration and needs image/video processing support.
 # ============================================================================
-
-from swift.model import Model, ModelGroup, ModelMeta, register_model
-from swift.model.model_arch import MultiModelKeys, register_model_arch
-from swift.model.register import ModelLoader
-from swift.template import TemplateMeta, register_template
 
 # Register HY4-Flash-VL model architecture mapping.
 # HYV4FlashForConditionalGeneration has:
@@ -61,15 +65,9 @@ class HYV4FlashVLModelLoader(ModelLoader):
         return super().get_model(model_dir, config, processor, model_kwargs)
 
 
-from PIL import Image as PILImage
-from typing import List, Literal, Optional
-
 # ---------------------------------------------------------------------------
 # HYV4FlashVLTemplate: multimodal template for HY4-Flash-VL
 # ---------------------------------------------------------------------------
-from swift.template.base import Template
-from swift.template.template_inputs import StdTemplateInputs
-from swift.template.utils import Context, findall
 
 
 class HYV4FlashVLTemplate(Template):
@@ -194,9 +192,12 @@ register_template(
     TemplateMeta(
         template_type='hy_v4_flash_vl',
         prefix=[],
-        system_prefix=['<｜hy_start:opensource｜>system<｜hy_middle:opensource｜>{{SYSTEM}}<｜hy_end:opensource｜>'],
+        system_prefix=[
+            '<｜hy_start:opensource｜>system<｜hy_middle:opensource｜>{{SYSTEM}}<｜hy_end:opensource｜>',
+        ],
         prompt=[
-            '<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜><｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'
+            '<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜>'
+            '<｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'
         ],
         chat_sep=['<｜hy_end:opensource｜>'],
         suffix=['<｜hy_end:opensource｜>'],
@@ -212,9 +213,12 @@ register_template(
     TemplateMeta(
         template_type='hy_v4_flash',
         prefix=[],
-        system_prefix=['<｜hy_start:opensource｜>system<｜hy_middle:opensource｜>{{SYSTEM}}<｜hy_end:opensource｜>'],
+        system_prefix=[
+            '<｜hy_start:opensource｜>system<｜hy_middle:opensource｜>{{SYSTEM}}<｜hy_end:opensource｜>',
+        ],
         prompt=[
-            '<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜><｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'
+            '<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜>'
+            '<｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'
         ],
         chat_sep=['<｜hy_end:opensource｜>'],
         suffix=['<｜hy_end:opensource｜>'],
@@ -401,7 +405,10 @@ def _apply_shard_loading_patch():
             return _disable_router_logits_if_needed(model)
 
         from transformers.integrations.deepspeed import HfDeepSpeedConfig
-        _ds_config_obj = HfDeepSpeedConfig(ds_config_path)
+
+        # transformers keeps only a weakref to this object, so the binding must stay alive
+        # until `from_pretrained` runs; otherwise `is_deepspeed_zero3_enabled()` flips back to False.
+        _ds_config_obj = HfDeepSpeedConfig(ds_config_path)  # noqa: F841
 
         model = _real_orig_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs)
         return _disable_router_logits_if_needed(model)
