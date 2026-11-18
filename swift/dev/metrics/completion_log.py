@@ -16,8 +16,9 @@ class CompletionLog:
     The trajectories carry the messages (references under ray), so the rows are read where they
     live and only the text comes back. Each JSONL line holds the step, the prompt, the completion
     and its reasoning, the full messages, the completion length and the trajectory's ``truncated``
-    flag and named ``rewards.orm`` column -- the score rows (``scores``, row-aligned, as the driver
-    hands them out beside the trajectories) when given, the trajectory's own column otherwise.
+    flag and reward accounting -- the named ``rewards.orm`` column (the score rows ``scores``,
+    row-aligned, as the driver hands them out beside the trajectories, when given; the trajectory's
+    own column otherwise) plus the rollout-owned ``rewards.env`` when the trajectory carries it.
     """
 
     @remote_function(dispatch='all', collect='first', lazy_collect=False)
@@ -36,6 +37,15 @@ class CompletionLog:
             if path is not None:
                 assistant = next((m for m in reversed(messages) if m.get('role') == 'assistant'), {})
                 source = scores[index] if scores is not None else traj
+                # The rollout owns rewards.env (the sandbox's own reward, stamped at episode
+                # finish); the scorer owns the orm names. The audit line must account BOTH --
+                # writing only the orm column silently dropped the env channel, so env/training
+                # reward accounting could not be verified from the run artifacts. The flat orm
+                # schema is unchanged; 'env' joins it only when the trajectory carries it.
+                traj_rewards = traj.get('rewards') or {}
+                rewards = dict((source.get('rewards') or {}).get('orm') or {})
+                if 'env' in traj_rewards:
+                    rewards['env'] = traj_rewards['env']
                 lines.append(json.dumps({
                     'step': step,
                     'prompt': messages[:first],
@@ -44,7 +54,7 @@ class CompletionLog:
                     'messages': messages,
                     'completion_length': len(traj.get('response_token_ids') or []),
                     'truncated': bool(traj.get('truncated')),
-                    'rewards': ((source.get('rewards') or {}).get('orm') or {}),
+                    'rewards': rewards,
                 }, ensure_ascii=False, default=str))
         if path is not None:
             os.makedirs(os.path.dirname(path), exist_ok=True)
