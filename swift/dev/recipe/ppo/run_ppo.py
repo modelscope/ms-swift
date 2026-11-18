@@ -506,11 +506,17 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
                 stream_stats=driver.stats(),
                 status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None
         finally:
-            Perf.shutdown()
-            cluster.rollout.close()
-            # A served sampler's lifecycle is the server session's, not this client's.
-            cluster.sampler.shutdown() if not remote_run else None
-            state.tracker.close()
+            try:
+                Perf.shutdown()
+            finally:
+                try:
+                    cluster.rollout.close()
+                finally:
+                    try:
+                        # A served sampler's lifecycle is the server session's, not this client's.
+                        cluster.sampler.shutdown() if not remote_run else None
+                    finally:
+                        state.tracker.close()
     state.handler.on_train_end()
     if _save_final:
         # The final checkpoint is synchronous on BOTH models; its args.json is written by

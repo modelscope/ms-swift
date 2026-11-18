@@ -465,16 +465,25 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
                 'Check max_steps > 0, then lower rft_threshold / rft_select, raise rft_num_samples, or enlarge '
                 'the prompt dataset so at least one round fills a mini-batch.')
     finally:
-        Perf.shutdown()
-        # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the Cluster's
-        # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side). A served
-        # sampler's lifecycle is the server session's, not this client's.
-        cluster.rollout.close()
-        cluster.sampler.shutdown() if not remote_run else None
-        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
-        # record, and close() is what writes the summary.
-        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
-        state.tracker.close()
+        _failed = sys.exc_info()[0] is not None
+        try:
+            Perf.shutdown()
+        finally:
+            try:
+                # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the Cluster's
+                # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side). A served
+                # sampler's lifecycle is the server session's, not this client's.
+                cluster.rollout.close()
+            finally:
+                try:
+                    cluster.sampler.shutdown() if not remote_run else None
+                finally:
+                    try:
+                        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+                        # record, and close() is what writes the summary.
+                        state.finish_metrics(status='failed' if _failed else 'loop_completed')
+                    finally:
+                        state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json was written at initialize_rl_devices.
     save_final_checkpoint(cluster.model, save, enabled=_save_final)

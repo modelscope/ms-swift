@@ -264,14 +264,23 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         _train_loop(cluster, driver, rl_config, rollout_config, dataset_rows, state,
                     train_batch_size=train_batch_size, batch_size=batch_size, seed=train_config.seed, save=save)
     finally:
-        Perf.shutdown()
-        cluster.rollout.close()
-        # A served sampler's lifecycle is the server session's, not this client's.
-        cluster.sampler.shutdown() if not remote_run else None
-        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
-        # record, and close() is what writes the summary.
-        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
-        state.tracker.close()
+        _failed = sys.exc_info()[0] is not None
+        try:
+            Perf.shutdown()
+        finally:
+            try:
+                cluster.rollout.close()
+            finally:
+                try:
+                    # A served sampler's lifecycle is the server session's, not this client's.
+                    cluster.sampler.shutdown() if not remote_run else None
+                finally:
+                    try:
+                        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+                        # record, and close() is what writes the summary.
+                        state.finish_metrics(status='failed' if _failed else 'loop_completed')
+                    finally:
+                        state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.
     save_final_checkpoint(cluster.model, save, enabled=_save_final)
