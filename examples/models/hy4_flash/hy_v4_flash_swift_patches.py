@@ -15,13 +15,12 @@ Usage:
 # Kept close to the vendor implementation and loaded through `--custom_register_path`.
 # Requires a transformers build that ships `hy_v4_flash` (huggingface/transformers#50903).
 
-import os
 import gc
 import json as _json
 import logging
-from typing import Any, Dict
-
+import os
 import torch
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +31,10 @@ logger = logging.getLogger(__name__)
 # HYV4FlashForConditionalGeneration and needs image/video processing support.
 # ============================================================================
 
-from swift.model import register_model, ModelMeta, ModelGroup, Model
-from swift.model.register import ModelLoader
+from swift.model import Model, ModelGroup, ModelMeta, register_model
 from swift.model.model_arch import MultiModelKeys, register_model_arch
-from swift.template import register_template, TemplateMeta
+from swift.model.register import ModelLoader
+from swift.template import TemplateMeta, register_template
 
 # Register HY4-Flash-VL model architecture mapping.
 # HYV4FlashForConditionalGeneration has:
@@ -55,10 +54,15 @@ register_model_arch(
 
 # Custom ModelLoader for HY4-Flash-VL
 class HYV4FlashVLModelLoader(ModelLoader):
+
     def get_model(self, model_dir, config, processor, model_kwargs):
         from transformers.models.hy_v4_flash.modeling_hy_v4_flash import HYV4FlashForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or HYV4FlashForConditionalGeneration
         return super().get_model(model_dir, config, processor, model_kwargs)
+
+
+from PIL import Image as PILImage
+from typing import List, Literal, Optional
 
 # ---------------------------------------------------------------------------
 # HYV4FlashVLTemplate: multimodal template for HY4-Flash-VL
@@ -66,8 +70,7 @@ class HYV4FlashVLModelLoader(ModelLoader):
 from swift.template.base import Template
 from swift.template.template_inputs import StdTemplateInputs
 from swift.template.utils import Context, findall
-from typing import List, Literal, Optional
-from PIL import Image as PILImage
+
 
 class HYV4FlashVLTemplate(Template):
     """Multimodal template for HY4-Flash-VL models in ms-swift."""
@@ -115,8 +118,8 @@ class HYV4FlashVLTemplate(Template):
                 num_tokens = int(patch_h * (patch_w + 1))
                 return [self.image_token_id] * num_tokens
 
-            input_ids, labels, loss_scale = self._extend_tokens(
-                input_ids, labels, loss_scale, idx_list, _get_new_tokens)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_tokens)
             encoded.update(image_inputs)
 
         # Process videos
@@ -135,8 +138,8 @@ class HYV4FlashVLTemplate(Template):
                 num_tokens = int(grid_t * patch_h * (patch_w + 1))
                 return [self.video_token_id] * num_tokens
 
-            input_ids, labels, loss_scale = self._extend_tokens(
-                input_ids, labels, loss_scale, idx_list, _get_new_video_tokens)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_video_tokens)
             encoded.update(video_inputs)
 
         encoded['input_ids'] = input_ids
@@ -175,7 +178,7 @@ class HYV4FlashVLTemplate(Template):
                         )
                         res['position_ids'] = position_ids
                 except Exception as e:
-                    logger.warning("[HYV4FlashVLTemplate] Failed to compute MRoPE position_ids: %s", e)
+                    logger.warning('[HYV4FlashVLTemplate] Failed to compute MRoPE position_ids: %s', e)
 
                 res['mm_token_type_ids'] = mm_token_type_ids
 
@@ -192,7 +195,9 @@ register_template(
         template_type='hy_v4_flash_vl',
         prefix=[],
         system_prefix=['<｜hy_start:opensource｜>system<｜hy_middle:opensource｜>{{SYSTEM}}<｜hy_end:opensource｜>'],
-        prompt=['<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜><｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'],
+        prompt=[
+            '<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜><｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'
+        ],
         chat_sep=['<｜hy_end:opensource｜>'],
         suffix=['<｜hy_end:opensource｜>'],
         default_system='<｜reasoning_mode:opensource｜>reasoning_effort:no_think',
@@ -208,7 +213,9 @@ register_template(
         template_type='hy_v4_flash',
         prefix=[],
         system_prefix=['<｜hy_start:opensource｜>system<｜hy_middle:opensource｜>{{SYSTEM}}<｜hy_end:opensource｜>'],
-        prompt=['<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜><｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'],
+        prompt=[
+            '<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜><｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'
+        ],
         chat_sep=['<｜hy_end:opensource｜>'],
         suffix=['<｜hy_end:opensource｜>'],
         default_system='<｜reasoning_mode:opensource｜>reasoning_effort:no_think',
@@ -223,8 +230,7 @@ register_model(
         model_type='hy_v4_flash_vl',
         model_groups=[
             ModelGroup([
-                Model('Tencent-Hunyuan/Hy4-Flash-VL',
-                      'Tencent-Hunyuan/Hy4-Flash-VL'),
+                Model('Tencent-Hunyuan/Hy4-Flash-VL', 'Tencent-Hunyuan/Hy4-Flash-VL'),
             ]),
         ],
         loader=HYV4FlashVLModelLoader,
@@ -242,8 +248,7 @@ register_model(
         model_type='hy_v4_flash',
         model_groups=[
             ModelGroup([
-                Model('Tencent-Hunyuan/Hy4-Flash',
-                      'Tencent-Hunyuan/Hy4-Flash'),
+                Model('Tencent-Hunyuan/Hy4-Flash', 'Tencent-Hunyuan/Hy4-Flash'),
             ]),
         ],
         template='hy_v4_flash',
@@ -253,14 +258,13 @@ register_model(
     exist_ok=True,
 )
 
-logger.info(
-    "[HYV4-Flash Patch 1] Model types 'hy_v4_flash_vl' (multimodal) and 'hy_v4_flash' (text-only) "
-    "registered in ms-swift."
-)
+logger.info("[HYV4-Flash Patch 1] Model types 'hy_v4_flash_vl' (multimodal) and 'hy_v4_flash' (text-only) "
+            'registered in ms-swift.')
 
 # ============================================================================
 # Patch 2: Skip grad norm computation for DeepSpeed ZeRO-3
 # ============================================================================
+
 
 def _apply_skip_grad_norm_patch():
     try:
@@ -270,13 +274,15 @@ def _apply_skip_grad_norm_patch():
             return [torch.tensor(0.0)]
 
         DeepSpeedZeroOptimizer_Stage3._get_norm_groups = _skip_get_norm_groups
-        logger.info("[HYV4-Flash Patch 2] Patched grad norm skip.")
+        logger.info('[HYV4-Flash Patch 2] Patched grad norm skip.')
     except ImportError:
-        logger.info("[HYV4-Flash Patch 2] DeepSpeed not available, skipping.")
+        logger.info('[HYV4-Flash Patch 2] DeepSpeed not available, skipping.')
+
 
 # ============================================================================
 # Patch 3: Memory-efficient model loading for ZeRO-3 and FSDP1
 # ============================================================================
+
 
 def _apply_shard_loading_patch():
     import sys
@@ -302,47 +308,47 @@ def _apply_shard_loading_patch():
     def _disable_router_logits_if_needed(model):
         if hasattr(model, 'config') and getattr(model.config, 'output_router_logits', False):
             model.config.output_router_logits = False
-            logger.info("[HYV4-Flash Patch 3] Disabled output_router_logits.")
+            logger.info('[HYV4-Flash Patch 3] Disabled output_router_logits.')
         return model
 
     def _is_fsdp_requested():
-        accel_fsdp = str(os.environ.get("ACCELERATE_USE_FSDP", "")).lower()
-        if accel_fsdp in {"1", "true", "yes"}:
+        accel_fsdp = str(os.environ.get('ACCELERATE_USE_FSDP', '')).lower()
+        if accel_fsdp in {'1', 'true', 'yes'}:
             return True
-        return "--fsdp" in sys.argv
+        return '--fsdp' in sys.argv
 
     def _build_meta_model_for_fsdp(cls, model_path, kwargs):
-        config = kwargs.get("config")
+        config = kwargs.get('config')
         if config is None:
             config = AutoConfig.from_pretrained(
                 model_path,
-                trust_remote_code=kwargs.get("trust_remote_code", True),
+                trust_remote_code=kwargs.get('trust_remote_code', True),
             )
 
         init_kwargs = {}
-        torch_dtype = kwargs.get("torch_dtype", None)
+        torch_dtype = kwargs.get('torch_dtype', None)
         if torch_dtype is not None:
-            init_kwargs["torch_dtype"] = torch_dtype
-        if "attn_implementation" in kwargs:
-            init_kwargs["attn_implementation"] = kwargs["attn_implementation"]
-        if "experts_implementation" in kwargs:
-            init_kwargs["experts_implementation"] = kwargs["experts_implementation"]
+            init_kwargs['torch_dtype'] = torch_dtype
+        if 'attn_implementation' in kwargs:
+            init_kwargs['attn_implementation'] = kwargs['attn_implementation']
+        if 'experts_implementation' in kwargs:
+            init_kwargs['experts_implementation'] = kwargs['experts_implementation']
 
-        with torch.device("meta"):
+        with torch.device('meta'):
             model = cls._from_config(config, **init_kwargs)
         return _disable_router_logits_if_needed(model)
 
     def _fsdp_safe_load(cls, pretrained_model_name_or_path, *args, **kwargs):
         kwargs = dict(kwargs)
-        kwargs.setdefault("low_cpu_mem_usage", True)
+        kwargs.setdefault('low_cpu_mem_usage', True)
 
-        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        local_rank = int(os.environ.get('LOCAL_RANK', '0'))
         if local_rank != 0:
-            logger.info("[HYV4-Flash Patch 3] FSDP: local_rank=%d, meta device.", local_rank)
+            logger.info('[HYV4-Flash Patch 3] FSDP: local_rank=%d, meta device.', local_rank)
             return _build_meta_model_for_fsdp(cls, pretrained_model_name_or_path, kwargs)
 
-        logger.info("[HYV4-Flash Patch 3] FSDP: local_rank=0, loading to CPU.")
-        kwargs["device_map"] = {"": "cpu"}
+        logger.info('[HYV4-Flash Patch 3] FSDP: local_rank=0, loading to CPU.')
+        kwargs['device_map'] = {'': 'cpu'}
         model = _real_orig_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs)
         return _disable_router_logits_if_needed(model)
 
@@ -358,8 +364,8 @@ def _apply_shard_loading_patch():
         if not (isinstance(model_path, str) and os.path.isdir(model_path)):
             return _real_orig_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs)
 
-        index_file = os.path.join(model_path, "model.safetensors.index.json")
-        single_file = os.path.join(model_path, "model.safetensors")
+        index_file = os.path.join(model_path, 'model.safetensors.index.json')
+        single_file = os.path.join(model_path, 'model.safetensors')
         if not (os.path.isfile(index_file) or os.path.isfile(single_file)):
             return _real_orig_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs)
 
@@ -372,9 +378,9 @@ def _apply_shard_loading_patch():
             model = _real_orig_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs)
             return _disable_router_logits_if_needed(model)
 
-        ds_config_path = os.environ.get("DEEPSPEED_CONFIG_FILE", None)
+        ds_config_path = os.environ.get('DEEPSPEED_CONFIG_FILE', None)
         if ds_config_path is None:
-            ds_config_path = os.environ.get("DEEPSPEED_CONFIG", None)
+            ds_config_path = os.environ.get('DEEPSPEED_CONFIG', None)
 
         if ds_config_path is None:
             for i, arg in enumerate(sys.argv):
@@ -386,10 +392,10 @@ def _apply_shard_loading_patch():
             model = _real_orig_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs)
             return _disable_router_logits_if_needed(model)
 
-        with open(ds_config_path, "r") as f:
+        with open(ds_config_path, 'r') as f:
             ds_config = _json.load(f)
 
-        zero_stage = ds_config.get("zero_optimization", {}).get("stage", 0)
+        zero_stage = ds_config.get('zero_optimization', {}).get('stage', 0)
         if zero_stage != 3:
             model = _real_orig_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs)
             return _disable_router_logits_if_needed(model)
@@ -405,11 +411,13 @@ def _apply_shard_loading_patch():
         return _ensure_zero3_config_and_load(cls, pretrained_model_name_or_path, *args, **kwargs)
 
     PreTrainedModel.from_pretrained = _patched_from_pretrained
-    logger.info("[HYV4-Flash Patch 3] Loading patch applied.")
+    logger.info('[HYV4-Flash Patch 3] Loading patch applied.')
+
 
 # ============================================================================
 # Optional Patch: LoRA z3_leaf marking
 # ============================================================================
+
 
 def apply_lora_z3_leaf_patch(model):
     try:
@@ -423,11 +431,13 @@ def apply_lora_z3_leaf_patch(model):
         if isinstance(module, LoraLinear):
             set_z3_leaf_module(module, True)
             z3_leaf_count += 1
-    logger.info("[HYV4-Flash] Marked %d LoraLinear modules with _z3_leaf=True.", z3_leaf_count)
+    logger.info('[HYV4-Flash] Marked %d LoraLinear modules with _z3_leaf=True.', z3_leaf_count)
+
 
 # ============================================================================
 # Patch 4: Fix logging_dir compatibility
 # ============================================================================
+
 
 def _apply_logging_dir_patch():
     try:
@@ -443,13 +453,15 @@ def _apply_logging_dir_patch():
             _orig_add_version(self)
 
         SftArguments._add_version = _patched_add_version
-        logger.info("[HYV4-Flash Patch 4] logging_dir compatibility patch applied.")
+        logger.info('[HYV4-Flash Patch 4] logging_dir compatibility patch applied.')
     except (ImportError, AttributeError) as e:
-        logger.info("[HYV4-Flash Patch 4] Could not apply: %s", e)
+        logger.info('[HYV4-Flash Patch 4] Could not apply: %s', e)
+
 
 # ============================================================================
 # Patch 5: FSDP1 dtype + mixed precision guard
 # ============================================================================
+
 
 def _apply_fsdp_dtype_patch():
     try:
@@ -465,7 +477,7 @@ def _apply_fsdp_dtype_patch():
                     dtype_counts[dt] = dtype_counts.get(dt, 0) + 1
 
                 if len(dtype_counts) > 1:
-                    logger.info("[HYV4-Flash Patch 5] Mixed dtypes: %s. Casting to bf16.", dtype_counts)
+                    logger.info('[HYV4-Flash Patch 5] Mixed dtypes: %s. Casting to bf16.', dtype_counts)
                     for p in self.model.parameters():
                         if p.dtype != torch.bfloat16 and p.dtype.is_floating_point:
                             p.data = p.data.to(torch.bfloat16)
@@ -481,7 +493,7 @@ def _apply_fsdp_dtype_patch():
                                 fsdp_plugin.kwargs.pop('mixed_precision', None)
                     os.environ['ACCELERATE_MIXED_PRECISION'] = 'no'
                 except Exception as e:
-                    logger.warning("[HYV4-Flash Patch 5] Failed to disable mixed precision: %s", e)
+                    logger.warning('[HYV4-Flash Patch 5] Failed to disable mixed precision: %s', e)
 
             # ---- Fix PEFT + FSDP _no_split_modules mismatch ----
             # PEFT's fsdp_auto_wrap_policy iterates _no_split_modules and calls
@@ -500,23 +512,23 @@ def _apply_fsdp_dtype_patch():
                             removed = set(original) - set(pruned)
                             sub._no_split_modules = pruned
                             logger.info(
-                                "[HYV4-Flash Patch 5] Pruned _no_split_modules: removed %s "
-                                "(not found in model). Remaining: %s",
-                                removed, pruned
-                            )
+                                '[HYV4-Flash Patch 5] Pruned _no_split_modules: removed %s '
+                                '(not found in model). Remaining: %s', removed, pruned)
             except Exception as e:
-                logger.warning("[HYV4-Flash Patch 5] Failed to prune _no_split_modules: %s", e)
+                logger.warning('[HYV4-Flash Patch 5] Failed to prune _no_split_modules: %s', e)
 
             return _orig_prepare_for_training(self, *args, **kwargs)
 
         Trainer._prepare_for_training = _patched_prepare_for_training
-        logger.info("[HYV4-Flash Patch 5] FSDP1 dtype guard applied.")
+        logger.info('[HYV4-Flash Patch 5] FSDP1 dtype guard applied.')
     except (ImportError, AttributeError) as e:
-        logger.info("[HYV4-Flash Patch 5] Could not apply: %s", e)
+        logger.info('[HYV4-Flash Patch 5] Could not apply: %s', e)
+
 
 # ============================================================================
 # Patch 6: Disable _compute_acc during training
 # ============================================================================
+
 
 def _apply_disable_compute_acc_patch():
     try:
@@ -526,20 +538,24 @@ def _apply_disable_compute_acc_patch():
             return
 
         SwiftMixin._compute_acc = _noop_compute_acc
-        logger.info("[HYV4-Flash Patch 6] Disabled _compute_acc.")
+        logger.info('[HYV4-Flash Patch 6] Disabled _compute_acc.')
     except (ImportError, AttributeError) as e:
-        logger.warning("[HYV4-Flash Patch 6] Could not apply: %s", e)
+        logger.warning('[HYV4-Flash Patch 6] Could not apply: %s', e)
+
 
 # ============================================================================
 # Patch 7: Freeze ViT (handled natively by ms-swift)
 # ============================================================================
 
+
 def _apply_freeze_vit_patch():
-    logger.info("[HYV4-Flash Patch 7] ViT freeze handled by ms-swift native freeze_vit + model_arch.")
+    logger.info('[HYV4-Flash Patch 7] ViT freeze handled by ms-swift native freeze_vit + model_arch.')
+
 
 # ============================================================================
 # Patch 8: tokenizer → processing_class compatibility
 # ============================================================================
+
 
 def _apply_tokenizer_to_processing_class_patch():
     try:
@@ -553,13 +569,15 @@ def _apply_tokenizer_to_processing_class_patch():
             return _original_hf_seq2seq_init(self, *args, **kwargs)
 
         HfSeq2SeqTrainer.__init__ = _patched_hf_seq2seq_init
-        logger.info("[HYV4-Flash Patch 8] tokenizer→processing_class patch applied.")
+        logger.info('[HYV4-Flash Patch 8] tokenizer→processing_class patch applied.')
     except (ImportError, AttributeError) as e:
-        logger.info("[HYV4-Flash Patch 8] Could not apply: %s", e)
+        logger.info('[HYV4-Flash Patch 8] Could not apply: %s', e)
+
 
 # ============================================================================
 # Patch 9: Make CUDA pin_memory fault-tolerant
 # ============================================================================
+
 
 def _apply_safe_pin_memory_patch():
     try:
@@ -573,12 +591,14 @@ def _apply_safe_pin_memory_patch():
             except Exception as e:
                 import torch
                 rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
-                print(f"[HYV4-Flash Patch 9] WARNING: pin_memory() failed on rank {rank}: {e}. "
-                      f"Falling back to unpinned CPU tensor.", flush=True)
+                print(
+                    f"[HYV4-Flash Patch 9] WARNING: pin_memory() failed on rank {rank}: {e}. "
+                    f"Falling back to unpinned CPU tensor.",
+                    flush=True)
                 return tensor
 
         CUDA_Accelerator.pin_memory = _safe_pin_memory
-        logger.info("[HYV4-Flash Patch 9] pin_memory fault-tolerant fallback applied.")
+        logger.info('[HYV4-Flash Patch 9] pin_memory fault-tolerant fallback applied.')
     except ImportError:
         pass
 
@@ -596,4 +616,4 @@ _apply_disable_compute_acc_patch()
 _apply_freeze_vit_patch()
 _apply_tokenizer_to_processing_class_patch()
 
-logger.info("[HYV4-Flash] All ms-swift patches loaded successfully.")
+logger.info('[HYV4-Flash] All ms-swift patches loaded successfully.')
