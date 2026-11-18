@@ -48,7 +48,7 @@ class RemoteModel:
 
     The handle mirrors the local method signatures (narrowed to class-name + scalar kwargs), but
     replies with protocol Response objects where the local model returns plain values:
-    ``calculate_metric`` / ``resume_from_checkpoint`` wrap their dict payload in a ``result``
+    ``forward*`` / ``calculate_metric`` / ``resume_from_checkpoint`` wrap their payload in a ``result``
     field. The shared recipe code is mode-blind and reads those returns as dicts, so the unwrap
     lives here with the other remote object sources instead of at every consumption point.
     """
@@ -63,8 +63,20 @@ class RemoteModel:
         self.device_mesh = DeviceMesh.from_sizes(dp_size=1)
 
     def __getattr__(self, name: str) -> Any:
-        # forward_backward / set_* / add_adapter_to_model / save / ... delegate unchanged.
+        # set_* / add_adapter_to_model / save / ... delegate unchanged.
         return getattr(self.__dict__['_handle'], name)
+
+    def forward(self, inputs: Any, **kwargs: Any) -> Any:
+        response = self._handle.forward(inputs=inputs, **kwargs)
+        return getattr(response, 'result', response)
+
+    def forward_only(self, inputs: Any, **kwargs: Any) -> Any:
+        response = self._handle.forward_only(inputs=inputs, **kwargs)
+        return getattr(response, 'result', response)
+
+    def forward_backward(self, inputs: Any, **kwargs: Any) -> Any:
+        response = self._handle.forward_backward(inputs=inputs, **kwargs)
+        return getattr(response, 'result', response)
 
     def calculate_metric(self, is_training: bool = True, **kwargs: Any) -> Any:
         response = self._handle.calculate_metric(is_training=is_training, **kwargs)
