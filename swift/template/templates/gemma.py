@@ -1,8 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import importlib
 import numpy as np
 import torch
 import torch.nn.functional as F
+import transformers
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from packaging import version
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_logger, upper_bound
@@ -14,6 +18,24 @@ from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_audio, load_vllm_video
 
 logger = get_logger()
+
+
+def _get_processor_modality_kwargs(processor,
+                                   modality_key: str,
+                                   module_path: str,
+                                   kwargs_cls_name: str,
+                                   default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Read modality default kwargs from processor attributes (transformers >= 5.23) with _defaults fallback."""
+    processor_kwargs = getattr(processor, modality_key, None)
+    if isinstance(processor_kwargs, Mapping):
+        return dict(processor_kwargs)
+    if version.parse(transformers.__version__) < version.parse('5.23.0.dev0'):
+        module = importlib.import_module(module_path)
+        kwargs_cls = getattr(module, kwargs_cls_name, None)
+        defaults = getattr(kwargs_cls, '_defaults', None)
+        if isinstance(defaults, Mapping) and isinstance(defaults.get(modality_key), Mapping):
+            return dict(defaults[modality_key])
+    return {} if default is None else dict(default)
 
 
 @dataclass
@@ -109,8 +131,6 @@ class Gemma3VisionTemplate(Gemma3Template):
         # Keep text-only rows aligned with multimodal rows in mixed batches.
         encoded['token_type_ids'] = [0] * len(encoded['input_ids'])
         if inputs.images:
-            from transformers.models.gemma3.processing_gemma3 import Gemma3ProcessorKwargs
-
             input_ids = encoded['input_ids']
             labels = encoded['labels']
             loss_scale = encoded.get('loss_scale', None)
@@ -120,7 +140,12 @@ class Gemma3VisionTemplate(Gemma3Template):
                                                                 lambda _: img_tokens)
 
             # TODO: customize
-            processor_kwargs = Gemma3ProcessorKwargs._defaults['images_kwargs']
+            processor_kwargs = _get_processor_modality_kwargs(
+                self.processor,
+                'images_kwargs',
+                'transformers.models.gemma3.processing_gemma3',
+                'Gemma3ProcessorKwargs',
+            )
             image_inputs = self.processor.image_processor(inputs.images, **processor_kwargs)
             image_inputs['pixel_values'] = torch.as_tensor(np.array(image_inputs['pixel_values']))
             image_inputs.pop('num_crops')
@@ -160,8 +185,6 @@ class Gemma3nTemplate(Gemma3Template):
             raise ValueError(f'Unsupported media type: {media_type}. Supported types are: image, audio')
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.models.gemma3n.processing_gemma3n import Gemma3nProcessorKwargs
-
         # Input validation
         if not inputs.images and not inputs.audios and not inputs.messages:
             raise ValueError('Provide at least one of `images`, `audios`, or `messages`.')
@@ -184,7 +207,12 @@ class Gemma3nTemplate(Gemma3Template):
                                                                 lambda _: img_tokens)
 
             # Process images
-            processor_kwargs = Gemma3nProcessorKwargs._defaults.get('images_kwargs', {})
+            processor_kwargs = _get_processor_modality_kwargs(
+                processor,
+                'images_kwargs',
+                'transformers.models.gemma3n.processing_gemma3n',
+                'Gemma3nProcessorKwargs',
+            )
             image_inputs = processor.image_processor(inputs.images, **processor_kwargs)
             image_inputs['pixel_values'] = torch.as_tensor(
                 np.array(image_inputs['pixel_values']), dtype=self.model_info.torch_dtype)
@@ -202,7 +230,12 @@ class Gemma3nTemplate(Gemma3Template):
                                                                     lambda _: audio_tokens)
 
                 # Process audios
-                processor_kwargs = Gemma3nProcessorKwargs._defaults.get('audio_kwargs', {})
+                processor_kwargs = _get_processor_modality_kwargs(
+                    processor,
+                    'audio_kwargs',
+                    'transformers.models.gemma3n.processing_gemma3n',
+                    'Gemma3nProcessorKwargs',
+                )
                 audio_inputs = processor.feature_extractor(inputs.audios, **processor_kwargs)
 
                 if 'input_features' in audio_inputs:
