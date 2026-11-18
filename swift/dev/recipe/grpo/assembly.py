@@ -435,7 +435,7 @@ def initialize_cluster(
         advantage=build_advantage(rl_config, reward_config, use_prm=bool(prm_scorers),
                                    has_teacher=has_teacher, remote_group=worker_group),
         privileged=PrivilegedView(template=template, **{"remote_group": worker_group}) if teacher_prompt else None,
-        routing=RoutingReplay(**{"remote_group": worker_group}) if rl_config.router_replay_mode == "R2" else None,
+        routing=RoutingReplay(**{"remote_group": worker_group}) if rl_config.router_replay_mode != "disabled" else None,
     )
 
 
