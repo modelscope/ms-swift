@@ -126,23 +126,47 @@ class PackingDataset(Dataset):
                     for i in range(self.packing_num_proc)]
 
             ctx = _resolve_mp_context(self.multiprocessing_context)
-            self._out_queue = ctx.Queue()
-            # Pass the out-queue/params as explicit args (not via `self`) so a non-fork context does not
-            # need to pickle the whole dataset held by `self`.
-            _spawn_workers(ctx, target=self.create_packed_idx, jobs=self._worker_jobs(jobs))
+            workers, readers = [], []
             self.packed_idx = [[] for _ in range(self.packing_num_proc)]
             self.packed_length = [[] for _ in range(self.packing_num_proc)]
             desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}): '
-            with tqdm(total=len(lengths), dynamic_ncols=True, desc=desc) as prog_bar:
-                finished_workers = 0
-                while finished_workers < self.packing_num_proc:
-                    rank, sequences, data_len = self._out_queue.get()
-                    if data_len == -1:
-                        finished_workers += 1
-                        continue
-                    prog_bar.update(data_len)
-                    self.packed_idx[rank] += [[x[0] for x in seq] for seq in sequences]
-                    self.packed_length[rank] += [sum(x[1] for x in seq) for seq in sequences]
+            try:
+                for job in jobs:
+                    reader, writer = ctx.Pipe(duplex=False)
+                    readers.append(reader)
+                    try:
+                        workers.extend(
+                            _spawn_workers(ctx, target=self.create_packed_idx, jobs=self._worker_jobs([job], writer)))
+                    finally:
+                        # Close before starting another fork worker, which must not inherit this writer.
+                        # EOF can then interrupt even a partially received message if its worker dies.
+                        writer.close()
+                pending = set(readers)
+                with tqdm(total=len(lengths), dynamic_ncols=True, desc=desc) as prog_bar:
+                    while pending:
+                        for reader in wait(pending):
+                            try:
+                                rank, sequences, data_len = reader.recv()
+                            except (EOFError, OSError) as exc:
+                                raise RuntimeError('A packing worker exited unexpectedly. '
+                                                   'Check the worker logs for the original error.') from exc
+                            if data_len == -1:
+                                pending.remove(reader)
+                                continue
+                            prog_bar.update(data_len)
+                            self.packed_idx[rank] += [[x[0] for x in seq] for seq in sequences]
+                            self.packed_length[rank] += [sum(x[1] for x in seq) for seq in sequences]
+            except BaseException:
+                for worker in workers:
+                    if worker.is_alive():
+                        # These failed packing jobs are discarded; inherited signal handlers must not delay cleanup.
+                        worker.kill()
+                raise
+            finally:
+                for worker in workers:
+                    worker.join()
+                for reader in readers:
+                    reader.close()
             self.packed_idx = list(chain.from_iterable(self.packed_idx))
             self.packed_length = list(chain.from_iterable(self.packed_length))
         else:
@@ -152,14 +176,13 @@ class PackingDataset(Dataset):
             dist.broadcast_object_list(obj_list)
             self.packed_idx, self.packed_length = obj_list[0]
 
-    def _worker_jobs(self, jobs):
-        # Bind the shared out-queue into each per-worker arg tuple at spawn time (queue may be rebuilt on
-        # the fork fallback), keeping it out of `self` so non-fork contexts don't pickle the dataset.
-        return [(rank, offset, lengths, self._out_queue, packing_length, packing_strategy)
+    def _worker_jobs(self, jobs, out_pipe):
+        # Pass only worker inputs, rather than pickling the dataset held by self under spawn.
+        return [(rank, offset, lengths, out_pipe, packing_length, packing_strategy)
                 for rank, offset, lengths, packing_length, packing_strategy in jobs]
 
     @staticmethod
-    def create_packed_idx(rank, offset, lengths, out_queue, packing_length, packing_strategy):
+    def create_packed_idx(rank, offset, lengths, out_pipe, packing_length, packing_strategy):
         data = [(i + offset, sum(length) if isinstance(length, list) else length) for i, length in enumerate(lengths)]
         i = 0
         input_data = []
@@ -172,8 +195,8 @@ class PackingDataset(Dataset):
             is_finished = i >= len(data)
             sequences, input_data = calculate_matched_group(
                 input_data, packing_length, is_finished=is_finished, strategy=packing_strategy)
-            out_queue.put((rank, sequences, len(new_data)))
-        out_queue.put((rank, [], -1))
+            out_pipe.send((rank, sequences, len(new_data)))
+        out_pipe.send((rank, [], -1))
 
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
