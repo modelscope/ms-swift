@@ -442,7 +442,11 @@ def _train_loop(
                 # were appended at the end of lane_trajs and _estimate_group_padded returns rows in
                 # input order, so they are exactly the last pad_count rows. Slice by position rather
                 # than inspecting row content: in ray mode cluster.advantage returns lazily-materialized
-                # ObjectRefs, which have no .get (defect96, the defect73-fix ray-mode follow-up).
+                # ObjectRefs, which have no .get (defect96, the defect73-fix ray-mode follow-up). Fail
+                # closed if the advantage changed the padded row count.
+                if len(trajs) != len(lane_trajs):
+                    raise ValueError(f'DP pad strip expects the advantage to preserve the padded row count '
+                                     f'({len(lane_trajs)}), got {len(trajs)}.')
                 trajs = trajs[:len(trajs) - pad_count]
             if lane_restore is not None:
                 trajs = [trajs[position] for position in lane_restore]
