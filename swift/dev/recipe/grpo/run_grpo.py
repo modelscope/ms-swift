@@ -345,7 +345,8 @@ def _train_loop(
             lane_lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
                                                  batch_facts.get('response_lengths') or ())]
             lane_trajs, lane_order, lane_restore = balance_lanes(
-                state, trajs, lane_lengths, group_size=rl_config.num_generations, micro_batch_kwargs=batching)
+                state, trajs, lane_lengths, group_size=rl_config.num_generations, micro_batch_kwargs=batching,
+                episode_ids=batch_facts.get('episode_ids'))
             lane_scores = batch_facts['scores'] if lane_order is None else [
                 batch_facts['scores'][index] for index in lane_order]
             ref_out = None
