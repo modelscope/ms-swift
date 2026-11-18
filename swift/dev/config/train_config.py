@@ -25,6 +25,8 @@ class TrainConfig:
     dynamic_batching: bool = False
     max_tokens_per_micro_batch: Optional[int] = None
     packing_algorithm: Literal["ffd", "kk"] = "ffd"
+    # Execution order of planned micro-batches (twinkle MicroBatchConfig.micro_batch_order).
+    micro_batch_order: Literal["none", "descending", "ends_small"] = "none"
     max_steps: int = -1
     num_train_epochs: float = 3.0
 

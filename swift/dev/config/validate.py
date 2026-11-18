@@ -128,6 +128,8 @@ def _check_dynamic_batching(train_config: "TrainConfig", rl_config: Optional["RL
         raise ValueError("max_tokens_per_micro_batch must be positive when dynamic_batching=True.")
     if train_config.packing_algorithm not in ("ffd", "kk"):
         raise ValueError("packing_algorithm must be ffd or kk.")
+    if train_config.micro_batch_order not in ("none", "descending", "ends_small"):
+        raise ValueError("micro_batch_order must be none, descending or ends_small.")
 
 
 def _changed_fields(config) -> list:

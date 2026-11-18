@@ -159,7 +159,7 @@ def _chord_forward_backward(
         finalize_gradients=True,
         **{
             key: forward_kwargs[key]
-            for key in ("dynamic_batching", "max_tokens_per_micro_batch", "packing_algorithm")
+            for key in ("dynamic_batching", "max_tokens_per_micro_batch", "packing_algorithm", "micro_batch_order")
             if key in forward_kwargs
         },
     )
