@@ -1282,10 +1282,12 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
     The planned layout (estimate/adaptive) sizes the replica pool and stamps the elastic instance id;
     the static shape reads the rollout_config replica knobs (estimate's apply_plan already rewrote
     them, so the two agree). Colocate pins the sleep/save knob the borrow-and-return loop needs.
-    Under ``distributed_config.mode='remote'`` the sampler is the CLIENT handle over the server's
-    served engine instead: no engine args or replicas are built locally, and the same dev
-    TemplateSpec the model's processor was set with rebuilds the server-side template so the
-    training forward and the rollout agree token-for-token.
+    Under ``distributed_config.mode='remote'`` the sampler is the client ROLLOUT face instead: an
+    HTTPSampler over the server's served engine, so no engine args or replicas are built locally.
+    The same dev TemplateSpec the model's processor was set with rebuilds the server-side
+    template; the HTTPSampler wraps the served handle in the exact ``sample`` face
+    MultiTurnRollout drives (RolloutState and media in, twinkle SampleResponse out), so single-
+    and multi-turn rollouts stay mode-blind.
     """
     if distributed_config is not None and distributed_config.mode == 'remote':
         if rollout_config.rollout_sampler != 'vllm':
@@ -1295,6 +1297,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         if template_config is None:
             raise ValueError('build_rl_sampler needs template_config under mode=remote: the client '
                              'sampler rebuilds the dev Template server-side from its serialized spec.')
+        from twinkle_client.rollout import HTTPSampler
         from twinkle_client.sampler import vLLMSampler as ClientSampler
 
         from swift.dev.builders.template import build_template_spec
@@ -1302,7 +1305,10 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         sampler = ClientSampler(model_config.model)
         spec = build_template_spec(template_config, model_config)
         sampler.set_template('swift.dev.template.Template', **{'template_spec': spec})
-        return sampler
+        # The rollout drives the served engine through the HTTPSampler: it carries the episode's
+        # RolloutState and media, stamps the synced adapter per call, and returns the twinkle
+        # SampleResponse the rollout's type guards require (the bare handle speaks protocol models).
+        return HTTPSampler(sampler, template)
     from swift.dev.builders import build_engine_args, build_sampler
     from twinkle import DeviceMesh
 

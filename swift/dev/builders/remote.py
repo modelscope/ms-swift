@@ -252,7 +252,12 @@ class RemoteWeightSync:
             # Refused BEFORE stamping: overwriting the held URI with None would drop the sampler's
             # last good adapter on a sync that never completed.
             raise ValueError('the remote weight sync got no twinkle:// path back from model.save().')
-        self.sampler.adapter_uri = twinkle_path
+        # The rollout's client face (HTTPSampler) names the stamped URI 'adapter_path'; a bare
+        # served-sampler handle names it 'adapter_uri'. Stamp whichever this sampler carries.
+        if hasattr(self.sampler, 'adapter_path'):
+            self.sampler.adapter_path = twinkle_path
+        else:
+            self.sampler.adapter_uri = twinkle_path
         self._version += 1
 
     def version(self) -> int:
