@@ -250,11 +250,13 @@ def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutCon
 
     Every recipe algorithm runs remotely with the SAME loop code: the policy, the critic, the
     frozen reference / teacher / reward models are each a twinkle_client model handle (the
-    multi-tenant server hosts as many served models as the run needs), the rollout rides a served
-    sampler handle, and the weight channel is the save -> adapter_uri hand-off. Refused here is
-    only what genuinely lives in the LOCAL actor fabric with no client port: the colocate /
-    elastic devices, the delta weight transports, the in-process routing-replay and
-    sampling-replay engines, the EMA reference sync, and the multi-turn sandbox.
+    multi-tenant server hosts as many served models as the run needs), the rollout rides the
+    HTTPSampler face over the served engine, and the weight channel is the save -> adapter_uri
+    hand-off. Refused here is only what genuinely lives in the LOCAL actor fabric with no client
+    port: the colocate / elastic devices, the delta weight transports, the in-process
+    routing-replay and sampling-replay engines, and the EMA reference sync. The multi-turn
+    rollout / tools / harness need no refusal: the rollout, its sandbox env and the driver all
+    run in-process in this client, sampling each turn through the HTTPSampler face.
     """
     if rl_config.router_replay_mode != 'disabled':
         raise ValueError(
@@ -314,12 +316,6 @@ def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutCon
                 'the served sampler is the save -> adapter_uri hand-off and the server loads that '
                 'URI as an adapter over its own base weights, so a full-parameter run would leave '
                 'the sampler serving stale weights. Use --tuner lora, or run mode=ray.')
-        if (getattr(rollout_config, 'max_turns', None) or 1) > 1 or (rollout_config.tools or ()):
-            # The multi-turn rollout's sandbox env replicas are local CPU actors; the single-turn
-            # rollout runs fine over the served sampler.
-            raise ValueError(
-                '--mode remote does not support the multi-turn rollout / tools (the sandbox lives on '
-                'local CPU groups). Drop the knobs for single-turn rollouts, or run mode=ray.')
 
 
 def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'], moe_config: Optional['MoEConfig'],
