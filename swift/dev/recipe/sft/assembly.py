@@ -103,6 +103,10 @@ def build_supervised_objects(
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor, processor_kwargs
     from twinkle import DeviceMesh, Platform
+    from twinkle.perf import Perf
+
+    # Enable before assembly: @timed init spans (set_*/load) are dropped while the recorder is off.
+    Perf.initialize({})
 
     remote = distributed_config.mode == 'remote'
     if not remote:
