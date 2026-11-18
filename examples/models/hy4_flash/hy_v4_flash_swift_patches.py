@@ -306,8 +306,8 @@ def _apply_shard_loading_patch():
         old_ids = getattr(text_config, 'engram_layer_ids', None)
         if old_ids is not None:
             text_config.engram_layer_ids = None
-            print(f"[HYV4-Flash Patch 3] _disable_engram: set engram_layer_ids=None "
-                  f"(was {old_ids})", flush=True)
+            print(f'[HYV4-Flash Patch 3] _disable_engram: set engram_layer_ids=None '
+                  f'(was {old_ids})', flush=True)
 
     def _disable_router_logits_if_needed(model):
         if hasattr(model, 'config') and getattr(model.config, 'output_router_logits', False):
@@ -599,8 +599,8 @@ def _apply_safe_pin_memory_patch():
                 import torch
                 rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
                 print(
-                    f"[HYV4-Flash Patch 9] WARNING: pin_memory() failed on rank {rank}: {e}. "
-                    f"Falling back to unpinned CPU tensor.",
+                    f'[HYV4-Flash Patch 9] WARNING: pin_memory() failed on rank {rank}: {e}. '
+                    f'Falling back to unpinned CPU tensor.',
                     flush=True)
                 return tensor
 
