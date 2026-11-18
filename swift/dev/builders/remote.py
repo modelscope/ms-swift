@@ -25,6 +25,31 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+#: Micro-batching knobs twinkle's forward-only micro-batcher refuses for a readout task whose model
+#: carries an attached head. The remote multi-LoRA host ALWAYS carries per-adapter head slots, so every
+#: remote readout forward (seq_cls / value / reranker / decision) must run whole-batch.
+_READOUT_MICRO_BATCH_KEYS = ('micro_batch_size', 'max_tokens_per_micro_batch')
+
+
+def _remote_forward_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize forward kwargs onto what the remote readout host supports.
+
+    twinkle sample-splits a micro-batched forward, but a readout task's labels/decision_meta are
+    organized per RECORD, so the split desynchronizes them from the logits; the backend raises rather
+    than degrade. The local legacy in-model head (carries_task_head=False) merges per sample and keeps
+    micro-batching, so the mode-blind recipe code legitimately passes micro_batch_size for seq_cls/value
+    eval and the PPO critic. The restriction is a property of the REMOTE attached-head host, so the
+    normalization lives here at the remote boundary -- one place that covers eval, the critic, and any
+    future readout forward -- instead of a per-call-site guard. Whole-batch is the only supported remote
+    readout mode (the recipe's eval chunking still bounds memory), so dropping the knobs is correct, not
+    a silent degradation.
+    """
+    from twinkle.processor.tasks import get_task_spec
+
+    if get_task_spec(kwargs.get('task', 'causal_lm')).readout:
+        return {key: value for key, value in kwargs.items() if key not in _READOUT_MICRO_BATCH_KEYS}
+    return kwargs
+
 
 def build_remote_model(model_config: 'ModelConfig', distributed_config: 'DistributedConfig') -> Any:
     """Connect to the twinkle-server and return the client-side trainable model handle.
@@ -77,12 +102,15 @@ class RemoteModel:
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         # The local face returns the ModelOutput dict directly; the client wraps it in
         # ForwardResponse.result. Downstream consumers (advantage _lane) call .get(field) on it.
-        response = self._handle.forward(*args, **kwargs)
+        response = self._handle.forward(*args, **_remote_forward_kwargs(kwargs))
         return getattr(response, 'result', response)
 
     def forward_only(self, *args: Any, **kwargs: Any) -> Any:
-        response = self._handle.forward_only(*args, **kwargs)
+        response = self._handle.forward_only(*args, **_remote_forward_kwargs(kwargs))
         return getattr(response, 'result', response)
+
+    def forward_backward(self, *args: Any, **kwargs: Any) -> Any:
+        return self._handle.forward_backward(*args, **_remote_forward_kwargs(kwargs))
 
     def wait_async_saves(self, *args: Any, **kwargs: Any) -> None:
         # Remote saves are synchronous (the client blocks to the terminal state), so there are no
