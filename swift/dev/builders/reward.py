@@ -95,6 +95,11 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
         task_type=spec.task_type, num_labels=spec.num_labels)
     reward_model_config = copy.copy(model_config)
     reward_model_config.model = spec.model_id
+    # The run's config carries the POLICY's portable id in _model_id_or_path (process.py), and
+    # load_model_processor prefers it over .model for family matching. Repointing .model alone
+    # left the reward model resolved against the policy -- its tokenizer encoded reward inputs
+    # into foreign token ids (a smaller-vocab judge engine rejects them outright).
+    reward_model_config._model_id_or_path = spec.model_id
     reward_model_config.model_type = spec.model_type or model_info.model_type
     reward_model_config.model_revision = spec.revision
     reward_model_config.task_type = model_info.task_type
@@ -165,6 +170,9 @@ def _build_judge_sampler(spec: 'RewardSpec', model_config: 'ModelConfig', templa
     judge_backend = backend if backend in {'vllm', 'sglang', 'transformers'} else 'vllm'
     judge_model_config = copy.copy(model_config)
     judge_model_config.model = spec.model_id
+    # Same stale-id contract as the scalar path: load_model_processor prefers _model_id_or_path,
+    # so the copy must repoint it too or the judge resolves to the POLICY's tokenizer.
+    judge_model_config._model_id_or_path = spec.model_id
     judge_model_config.task_type = spec.task_type or 'causal_lm'
     _, processor = load_model_processor(judge_model_config)
     judge_template = build_template(template_config, processor)
