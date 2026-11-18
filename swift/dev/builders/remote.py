@@ -289,7 +289,16 @@ class RemoteWeightSync:
         self._version = 0
 
     def sync_weights(self, merge_and_sync: bool = True) -> None:
+        import os
+        import time
+        perf = os.environ.get('TWINKLE_PERF') == '1'
+        start = time.perf_counter() if perf else None
         response = self.model.save('remote-sampler-weights', save_optimizer=False, is_sampler=True)
+        if perf:
+            # The client blocks to the terminal save state, so this round-trip spans the HTTP call
+            # plus the server's disk save; the server-side disk fraction needs server instrumentation.
+            logger.info(f'[remote][perf] weight-sync save round-trip {time.perf_counter() - start:.3f}s '
+                        f'version={self._version + 1}')
         twinkle_path = getattr(response, 'twinkle_path', None)
         if not twinkle_path:
             # Refused BEFORE stamping: overwriting the held URI with None would drop the sampler's
