@@ -1117,6 +1117,28 @@ def auxiliary_mesh(group: str, spec: Optional[str], meshes: Optional[Dict[str, A
     return DeviceMesh.from_spec(spec)
 
 
+def _allocation_nproc_per_node(rank_span: int) -> int:
+    """The per-node device stride for a flat physical rank space (ResourceManager contract).
+
+    Ranks map to (node, device) via ``rank // stride`` / ``rank % stride``, and each node's
+    placement group reserves ``stride`` devices. When the whole allocation fits on one node,
+    the span itself is the stride (minimal reservation, all ranks on node 0). Once the span
+    exceeds one node's devices the stride must be the PHYSICAL per-node device count -- passing
+    the global span made every multi-node plan (and any plan whose disjoint auxiliary ranks
+    overflow the visible devices) fail the node filter with a misleading "available: 0".
+    """
+    if rank_span <= 0:
+        return 0
+    from twinkle import Platform
+    device_module = Platform.get_platform().device_module()
+    per_node = device_module.device_count() if device_module is not None else 0
+    if per_node <= 0:
+        raise ValueError(f'the device plan spans {rank_span} physical ranks, but this process sees no '
+                         'accelerator devices; set CUDA_VISIBLE_DEVICES (or the platform equivalent) to the '
+                         "run's devices before initializing.")
+    return min(rank_span, per_node)
+
+
 def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'TemplateConfig',
                           dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
                           distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
@@ -1239,7 +1261,7 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     os.environ.setdefault('NCCL_CUMEM_ENABLE', '0')
     twinkle.initialize(
         mode='ray',
-        nproc_per_node=total,
+        nproc_per_node=_allocation_nproc_per_node(total),
         extra_torch_kwargs={'seed': train_config.seed, 'full_determinism': train_config.full_determinism,
                             'tf32': train_config.tf32},
         global_device_mesh=build_dp_mesh(distributed_config, template_config.sequence_parallel_size),
@@ -1487,7 +1509,7 @@ def initialize_supervised_twinkle(distributed_config: 'DistributedConfig', *, se
             planned.append(name)
             next_rank += world_size
         twinkle.initialize(
-            mode='ray', nproc_per_node=next_rank, extra_torch_kwargs=extra_torch_kwargs,
+            mode='ray', nproc_per_node=_allocation_nproc_per_node(next_rank), extra_torch_kwargs=extra_torch_kwargs,
             # --ray_exp_name names this Ray run (the cluster/worker-name prefix); a local run has no
             # Ray experiment to name, so it is read only here. None keeps twinkle's default.
             name=distributed_config.ray_exp_name, groups=groups)
