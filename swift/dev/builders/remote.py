@@ -84,6 +84,11 @@ class RemoteModel:
         response = self._handle.forward_only(*args, **kwargs)
         return getattr(response, 'result', response)
 
+    def wait_async_saves(self, *args: Any, **kwargs: Any) -> None:
+        # Remote saves are synchronous (the client blocks to the terminal state), so there are no
+        # pending async saves to wait for; the local decorated method has no client-side counterpart.
+        return None
+
 
 def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
                        gradient_accumulation_steps: int,

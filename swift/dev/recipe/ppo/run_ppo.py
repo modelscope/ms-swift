@@ -7,6 +7,7 @@ import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from swift.dev.recipe.batching import balance_lanes, balance_update
+from swift.dev.builders.remote import RemoteModel
 from swift.dev.recipe.ppo.assembly import Cluster, build_ppo_driver, initialize_ppo_cluster, ppo_group_requests
 from swift.dev.recipe.utils import (
     RolloutStepState,
@@ -104,11 +105,15 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
             temperature=temperature,
         )
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        # The remote critic is a multi-LoRA host with an ATTACHED readout head, whose forward
+        # rejects micro-batching (labels/decision_meta are per-record); run it whole-batch there.
+        # The local legacy in-model head merges per sample and keeps micro-batching for memory.
+        value_forward_kwargs = {} if isinstance(value_model, RemoteModel) else {'micro_batch_size': micro_batch_size}
         value_model.forward_backward(
             inputs=[trajs[index] for index in indices],
             gradient_accumulation_steps=1,
-            micro_batch_size=micro_batch_size,
             task='value',
+            **value_forward_kwargs,
         )
         value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         state.record(extra_metrics=balance_metrics)
@@ -197,7 +202,8 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
             # disable_lora pass when the reference IS the policy object.
             values_out = cluster.value_model.forward_only(
                 inputs=lane_trajs, output_frame='response', output_fields=('values',),
-                micro_batch_size=micro_batch_size, task='value')
+                task='value',
+                **({} if isinstance(cluster.value_model, RemoteModel) else {'micro_batch_size': micro_batch_size}))
             ref_out = cluster.reference.forward_only(
                 inputs=lane_trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
                 micro_batch_size=micro_batch_size, **({'disable_lora': True} if ref_shared else {}))
