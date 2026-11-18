@@ -473,6 +473,11 @@ def _grpo_extra_metrics(
                 "trainer_idle_ratio": stats['train_idle_ratio'],
                 "dropped_stale": stats['dropped_stale'],
                 "policy_version": stats['version'],
+                # Session-pool starvation is a scheduling delay the driver retries silently; without
+                # these reads a pool smaller than the admission bound is indistinguishable from one
+                # that never saturates, and a deadline drop looks like an ordinary lost member.
+                "no_slot": stats['no_slot'],
+                "no_slot_dropped": stats['no_slot_dropped'],
             }
         )
         versions = last_batch_versions[0] if last_batch_versions else []
