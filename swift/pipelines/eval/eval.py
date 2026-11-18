@@ -93,7 +93,7 @@ class SwiftEval(SwiftPipeline):
         work_dir = os.path.join(args.eval_output_dir, 'native')
         return TaskConfig(
             model=args.model_suffix,
-            eval_type=EvalType.SERVICE,
+            eval_type=EvalType.OPENAI_API if hasattr(EvalType, 'OPENAI_API') else EvalType.SERVICE,
             api_url=url,
             api_key=args.api_key or 'EMPTY',
             datasets=dataset,
