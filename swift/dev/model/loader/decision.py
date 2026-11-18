@@ -4,7 +4,7 @@
 from __future__ import annotations
 import os
 from functools import wraps
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import json
 import torch
@@ -26,6 +26,7 @@ from swift.dev.model.decision_branch import (
 )
 from swift.dev.model.decision_head import (
     ClefJointSchemaHead,
+    H2OReadoutHead,
     JevVerbalizerHead,
     KevPointerHead,
     LayaHead,
@@ -33,8 +34,10 @@ from swift.dev.model.decision_head import (
     ScoringHead,
     StartLuxLetterHead,
     Thx02ReadoutHead,
+    load_h2o_labels,
     load_thx02_decision_config,
     maybe_load_trained_scoring_head,
+    resolve_h2o_two_way,
 )
 from swift.model.patcher import patch_module_forward  # v5's own patcher lacks get_original_forward
 from .base import ModelArch, ModelLoader, register_model
@@ -529,16 +532,30 @@ class KevLoader(ScoringLoader, Qwen3_5Loader):
         return head(hidden_states, None, meta)
 
 
-def enable_thx02_noncausal_attention(language_model) -> None:
-    """THX-02 reads every question at its own marker inside ONE sequence, so its full-attention layers
-    attend bidirectionally over the non-padding tokens; the gated-deltanet (linear-attention) layers stay
-    causal. Installed as a forward pre-hook on the text model, converting the 2D padding mask into the
-    per-layer-type mask mapping that Qwen3.5 accepts."""
+def noncausal_full_attention_mask(padding_mask: torch.Tensor, seq_len: int, device_type: Optional[str] = None):
+    """2D padding mask -> the per-layer `full_attention` mask.
+
+    The broadcastable `[B, 1, 1, S]` view is enough on GPU, but Ascend FlashAttention only accepts
+    `[B, N, Sq, Skv]` / `[B, 1, Sq, Skv]` / `[1, 1, Sq, Skv]` / `[Sq, Skv]`, so on NPU the query axis
+    is materialised into `[B, 1, S, S]`.
+    """
+    device_type = device_type or padding_mask.device.type
+    full_mask = padding_mask[:, None, None, :].bool()
+    if device_type == "npu":
+        full_mask = full_mask.expand(-1, -1, seq_len, -1).contiguous()
+    return full_mask
+
+
+def enable_noncausal_full_attention(language_model) -> None:
+    """Bidirectional full attention, causal gated-deltanet: THX-02 and H2O read their markers inside ONE
+    sequence, so the full-attention layers attend over the non-padding tokens in both directions while
+    the linear-attention layers stay causal. Installed as a forward pre-hook on the text model, converting
+    the 2D padding mask into the per-layer-type mask mapping that Qwen3.5 accepts."""
     from transformers.masking_utils import create_recurrent_attention_mask
 
     def mask_inputs(module, args, kwargs):
         if kwargs.get("past_key_values") is not None or kwargs.get("use_cache"):
-            raise ValueError("THX-02 noncausal decision forward does not support a KV cache.")
+            raise ValueError("Noncausal decision forward does not support a KV cache.")
         attention_mask = kwargs.get("attention_mask")
         if isinstance(attention_mask, dict):
             return args, kwargs
@@ -548,7 +565,9 @@ def enable_thx02_noncausal_attention(language_model) -> None:
         if attention_mask is None:
             attention_mask = torch.ones(embeddings.shape[:2], device=embeddings.device, dtype=torch.bool)
         kwargs["attention_mask"] = {
-            "full_attention": attention_mask[:, None, None, :].bool(),
+            "full_attention": noncausal_full_attention_mask(
+                attention_mask, embeddings.shape[1], embeddings.device.type
+            ),
             "linear_attention": create_recurrent_attention_mask(
                 config=module.config, inputs_embeds=embeddings, attention_mask=attention_mask
             ),
@@ -601,7 +620,7 @@ class Thx02Loader(ScoringLoader, Qwen3_5Loader):
 
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
         model = Qwen3_5Loader.build_model(self, model_dir, config, processor, **kwargs)
-        enable_thx02_noncausal_attention(model.model.language_model)
+        enable_noncausal_full_attention(model.model.language_model)
         lm_head, embeddings = model.get_output_embeddings(), model.get_input_embeddings()
         if lm_head is not None and lm_head.weight.data_ptr() != embeddings.weight.data_ptr():
             lm_head.weight.requires_grad_(False)
@@ -638,6 +657,81 @@ class Thx02Loader(ScoringLoader, Qwen3_5Loader):
         kwargs["use_cache"] = False
         # The readout reads the normalized last hidden state at each marker; the base model's lm_head is
         # never applied (THX-02 ships none), so call the Qwen3.5 backbone directly.
+        output = self.model(*args, **kwargs)
+        return head(output.last_hidden_state, None, meta)
+
+
+def _require_h2o_two_way_support() -> None:
+    """Two-way needs Qwen3.5's per-layer mask mapping"""
+    try:
+        from transformers.masking_utils import create_recurrent_attention_mask  # noqa: F401
+    except ImportError as exc:
+        import transformers
+
+        raise RuntimeError(
+            "H2O runs bidirectional full attention by default (serve_config.json two_way.default), "
+            f"which requires transformers>=5.13.0; installed {transformers.__version__}. "
+            "transformers<5.13 has no create_recurrent_attention_mask and its Qwen3.5 forward does not "
+            "accept the {full_attention, linear_attention} mask mapping. Upgrade transformers or set "
+            "H2O_TWO_WAY=0 to run the one-way path."
+        ) from exc
+
+
+@register_model
+class H2OLoader(Thx02Loader):
+    """H2O-4B: Qwen3.5 hybrid backbone + a FIXED 255-row readout loaded from `label_rows.safetensors`.
+
+    One question per sequence, read at the final prompt token (`Answer:` prefill). The released weights
+    already contain H2O's LoRA, so the checkpoint is loaded as a plain model (never via `--adapters`).
+
+    Attention mode follows `serve_config.json` (`two_way.default = bidirectional`) and can be overridden
+    with `H2O_TWO_WAY=1/0`; the per-kind temperatures are read from the matching calibration block.
+    """
+
+    model_type = "h2o"
+    head_cls = H2OReadoutHead
+    models = [("h2oai/h2o-lightning-4b", "h2oai/h2o-lightning-4b")]
+    template = "h2o"
+    architectures = ()
+    requires = ["transformers>=5.13.0", "qwen_vl_utils>=0.0.14"]
+    tags = ["vision", "decision"]
+
+    def build_config(self, model_dir: str, **kwargs) -> PretrainedConfig:
+        return Qwen3_5Loader.build_config(self, model_dir, **kwargs)
+
+    def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
+        processor = Qwen3_5Loader.build_processor(self, model_dir, config, **kwargs)
+        processor.h2o_labels = load_h2o_labels(model_dir)
+        return processor
+
+    def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
+        model = Qwen3_5Loader.build_model(self, model_dir, config, processor, **kwargs)
+        if resolve_h2o_two_way(model_dir):
+            _require_h2o_two_way_support()
+            language_model = getattr(model.model, "language_model", None) or model.model
+            enable_noncausal_full_attention(language_model)
+        lm_head, embeddings = model.get_output_embeddings(), model.get_input_embeddings()
+        if lm_head is not None and embeddings is not None and lm_head.weight.data_ptr() != embeddings.weight.data_ptr():
+            lm_head.weight.requires_grad_(False)
+        head = self.build_head(model, model_dir, config, processor)
+        self._attach_and_load(model, head, model_dir)
+        return model
+
+    def attach_scoring_head(self, model: PreTrainedModel, head: ScoringHead) -> None:
+        head = self._match_head_dtype_device(model, head)
+        model.scoring_head = head
+        self._attach_task_forward(model, self._h2o_forward, {"head": head})
+
+    @staticmethod
+    def _h2o_forward(self, *args, head: ScoringHead, **kwargs):
+        meta = kwargs.pop("decision_meta", None)
+        if meta is None:
+            raise ValueError("H2O forward requires decision_meta from H2OTemplate._encode.")
+        for key in ("labels", "logits_to_keep", "output_hidden_states", "return_dict", "text_position_ids"):
+            kwargs.pop(key, None)
+        kwargs["use_cache"] = False
+        # The readout reads the last hidden state of the final prompt token; the base model's
+        # lm_head is never applied, so call the Qwen3.5 backbone directly.
         output = self.model(*args, **kwargs)
         return head(output.last_hidden_state, None, meta)
 
