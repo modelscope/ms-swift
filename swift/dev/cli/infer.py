@@ -131,6 +131,39 @@ def _guard_interactive(distributed_config: Any, task_type: Optional[str]) -> Non
 
 
 def infer_main(argv: Optional[List[str]] = None):
+    """SIGTERM/SIGINT contract: clean up, then exit -- never leave the GPU behind.
+
+    The default SIGTERM action kills the process before any cleanup runs, orphaning the vLLM
+    EngineCore child with the whole card's memory; and when a library handler lets the main thread
+    finish instead, interpreter shutdown can join a non-daemon third-party thread (tqdm's monitor)
+    forever. Both forms held a card for hours after an interrupted infer. The handler turns the
+    signal into SystemExit so the component's finally shuts the engine down, and the wrapper then
+    hard-exits once cleanup is done, so no lingering thread can hold the process (and its GPU)
+    hostage. A second signal restores the default action and kills immediately.
+    """
+    import os
+    import signal
+    import sys
+
+    terminated: List[int] = []
+
+    def _terminate(signum, frame):
+        terminated.append(signum)
+        signal.signal(signum, signal.SIG_DFL)
+        raise SystemExit(128 + signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, _terminate)
+    try:
+        return _infer_main(argv)
+    finally:
+        if terminated:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(128 + terminated[0])
+
+
+def _infer_main(argv: Optional[List[str]] = None):
     from swift.dev.builders import build_engine_args
     from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe.infer import infer_cli, run_infer
