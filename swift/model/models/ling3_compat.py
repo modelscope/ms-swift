@@ -6,10 +6,13 @@ metadata and RoPE lifecycle differences are isolated in ``ling3_rope``.
 """
 import torch
 import torch.nn.functional as F
+from contextvars import ContextVar
 from einops import rearrange
 from functools import wraps
 from importlib import import_module
-from inspect import signature
+from inspect import signature, unwrap
+from threading import Lock, get_ident
+from types import FunctionType, MappingProxyType, MethodType
 
 _PACKING_KEYS = ('cu_seq_lens_q', 'cu_seq_lens_k', 'max_length_q', 'max_length_k', 'cu_seqlens')
 
@@ -20,12 +23,57 @@ def is_ling3_tiny(config):
                                                                          None)) == (1536, 24, 256)
 
 
-def _packed_params(hidden_states, position_ids, attention_mask, kwargs, *, require_metadata=False):
-    """Validate one boundary contract at model entry and at checkpointed leaves.
+class _PackingRecord:
+    """Entry-validated boundaries owned by one forward; tensors are read-only by contract."""
 
-    The remote decoder drops metadata, so leaf calls must reconstruct it from
-    positions. Only the model entry requires explicit metadata to disambiguate
-    packing from ordinary padding.
+    def __init__(self, positions, inputs, params, attention_mask=None):
+        self.positions = positions
+        self.version = None if positions.is_inference() else positions._version
+        self.shape = tuple(inputs.shape[:2])
+        self.params = MappingProxyType(params)
+        self.attention_mask = attention_mask
+        self.mask_version = (None
+                             if attention_mask is None or attention_mask.is_inference() else attention_mask._version)
+
+    def check_mask(self, mask, positions):
+        # FA2 can elide the entry's all-valid mask. A surviving mask must
+        # still satisfy the packed contract, even if a leaf hook replaced it.
+        if mask is None or (mask is self.attention_mask and self.mask_version is not None
+                            and mask._version == self.mask_version):
+            return
+        if (positions is None or mask.ndim != 2 or mask.shape != positions.shape or mask.device != positions.device
+                or not bool((mask == 1).all())):
+            raise ValueError('Ling3 packed attention requires an aligned all-valid leaf attention mask')
+
+    def resolve(self, hidden_states, positions, kwargs):
+        if (self.version is None or positions is not self.positions or positions is None
+                or positions._version != self.version or hidden_states is None
+                or hidden_states.device != positions.device or tuple(hidden_states.shape[:2]) != self.shape):
+            return None
+        if any(kwargs.get(key) is not None for key in _PACKING_KEYS):
+            return None
+        return self.params
+
+
+def _packed_params(hidden_states, position_ids, attention_mask, kwargs, *, require_metadata=False):
+    record = kwargs.pop('_swift_ling3_packing_record', None)
+    if record is not None:
+        if not isinstance(record, _PackingRecord):
+            raise ValueError('Invalid internal Ling3 packing record')
+        record.check_mask(attention_mask, position_ids)
+        params = record.resolve(hidden_states, position_ids, kwargs)
+        if params is not None:
+            return params
+    return _validate_packed_params(
+        hidden_states, position_ids, attention_mask, kwargs, require_metadata=require_metadata)
+
+
+def _validate_packed_params(hidden_states, position_ids, attention_mask, kwargs, *, require_metadata=False):
+    """Validate packing metadata at entry or when no valid entry record is available.
+
+    The remote decoder does not forward packing metadata to attention layers.
+    Leaf calls without a reusable record derive boundaries from position_ids
+    and validate any supplied metadata. Model entry requires explicit metadata.
     """
     supplied = {k: kwargs[k] for k in _PACKING_KEYS if kwargs.get(k) is not None}
     if position_ids is None:
@@ -86,7 +134,11 @@ def patch_ling3_packing(model):
     """Validate before the remote model drops keep masks and sequence metadata."""
     if hasattr(model, '_swift_ling3_packing_handle'):
         return
-    forward_signature = signature(model.forward)
+    original_forward = model.forward
+    forward_signature = signature(original_forward)
+    owner = object()
+    forward_lock = Lock()
+    active_record = ContextVar('ling3_packing_record', default=None)
 
     def prepare_packing(module, args, kwargs):
         call = kwargs
@@ -101,7 +153,10 @@ def patch_ling3_packing(model):
         if module.training and mask is not None and mask.ndim == 4:
             raise ValueError('Ling3 training does not support external 4-D attention masks; '
                              'use a 2-D padding mask or explicit padding-free metadata')
-        _packed_params(inputs, call.get('position_ids'), call.get('attention_mask'), call, require_metadata=True)
+        if '_swift_ling3_packing_record' in kwargs:
+            raise ValueError('Ling3 packing records are internal forward arguments')
+        params = _packed_params(
+            inputs, call.get('position_ids'), call.get('attention_mask'), call, require_metadata=True)
         if any(call.get(k) is not None for k in _PACKING_KEYS):
             if getattr(module.config, 'num_nextn_predict_layers', 0):
                 raise ValueError('Ling3 packing with MTP is not supported')
@@ -114,9 +169,62 @@ def patch_ling3_packing(model):
                 use_cache = module.config.use_cache
             if call.get('past_key_values') is not None or use_cache:
                 raise ValueError('Ling3 packing requires use_cache=False and no past_key_values')
-        return args, kwargs
+        record = _PackingRecord(call.get('position_ids'), inputs, params, mask) if params else None
+        return args, dict(kwargs, _swift_ling3_packing_record=(owner, record))
 
-    model._swift_ling3_packing_handle = model.register_forward_pre_hook(prepare_packing, with_kwargs=True)
+    @wraps(getattr(original_forward, '__func__', original_forward))
+    def scoped_forward(self, *args, **kwargs):
+        supplied = kwargs.pop('_swift_ling3_packing_record', None)
+        if supplied is None:
+            args, kwargs = prepare_packing(self, args, kwargs)
+            supplied = kwargs.pop('_swift_ling3_packing_record')
+        if not isinstance(supplied, tuple) or len(supplied) != 2 or supplied[0] is not owner:
+            raise ValueError('Invalid internal Ling3 forward record')
+        record = supplied[1]
+        if record is None:
+            if active_record.get() is None:
+                return original_forward(*args, **kwargs)
+            # A same-thread nested ordinary call must not inherit outer hooks.
+            token = active_record.set(None)
+            try:
+                return original_forward(*args, **kwargs)
+            finally:
+                active_record.reset(token)
+        if not forward_lock.acquire(blocking=False):
+            raise RuntimeError('Ling3 packing does not support nested or concurrent model forwards')
+        handles = []
+        token = active_record.set(record)
+        try:
+            thread = get_ident()
+
+            def inject(module, leaf_args, leaf_kwargs):
+                if get_ident() != thread or active_record.get() is not record:
+                    return leaf_args, leaf_kwargs
+                if '_swift_ling3_packing_record' in leaf_kwargs:
+                    raise ValueError('Conflicting internal Ling3 packing record')
+                return leaf_args, dict(leaf_kwargs, _swift_ling3_packing_record=record)
+
+            for layer in getattr(getattr(self, 'model', None), 'layers', ()):
+                handles.append(layer.attention.register_forward_pre_hook(inject, with_kwargs=True))
+            return original_forward(*args, **kwargs)
+        finally:
+            for handle in handles:
+                handle.remove()
+            active_record.reset(token)
+            forward_lock.release()
+
+    handle = model.register_forward_pre_hook(prepare_packing, with_kwargs=True)
+    previous = model.__dict__.get('forward', owner)
+    try:
+        model.forward = MethodType(scoped_forward, model)
+        model._swift_ling3_packing_handle = handle
+    except BaseException:
+        handle.remove()
+        if previous is owner:
+            model.__dict__.pop('forward', None)
+        else:
+            model.forward = previous
+        raise
 
 
 def _singleton_forward(original, causal_conv1d):
@@ -192,6 +300,36 @@ def _validate_eager_causal_mask(hidden_states, mask):
         raise ValueError('Ling3 eager MLA mask must block every future token')
 
 
+def _mla_original(original):
+    from transformers.utils.deprecation import deprecate_kwarg
+
+    outer = getattr(original, '__func__', original)
+    raw = unwrap(outer)
+    expected = deprecate_kwarg('past_key_value', new_name='past_key_values', version='4.58')(lambda self: None)
+    expected_values = dict(zip(expected.__code__.co_freevars, (cell.cell_contents for cell in expected.__closure__)))
+    current = outer
+    while current is not raw:
+        if current.__code__ is not expected.__code__:
+            raise ValueError('Ling3 MLA remote forward has an unsupported decorator')
+        values = dict(zip(current.__code__.co_freevars, (cell.cell_contents for cell in current.__closure__)))
+        if any(values[key] != value for key, value in expected_values.items() if key != 'func'):
+            raise ValueError('Ling3 MLA remote forward has unsupported decorator arguments')
+        current = current.__wrapped__
+    names = raw.__code__.co_names
+    required = ('kv_a_proj_with_mqa', 'kv_b_proj', 'apply_rotary_pos_emb_interleave', 'dense')
+    if (names.count('eager_attention_forward') != 1 or not all(name in names for name in required)
+            or not callable(raw.__globals__.get('eager_attention_forward'))):
+        raise ValueError('Ling3 MLA requires the supported remote attention-dispatch interface')
+    if outer is raw:
+        raise ValueError('Ling3 MLA remote forward is missing the supported deprecation decorator')
+    parameters = signature(raw).parameters
+    if not all(
+            name in parameters
+            for name in ('hidden_states', 'position_embeddings', 'attention_mask', 'past_key_values')):
+        raise ValueError('Ling3 MLA remote forward has an unsupported signature')
+    return raw
+
+
 def _mla_forward(self,
                  hidden_states,
                  position_embeddings,
@@ -201,78 +339,28 @@ def _mla_forward(self,
                  position_ids=None,
                  *,
                  original,
-                 rotary,
-                 registry,
+                 dispatched,
                  **kwargs):
-    if 'past_key_value' in kwargs:
-        if past_key_values is not None:
-            raise ValueError('Specify only one past_key_value(s) argument')
-        past_key_values = kwargs.pop('past_key_value')
+    if not self.config.rope_interleave:
+        raise NotImplementedError('Ling3 non-interleaved rotary weights are not supported')
     params = _packed_params(hidden_states, position_ids, attention_mask, kwargs)
-    if params and (past_key_values is not None or kwargs.get('use_cache')):
+    historical_cache = past_key_values if past_key_values is not None else kwargs.get('past_key_value')
+    if 'past_key_value' in kwargs and past_key_values is not None:
+        raise ValueError('Specify only one past_key_value(s) argument')
+    if params and (historical_cache is not None or kwargs.get('use_cache')):
         raise ValueError('Ling3 packed MLA does not support historical cache')
     backend = self.config._attn_implementation
     if params and backend != 'flash_attention_2':
         raise ValueError('Ling3 packed MLA requires flash_attention_2 varlen')
+    call = dict(kwargs, cache_position=cache_position, position_ids=position_ids)
+    if 'past_key_value' not in call or past_key_values is not None:
+        call['past_key_values'] = past_key_values
     if backend == 'eager':
         _validate_eager_causal_mask(hidden_states, attention_mask)
-        return original(
-            hidden_states,
-            position_embeddings,
-            attention_mask,
-            past_key_values=past_key_values,
-            cache_position=cache_position,
-            position_ids=position_ids,
-            **kwargs)
-    # Native registry backends use this module's is_causal flag. Eager instead
-    # requires the explicit-mask guard above.
-    interface = registry[backend]
-    batch, length = hidden_states.shape[:2]
-    q_shape = (batch, length, -1, self.qk_head_dim)
-    kv_shape = (batch, length, -1, self.qk_nope_head_dim + self.v_head_dim)
-    q = self.q_proj(hidden_states) if self.q_lora_rank is None else self.q_b_proj(
-        self.q_a_layernorm(self.q_a_proj(hidden_states)))
-    q_pass, q_rot = torch.split(q.view(q_shape).transpose(1, 2), [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
-    compressed = self.kv_a_proj_with_mqa(hidden_states)
-    k_pass, k_rot = torch.split(compressed, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1)
-    kv = self.kv_b_proj(self.kv_a_layernorm(k_pass)).view(kv_shape).transpose(1, 2)
-    k_pass, value = torch.split(kv, [self.qk_nope_head_dim, self.v_head_dim], dim=-1)
-    k_rot = k_rot.view(batch, 1, length, self.qk_rope_head_dim)
-    if not self.config.rope_interleave:
-        raise NotImplementedError('Ling3 non-interleaved rotary weights are not supported')
-    cos, sin = position_embeddings
-    q_rot, k_rot = rotary(q_rot, k_rot, cos, sin)
-    key = torch.cat((k_pass, k_rot.expand(*k_pass.shape[:-1], -1)), dim=-1)
-    query = torch.cat((q_pass, q_rot), dim=-1)
-    if past_key_values is not None:
-        key, value = past_key_values.update(key, value, self.layer_idx, {
-            'sin': sin,
-            'cos': cos,
-            'cache_position': cache_position
-        })
-    padded_value = backend == 'flash_attention_2' and self.qk_head_dim != self.v_head_dim
-    if padded_value:
-        value = F.pad(value, [0, self.qk_head_dim - self.v_head_dim])
-    kwargs.update(params)
-    output, weights = interface(
-        self,
-        query,
-        key,
-        value,
-        attention_mask,
-        dropout=0.0 if not self.training else self.attention_dropout,
-        scaling=self.scaling,
-        position_ids=position_ids,
-        **kwargs)
-    if padded_value:
-        output = output[:, :, :, :self.v_head_dim]
-    if self.g_proj is not None:
-        gate = F.sigmoid(self.g_proj(hidden_states).float()).type_as(hidden_states)
-        if self.gated_attention_proj_granularity_type == 'head_wise':
-            output = output * gate[:, :, :, None]
-        else:
-            output = output * gate.view(batch, length, self.num_heads, self.v_head_dim)
-    return self.dense(output.reshape(batch, length, -1).contiguous()), weights, past_key_values
+        return original(hidden_states, position_embeddings, attention_mask, **call)
+
+    call.update(params)
+    return dispatched(self, hidden_states, position_embeddings, attention_mask, **call)
 
 
 def _padded_kda_forward(self, hidden_states, attention_mask, past_key_value, position_ids, *, chunk_kda, **kwargs):
@@ -363,7 +451,8 @@ def _kda_forward(self,
                  original,
                  chunk_kda,
                  **kwargs):
-    if attention_mask is not None and not bool((attention_mask == 1).all()):
+    record = kwargs.get('_swift_ling3_packing_record')
+    if record is None and attention_mask is not None and not bool((attention_mask == 1).all()):
         return _padded_kda_forward(
             self, hidden_states, attention_mask, past_key_value, position_ids, chunk_kda=chunk_kda, **kwargs)
     params = _packed_params(hidden_states, position_ids, attention_mask, kwargs)
@@ -386,11 +475,28 @@ def _kda_forward(self,
     return output, None, past_key_value
 
 
-def _make_mla_forward(original, rotary, registry):
+def _make_mla_forward(original, registry):
+    from transformers.utils.deprecation import deprecate_kwarg
+
+    raw = _mla_original(original)
+
+    def dispatch(module, query, key, value, mask, **attention_kwargs):
+        backend = module.config._attn_implementation
+        return registry[backend](module, query, key, value, mask, **attention_kwargs)
+
+    # The remote forward resolves eager_attention_forward from its globals.
+    # Rebind it in the clone without changing the upstream module or its math.
+    local = FunctionType(raw.__code__, dict(raw.__globals__, eager_attention_forward=dispatch), raw.__name__,
+                         raw.__defaults__, raw.__closure__)
+    local.__kwdefaults__ = raw.__kwdefaults__
+    local.__annotations__ = raw.__annotations__.copy()
+    local.__module__ = raw.__module__
+    local.__qualname__ = raw.__qualname__
+    local = deprecate_kwarg('past_key_value', new_name='past_key_values', version='4.58')(local)
 
     @wraps(getattr(original, '__func__', original))
     def forward(self, *args, **kwargs):
-        return _mla_forward(self, *args, original=original, rotary=rotary, registry=registry, **kwargs)
+        return _mla_forward(self, *args, original=original, dispatched=local, **kwargs)
 
     return forward
 
@@ -408,10 +514,12 @@ def _get_ling3_compat_kernel(modeling):
     """Check callable contracts before mutation; return a reason when unavailable."""
     from transformers import __version__
 
-    from .ling3_rope import SUPPORTED_TRANSFORMERS
+    from .ling3_rope import transformers_compatibility
 
-    if __version__ not in SUPPORTED_TRANSFORMERS:
-        return None, 'Ling3 attention adapters are validated with Transformers 4.57.1 and 5.14.1 only'
+    try:
+        transformers_compatibility(__version__)
+    except NotImplementedError as error:
+        return None, str(error)
     try:
         from fla.modules.conv.causal_conv1d import causal_conv1d
         signature(causal_conv1d).bind(
@@ -481,7 +589,7 @@ def install_ling3_compat(model):
             if getattr(attention, 'num_key_value_groups', 1) != 1:
                 raise NotImplementedError('Ling3 MLA compatibility requires equal query/key-value head counts')
             required = ('q_lora_rank', 'kv_a_proj_with_mqa', 'kv_a_layernorm', 'kv_b_proj', 'dense', 'is_causal')
-            forward = _make_mla_forward(original, modeling.apply_rotary_pos_emb_interleave, ALL_ATTENTION_FUNCTIONS)
+            forward = _make_mla_forward(original, ALL_ATTENTION_FUNCTIONS)
         elif layer.attention_layer_type == 'linear_attention':
             required = ('q_conv1d', 'k_conv1d', 'v_conv1d', 'A_log', 'dt_bias', 'o_norm', 'o_proj')
             forward = _make_kda_forward(original, modeling.chunk_kda)

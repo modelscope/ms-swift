@@ -11,10 +11,11 @@ from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
 from types import MethodType, ModuleType, SimpleNamespace
+from unittest.mock import patch
 
-os.environ['TORCH_DEVICE_BACKEND_AUTOLOAD'] = '0'
-os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
-import torch  # noqa: E402
+with patch.dict(os.environ, {'TORCH_DEVICE_BACKEND_AUTOLOAD': '0'}):
+    import torch
+
 import torch.nn.functional as F  # noqa: E402
 from einops import rearrange  # noqa: E402
 from torch import nn  # noqa: E402
@@ -60,6 +61,7 @@ utils.get_packed_seq_params = helper
 
 
 def setUpModule():
+    unittest.addModuleCleanup(torch.set_rng_state, torch.get_rng_state())
     stack = ExitStack()
     unittest.addModuleCleanup(stack.close)
     stack.enter_context(mock_modules({'swift.utils': utils}))
@@ -233,6 +235,10 @@ mlans = dict(
     },
     apply_rotary_pos_emb_interleave=lambda q, k, cos, sin: (q, k))
 mla_forward = method(MODEL, 'BailingMoeV3MultiLatentAttention', 'forward', mlans) if MODEL is not None else None
+if mla_forward is not None:
+    from transformers.utils.deprecation import deprecate_kwarg
+
+    mla_forward = deprecate_kwarg('past_key_value', new_name='past_key_values', version='4.58')(mla_forward)
 
 
 class MLAFixture(nn.Module):
@@ -257,9 +263,7 @@ class MLAFixture(nn.Module):
         self.attention_dropout = 0.
         self.g_proj = None
         self.dense = nn.Linear(4, 8, bias=False)
-        self.forward = MethodType(
-            compat._make_mla_forward(self.forward, mlans['apply_rotary_pos_emb_interleave'],
-                                     mlans['ALL_ATTENTION_FUNCTIONS']), self)
+        self.forward = MethodType(compat._make_mla_forward(self.forward, mlans['ALL_ATTENTION_FUNCTIONS']), self)
 
 
 class ConvSpy(nn.Module):
@@ -356,26 +360,6 @@ class PackingTests(unittest.TestCase):
         torch.testing.assert_close(a[:, 2:], b[:, 2:], rtol=1e-5, atol=1e-6)
         grad = torch.autograd.grad(a[:, 2:].sum(), x)[0]
         self.assertEqual(float(grad[:, :2].abs().max()), 0)
-
-    def test_native_metadata_loss_boundaries(self):
-        b = batch()
-        self.assertEqual(b['position_ids'].tolist(), [[0, 1, 2, 3, 0, 1, 2]])
-        self.assertEqual(b['cu_seq_lens_q'].tolist(), [0, 4, 7])
-        self.assertIs(b['cu_seq_lens_q'], b['cu_seq_lens_k'])
-        self.assertEqual(b['cu_seq_lens_q'].dtype, torch.int32)
-        self.assertEqual(int(b['max_length_q']), 4)
-        self.assertEqual(torch.roll(b['labels'], -1, -1)[0, 3].item(), -100)
-        self.assertEqual(torch.roll(b['labels'], -1, -1)[0, -1].item(), -100)
-        self.assertEqual(b['loss_scale'][0, 4].item(), 0)
-
-    def test_length_matrix_metadata(self):
-        for lengths in ((1, ), (1, 1, 1), (1, 3), (3, 1), (63, 64, 65), (127, 2)):
-            b = batch(lengths)
-            expected = [0]
-            for n in lengths:
-                expected.append(expected[-1] + n)
-            self.assertEqual(b['cu_seq_lens_q'].tolist(), expected)
-            self.assertEqual(int(b['max_length_q']), max(lengths))
 
     def test_actual_modified_call_chain_and_checkpoint(self):
         for reentrant in (None, False, True):
@@ -502,6 +486,29 @@ class PackingTests(unittest.TestCase):
             b.pop(k)
         with self.assertRaisesRegex(ValueError, 'explicit sequence metadata'):
             model(**b)
+
+
+class NativePackingCollatorTests(unittest.TestCase):
+
+    def test_native_metadata_loss_boundaries(self):
+        b = batch()
+        self.assertEqual(b['position_ids'].tolist(), [[0, 1, 2, 3, 0, 1, 2]])
+        self.assertEqual(b['cu_seq_lens_q'].tolist(), [0, 4, 7])
+        self.assertIs(b['cu_seq_lens_q'], b['cu_seq_lens_k'])
+        self.assertEqual(b['cu_seq_lens_q'].dtype, torch.int32)
+        self.assertEqual(int(b['max_length_q']), 4)
+        self.assertEqual(torch.roll(b['labels'], -1, -1)[0, 3].item(), -100)
+        self.assertEqual(torch.roll(b['labels'], -1, -1)[0, -1].item(), -100)
+        self.assertEqual(b['loss_scale'][0, 4].item(), 0)
+
+    def test_length_matrix_metadata(self):
+        for lengths in ((1, ), (1, 1, 1), (1, 3), (3, 1), (63, 64, 65), (127, 2)):
+            b = batch(lengths)
+            expected = [0]
+            for n in lengths:
+                expected.append(expected[-1] + n)
+            self.assertEqual(b['cu_seq_lens_q'].tolist(), expected)
+            self.assertEqual(int(b['max_length_q']), max(lengths))
 
 
 class PackingShell(nn.Module):
@@ -676,6 +683,260 @@ class PackingMaskBoundaryTests(unittest.TestCase):
                         self.model().eval()(input_ids=inputs, position_ids=positions_tensor, attention_mask=mask),
                         inputs)
                     self.assertEqual(compat._packed_params(torch.zeros(1, 4, 4), positions_tensor, mask, {}), {})
+
+
+class ForwardScopedPackingTests(unittest.TestCase):
+
+    @staticmethod
+    def model(optimized=True):
+
+        class Leaf(nn.Module):
+
+            def __init__(self):
+                super().__init__()
+                self.weight = nn.Parameter(torch.ones(()))
+                self.register_buffer('scale', torch.ones(()))
+
+            def forward(self, hidden, mask, positions, **kwargs):
+                params = compat._packed_params(hidden, positions, mask, kwargs)
+                cu = params.get('cu_seq_lens_q', torch.tensor([0, hidden.shape[1]]))
+                # Segmented differentiable proxy for boundary plumbing, not KDA.
+                return torch.cat([hidden[:, a:b].cumsum(1) for a, b in zip(cu.tolist(),
+                                                                           cu.tolist()[1:])], 1) * self.weight
+
+        class Model(nn.Module):
+
+            def __init__(self):
+                super().__init__()
+                self.model = nn.Module()
+                self.model.layers = nn.ModuleList([nn.Module() for _ in range(24)])
+                for layer in self.model.layers:
+                    layer.attention = Leaf()
+                self.model._supports_packing_metadata = True
+                self.config = SimpleNamespace(
+                    num_nextn_predict_layers=0, _attn_implementation='flash_attention_2', use_cache=False)
+                self.checkpoint_mode = None
+                self.fail = False
+                self.nested = False
+
+            def forward(self, inputs_embeds=None, position_ids=None, attention_mask=None, **kwargs):
+                hidden = inputs_embeds
+                for layer in self.model.layers:
+                    if self.checkpoint_mode is None:
+                        hidden = layer.attention(hidden, attention_mask, position_ids)
+                    else:
+                        hidden = checkpoint(
+                            layer.attention, hidden, attention_mask, position_ids, use_reentrant=self.checkpoint_mode)
+                    if self.fail:
+                        raise ValueError('injected forward failure')
+                    if self.nested:
+                        self(inputs_embeds=inputs_embeds, position_ids=position_ids, **helper(position_ids))
+                return hidden
+
+        model = Model()
+        if optimized:
+            compat.patch_ling3_packing(model)
+        return model
+
+    def test_full_validation_count_and_direct_leaf_fallback(self):
+        from unittest.mock import patch
+
+        positions = torch.tensor([[0, 1, 0, 1]])
+        hidden = torch.randn(1, 4, 2)
+        current = self.model(False)
+        candidate = self.model()
+        validate = compat._validate_packed_params
+        with patch.object(compat, '_validate_packed_params', wraps=validate) as calls:
+            compat._packed_params(hidden, positions, None, helper(positions), require_metadata=True)
+            expected = current(inputs_embeds=hidden, position_ids=positions)
+            self.assertEqual(calls.call_count, 25)
+        with patch.object(compat, '_validate_packed_params', wraps=validate) as calls:
+            actual = candidate(inputs_embeds=hidden, position_ids=positions, **helper(positions))
+            self.assertEqual(calls.call_count, 1)
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+        with patch.object(compat, '_validate_packed_params', wraps=validate) as calls:
+            candidate.model.layers[0].attention(hidden, None, positions)
+            self.assertEqual(calls.call_count, 1)
+
+    def test_batches_checkpoint_recomputation_and_gradients(self):
+        for mode in (None, True, False):
+            candidate = self.model()
+            reference = self.model(False)
+            candidate.checkpoint_mode = reference.checkpoint_mode = mode
+            first = torch.tensor([[0, 1, 0, 1]])
+            second = torch.tensor([[0, 0, 1, 2, 3]])
+            x = torch.randn(1, 4, 2, requires_grad=True)
+            y = x.detach().clone().requires_grad_()
+            out = candidate(inputs_embeds=x, position_ids=first, **helper(first))
+            candidate(inputs_embeds=torch.randn(1, 5, 2), position_ids=second, **helper(second))
+            other = reference(inputs_embeds=y, position_ids=first)
+            out.sum().backward()
+            other.sum().backward()
+            torch.testing.assert_close(out, other, rtol=0, atol=0)
+            torch.testing.assert_close(x.grad, y.grad, rtol=0, atol=0)
+            for a, b in zip(candidate.parameters(), reference.parameters()):
+                torch.testing.assert_close(a.grad, b.grad, rtol=0, atol=0)
+            self.assertTrue(all(not layer.attention._forward_pre_hooks for layer in candidate.model.layers))
+
+    def test_exception_nested_and_existing_hook_cleanup(self):
+        model = self.model()
+        positions = torch.tensor([[0, 1, 0, 1]])
+        x = torch.randn(1, 4, 2)
+        leaf = model.model.layers[0].attention
+        handle = leaf.register_forward_pre_hook(lambda *args: None)
+        for field in ('fail', 'nested'):
+            setattr(model, field, True)
+            with self.assertRaises((ValueError, RuntimeError)):
+                model(inputs_embeds=x, position_ids=positions, **helper(positions))
+            setattr(model, field, False)
+            self.assertEqual(list(leaf._forward_pre_hooks), [handle.id])
+        handle.remove()
+        model(inputs_embeds=x, position_ids=positions, **helper(positions))
+
+    def test_install_state_and_reload_isolation(self):
+        model = self.model()
+        ids = [id(p) for p in model.parameters()]
+        buffers = [id(b) for b in model.buffers()]
+        keys = list(model.state_dict())
+        forward = model.forward
+        compat.patch_ling3_packing(model)
+        self.assertIs(model.forward, forward)
+        other = self.model()
+        other.load_state_dict(model.state_dict())
+        for positions in (torch.arange(4)[None], torch.tensor([[0, 1, 0, 1]])):
+            x = torch.randn(1, 4, 2)
+            a = model(inputs_embeds=x, position_ids=positions, **helper(positions))
+            b = other(inputs_embeds=x, position_ids=positions, **helper(positions))
+            torch.testing.assert_close(a, b, rtol=0, atol=0)
+        self.assertEqual(ids, [id(p) for p in model.parameters()])
+        self.assertEqual(buffers, [id(b) for b in model.buffers()])
+        self.assertEqual(keys, list(model.state_dict()))
+
+    def test_record_mutation_falls_back_and_inputs_stay_validated(self):
+        from unittest.mock import patch
+
+        positions = torch.tensor([[0, 1, 0, 1]])
+        hidden = torch.randn(1, 4, 2)
+        params = helper(positions)
+        record = compat._PackingRecord(positions, hidden, params)
+        positions[0, 1] = 2
+        with self.assertRaises(ValueError):
+            compat._packed_params(hidden, positions, None, {'_swift_ling3_packing_record': record})
+        model = self.model()
+        positions = torch.tensor([[0, 1, 0, 1]])
+        for key in ('cu_seq_lens_q', 'max_length_q'):
+            metadata = helper(positions)
+            metadata[key] = metadata[key] + 1
+            with self.assertRaises(ValueError):
+                model(inputs_embeds=hidden, position_ids=positions, **metadata)
+        with self.assertRaises(ValueError):
+            model(inputs_embeds=hidden, position_ids=positions, attention_mask=torch.ones(1, 1, 4, 4))
+        with self.assertRaises(ValueError):
+            model(inputs_embeds=hidden, position_ids=positions, _swift_ling3_packing_record=record)
+
+    def test_failed_hook_installation_preserves_forward(self):
+        from unittest.mock import patch
+
+        model = self.model(False)
+        before = model.forward.__func__
+        with patch.object(model, 'register_forward_pre_hook', side_effect=RuntimeError('injected install failure')):
+            with self.assertRaisesRegex(RuntimeError, 'install failure'):
+                compat.patch_ling3_packing(model)
+        self.assertIs(model.forward.__func__, before)
+        self.assertFalse(model._forward_pre_hooks)
+        self.assertFalse(hasattr(model, '_swift_ling3_packing_handle'))
+
+    def test_concurrent_forward_rejected_without_removing_owner_hooks(self):
+        import threading
+
+        model = self.model()
+        positions = torch.tensor([[0, 1, 0, 1]])
+        entered = threading.Event()
+        release = threading.Event()
+        failures = []
+        leaf = model.model.layers[0].attention
+
+        def pause(*args):
+            if threading.current_thread() is not thread:
+                return
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('test synchronization timeout')
+
+        handle = leaf.register_forward_pre_hook(pause)
+
+        def first():
+            try:
+                model(inputs_embeds=torch.ones(1, 4, 2), position_ids=positions, **helper(positions))
+            except BaseException as error:
+                failures.append(error)
+
+        thread = threading.Thread(target=first)
+        thread.start()
+        try:
+            self.assertTrue(entered.wait(5))
+            with self.assertRaisesRegex(RuntimeError, 'concurrent'):
+                model(inputs_embeds=torch.ones(1, 4, 2), position_ids=positions, **helper(positions))
+            self.assertGreater(len(leaf._forward_pre_hooks), 1)
+            for other in (model, self.model()):
+                out = other(inputs_embeds=torch.ones(1, 4, 2), position_ids=torch.arange(4)[None])
+                self.assertEqual(out.shape, (1, 4, 2))
+            out = self.model()(inputs_embeds=torch.ones(1, 4, 2), position_ids=positions, **helper(positions))
+            self.assertEqual(out.shape, (1, 4, 2))
+        finally:
+            release.set()
+            thread.join(5)
+            handle.remove()
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(failures, [])
+        self.assertTrue(all(not layer.attention._forward_pre_hooks for layer in model.model.layers))
+
+    def test_ordinary_and_single_document_never_install_leaf_hooks(self):
+        from unittest.mock import patch
+
+        model = self.model()
+        leaf = model.model.layers[0].attention
+        hidden = torch.ones(1, 4, 2)
+        plain = torch.arange(4)[None]
+        packed = torch.tensor([[0, 1, 0, 1]])
+        calls = (
+            (packed, None, helper(packed)),
+            (plain, None, {}),
+            (plain, None, helper(plain)),
+            (torch.tensor([[1, 1, 0, 1]]), torch.tensor([[0, 0, 1, 1]]), {}),
+            (torch.tensor([[0, 1, 0, 0]]), torch.tensor([[1, 1, 0, 0]]), {}),
+            (packed, None, helper(packed)),
+        )
+        with patch.object(leaf, 'register_forward_pre_hook', wraps=leaf.register_forward_pre_hook) as register:
+            for (positions, mask, metadata), count in zip(calls, (1, 1, 1, 1, 1, 2)):
+                model(inputs_embeds=hidden, position_ids=positions, attention_mask=mask, **metadata)
+                self.assertEqual(register.call_count, count)
+                self.assertFalse(leaf._forward_pre_hooks)
+
+    def test_signature_and_inference_fallback(self):
+        from inspect import signature
+
+        reference = self.model(False)
+        before = signature(reference.forward)
+        compat.patch_ling3_packing(reference)
+        self.assertEqual(before, signature(reference.forward))
+        with torch.inference_mode():
+            positions = torch.tensor([[0, 1, 0, 1]])
+            output = reference(inputs_embeds=torch.ones(1, 4, 2), position_ids=positions, **helper(positions))
+            self.assertTrue(torch.isfinite(output).all())
+
+    def test_padding_packing_alternation(self):
+        model = self.model()
+        reference = self.model(False)
+        for mask, positions in ((torch.tensor([[0, 0, 1, 1]]), torch.tensor([[1, 1, 0, 1]])),
+                                (torch.tensor([[1, 1, 0, 0]]), torch.tensor([[0, 1, 0,
+                                                                              0]])), (None, torch.tensor([[0, 1, 0,
+                                                                                                           1]]))):
+            x = torch.randn(1, 4, 2)
+            metadata = helper(positions) if mask is None else {}
+            a = model(inputs_embeds=x, position_ids=positions, attention_mask=mask, **metadata)
+            b = reference(inputs_embeds=x, position_ids=positions, attention_mask=mask)
+            torch.testing.assert_close(a, b, rtol=0, atol=0)
 
 
 if __name__ == '__main__':

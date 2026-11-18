@@ -8,10 +8,11 @@ import unittest
 from contextlib import nullcontext
 from pathlib import Path
 from types import MethodType, ModuleType, SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-os.environ['TORCH_DEVICE_BACKEND_AUTOLOAD'] = '0'
-import torch  # noqa: E402
+with patch.dict(os.environ, {'TORCH_DEVICE_BACKEND_AUTOLOAD': '0'}):
+    import torch
+
 from torch import nn  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +36,10 @@ mock_modules = base.mock_modules
 compat = base.compat
 apply_rotary_pos_emb_interleave = base.apply_rotary_pos_emb_interleave
 chunk_kda = base.chunk_kda
+
+
+def setUpModule():
+    unittest.addModuleCleanup(torch.set_rng_state, torch.get_rng_state())
 
 
 class Shell(nn.Module):
@@ -75,7 +80,8 @@ def dependencies(version='4.57.1', missing=False, bad_conv=False):
     modules['swift.model.patcher'].patch_module_forward = ns['patch_module_forward']
     modules['swift.model.models.ling3_compat'] = compat
     rope = ModuleType('swift.model.models.ling3_rope')
-    rope.SUPPORTED_TRANSFORMERS = ('4.57.1', '5.14.1')
+    actual = load_test('test_ling3_rope').rope
+    rope.transformers_compatibility = actual.transformers_compatibility
     rope.ling3_rope_construction = lambda *args: nullcontext(None)
     modules[rope.__name__] = rope
     modules['transformers'].__version__ = version
@@ -185,7 +191,6 @@ class LoaderAndAdapterTests(unittest.TestCase):
         self.assertFalse(hasattr(model.model.layers[0].attention, '_swift_ling3_origin_forward'))
 
     def test_certified_versions_install_and_dispatch(self):
-        # Contract migration: 5.14.1 is certified only with the required APIs.
         for version in ('4.57.1', '5.14.1'):
             with self.subTest(version=version), mock_modules(dependencies(version=version)):
                 model = shell()
@@ -207,7 +212,7 @@ class LoaderAndAdapterTests(unittest.TestCase):
                 self.assertIs(attention.forward, installed)
 
     def test_required_adapter_failure_stops_tiny_loading(self):
-        for options in ({'missing': True}, {'bad_conv': True}, {'version': '5.20.0'}):
+        for options in ({'missing': True}, {'bad_conv': True}, {'version': '6.0.0'}):
             with self.subTest(options=options), mock_modules(dependencies(**options)):
                 model = shell()
                 before = unmodified(model)
@@ -218,7 +223,7 @@ class LoaderAndAdapterTests(unittest.TestCase):
                 self.assertFalse(messages)
 
     def test_preflight_failure_has_no_partial_mutation(self):
-        for options in ({'missing': True}, {'bad_conv': True}, {'version': '5.20.0'}):
+        for options in ({'missing': True}, {'bad_conv': True}, {'version': '6.0.0'}):
             with self.subTest(options=options), mock_modules(dependencies(**options)):
                 model = shell()
                 before = unmodified(model)
@@ -308,15 +313,145 @@ class LoaderAndAdapterTests(unittest.TestCase):
         with mock_modules({'swift.utils': sentinel}):
             module = load_test('test_ling3_packing')
             self.assertIs(sys.modules['swift.utils'], sentinel)
-            module.setUpModule()
-            try:
-                self.assertIs(sys.modules['swift.utils'], module.utils)
-                raise RuntimeError('expected fixture interruption')
-            except RuntimeError:
-                pass
-            finally:
-                module.tearDownModule()
+            cleanup = Mock()
+            unittest.addModuleCleanup(cleanup)
+            state = torch.get_rng_state()
+            with self.assertRaisesRegex(RuntimeError, 'expected fixture interruption'):
+                with torch.random.fork_rng(devices=[]), module.mock_modules({'swift.utils': module.utils}):
+                    self.assertIs(sys.modules['swift.utils'], module.utils)
+                    torch.rand(1)
+                    raise RuntimeError('expected fixture interruption')
+            cleanup.assert_not_called()
+            self.assertTrue(torch.equal(state, torch.get_rng_state()))
             self.assertIs(sys.modules['swift.utils'], sentinel)
+
+
+class TransformersCompatibilityTests(unittest.TestCase):
+
+    def test_version_warning_policy(self):
+        policy = load_test('test_ling3_rope').rope.transformers_compatibility
+        logger = Mock()
+        utils = ModuleType('swift.utils')
+        utils.get_logger = lambda: logger
+        with mock_modules({'swift.utils': utils}):
+            self.assertEqual(policy('4.57.1', warn=True), 'tf4')
+            self.assertEqual(policy('5.14.1', warn=True), 'tf5')
+            logger.warning_once.assert_not_called()
+            for version, path in (('4.58.0', 'tf4'), ('5.20.0', 'tf5')):
+                logger.reset_mock()
+                self.assertEqual(policy(version, warn=True), path)
+                logger.warning_once.assert_called_once()
+                self.assertIn(f'{version} is unverified', logger.warning_once.call_args.args[0])
+        logger.reset_mock()
+        modules = dependencies(version='5.20.0')
+        modules['swift.utils'] = utils
+        with mock_modules(modules):
+            model = shell()
+            instance, _ = loader(model)
+            instance.get_model('.', model.config, None, {})
+        logger.warning_once.assert_called_once()
+        for version in ('4.56.0', '6.0.0'):
+            with self.assertRaises(NotImplementedError):
+                policy(version)
+
+    def test_tiny_factor_routing(self):
+        for version, legacy in (('4.57.1', True), ('4.57.6', True), ('5.14.1', False), ('5.15.1', False)):
+            for kind in ('default', 'yarn'):
+                modules = dependencies(version=version)
+                modules['swift.utils'] = SimpleNamespace(get_logger=Mock())
+                with self.subTest(version=version, kind=kind), mock_modules(modules):
+                    model = shell()
+                    scaling = {'rope_type': kind}
+                    model.config.rope_scaling = scaling
+                    instance, _ = loader(model)
+                    self.assertIs(instance.get_model('.', model.config, None, {}), model)
+                    expected = {
+                        'rope_type': 'linear',
+                        'factor': 1.0
+                    } if legacy and kind == 'default' else {
+                        'rope_type': kind
+                    }
+                    self.assertIs(model.config.rope_scaling, scaling)
+                    self.assertEqual(scaling, expected)
+                    self.assertTrue(model._swift_ling3_compat)
+                    self.assertTrue(hasattr(model, '_swift_ling3_packing_handle'))
+
+    def test_official_flash_config_isolation(self):
+        # Loader-relevant fields from inclusionAI/Ling-3.0-flash at fcc60a52b34c69c6271d0ac8a8cb0815020b6a43.
+        flash = dict(
+            architectures=['BailingMoeV3ForCausalLM'],
+            hidden_size=2560,
+            num_hidden_layers=42,
+            q_lora_rank=None,
+            num_nextn_predict_layers=1,
+            rope_scaling=None)
+        # inclusionAI/Ling-3.0-tiny at 9a98e35fe1c9ee255f78dd64771c7ae15a799481.
+        tiny = SimpleNamespace(hidden_size=1536, num_hidden_layers=24, q_lora_rank=256)
+        self.assertTrue(compat.is_ling3_tiny(tiny))
+        self.assertFalse(compat.is_ling3_tiny(SimpleNamespace(**flash)))
+        for version in ('4.57.1', '5.14.1'):
+            with self.subTest(version=version), mock_modules(dependencies(version=version)):
+                model = shell()
+                vars(model.config).update(flash)
+                instance, _ = loader(model)
+                with patch.object(instance, '_patch_dynamic_cache_auto_extend') as extend, patch.object(
+                        compat, 'install_ling3_compat') as install, patch.object(compat, 'patch_ling3_packing') as pack:
+                    self.assertIs(instance.get_model('.', model.config, None, {}), model)
+                extend.assert_called_once_with()
+                install.assert_not_called()
+                pack.assert_not_called()
+                self.assertIsNone(model.config.rope_scaling)
+
+    def test_flash_retains_legacy_factor_and_mtp(self):
+        for version in ('4.57.1', '5.14.1', '5.20.0'):
+            with self.subTest(version=version), mock_modules(dependencies(version=version)):
+                model = shell()
+                model.config.hidden_size = 2560
+                model.config.num_hidden_layers = 42
+                model.config.q_lora_rank = None
+                model.config.num_nextn_predict_layers = 1
+                model.config.rope_scaling = {'rope_type': 'default'}
+                instance, _ = loader(model)
+                extensions = []
+                instance._patch_dynamic_cache_auto_extend = lambda: extensions.append(True)
+                with patch(
+                        'swift.model.models.ling3_rope.ling3_rope_construction',
+                        side_effect=AssertionError('Flash entered Tiny construction')):
+                    self.assertIs(instance.get_model('.', model.config, None, {}), model)
+                expected = {'rope_type': 'linear', 'factor': 1.0}
+                self.assertEqual(model.config.rope_scaling, expected)
+                self.assertEqual(extensions, [True])
+                self.assertFalse(hasattr(model, '_swift_ling3_packing_handle'))
+                self.assertFalse(getattr(model, '_swift_ling3_compat', False))
+
+    def test_non_tiny_preserves_rope_scaling_outside_legacy_factor_case(self):
+        for version, original in (
+            ('4.57.1', {
+                'rope_type': 'linear',
+                'factor': 2.0
+            }),
+            ('5.14.1', {
+                'rope_type': 'linear',
+                'factor': 2.0
+            }),
+        ):
+            with self.subTest(version=version, original=original), mock_modules(dependencies(version=version)):
+                model = shell()
+                model.config.hidden_size = 2560
+                scaling = dict(original)
+                model.config.rope_scaling = scaling
+                instance, _ = loader(model)
+                self.assertIs(instance.get_model('.', model.config, None, {}), model)
+                self.assertIs(model.config.rope_scaling, scaling)
+                self.assertEqual(scaling, original)
+
+    def test_unknown_tf5_api_failure_remains_fatal(self):
+        with mock_modules(dependencies(version='5.20.0', missing=True)):
+            model = shell()
+            before = unmodified(model)
+            with self.assertRaises(RuntimeError):
+                compat.install_ling3_compat(model)
+            self.assertEqual(before, unmodified(model))
 
 
 if __name__ == '__main__':

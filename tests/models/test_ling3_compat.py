@@ -12,9 +12,10 @@ from pathlib import Path
 from types import MethodType, ModuleType, SimpleNamespace
 from unittest.mock import patch
 
-os.environ.setdefault('TORCH_DEVICE_BACKEND_AUTOLOAD', '0')
-import torch  # noqa: E402
+with patch.dict(os.environ, {'TORCH_DEVICE_BACKEND_AUTOLOAD': '0'}):
+    import torch
 import torch.nn.functional as F  # noqa: E402
+from ling3_remote_forward_fixture import remote_forward  # noqa: E402
 from torch import nn  # noqa: E402
 from torch.utils.checkpoint import checkpoint  # noqa: E402
 
@@ -36,6 +37,10 @@ def apply_rotary_pos_emb_interleave(q, k, c, s):
 
 def chunk_kda(**kwargs):
     return kwargs['v'], None
+
+
+def setUpModule():
+    unittest.addModuleCleanup(torch.set_rng_state, torch.get_rng_state())
 
 
 class ConvSpy(nn.Module):
@@ -70,7 +75,7 @@ def kda():
 
     def chunk(**kw):
         calls.append(kw)
-        # Deliberately simple differentiable segmented oracle, NOT KDA mathematics.
+        # Differentiable segmented stub for boundary and gradient checks.
         z = (kw['v'] + kw['q'] * kw['k'] + kw['g']) * kw['beta'].unsqueeze(-1)
         cu = kw.get('cu_seqlens')
         bounds = [0, z.shape[1]] if cu is None else cu.tolist()
@@ -108,22 +113,19 @@ class MLA(nn.Module):
         self.attention_dropout = 0.
         self.g_proj = None
         self.dense = nn.Linear(4, 8, bias=False)
+        self._old_forward = MethodType(remote_forward, self)
+
+        self._adapted_forward = MethodType(
+            compat._make_mla_forward(self._old_forward, {'sdpa': self.cpu_attention}), self)
+
+    @staticmethod
+    def cpu_attention(module, q, k, v, attention_mask, **kw):
+        return F.scaled_dot_product_attention(
+            q, k, v, attn_mask=attention_mask, is_causal=attention_mask is None, scale=kw['scaling']).transpose(1,
+                                                                                                                2), None
 
     def forward(self, x, mask=None, **kwargs):
-
-        def cpu_attention(module, q, k, v, attention_mask, **kw):
-            return F.scaled_dot_product_attention(
-                q, k, v, attn_mask=attention_mask, is_causal=attention_mask is None,
-                scale=kw['scaling']).transpose(1, 2), None
-
-        return compat._mla_forward(
-            self,
-            x, (None, None),
-            mask,
-            original=lambda *a, **k: None,
-            rotary=lambda q, k, c, s: (q, k),
-            registry={'sdpa': cpu_attention},
-            **kwargs)
+        return self._adapted_forward(x, (None, None), mask, **kwargs)
 
 
 @contextmanager
@@ -380,7 +382,11 @@ class AdapterTests(unittest.TestCase):
                       'fla.modules.conv.causal_conv1d', 'swift.model.models.ling3_rope')
         }
         modules['swift.model.patcher'].patch_module_forward = ns['patch_module_forward']
-        modules['swift.model.models.ling3_rope'].SUPPORTED_TRANSFORMERS = ('4.57.1', '5.14.1')
+        rope_spec = importlib.util.spec_from_file_location('ling3_rope_fixture',
+                                                           ROOT / 'swift/model/models/ling3_rope.py')
+        rope_fixture = importlib.util.module_from_spec(rope_spec)
+        rope_spec.loader.exec_module(rope_fixture)
+        modules['swift.model.models.ling3_rope'].transformers_compatibility = rope_fixture.transformers_compatibility
         modules['transformers'].__version__ = '4.57.1'
         modules['transformers.modeling_utils'].ALL_ATTENTION_FUNCTIONS = {'sdpa': lambda *args, **kwargs: None}
         modules['fla.modules.conv.causal_conv1d'].causal_conv1d = lambda **kw: (kw['x'], None)
@@ -414,6 +420,197 @@ class AdapterTests(unittest.TestCase):
             second.model.layers[1].attention._patched = True
             with self.assertRaises(ValueError):
                 compat.install_ling3_compat(second)
+
+
+class AttentionCompatContractTests(unittest.TestCase):
+
+    def test_packing_record_validates_incompatible_leaf_calls(self):
+        positions = torch.tensor([[0, 1, 0, 1]])
+        hidden = torch.zeros(1, 4, 8)
+        params = helper(positions)
+        with mock_modules({'swift.utils': SimpleNamespace(get_packed_seq_params=helper)}):
+            validated = compat._validate_packed_params(hidden, positions, None, params)
+            record = compat._PackingRecord(positions, hidden, validated)
+            with patch.object(compat, '_validate_packed_params', wraps=compat._validate_packed_params) as validate:
+                actual = compat._packed_params(hidden, positions, None, {'_swift_ling3_packing_record': record})
+                self.assertIs(actual['cu_seq_lens_q'], validated['cu_seq_lens_q'])
+                validate.assert_not_called()
+                for incompatible in (hidden.to('meta'), hidden[:, :-1]):
+                    with self.assertRaisesRegex(ValueError, 'aligned with position_ids'):
+                        compat._packed_params(incompatible, positions, None, {'_swift_ling3_packing_record': record})
+                metadata = dict(validated, _swift_ling3_packing_record=record)
+                compat._packed_params(hidden, positions, None, metadata)
+                self.assertEqual(validate.call_count, 3)
+                metadata = dict(validated, _swift_ling3_packing_record=record)
+                metadata['cu_seq_lens_q'] = torch.tensor([0, 1, 4], dtype=validated['cu_seq_lens_q'].dtype)
+                with self.assertRaisesRegex(ValueError, 'Conflicting Ling3 cu_seq_lens_q'):
+                    compat._packed_params(hidden, positions, None, metadata)
+
+    def test_verified_kda_avoids_repeated_keep_mask_reduction(self):
+        positions = torch.tensor([[0, 1, 0, 1]])
+        hidden = torch.randn(1, 4, 4)
+        mask = torch.ones(1, 4)
+        model, kernel, _ = kda()
+        record = compat._PackingRecord(positions, hidden, helper(positions), mask)
+        original_bool = torch.Tensor.__bool__
+        calls = []
+
+        def counted(value):
+            calls.append(value)
+            return original_bool(value)
+
+        with patch.object(torch.Tensor, '__bool__', counted):
+            actual = compat._kda_forward(
+                model,
+                hidden,
+                mask,
+                position_ids=positions,
+                original=lambda *a, **kw: None,
+                chunk_kda=kernel,
+                _swift_ling3_packing_record=record)[0]
+        self.assertEqual(calls, [])
+        with mock_modules({'swift.utils': SimpleNamespace(get_packed_seq_params=helper)}):
+            expected = compat._kda_forward(
+                model, hidden, mask, position_ids=positions, original=lambda *a, **kw: None, chunk_kda=kernel)[0]
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_packed_kda_rejects_changed_or_mutated_keep_mask(self):
+        positions = torch.tensor([[0, 1, 0, 1]])
+        hidden = torch.randn(1, 4, 4)
+        model, kernel, _ = kda()
+        for mutate in (False, True):
+            mask = torch.ones(1, 4)
+            record = compat._PackingRecord(positions, hidden, helper(positions), mask)
+            leaf_mask = mask if mutate else mask.clone()
+            leaf_mask[0, 0] = 0
+            with self.assertRaisesRegex(ValueError, 'all-valid leaf attention mask'):
+                compat._kda_forward(
+                    model,
+                    hidden,
+                    leaf_mask,
+                    position_ids=positions,
+                    original=None,
+                    chunk_kda=kernel,
+                    _swift_ling3_packing_record=record)
+
+    def test_forward_scoped_metadata_reaches_mla_varlen_dispatch(self):
+        boundaries = []
+
+        def varlen(module, q, k, v, mask, **kwargs):
+            cu = kwargs.get('cu_seq_lens_q')
+            cu = cu.tolist() if cu is not None else [0, q.shape[2]]
+            boundaries.append(cu)
+            output = torch.cat([
+                torch.nn.functional.scaled_dot_product_attention(
+                    q[:, :, a:b], k[:, :, a:b], v[:, :, a:b], is_causal=True, scale=kwargs['scaling'])
+                for a, b in zip(cu, cu[1:])
+            ], 2)
+            return output.transpose(1, 2), None
+
+        class Model(nn.Module):
+
+            def __init__(self):
+                super().__init__()
+                self.model = nn.Module()
+                self.model.layers = nn.ModuleList([nn.Module()])
+                attention = MLA('flash_attention_2')
+                attention.forward = MethodType(
+                    compat._make_mla_forward(attention._old_forward, {'flash_attention_2': varlen}), attention)
+                self.model.layers[0].attention = attention
+                self.model._supports_packing_metadata = True
+                self.config = SimpleNamespace(
+                    num_nextn_predict_layers=0, _attn_implementation='flash_attention_2', use_cache=False)
+                compat.patch_ling3_packing(self)
+
+            def forward(self, inputs_embeds=None, position_ids=None, **kwargs):
+                # Deliberately drop kwargs, as the frozen remote call sites do.
+                return self.model.layers[0].attention(
+                    hidden_states=inputs_embeds,
+                    position_embeddings=(None, None),
+                    attention_mask=None,
+                    position_ids=position_ids)[0]
+
+        torch.manual_seed(57)
+        model = Model()
+        reference = Model()
+        reference.load_state_dict(model.state_dict())
+        positions = torch.tensor([[0, 1, 0, 1]])
+        x = torch.randn(1, 4, 8, requires_grad=True)
+        with mock_modules({'swift.utils': SimpleNamespace(get_packed_seq_params=helper)}):
+            with patch.object(compat, '_validate_packed_params', wraps=compat._validate_packed_params) as full:
+                output = model(inputs_embeds=x, position_ids=positions, **helper(positions))
+                self.assertEqual(full.call_count, 1)
+            self.assertTrue(boundaries, 'MLA did not dispatch to the varlen backend')
+            self.assertEqual(boundaries[-1], [0, 2, 4])
+            other = torch.cat([
+                reference(inputs_embeds=x[:, a:b], position_ids=torch.arange(b - a)[None]) for a, b in ((0, 2), (2, 4))
+            ], 1)
+            torch.testing.assert_close(output, other, rtol=0, atol=0)
+            grad = torch.autograd.grad(output[:, 2:].sum(), x)[0]
+            self.assertEqual(float(grad[:, :2].abs().max()), 0.)
+        self.assertFalse(model.model.layers[0].attention._forward_pre_hooks)
+
+    def test_real_cache_and_legacy_alias(self):
+        from transformers.cache_utils import DynamicCache
+
+        torch.manual_seed(51)
+        module = MLA().eval()
+        module.layer_idx = 0
+        x = torch.randn(1, 4, 8)
+        full = module(x, position_ids=torch.arange(4)[None])[0]
+        for key in ('past_key_values', 'past_key_value'):
+            cache = DynamicCache()
+            prefix = module(x[:, :3], position_ids=torch.arange(3)[None], **{key: cache})[0]
+            last = module(
+                x[:, 3:],
+                torch.zeros(1, 1, 1, 4),
+                position_ids=torch.tensor([[3]]),
+                cache_position=torch.tensor([3]),
+                **{key: cache})[0]
+            torch.testing.assert_close(prefix, full[:, :3])
+            torch.testing.assert_close(last, full[:, 3:])
+            self.assertEqual(cache.get_seq_length(), 4)
+
+    def test_unknown_dispatch_and_decorator_rejected_before_install(self):
+        from functools import wraps
+        from ling3_remote_forward_fixture import remote_forward
+
+        def unsupported(self, hidden_states, **kwargs):
+            return hidden_states
+
+        with self.assertRaisesRegex(ValueError, 'dispatch'):
+            compat._make_mla_forward(unsupported, {})
+
+        @wraps(remote_forward)
+        def unknown(*args, **kwargs):
+            return remote_forward(*args, **kwargs)
+
+        with self.assertRaisesRegex(ValueError, 'decorator'):
+            compat._make_mla_forward(unknown, {})
+        from inspect import unwrap
+        from transformers.utils.deprecation import deprecate_kwarg
+
+        changed = deprecate_kwarg('different_name', new_name='past_key_values', version='4.58')(unwrap(remote_forward))
+        with self.assertRaisesRegex(ValueError, 'decorator arguments'):
+            compat._make_mla_forward(changed, {})
+
+    def test_wrapper_preserves_remote_globals_and_instance_state(self):
+        from inspect import unwrap
+        from ling3_remote_forward_fixture import remote_forward
+
+        raw = unwrap(remote_forward)
+        original = raw.__globals__['eager_attention_forward']
+        first = MLA().eval()
+        second = MLA().eval()
+        second.load_state_dict(first.state_dict())
+        before = {name: id(value) for name, value in first.named_parameters()}
+        x = torch.randn(1, 4, 8, requires_grad=True)
+        a = first(x, position_ids=torch.arange(4)[None])[0]
+        b = second(x, position_ids=torch.arange(4)[None])[0]
+        torch.testing.assert_close(a, b, rtol=0, atol=0)
+        a.sum().backward()
+        self.assertIs(raw.__globals__['eager_attention_forward'], original)
+        self.assertEqual(before, {name: id(value) for name, value in first.named_parameters()})
 
 
 if __name__ == '__main__':

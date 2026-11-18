@@ -12,8 +12,8 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
-os.environ.setdefault('TORCH_DEVICE_BACKEND_AUTOLOAD', '0')
-import torch  # noqa: E402
+with patch.dict(os.environ, {'TORCH_DEVICE_BACKEND_AUTOLOAD': '0'}):
+    import torch
 from torch import nn  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -26,6 +26,10 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('ling3_rope_cpu', ROOT / 'swift/model/models/ling3_rope.py')
 rope = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rope)
+
+
+def setUpModule():
+    unittest.addModuleCleanup(torch.set_rng_state, torch.get_rng_state())
 
 
 class RopeTests(unittest.TestCase):
@@ -185,15 +189,20 @@ class RopeTests(unittest.TestCase):
                 with self.context():
                     pass
             setattr(self.config, field, before)
-        self.tf.__version__ = '5.20.0'
-        with self.assertRaises(NotImplementedError):
-            with self.context():
-                pass
+        for version in ('6.0.0rc1', '6.0.0'):
+            with self.subTest(version=version):
+                self.tf.__version__ = version
+                with self.assertRaisesRegex(NotImplementedError, 'requires Transformers'):
+                    with self.context():
+                        self.fail('unsupported version entered construction')
+                self.assertEqual(self.originals,
+                                 (self.rotary.__init__, self.remote.BailingMoeV3MultiLatentAttention.__init__,
+                                  self.base.__init__, self.model_cls._tied_weights_keys))
 
     def test_unverified_version_precedes_invalid_rope_parameters(self):
-        self.tf.__version__ = '5.20.0'
+        self.tf.__version__ = '6.0.0'
         self.config.rope_scaling = 'invalid parameters must not mask the version error'
-        with self.assertRaisesRegex(NotImplementedError, 'has only been verified with'):
+        with self.assertRaisesRegex(NotImplementedError, 'requires Transformers'):
             with self.context():
                 self.fail('unverified version entered construction')
         self.assertEqual(self.originals, (self.rotary.__init__, self.remote.BailingMoeV3MultiLatentAttention.__init__,
@@ -212,6 +221,23 @@ class RopeTests(unittest.TestCase):
             model = self.model_cls(self.config)
             finalize(model)
             self.assertFalse(model._supports_flash_attn)
+
+
+class RopeVersionCompatibilityTests(unittest.TestCase):
+    setUp = RopeTests.setUp
+    context = RopeTests.context
+
+    def test_unknown_tf5_constructs_with_capability_checks(self):
+        self.tf.__version__ = '5.20.0'
+        with self.context() as finalize:
+            finalize(self.model_cls(self.config))
+
+    def test_unknown_tf5_invalid_scaling_still_fails(self):
+        self.tf.__version__ = '5.20.0'
+        self.config.rope_scaling = 'invalid'
+        with self.assertRaises(ValueError):
+            with self.context():
+                pass
 
 
 if __name__ == '__main__':

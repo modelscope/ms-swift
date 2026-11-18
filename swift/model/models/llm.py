@@ -396,32 +396,38 @@ class BailingHybridLoader(ModelLoader):
 
     def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor, model_kwargs) -> Any:
         is_bailing_v3 = 'BailingMoeV3ForCausalLM' in (getattr(config, 'architectures', None) or [])
-        if is_bailing_v3:
-            import transformers.utils.import_utils as import_utils
-            if not hasattr(import_utils, 'is_torch_fx_available'):
-
-                def is_torch_fx_available():
-                    try:
-                        import torch.fx  # noqa: F401
-                        return True
-                    except ImportError:
-                        return False
-
-                import_utils.is_torch_fx_available = is_torch_fx_available
-            rope_scaling = getattr(config, 'rope_scaling', None)
-            from transformers import __version__
-            if __version__ == '4.57.1' and isinstance(rope_scaling, dict) and 'factor' not in rope_scaling:
-                rope_scaling['factor'] = 1.0
-                rope_scaling['rope_type'] = 'linear'
-            if getattr(config, 'num_nextn_predict_layers', 0) > 0:
-                self._patch_dynamic_cache_auto_extend()
         if not is_bailing_v3:
             return super().get_model(model_dir, config, processor, model_kwargs)
         from .ling3_compat import install_ling3_compat, is_ling3_tiny, patch_ling3_packing
-        if not is_ling3_tiny(config):
-            return super().get_model(model_dir, config, processor, model_kwargs)
-        from .ling3_rope import ling3_rope_construction
 
+        tiny = is_ling3_tiny(config)
+        tf_path = None
+        if tiny:
+            from transformers import __version__
+
+            from .ling3_rope import ling3_rope_construction, transformers_compatibility
+            tf_path = transformers_compatibility(__version__, warn=True)
+        import transformers.utils.import_utils as import_utils
+        if not hasattr(import_utils, 'is_torch_fx_available'):
+
+            def is_torch_fx_available():
+                try:
+                    import torch.fx  # noqa: F401
+                    return True
+                except ImportError:
+                    return False
+
+            import_utils.is_torch_fx_available = is_torch_fx_available
+        rope_scaling = getattr(config, 'rope_scaling', None)
+        if isinstance(rope_scaling, dict) and 'factor' not in rope_scaling:
+            if not tiny or (tf_path == 'tf4' and rope_scaling.get('rope_type', 'default') == 'default'
+                            and rope_scaling.get('type', 'default') == 'default'):
+                rope_scaling['factor'] = 1.0
+                rope_scaling['rope_type'] = 'linear'
+        if getattr(config, 'num_nextn_predict_layers', 0) > 0:
+            self._patch_dynamic_cache_auto_extend()
+        if not tiny:
+            return super().get_model(model_dir, config, processor, model_kwargs)
         with ling3_rope_construction(model_dir, config, model_kwargs) as finalize:
             model = super().get_model(model_dir, config, processor, model_kwargs)
             if finalize is not None:
