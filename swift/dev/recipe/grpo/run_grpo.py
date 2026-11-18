@@ -438,8 +438,12 @@ def _train_loop(
             if padded:
                 # Drop the inert DP pad rows before lane_restore/training: they carried advantage=0
                 # through the advantage but must not enter the loss, balance_update, or the
-                # training-row count (the collect "training rows == segment count" contract).
-                trajs = [traj for traj in trajs if not traj.get('_dp_pad')]
+                # training-row count (the collect "training rows == segment count" contract). The pads
+                # were appended at the end of lane_trajs and _estimate_group_padded returns rows in
+                # input order, so they are exactly the last pad_count rows. Slice by position rather
+                # than inspecting row content: in ray mode cluster.advantage returns lazily-materialized
+                # ObjectRefs, which have no .get (defect96, the defect73-fix ray-mode follow-up).
+                trajs = trajs[:len(trajs) - pad_count]
             if lane_restore is not None:
                 trajs = [trajs[position] for position in lane_restore]
             if advantage_out is not None:
