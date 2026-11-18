@@ -165,6 +165,49 @@ def _chord_forward_backward(
     )
 
 
+_DP_PAD_REMOTE = None
+
+
+def _dp_pad_rows(template: Any, pad_count: int) -> List[Any]:
+    """Inert DP pad rows (defect73 candidate b), ray-aware.
+
+    Under ray the lane rows are lazy ObjectRefs the driver never materializes; build each pad row in a
+    remote task that opens the template ON A WORKER and returns a marked copy, keeping the controller
+    lazy. Locally the rows are concrete dicts and a plain copy suffices. Each pad row copies a real
+    row's encoded features so the forward lanes can process it; the advantage gives it advantage=0
+    (excluded from group stats) and run_grpo strips it before training.
+    """
+    import ray
+    if ray.is_initialized() and isinstance(template, ray.ObjectRef):
+        global _DP_PAD_REMOTE
+        if _DP_PAD_REMOTE is None:
+            @ray.remote
+            def _pad(template_ref, p):
+                import ray as _ray
+                # ray auto-resolves an ObjectRef argument to its value on the worker, so template_ref
+                # is usually already the materialized dict; ray.get only if it is still a reference.
+                template = _ray.get(template_ref) if isinstance(template_ref, _ray.ObjectRef) else template_ref
+                dummy = dict(template)
+                dummy['episode_id'] = f'__dp_pad_{p}'
+                dummy['group_key'] = f'__dp_pad_{p}'
+                dummy['_dp_pad'] = True
+                dummy.pop('advantages', None)
+                dummy.pop('returns', None)
+                return dummy
+            _DP_PAD_REMOTE = _pad
+        return [_DP_PAD_REMOTE.remote(template, p) for p in range(pad_count)]
+    rows = []
+    for p in range(pad_count):
+        dummy = dict(template)
+        dummy['episode_id'] = f'__dp_pad_{p}'
+        dummy['group_key'] = f'__dp_pad_{p}'
+        dummy['_dp_pad'] = True
+        dummy.pop('advantages', None)
+        dummy.pop('returns', None)
+        rows.append(dummy)
+    return rows
+
+
 def _train_mini_batches(
     state: 'RolloutStepState',
     rl_config: "RLConfig",
@@ -349,6 +392,19 @@ def _train_loop(
                 episode_ids=batch_facts.get('episode_ids'))
             lane_scores = batch_facts['scores'] if lane_order is None else [
                 batch_facts['scores'][index] for index in lane_order]
+            # defect73 (candidate b): collect delivers a variable segment-row count that need not
+            # divide data_world_size, but the fixed-micro-batch forward lanes require equal per-rank
+            # counts (micro_batch.agree_micro_batch_count). Pad the lane batch with inert dummy rows up
+            # to a multiple of data_world_size; the advantage estimates the real rows only (pad rows
+            # advantage=0, excluded from group stats) and we strip the pads before training so they
+            # never reach the loss or the training-row count. Already-divisible batches add no pad.
+            data_world_size = cluster.model.device_mesh.data_world_size
+            pad_count = (-len(lane_trajs)) % data_world_size
+            padded = pad_count > 0
+            if padded:
+                dummies = _dp_pad_rows(lane_trajs[0], pad_count)
+                lane_trajs = list(lane_trajs) + dummies
+                lane_scores = list(lane_scores) + [{} for _ in dummies]
             ref_out = None
             if cluster.reference is not None:
                 # a disable_adapter auxiliary IS the policy object itself (identity derives disable_lora AND
@@ -379,6 +435,11 @@ def _train_loop(
             trajs, adv_summary = cluster.advantage(
                 lane_trajs, ref_out=ref_out, teacher_out=teacher_out, old_out=old_out,
                 global_step=state.global_step, scores=lane_scores)
+            if padded:
+                # Drop the inert DP pad rows before lane_restore/training: they carried advantage=0
+                # through the advantage but must not enter the loss, balance_update, or the
+                # training-row count (the collect "training rows == segment count" contract).
+                trajs = [traj for traj in trajs if not traj.get('_dp_pad')]
             if lane_restore is not None:
                 trajs = [trajs[position] for position in lane_restore]
             if advantage_out is not None:
