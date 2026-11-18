@@ -7,7 +7,7 @@ import torch
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from packaging import version
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from requests import ConnectionError
 from torch import nn
 from typing import Iterable, List, Optional, Union
@@ -39,6 +39,7 @@ if is_trl_available():
     trl_verison = version.parse(trl.__version__)
 
 logger = logging.getLogger(__name__)
+_ROLLOUT_OUTPUTS_ADAPTER = TypeAdapter(List[RolloutOutput])
 
 
 def _broadcast_tensors_for_vllm_weight_sync(communicator, tensors: Iterable[torch.Tensor]) -> None:
@@ -149,11 +150,13 @@ class VLLMInferClient:
         adapter_request: Optional[AdapterRequest] = None,
     ):
         n = len(infer_requests)
+        if n == 0:
+            return []
         chunk_size = (n + self.num_servers - 1) // self.num_servers
         chunks = [infer_requests[i:i + chunk_size] for i in range(0, n, chunk_size)]
         chunks += [[]] * (self.num_servers - len(chunks))
 
-        results = [None] * self.num_servers
+        results = [[] for _ in range(self.num_servers)]
         errors = [None] * self.num_servers
         if isinstance(request_config, RequestConfig):
             request_config = asdict(request_config)
@@ -178,20 +181,22 @@ class VLLMInferClient:
                     errors[i] = Exception(f'Server {i} failed: {response.status_code}, {response.text}')
                     return
 
-                resp_data = response.json()
-                parsed: List[Union[RolloutOutput, ChatCompletionResponse]] = []
-
-                for item in resp_data:
-                    try:
-                        parsed.append(RolloutOutput.model_validate(item))
-                    except ValidationError:
-                        parsed.append(ChatCompletionResponse(**item))
+                try:
+                    parsed = _ROLLOUT_OUTPUTS_ADAPTER.validate_json(response.content)
+                except ValidationError:
+                    # Retain compatibility with servers returning chat responses directly.
+                    parsed: List[Union[RolloutOutput, ChatCompletionResponse]] = []
+                    for item in response.json():
+                        try:
+                            parsed.append(RolloutOutput.model_validate(item))
+                        except ValidationError:
+                            parsed.append(ChatCompletionResponse(**item))
                 results[i] = parsed
             except Exception as e:
                 errors[i] = e
 
         with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
-            futures = [executor.submit(process_chunk, i, chunk) for i, chunk in enumerate(chunks)]
+            futures = [executor.submit(process_chunk, i, chunk) for i, chunk in enumerate(chunks) if chunk]
             for future in futures:
                 future.result()
 
