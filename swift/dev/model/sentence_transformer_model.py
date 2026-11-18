@@ -242,6 +242,21 @@ class SentenceTransformerModel(TwinkleTransformersModel):
             embeddings = self._encode_sentence_embeddings(inputs)
         return {"embeddings": embeddings}
 
+    def _forward_backward_single(self, *, inputs, loss_key, loss_weight, normalize_globally,
+                                 sync_gradients, increment_step, **kwargs):
+        # ST runs the InputProcessor inside forward (_prepare_forward), so the base micro-batch
+        # planner would read input_ids before encoding exists (KeyError). A whole-sentence pooling
+        # head also cannot be split at sample level (it rejects sequence parallel / padding-free
+        # packing). Force whole-batch: drop the micro-batch options so MicroBatchConfig.from_kwargs
+        # returns None and the base routes to the single whole-unit forward, which encodes internally.
+        for key in ("micro_batch_size", "dynamic_batching", "max_tokens_per_micro_batch",
+                    "packing_algorithm", "micro_batch_order"):
+            kwargs.pop(key, None)
+        return super()._forward_backward_single(
+            inputs=inputs, loss_key=loss_key, loss_weight=loss_weight,
+            normalize_globally=normalize_globally, sync_gradients=sync_gradients,
+            increment_step=increment_step, **kwargs)
+
     # --- persistence ----------------------------------------------------------
 
     def save(self, name: Optional[str] = None, output_dir: Optional[str] = None, interval: int = 1, **kwargs):
@@ -263,6 +278,33 @@ class SentenceTransformerModel(TwinkleTransformersModel):
             unwrap = getattr(self.strategy, "unwrap_model", None)
             st_model = unwrap(self.model) if callable(unwrap) else self.model
             os.makedirs(checkpoint_dir, exist_ok=True)
-            st_model.save(checkpoint_dir)
+            self._save_merged_st(st_model, checkpoint_dir)
             logger.info(f"Saved SentenceTransformer checkpoint to: {checkpoint_dir}")
         return checkpoint_dir
+
+    def _save_merged_st(self, st_model, checkpoint_dir) -> None:
+        """Write a checkpoint loadable by the official ``SentenceTransformer``.
+
+        A LoRA-wrapped model carries ``.base_layer``/``lora_A``/``lora_B`` keys;
+        ``SentenceTransformer.save`` would persist those verbatim and a later official reload
+        mismatches every LoRA-targeted parameter (loads random weights -> collapsed embeddings).
+        Merge the adapter into a *copy* so the deliverable has plain merged keys while the live
+        training model keeps its adapter for subsequent updates. PEFT may wrap the whole pipeline
+        (``st_model`` is a ``PeftModel``) or just the leading module's backbone.
+        """
+        import copy
+
+        from peft import PeftModel
+
+        if isinstance(st_model, PeftModel):
+            merged = copy.deepcopy(st_model).merge_and_unload()
+            merged.save(checkpoint_dir)
+            return
+        first_module = st_model[0] if hasattr(st_model, "__getitem__") else None
+        backbone = getattr(first_module, "auto_model", None)
+        if isinstance(backbone, PeftModel):
+            merged_pipeline = copy.deepcopy(st_model)
+            merged_pipeline[0].auto_model = merged_pipeline[0].auto_model.merge_and_unload()
+            merged_pipeline.save(checkpoint_dir)
+            return
+        st_model.save(checkpoint_dir)

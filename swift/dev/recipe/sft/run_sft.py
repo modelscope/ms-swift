@@ -25,6 +25,14 @@ RERANKER_TASK_TYPES = ('reranker', 'generative_reranker')
 DECISION_TASK = "decision"
 
 
+#: Training tasks whose inputs are encoded inside forward (the embedding InputProcessor produces
+#: input_ids there, not in collate) or organized per RECORD (decision readout). The forward-only
+#: micro-batch planner reads input_ids before encoding exists, so these must submit the whole unit
+#: as one forward (micro_batch_size=None) -- the training-side counterpart of the eval loop's
+#: _WHOLE_BATCH_EVAL_TASKS. Reranker/SFT collate already yields input_ids and keep micro-batching.
+_WHOLE_BATCH_TRAIN_TASKS = ('embedding', 'decision')
+
+
 def _supervised_micro_kwargs(task: str) -> Callable[..., Dict[str, Any]]:
     """The forward-kwargs factory the training loop and the val-loss eval share.
 
@@ -33,12 +41,13 @@ def _supervised_micro_kwargs(task: str) -> Callable[..., Dict[str, Any]]:
     the backend splits the submitted inputs internally, with no accumulation across calls.
     ``micro_batch_size=None`` submits the whole unit as one forward -- the only supported mode
     for readout tasks (decision), whose labels/decision_meta are organized per RECORD and
-    cannot be split at sample level by the forward-only micro-batcher.
+    cannot be split at sample level by the forward-only micro-batcher, and for embedding, whose
+    input_ids are produced inside forward rather than in collate.
     """
 
     def micro_step_kwargs(unit, *, micro_batch_size: Optional[int]):
         kwargs = {'inputs': unit, 'task': task, "gradient_accumulation_steps": 1}
-        if micro_batch_size is not None:
+        if micro_batch_size is not None and task not in _WHOLE_BATCH_TRAIN_TASKS:
             kwargs["micro_batch_size"] = micro_batch_size
         return kwargs
 
