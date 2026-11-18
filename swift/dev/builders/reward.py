@@ -47,7 +47,7 @@ def _trained_lora_target_modules(adapter: str) -> list:
 
 
 def _build_local_attached_head_reward_model(spec: 'RewardSpec', reward_model_config: 'ModelConfig',
-                                            reward_template: Any, model_dir: str) -> Any:
+                                            model_dir: str) -> Any:
     """Reproduce the serving host's frozen RM forward locally for an attached-head checkpoint.
 
     Builds the base through twinkle's own ``TransformersModel`` (the host backend, resolving
@@ -56,12 +56,18 @@ def _build_local_attached_head_reward_model(spec: 'RewardSpec', reward_model_con
     SAME mechanism the remote branch uses -- so a remote-trained RM reused as a local ``--orm`` scores
     identically (bf16) instead of through a random in-model head. ``model_dir`` is the resolved local
     snapshot dir (the host loads from a local dir, not the hub id, so the architecture must match).
+
+    Like the remote branch, this deliberately does NOT ``set_processor(InputProcessor)``/``set_template``:
+    the dev InputProcessor injects explicit ``position_ids`` (arange, or the template's mRoPE positions),
+    and Qwen3_5's hybrid linear-attention forward routes explicit positions differently from the
+    ``position_ids=None`` model default the serving host uses -- scoring [1.232] vs the host's [1.968]
+    on the same checkpoint/encoding (defect94). Leaving twinkle's default processor keeps position_ids
+    unset so the local forward reproduces the host bit-for-bit (bf16). The reward template is still
+    returned to the caller for encoding; only the model-side processor injection is dropped.
     """
     import torch
     from peft import PeftConfig
     from twinkle.model import TransformersModel
-
-    from swift.dev.processor import InputProcessor, processor_kwargs
 
     dtype = getattr(reward_model_config, 'torch_dtype', None) or 'bfloat16'
     if isinstance(dtype, str):
@@ -72,8 +78,6 @@ def _build_local_attached_head_reward_model(spec: 'RewardSpec', reward_model_con
     model.add_adapter_to_model('reward', adapter_config, is_trainable=False,
                                task=spec.task_type, num_labels=spec.num_labels)
     model.load(spec.adapter, load_optimizer=False)
-    model.set_processor(InputProcessor, adapter_name='reward', **processor_kwargs(reward_template))
-    model.set_template(reward_template, adapter_name='reward')
     return model
 
 
@@ -216,7 +220,7 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
         # A remote-trained attached-head RM reused locally: reproduce the host forward (defect94),
         # not the legacy in-model-head PeftModel path that leaves the head random.
         reward_model = _build_local_attached_head_reward_model(
-            spec, reward_model_config, reward_template, model_info.model_dir)
+            spec, reward_model_config, model_info.model_dir)
     else:
         reward_model = build_model(
             reward_model_config, dist, device_mesh=device_mesh, remote_group=remote_group)
