@@ -727,6 +727,26 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_think
 class DeepseekV3_1Template(Template):
     jinja_enable_thinking_key = 'thinking'
 
+    def _remove_history_thinking(self, inputs) -> None:
+        messages = inputs.messages
+        last_assistant = next(
+            (i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
+        for i, message in enumerate(messages):
+            if message['role'] != 'assistant':
+                continue
+            if self.is_training and i == last_assistant:
+                continue
+            # Official V3.1 keeps tool-call assistant content verbatim and strips only plain
+            # assistant turns.
+            next_role = messages[i + 1]['role'] if i + 1 < len(messages) else None
+            if next_role in ('tool', 'tool_call'):
+                continue
+            content = message['content']
+            if isinstance(content, list) and content and isinstance(content[0], str):
+                content[0] = self._remove_thinking_content(content[0])
+            elif isinstance(content, str):
+                message['content'] = self._remove_thinking_content(content)
+
 
 register_template(
     DeepseekV2_5TemplateMeta(

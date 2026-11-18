@@ -49,9 +49,14 @@ class TemplateMeta:
     non_thinking_prefix: str = ''  # Automatically add non_thinking_prefix for hybrid thinking models
     # Where to add the empty think block: all assistants, only the final one, or only after a user turn.
     non_thinking_prefix_policy: Literal['all', 'last_response', 'after_user'] = 'all'
+    # Value used when the caller does not specify enable_thinking.
+    default_enable_thinking: Optional[bool] = None
     preserve_thinking: Optional[bool] = None  # Whether the model itself keeps historical thinking content.
-    # Model-level handling of historical thinking: default by mode, always keep, or never keep.
-    preserve_thinking_policy: Literal['default', 'always', 'never'] = 'default'
+    # Model-level handling of historical thinking: default by mode, always keep, never keep
+    # history, or never keep any thinking (including the final assistant during inference).
+    preserve_thinking_policy: Literal['default', 'always', 'never', 'never_all'] = 'default'
+    # Whether whitespace after a removed historical ``</think>`` is stripped.
+    strip_history_thinking: bool = True
     # During encoding, historical thinking content will be removed.
     # This parameter represents the prefix for the historical part.
     history_thinking_prefix: str = ''

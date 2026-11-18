@@ -125,6 +125,8 @@ class Template(ProcessorMixin):
         if default_system is not None:
             template_meta.default_system = default_system
         if enable_thinking is None:
+            enable_thinking = template_meta.default_enable_thinking
+        if enable_thinking is None:
             enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
         self.response_prefix = response_prefix
         self.template_meta: 'TemplateMeta' = template_meta
@@ -166,12 +168,11 @@ class Template(ProcessorMixin):
         return enable_thinking
 
     def _get_preserve_thinking(self, inputs=None):
-        policy = self.template_meta.preserve_thinking_policy
-        if policy == 'always':
-            return True
         preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
+        if preserve_thinking is None and self.template_meta.preserve_thinking_policy == 'always':
+            preserve_thinking = True
         if preserve_thinking is None:
             # Models that keep historical thinking themselves always preserve it, unless the user
             # explicitly opts out above.
@@ -1296,9 +1297,17 @@ class Template(ProcessorMixin):
         return system
 
     def _get_current_round_start(self, messages) -> int:
-        """Index of the query that starts the current round, after tool/user merging."""
-        if self.template_meta.preserve_thinking_policy == 'never':
-            return len(messages)
+        """Boundary for history thinking: assistants before it lose their thinking."""
+        policy = self.template_meta.preserve_thinking_policy
+        last_assistant = next(
+            (i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
+        if policy in ('never', 'never_all'):
+            if policy == 'never_all' and not self.is_training:
+                return len(messages)
+            round_start = next(
+                (i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'user'
+                 or (messages[i]['role'] == 'tool' and messages[i].get('_tool_user_followup'))), -1)
+            return min(round_start, last_assistant) if last_assistant >= 0 else round_start
         for i in range(len(messages) - 1, -1, -1):
             message = messages[i]
             if message['role'] == 'user' or (message['role'] == 'tool' and message.get('_tool_user_followup')):
@@ -1350,6 +1359,8 @@ class Template(ProcessorMixin):
                         message['content'] = non_thinking_prefix + content
 
     def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
+        if thinking_suffix in content and not self.template_meta.strip_history_thinking:
+            return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
         content = content.split(thinking_suffix)[-1].strip()
         return self.template_meta.history_thinking_prefix + content
 

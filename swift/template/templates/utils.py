@@ -9,19 +9,6 @@ from ..utils import Prompt
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 
 
-class NemotronThinkingMixin:
-    """Match Nemotron-3.5's thinking layout: think by default and keep the newline after a
-    historical ``</think>``."""
-
-    def __init__(self, *args, enable_thinking=True, **kwargs):
-        super().__init__(*args, enable_thinking=True if enable_thinking is None else enable_thinking, **kwargs)
-
-    def _remove_thinking_content(self, content: str, thinking_suffix: str = '</think>') -> str:
-        if thinking_suffix in content:
-            return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
-        return super()._remove_thinking_content(content, thinking_suffix)
-
-
 @dataclass
 class ChatmlTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
