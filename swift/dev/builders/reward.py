@@ -11,6 +11,72 @@ if TYPE_CHECKING:
 JUDGE_MAX_NEW_TOKENS = 512
 
 
+def _attached_head_checkpoint(adapter: Optional[str]) -> bool:
+    """True when a client-visible adapter dir carries a separate attached readout head.
+
+    A remotely-trained seq_cls/reranker RM saves its trained head as ``task_head.safetensors`` (the
+    host's attached-head slot), NOT as peft ``modules_to_save`` inside ``adapter_model.safetensors``.
+    The legacy local frozen-adapter path (PeftModel.from_pretrained into an in-model head) never reads
+    that file, so it scores with a random head. Detect the format so the local path can reproduce the
+    host forward through the same attached-head channel the remote branch uses.
+    """
+    import os
+    return bool(adapter) and not adapter.startswith('twinkle://') and os.path.isfile(
+        os.path.join(adapter, 'task_head.safetensors'))
+
+
+def _trained_lora_target_modules(adapter: str) -> list:
+    """The module suffixes the adapter actually trained, read from its own keys.
+
+    ``adapter_config.json`` stores the INPUT ``target_modules`` (often the bare string ``all-linear``);
+    re-expanding that on a local model whose architecture differs from the training host wraps extra
+    modules the adapter never trained (e.g. hybrid ``linear_attn`` projections), desynchronizing the
+    hidden states. Reading the trained suffixes from ``adapter_model.safetensors`` makes the reload
+    wrap exactly the trained modules, independent of the local architecture's all-linear expansion.
+    """
+    import os
+    import re
+    from safetensors import safe_open
+    modules = set()
+    with safe_open(os.path.join(adapter, 'adapter_model.safetensors'), framework='pt') as f:
+        for key in f.keys():
+            match = re.search(r'\.([A-Za-z_]+)\.lora_[AB]\.', key)
+            if match:
+                modules.add(match.group(1))
+    return sorted(modules)
+
+
+def _build_local_attached_head_reward_model(spec: 'RewardSpec', reward_model_config: 'ModelConfig',
+                                            reward_template: Any, model_dir: str) -> Any:
+    """Reproduce the serving host's frozen RM forward locally for an attached-head checkpoint.
+
+    Builds the base through twinkle's own ``TransformersModel`` (the host backend, resolving
+    ``architectures[0]`` exactly as the server does) rather than the dev family loader, attaches the
+    readout head through the adapter channel and ``load``s the trained ``task_head.safetensors`` -- the
+    SAME mechanism the remote branch uses -- so a remote-trained RM reused as a local ``--orm`` scores
+    identically (bf16) instead of through a random in-model head. ``model_dir`` is the resolved local
+    snapshot dir (the host loads from a local dir, not the hub id, so the architecture must match).
+    """
+    import torch
+    from peft import PeftConfig
+    from twinkle.model import TransformersModel
+
+    from swift.dev.processor import InputProcessor, processor_kwargs
+
+    dtype = getattr(reward_model_config, 'torch_dtype', None) or 'bfloat16'
+    if isinstance(dtype, str):
+        dtype = getattr(torch, dtype)
+    model = TransformersModel(model_id=model_dir, torch_dtype=dtype)
+    adapter_config = PeftConfig.from_pretrained(spec.adapter)
+    adapter_config.target_modules = _trained_lora_target_modules(spec.adapter)
+    model.add_adapter_to_model('reward', adapter_config, is_trainable=False,
+                               task=spec.task_type, num_labels=spec.num_labels)
+    model.load(spec.adapter, load_optimizer=False)
+    model.set_processor(InputProcessor, adapter_name='reward', **processor_kwargs(reward_template))
+    model.set_template(reward_template, adapter_name='reward')
+    return model
+
+
 def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
                        template_config: 'TemplateConfig', distributed_config: 'DistributedConfig',
                        rollout_config: Any, backend: str = 'vllm', sampler: Any = None,
@@ -144,10 +210,18 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
         return reward_model, reward_template
     if spec.parallel_spec:
         dist = frozen_auxiliary_distributed_config(dist, device_mesh.world_size, parallel_spec=spec.parallel_spec)
-    reward_model = build_model(
-        reward_model_config, dist, device_mesh=device_mesh, remote_group=remote_group)
-    reward_model = configure_frozen_adapter(
-        reward_model, reward_template, [spec.adapter] if spec.adapter else [], role='reward')
+    from swift.dev.rewards.scorer import SCALAR_TASK_TYPES
+    if (dist.mode == 'local' and not spec.parallel_spec and spec.task_type in SCALAR_TASK_TYPES
+            and _attached_head_checkpoint(spec.adapter)):
+        # A remote-trained attached-head RM reused locally: reproduce the host forward (defect94),
+        # not the legacy in-model-head PeftModel path that leaves the head random.
+        reward_model = _build_local_attached_head_reward_model(
+            spec, reward_model_config, reward_template, model_info.model_dir)
+    else:
+        reward_model = build_model(
+            reward_model_config, dist, device_mesh=device_mesh, remote_group=remote_group)
+        reward_model = configure_frozen_adapter(
+            reward_model, reward_template, [spec.adapter] if spec.adapter else [], role='reward')
     if getattr(reward_template, 'use_model', False):
         reward_template.model = getattr(reward_model, 'model', reward_model)
     return reward_model, reward_template
