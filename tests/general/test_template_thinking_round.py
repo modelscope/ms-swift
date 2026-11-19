@@ -3,11 +3,10 @@ import copy
 import glob
 import json
 import os
-import unittest
-from types import SimpleNamespace
-
 import torch
-from transformers import AutoConfig, AutoProcessor, AutoTokenizer
+import unittest
+from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedConfig
+from types import SimpleNamespace
 
 from swift.model.model_meta import ModelInfo
 from swift.model.register import MODEL_MAPPING
@@ -53,25 +52,51 @@ def _load(model):
     """Load only config/tokenizer/processor; model weights are never downloaded."""
     source = _local_snapshot(model) or _model_id(model)
     try:
-        config = AutoConfig.from_pretrained(source, trust_remote_code=True)
         tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True)
-        try:
-            processor = AutoProcessor.from_pretrained(source, trust_remote_code=True)
-        except Exception:
-            processor = tokenizer
     except Exception as e:
-        raise unittest.SkipTest(f'{source}: config/tokenizer unavailable ({type(e).__name__}: {e})')
+        raise unittest.SkipTest(f'{source}: tokenizer unavailable ({type(e).__name__}: {e})')
+    try:
+        config = AutoConfig.from_pretrained(source, trust_remote_code=True)
+    except Exception:
+        config_path = os.path.join(source, 'config.json')
+        if not os.path.exists(config_path):
+            raise unittest.SkipTest(f'{source}: config.json unavailable')
+        try:
+            config = PretrainedConfig.from_dict(json.load(open(config_path, encoding='utf-8')))
+        except Exception:
+            config = PretrainedConfig()
+    try:
+        processor = AutoProcessor.from_pretrained(source, trust_remote_code=True)
+    except Exception:
+        processor = tokenizer
+    if not getattr(tokenizer, 'chat_template', None):
+        chat_template = getattr(processor, 'chat_template', None)
+        if chat_template:
+            tokenizer.chat_template = chat_template
+    if not getattr(tokenizer, 'chat_template', None):
+        jinja_path = os.path.join(source, 'chat_template.jinja')
+        if os.path.exists(jinja_path):
+            tokenizer.chat_template = open(jinja_path, encoding='utf-8').read()
+    if not getattr(tokenizer, 'chat_template', None):
+        raise unittest.SkipTest(f'{source}: no official chat_template (tokenizer or processor)')
     return source, config, tokenizer, processor
 
 
 def _build(template_type, model_type, source, config, tokenizer, processor, **kwargs):
-    info = ModelInfo(model_type=model_type, model_dir=source, torch_dtype=torch.bfloat16,
-                     max_model_len=32768, quant_method=None, quant_bits=0, config=config,
-                     task_type='causal_lm')
-    processor = SimpleNamespace(tokenizer=tokenizer,
-                                image_processor=getattr(processor, 'image_processor', None),
-                                model_info=info,
-                                model_meta=MODEL_MAPPING[model_type])
+    info = ModelInfo(
+        model_type=model_type,
+        model_dir=source,
+        torch_dtype=torch.bfloat16,
+        max_model_len=32768,
+        quant_method=None,
+        quant_bits=0,
+        config=config,
+        task_type='causal_lm')
+    processor = SimpleNamespace(
+        tokenizer=tokenizer,
+        image_processor=getattr(processor, 'image_processor', None),
+        model_info=info,
+        model_meta=MODEL_MAPPING[model_type])
     return get_template(processor, template_type=template_type, **kwargs)
 
 
@@ -84,14 +109,25 @@ def _pair(old_reason, cur_reason, final=True, followup=False):
             bucket.append({'role': 'user', 'content': text})
 
     def assistant(reason):
-        message = {'role': 'assistant', 'content': '', 'tool_calls': [{'type': 'function', 'function': {
-            'name': 'get_weather', 'arguments': json.dumps(ARGS)}}]}
+        message = {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'type': 'function',
+                'function': {
+                    'name': 'get_weather',
+                    'arguments': json.dumps(ARGS)
+                }
+            }]
+        }
         if reason:
             message['reasoning_content'] = reason
         rc.append(message)
-        inline.append({'role': 'assistant',
-                       'content': (f'<think>\n{reason}\n</think>\n\n' if reason else ''),
-                       'tool_calls': message['tool_calls']})
+        inline.append({
+            'role': 'assistant',
+            'content': (f'<think>\n{reason}\n</think>\n\n' if reason else ''),
+            'tool_calls': message['tool_calls']
+        })
         swift.append({'role': 'assistant', 'content': (f'<think>\n{reason}\n</think>\n\n' if reason else '')})
         swift.append({'role': 'tool_call', 'content': json.dumps({'name': 'get_weather', 'arguments': ARGS})})
 
@@ -123,6 +159,19 @@ def _plain_pair(reason):
     return rc, inline, swift
 
 
+def _trailing_user_pair(reason):
+    """History assistant followed by another user; final message is not an assistant."""
+    rc, inline, swift = [], [], []
+    for bucket in (rc, inline, swift):
+        bucket.append({'role': 'user', 'content': 'first question'})
+    rc.append({'role': 'assistant', 'content': 'answer', 'reasoning_content': reason})
+    inline.append({'role': 'assistant', 'content': f'<think>\n{reason}\n</think>\n\nanswer'})
+    swift.append({'role': 'assistant', 'content': f'<think>\n{reason}\n</think>\n\nanswer'})
+    for bucket in (rc, inline, swift):
+        bucket.append({'role': 'user', 'content': 'next question'})
+    return rc, inline, swift
+
+
 def _official_kwargs(mode):
     if mode in ('explicit_false', 'last_round'):
         return {'preserve_thinking': False}
@@ -139,15 +188,20 @@ def _with_arguments(messages, arguments):
     return copied
 
 
-def _official_render(tokenizer, rc, inline, mode):
+def _official_render(tokenizer, rc, inline, mode, tools=None):
     source = getattr(tokenizer, 'chat_template', None) or ''
-    variants = ((rc, 'rc'),) if 'reasoning_content' in source else ((inline, 'inline'),)
+    variants = ((rc, 'rc'), ) if 'reasoning_content' in source else ((inline, 'inline'), )
+    official_tools = [TOOL] if tools is None else tools
     for messages, _ in variants:
         for arguments in (json.dumps(ARGS), ARGS):
             for extra in (_official_kwargs(mode), {}):
                 try:
-                    return tokenizer.apply_chat_template(_with_arguments(messages, arguments), tools=[TOOL],
-                                                         tokenize=False, add_generation_prompt=False, **extra)
+                    return tokenizer.apply_chat_template(
+                        _with_arguments(messages, arguments),
+                        tools=official_tools,
+                        tokenize=False,
+                        add_generation_prompt=False,
+                        **extra)
                 except Exception:
                     continue
     raise unittest.SkipTest('official chat template rejected every supported call')
@@ -161,13 +215,13 @@ def _mode_kwargs(mode):
     return {}
 
 
-def _render(template_type, model_type, source, config, tokenizer, processor, swift_messages, mode):
+def _render(template_type, model_type, source, config, tokenizer, processor, swift_messages, mode, tools=None):
     kwargs = _mode_kwargs(mode)
     if mode == 'last_round':
         kwargs['loss_scale'] = 'last_round'
     template = _build(template_type, model_type, source, config, tokenizer, processor, **kwargs)
     template.set_mode('transformers' if mode == 'infer_default' else 'train')
-    encoded = template.encode({'messages': copy.deepcopy(swift_messages), 'tools': [TOOL]})
+    encoded = template.encode({'messages': copy.deepcopy(swift_messages), 'tools': [TOOL] if tools is None else tools})
     return tokenizer.decode(encoded['input_ids'], skip_special_tokens=False)
 
 
@@ -175,6 +229,7 @@ class TestThinkingPolicyUnits(unittest.TestCase):
     """Policy branches, no model loading."""
 
     def _fake(self, meta, is_training=True, preserve_thinking=None):
+
         class _FakeTemplate(Template):
 
             @property
@@ -196,12 +251,31 @@ class TestThinkingPolicyUnits(unittest.TestCase):
 
     def _messages(self):
         return [
-            {'role': 'user', 'content': 'q1'},
-            {'role': 'assistant', 'content': 'a1'},
-            {'role': 'tool', 'content': 't1'},
-            {'role': 'assistant', 'content': 'a2'},
-            {'role': 'tool', 'content': 't2', '_tool_user_followup': True},
-            {'role': 'assistant', 'content': 'a3'},
+            {
+                'role': 'user',
+                'content': 'q1'
+            },
+            {
+                'role': 'assistant',
+                'content': 'a1'
+            },
+            {
+                'role': 'tool',
+                'content': 't1'
+            },
+            {
+                'role': 'assistant',
+                'content': 'a2'
+            },
+            {
+                'role': 'tool',
+                'content': 't2',
+                '_tool_user_followup': True
+            },
+            {
+                'role': 'assistant',
+                'content': 'a3'
+            },
         ]
 
     def _apply(self, policy, is_training=True):
@@ -216,18 +290,52 @@ class TestThinkingPolicyUnits(unittest.TestCase):
 
     def test_non_thinking_prefix_all(self):
         messages = self._apply('all')
-        self.assertTrue(all(message['content'].startswith('<think></think>') for message in messages
-                            if message['role'] == 'assistant'))
+        self.assertTrue(
+            all(message['content'].startswith('<think></think>') for message in messages
+                if message['role'] == 'assistant'))
 
     def test_non_thinking_prefix_last_response(self):
         messages = self._apply('last_response')
-        prefixed = [i for i, m in enumerate(messages) if m['role'] == 'assistant' and m['content'].startswith('<think>')]
+        prefixed = [
+            i for i, m in enumerate(messages) if m['role'] == 'assistant' and m['content'].startswith('<think>')
+        ]
         self.assertEqual(prefixed, [5])
 
     def test_non_thinking_prefix_after_user(self):
         messages = self._apply('after_user')
-        prefixed = [i for i, m in enumerate(messages) if m['role'] == 'assistant' and m['content'].startswith('<think>')]
+        prefixed = [
+            i for i, m in enumerate(messages) if m['role'] == 'assistant' and m['content'].startswith('<think>')
+        ]
         self.assertEqual(prefixed, [1, 5])
+
+    def test_auto_thinking_leaves_prefix_empty(self):
+        meta = copy.deepcopy(TEMPLATE_MAPPING['minicpm5_2b'])
+
+        class _AutoTemplate(Template):
+
+            @property
+            def is_training(self):
+                return False
+
+            @property
+            def loss_scale(self):
+                return SimpleNamespace(base_strategy='default')
+
+            def __init__(self):
+                self.template_meta = meta
+                self.enable_thinking = None
+                self.preserve_thinking = None
+                self.response_prefix = None
+                self.use_chat_template = True
+
+        template = _AutoTemplate()
+        self.assertIsNone(template._get_enable_thinking())
+        self.assertEqual(template._get_response_prefix(), '')
+        self.assertEqual(
+            template._get_response_prefix(SimpleNamespace(chat_template_kwargs={'enable_thinking': True})), '<think>\n')
+        self.assertEqual(
+            template._get_response_prefix(SimpleNamespace(chat_template_kwargs={'enable_thinking': False})),
+            '<think>\n\n</think>\n\n')
 
     def test_preserve_policy_always_and_never(self):
         always = copy.deepcopy(TEMPLATE_MAPPING['glm5_3'])
@@ -243,7 +351,8 @@ class TestThinkingPolicyUnits(unittest.TestCase):
         self.assertEqual(
             Template._get_current_round_start(self._fake(never_all, is_training=False), messages), len(messages))
         ends_with_assistant = [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}]
-        self.assertEqual(Template._get_current_round_start(self._fake(never, is_training=False), ends_with_assistant), 0)
+        self.assertEqual(
+            Template._get_current_round_start(self._fake(never, is_training=False), ends_with_assistant), 0)
         self.assertEqual(
             Template._get_current_round_start(self._fake(never_all, is_training=False), ends_with_assistant),
             len(ends_with_assistant))
@@ -267,16 +376,26 @@ class TestThinkingGroupParity(unittest.TestCase):
                     continue
                 yield model_type, group_index, group, template_type
 
-    def _assert_parity(self, tokenizer, template_type, model_type, source, config, processor, pair, mode,
-                       check_prefix=False):
+    def _assert_parity(self,
+                       tokenizer,
+                       template_type,
+                       model_type,
+                       source,
+                       config,
+                       processor,
+                       pair,
+                       mode,
+                       check_prefix=False,
+                       tools=None):
         rc, inline, swift = pair
         try:
-            swift_text = _render(template_type, model_type, source, config, tokenizer, processor, swift, mode)
+            swift_text = _render(
+                template_type, model_type, source, config, tokenizer, processor, swift, mode, tools=tools)
         except AttributeError as e:
             if 'image_processor' in str(e):
                 raise unittest.SkipTest(f'{source}: multimodal processor is not loaded')
             raise
-        official_text = _official_render(tokenizer, rc, inline, mode)
+        official_text = _official_render(tokenizer, rc, inline, mode, tools=tools)
         for marker in ('OLD_REASON', 'CUR_REASON'):
             self.assertEqual(marker in swift_text, marker in official_text,
                              f'{source} mode={mode}\nswift={swift_text}\nofficial={official_text}')
@@ -285,8 +404,9 @@ class TestThinkingGroupParity(unittest.TestCase):
             if policy == 'last_response':
                 marker = TEMPLATE_MAPPING[template_type].thinking_prefix.split('\n')[0].strip()
                 if marker:
-                    self.assertEqual(swift_text.count(marker), official_text.count(marker),
-                                     f'{source} mode={mode}\nswift={swift_text}\nofficial={official_text}')
+                    self.assertEqual(
+                        swift_text.count(marker), official_text.count(marker),
+                        f'{source} mode={mode}\nswift={swift_text}\nofficial={official_text}')
 
     def test_qwq_last_round_keeps_current_thinking(self):
         meta = MODEL_MAPPING['qwen2']
@@ -298,8 +418,14 @@ class TestThinkingGroupParity(unittest.TestCase):
         except unittest.SkipTest as e:
             self.skipTest(str(e))
         messages = [
-            {'role': 'user', 'content': 'q'},
-            {'role': 'assistant', 'content': '<think>\nCUR\n</think>\n\nA1'},
+            {
+                'role': 'user',
+                'content': 'q'
+            },
+            {
+                'role': 'assistant',
+                'content': '<think>\nCUR\n</think>\n\nA1'
+            },
         ]
         text = _render('qwq', 'qwen2', source, config, tokenizer, processor, messages, 'last_round')
         self.assertIn('CUR', text)
@@ -316,28 +442,130 @@ class TestThinkingGroupParity(unittest.TestCase):
             self.skipTest(str(e))
         cases = (
             ('explicit_false', [
-                {'role': 'user',
-                 'content': 'q1'},
-                {'role': 'assistant',
-                 'content': '<think>\nPLAIN_OLD\n</think>\n\nA1'},
-                {'role': 'user',
-                 'content': 'q2'},
-                {'role': 'assistant',
-                 'content': 'A2'},
+                {
+                    'role': 'user',
+                    'content': 'q1'
+                },
+                {
+                    'role': 'assistant',
+                    'content': '<think>\nPLAIN_OLD\n</think>\n\nA1'
+                },
+                {
+                    'role': 'user',
+                    'content': 'q2'
+                },
+                {
+                    'role': 'assistant',
+                    'content': 'A2'
+                },
             ], 'PLAIN_OLD'),
             ('infer_default', [
-                {'role': 'user',
-                 'content': 'q1'},
-                {'role': 'assistant',
-                 'content': '<think>\nEND_OLD\n</think>\n\nA1'},
+                {
+                    'role': 'user',
+                    'content': 'q1'
+                },
+                {
+                    'role': 'assistant',
+                    'content': '<think>\nEND_OLD\n</think>\n\nA1'
+                },
             ], 'END_OLD'),
         )
         for mode, messages, marker in cases:
-            official = tokenizer.apply_chat_template(copy.deepcopy(messages), tools=[TOOL], tokenize=False,
-                                                      add_generation_prompt=False, preserve_thinking=False)
+            official = tokenizer.apply_chat_template(
+                copy.deepcopy(messages),
+                tools=[TOOL],
+                tokenize=False,
+                add_generation_prompt=False,
+                preserve_thinking=False)
             swift = _render('deepseek_v3_1', 'deepseek_v3', source, config, tokenizer, processor, messages, mode)
-            self.assertEqual(marker in swift, marker in official,
-                             f'{mode}\nswift={swift}\nofficial={official}')
+            self.assertEqual(marker in swift, marker in official, f'{mode}\nswift={swift}\nofficial={official}')
+
+    def test_deepseek_v4_custom_encoder(self):
+        import importlib.util
+
+        tested = 0
+        for model_type, meta in MODEL_MAPPING.items():
+            for group in meta.model_groups:
+                template_type = group.template or meta.template
+                if template_type not in ('deepseek_v4', 'deepseek_v4_flash'):
+                    continue
+                source = _local_snapshot(group.models[0])
+                if not source:
+                    continue
+                encoder_path = os.path.join(source, 'encoding', 'encoding_dsv4.py')
+                if not os.path.exists(encoder_path):
+                    continue
+                spec = importlib.util.spec_from_file_location(f'encoding_dsv4_{tested}', encoder_path)
+                encoder = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(encoder)
+                tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True)
+                try:
+                    config = AutoConfig.from_pretrained(source, trust_remote_code=True)
+                except Exception:
+                    try:
+                        config = PretrainedConfig.from_dict(
+                            json.load(open(os.path.join(source, 'config.json'), encoding='utf-8')))
+                    except Exception:
+                        config = PretrainedConfig()
+                for tools in (False, True):
+                    official_messages = []
+                    if tools:
+                        official_messages.append({'role': 'system', 'content': 'sys', 'tools': [TOOL]})
+                    official_messages += [
+                        {
+                            'role': 'user',
+                            'content': 'old q'
+                        },
+                        {
+                            'role': 'assistant',
+                            'content': 'A1',
+                            'reasoning_content': 'OLD_REASON'
+                        },
+                        {
+                            'role': 'user',
+                            'content': 'new q'
+                        },
+                        {
+                            'role': 'assistant',
+                            'content': 'A2',
+                            'reasoning_content': 'CUR_REASON'
+                        },
+                    ]
+                    swift_messages = [
+                        {
+                            'role': 'user',
+                            'content': 'old q'
+                        },
+                        {
+                            'role': 'assistant',
+                            'content': '<think>\nOLD_REASON\n</think>\n\nA1'
+                        },
+                        {
+                            'role': 'user',
+                            'content': 'new q'
+                        },
+                        {
+                            'role': 'assistant',
+                            'content': '<think>\nCUR_REASON\n</think>\n\nA2'
+                        },
+                    ]
+                    official = encoder.encode_messages(official_messages, thinking_mode='thinking', drop_thinking=True)
+                    swift = _render(
+                        template_type,
+                        model_type,
+                        source,
+                        config,
+                        tokenizer,
+                        tokenizer,
+                        swift_messages,
+                        'infer_default',
+                        tools=([TOOL] if tools else []))
+                    for marker in ('OLD_REASON', 'CUR_REASON'):
+                        self.assertEqual(marker in swift, marker in official,
+                                         f'{template_type} tools={tools}\nswift={swift}\nofficial={official}')
+                    tested += 1
+        if not tested:
+            self.skipTest('no local DeepSeek-V4 encoding implementation')
 
     def test_group_parity(self):
         tested = 0
@@ -359,9 +587,31 @@ class TestThinkingGroupParity(unittest.TestCase):
                     if template_type not in ('qwq', 'hy_v3_preview'):
                         self._assert_parity(tokenizer, template_type, model_type, source, config, processor,
                                             _pair('OLD_REASON', 'CUR_REASON'), mode)
+                    # Trailing-user shape: history thinking must be stripped unless the
+                    # template has an explicit always-preserve policy. Hy3 needs a separate
+                    # oracle because its current official fixture disagrees on rc/inline.
+                    if template_type not in ('hy_v3', 'hy_v3_preview'):
+                        self._assert_parity(
+                            tokenizer,
+                            template_type,
+                            model_type,
+                            source,
+                            config,
+                            processor,
+                            _trailing_user_pair('OLD_REASON'),
+                            mode,
+                            tools=[TOOL])
                     # Training must not add an empty think block the official template omits.
-                    self._assert_parity(tokenizer, template_type, model_type, source, config, processor,
-                                        _plain_pair(None), 'train_default', check_prefix=True)
+                    self._assert_parity(
+                        tokenizer,
+                        template_type,
+                        model_type,
+                        source,
+                        config,
+                        processor,
+                        _plain_pair(None),
+                        'train_default',
+                        check_prefix=True)
                 except unittest.SkipTest:
                     continue
                 except AssertionError as e:
@@ -369,7 +619,9 @@ class TestThinkingGroupParity(unittest.TestCase):
                         continue
                     raise
                 except (ValueError, RuntimeError) as e:
-                    if 'agent_template' in str(e) or 'Unrecognized model' in str(e):
+                    message = str(e)
+                    if ('agent_template' in message or 'Unrecognized model' in message
+                            or 'supports text-only' in message or 'without tools' in message):
                         continue
                     raise
                 except AttributeError as e:

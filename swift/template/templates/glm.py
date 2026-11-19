@@ -71,6 +71,7 @@ class GLM4_5TemplateMeta(GLM4TemplateMeta):
     is_thinking: bool = True
     non_thinking_prefix: str = '<think></think>\n'
     history_thinking_prefix: str = '<think></think>\n'
+    default_enable_thinking: bool = True
 
 
 class ChatGLM4VTemplate(Template):
@@ -538,7 +539,6 @@ glm4z1rumination_system = (
     '{"name": "finish", "description": "Finish the task. '
     'Use this function when you have found the information you need.", '
     '"parameters": {"type": "object", "properties": {}, "additionalProperties": false}}]')
-
 
 register_template(
     GLM4TemplateMeta(

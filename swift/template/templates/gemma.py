@@ -461,4 +461,5 @@ register_template(
         template_cls=DiffusionGemmaTemplate,
         agent_template='gemma4',
         is_thinking=True,
-        non_thinking_prefix='<|channel>thought\n<channel|>'))
+        non_thinking_prefix='<|channel>thought\n<channel|>',
+        non_thinking_prefix_policy='after_user'))

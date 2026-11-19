@@ -337,6 +337,7 @@ register_template(
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix_policy='last_response',
+        enable_thinking_policy='auto',
     ))
 
 
@@ -651,6 +652,7 @@ register_template(
         template_cls=MiniCPMO4_5Template,
         is_thinking=True,
         non_thinking_prefix_policy='last_response',
+        default_enable_thinking=True,
     ))
 
 
@@ -805,9 +807,9 @@ register_template(
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
+        enable_thinking_policy='auto',
         agent_template='minicpm5',
     ))
-
 
 # Unlike MiniCPM5-1B, MiniCPM5-2B keeps the historical thinking content and adds an empty think block
 # to the assistant turns without thinking content.
@@ -817,6 +819,7 @@ register_template(
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
+        enable_thinking_policy='auto',
         preserve_thinking=True,
         preserve_thinking_policy='always',
         agent_template='minicpm5',

@@ -300,6 +300,4 @@ class MinimaxM3VLTemplateMeta(TemplateMeta):
 
 register_template(
     MinimaxM3VLTemplateMeta(
-        MLLMTemplateType.minimax_m3_vl,
-        template_cls=MinimaxM3VLTemplate,
-        preserve_thinking_policy='always'))
+        MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate, preserve_thinking_policy='always'))

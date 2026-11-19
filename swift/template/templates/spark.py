@@ -48,4 +48,5 @@ register_template(
     Spark2_5TemplateMeta(
         LLMTemplateType.spark2_5,
         template_cls=Spark2_5Template,
-        preserve_thinking_policy='always'))
+        preserve_thinking_policy='always',
+        default_enable_thinking=True))

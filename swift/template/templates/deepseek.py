@@ -729,8 +729,7 @@ class DeepseekV3_1Template(Template):
 
     def _remove_history_thinking(self, inputs) -> None:
         messages = inputs.messages
-        last_assistant = next(
-            (i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
+        last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
         for i, message in enumerate(messages):
             if message['role'] != 'assistant':
                 continue
@@ -833,7 +832,7 @@ class DeepseekV4Template(DeepseekV3_1Template):
         # reasoning across tool calls.
         if inputs.tools:
             return
-        super()._remove_history_thinking(inputs)
+        Template._remove_history_thinking(self, inputs, keep_tool_call_history=True)
 
 
 register_template(
@@ -844,6 +843,8 @@ register_template(
         template_cls=DeepseekV4Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
+        strip_history_thinking=False,
+        default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 
 
@@ -910,14 +911,12 @@ class DeepseekV41Template(DeepseekV3_1Template):
                 else:
                     message['content'] = prefix + first
 
-    def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
-        return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
-
     def _remove_history_thinking(self, inputs) -> None:
-        # The official V4.1 encoder retains reasoning whenever tools are defined.
+        # The official V4 encoder drops reasoning before the last user turn but keeps the
+        # final assistant turn; with tools it keeps every turn.
         if inputs.tools:
             return
-        super()._remove_history_thinking(inputs)
+        Template._remove_history_thinking(self, inputs, keep_tool_call_history=True)
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         super()._swift_prepare_inputs(inputs)
@@ -1061,6 +1060,8 @@ register_template(
         template_cls=DeepseekV41Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
+        strip_history_thinking=False,
+        default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 
 
@@ -1084,6 +1085,8 @@ register_template(
         template_cls=DeepseekV4FlashTemplate,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
+        strip_history_thinking=False,
+        default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 
 

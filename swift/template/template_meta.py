@@ -51,6 +51,8 @@ class TemplateMeta:
     non_thinking_prefix_policy: Literal['all', 'last_response', 'after_user'] = 'all'
     # Value used when the caller does not specify enable_thinking.
     default_enable_thinking: Optional[bool] = None
+    # Model capability policy: 'auto' leaves enable_thinking unset so the model may decide.
+    enable_thinking_policy: Literal['default', 'auto'] = 'default'
     preserve_thinking: Optional[bool] = None  # Whether the model itself keeps historical thinking content.
     # Model-level handling of historical thinking: default by mode, always keep, never keep
     # history, or never keep any thinking (including the final assistant during inference).

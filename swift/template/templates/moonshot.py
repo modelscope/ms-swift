@@ -201,6 +201,7 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        default_enable_thinking=True,
         agent_template='kimi_k25',
     ))
 
