@@ -111,6 +111,8 @@ The evaluation of InfoNCE loss includes the following metrics:
 - mean_pos: The average of all positives
 - margin: The average of (positive - max hard negative)
 
+With Transformers 4.36 or later and no sequence parallelism, the built-in `infonce` and `paired` evaluation metrics exclude samples repeated by the distributed sampler to fill the final batch. Repeated examples present in the validation dataset itself are still counted. Older Transformers versions and custom metric preprocessing keep their existing behavior.
+
 ## Training
 
 Training scripts provided by ms-swift:
