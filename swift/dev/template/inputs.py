@@ -13,6 +13,21 @@ from .utils import Messages, Tool, get_last_user_round, messages_to_history, nor
 logger = get_logger()
 
 
+def _lift_leading_systems(messages: Messages) -> Optional[str]:
+    """Pop every LEADING system message and join the blocks into one system string.
+
+    Returns None when the conversation has no leading system (the caller's ``system`` key then
+    wins). A mid-conversation system is left in place: the round contract only admits one at
+    the head, and split_rounds fails loud on anything else.
+    """
+    if not messages or messages[0]["role"] != "system":
+        return None
+    blocks = []
+    while messages and messages[0]["role"] == "system":
+        blocks.append(messages.pop(0)["content"] or "")
+    return "\n\n".join(block for block in blocks if block)
+
+
 @dataclass
 class StdTemplateInputs:
     # only user/tool/assistant
@@ -89,10 +104,12 @@ class StdTemplateInputs:
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         # the system message rides the same parts folding as every other message (a parts-form
         # system would otherwise reach the renderer as a list), then lifts out as `system`.
-        if messages and messages[0]["role"] == "system":
-            message = messages.pop(0)
-            system = message["content"]
-        else:
+        # ALL leading system blocks fold into one: agents emit several instruction messages
+        # (codex sends two developer items, each mapped to system), and the round contract is
+        # one system at the head -- lifting only the first would leave the second to crash
+        # split_rounds, and dropping it would silently change the trained prompt.
+        system = _lift_leading_systems(messages)
+        if system is None:
             system = inputs.get("system")
         # media arrives either inside the messages or as row columns, never both
         for k in list(media_kwargs.keys()):
