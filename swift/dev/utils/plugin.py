@@ -288,10 +288,13 @@ class PluginRegistry:
         field that is, so a recipe cannot load half of them.
 
         ``None`` loads nothing, for a caller that holds no PluginConfig (the plugin sources were then
-        already imported earlier in the run's config lifecycle).
+        already imported earlier in the run's config lifecycle). The built-in kinds are declared
+        even when ``external_plugins`` is empty: a run may use a BUILT-IN plugin alone (e.g.
+        ``--harness codex`` with no plugin file), and its kind must exist before the first resolve.
         """
         if plugin_config is None:
             return []
+        _declare_builtin_kinds()
         return PluginRegistry.load_external(plugin_config.external_plugins)
 
     @staticmethod
