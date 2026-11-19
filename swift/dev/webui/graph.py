@@ -397,18 +397,6 @@ class Graph:
                 raise GraphValidationError(f'{node.id}.model: 采样器模型来源必须明确')
             if node.type == 'streaming_driver' and (('engine' in keys) == ('episode' in keys)):
                 raise GraphValidationError(f'{node.id}: engine 与 episode 必须恰接入一种来源')
-            if node.type == 'signal_combine' and node.params['mode'] == 'probability_mixture':
-                # MODEL_OUTPUT 的通道在 worker 侧解析；这里只校验确定的部分——
-                # model_forward 的 outputs 参数声明了确切字段，非纯 logps 的
-                # 前向进不了概率混合（logsumexp），其余来源交给运行期 fail-loudly。
-                for edge in self.incoming(node.id):
-                    if edge.target_port != 'signals':
-                        continue
-                    source = self.node(edge.source)
-                    if source.type == 'model_forward' \
-                            and list(source.params.get('outputs') or []) != ['logps']:
-                        raise GraphValidationError(
-                            f'{node.id}: 概率混合只能消费 logps（{edge.source}.outputs 需为 ["logps"]）')
 
     def _scope_sources(self, node_id: str) -> Dict[str, List[Tuple[str, str]]]:
         """沿身份边可达的 Resource 节点导出变量（kind -> [(节点, 输出口)]）。
@@ -717,7 +705,7 @@ class Graph:
 class GraphUpgrade:
     """旧图只在副本中展开；待选择项和校验错误未清除时不允许确认。"""
 
-    RENAMES = {'forward_signal': 'model_forward', 'signal_fusion': 'signal_combine',
+    RENAMES = {'forward_signal': 'model_forward',
                'reference_update': 'weight_average'}
     USE_ARGUMENTS = {'training_old': 'old_logps', 'ref': 'ref_logps',
                      'teacher': 'teacher_logps', 'rollout': 'rollout_logps'}
@@ -983,7 +971,7 @@ class GraphUpgrade:
                 elif st == 'model_forward' and slot == 'teacher_logps':
                     edge.update(target_port='teacher')
                     edge.pop('slot', None)
-                elif st in ('model_forward', 'signal_combine'):
+                elif st == 'model_forward':
                     edge['target_port'] = 'lanes'
                 elif st == 'reduce':
                     pass  # reduce 本身保留为待确认项，边随节点一起等待处置

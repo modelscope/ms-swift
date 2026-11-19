@@ -133,7 +133,7 @@ class PreferenceBatchEncoder:
         """
         import torch
 
-        from twinkle.signals import response_positions
+        from twinkle.processor.trajectory import response_positions
         values = torch.as_tensor(logps).detach().float()
         if values.dim() == 1:
             values = values.unsqueeze(0)

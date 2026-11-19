@@ -18,8 +18,7 @@ def _register_all() -> None:
                             GroupRuleComponent, LossComponent, ModelComponent,
                             RolloutComponent, SamplerComponent, SandboxEnvComponent,
                             ScorerComponent, ToolsetComponent)
-    from .signals import (AdvantageStage, ModelForwardStage, PrivilegedViewStage,
-                          SignalCombineStage)
+    from .signals import AdvantageStage, ModelForwardStage, PrivilegedViewStage
     from .tasks import (DeployTask, EvalTask, HubPushTask, InferTask, MergeTask,
                         QuantizeTask)
     from .training import (CheckpointStage, TrainStepStage, WeightAverageStage,
@@ -32,7 +31,7 @@ def _register_all() -> None:
             DataloaderComponent, StreamingDriverComponent, ChallengerComponent,
             GenerateStage, ScoreStage, SelectStage,
             ModelForwardStage, PrivilegedViewStage, AdvantageStage,
-            SignalCombineStage, TrainStepStage, WeightSyncStage, WeightAverageStage,
+            TrainStepStage, WeightSyncStage, WeightAverageStage,
             CheckpointStage, MergeTask, QuantizeTask, EvalTask, InferTask,
             DeployTask, HubPushTask):
         register_component(cls)
