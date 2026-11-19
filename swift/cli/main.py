@@ -83,11 +83,24 @@ def get_torchrun_args() -> Optional[List[str]]:
     return torchrun_args
 
 
+def _print_usage(route_mapping: Dict[str, str]) -> None:
+    program = os.path.basename(sys.argv[0]) if sys.argv and sys.argv[0] else 'swift'
+    commands = '\n'.join(f'  {name}' for name in sorted(route_mapping))
+    print(f'usage: {program} <command> [<args>]\n\navailable commands:\n{commands}', flush=True)
+
+
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
+    if not argv or argv[0] in ('-h', '--help', 'help'):
+        _print_usage(route_mapping)
+        return
     method_name = argv[0].replace('_', '-')
     argv = argv[1:]
+    if method_name not in route_mapping:
+        print(f"unrecognized command: '{method_name}'", flush=True)
+        _print_usage(route_mapping)
+        sys.exit(1)
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
     parse_yaml_args(argv)
     torchrun_args = get_torchrun_args()
