@@ -1,12 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# Backend-agnostic scoring pieces: the privileged teacher view, reward folds, calibration scores.
+# Backend-agnostic scoring pieces: the privileged teacher view, reward folds, calibration scores,
+# response-token score rows.
 from __future__ import annotations
 import copy
 from typing import Any, Dict, List, Optional, Sequence
 
+import numpy as np
 import torch
 
 from twinkle.processor import PrivilegedView, encode_privileged_feature, encode_privileged_view
+from twinkle.processor.trajectory import response_positions
 
 
 def collect(result: Any) -> Any:
@@ -110,8 +113,6 @@ def nll_score(logits: "torch.Tensor", target: "torch.Tensor", mask: "torch.Tenso
 
 def ece_score(confidences: List[float], correct: List[bool], n_bins: int = 15) -> float:
     """Expected Calibration Error via uniform binning on [0, 1] (lower is better; ~0 = calibrated)."""
-    import numpy as np
-
     if not confidences:
         return 0.0
     conf = np.asarray(confidences, dtype=np.float64)
@@ -126,3 +127,50 @@ def ece_score(confidences: List[float], correct: List[bool], n_bins: int = 15) -
         if cnt > 0:
             ece += (cnt / n) * abs(float(conf[m].mean()) - float(corr[m].mean()))
     return float(ece)
+
+
+def _row_scores(row: torch.Tensor, positions: List[int], feature: Dict[str, Any]) -> List[float]:
+    """One feature's response-token scores from its (possibly right-padded) full-sequence row.
+
+    A response-only row already holds exactly ``len(positions)`` values and is returned as-is; a
+    full-sequence row is indexed at the feature's own response positions. A row shorter than the
+    feature cannot be aligned and raises rather than silently mis-scoring.
+    """
+    if row.numel() == len(positions):
+        return row.tolist()
+    labels = feature.get('labels')
+    feature_length = len(labels) if labels is not None else 0
+    if row.numel() < feature_length:
+        raise RuntimeError(f'forward returned {row.numel()} values for a {feature_length}-token feature; '
+                           'response-token alignment is impossible.')
+    if (positions and positions[-1] - positions[0] + 1 == len(positions)
+            and bool(np.all(np.diff(positions) == 1))):
+        return row.narrow(0, positions[0], len(positions)).tolist()
+    return row[positions].tolist()
+
+
+def response_token_scores(outputs: Any, features: List[Dict[str, Any]],
+                          *, output_key: str = 'logps') -> List[List[float]]:
+    """Align one whole-batch forward return to one response-token score row per feature.
+
+    ``outputs`` is the forward's return (a pending handle is resolved here) -- a dict whose
+    ``output_key`` channel (``'logps'`` for a causal scorer, ``'logits'`` / ``'values'`` for a value
+    head) may contain a batch tensor or variable-length microbatches, including their JSON form.
+    Full-sequence, right-padded rows are indexed at each feature's response positions.
+    """
+    outputs = outputs.result() if hasattr(outputs, 'result') else outputs
+    values = outputs.get(output_key) if isinstance(outputs, dict) else outputs
+    if values is None:
+        raise RuntimeError(f'the forward returned no {output_key!r} channel.')
+    if not (isinstance(values, (list, tuple)) and values
+            and isinstance(values[0], (list, tuple, np.ndarray, torch.Tensor))):
+        values = [values]
+    rows = []
+    for batch in values:
+        batch = torch.as_tensor(batch).detach().float().cpu()
+        rows.extend(batch.unbind(0) if batch.dim() > 1 else [batch])
+    if len(rows) != len(features):
+        raise RuntimeError(f'forward returned {len(rows)} rows for {len(features)} features; '
+                           'per-row alignment is impossible.')
+    return [_row_scores(row.reshape(-1), response_positions(feature), feature)
+            for row, feature in zip(rows, features, strict=True)]

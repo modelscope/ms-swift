@@ -228,16 +228,6 @@ ADVANTAGE = D('advantage', '优势估计', 'Stage', '轨迹与前向 lane 进、
               doc='Advantage 构造旋钮（gamma/gae_lambda/normalize/kl_coef/beta/kl_in_reward 等）；未被该估计器读取的旋钮会被拒绝')),
     required_when=(('estimator', 'gae', ('value_out',)),),
     execution='remote', surface='algorithm')
-# 'weighted_sum' is a weighted MEAN -- the implementation divides by the total weight, so the
-# weights act as mixture coefficients (scale-invariant) the way the sibling probability_mixture
-# mode's are. The descriptor text says so; the option key keeps its name (it is the graph
-# parameter surface, and mixture semantics is what existing pinned behavior expects).
-SIGNAL_COMBINE = D('signal_combine', '数值组合', 'Stage', '对齐通道的加权平均（权重为混合系数，同比缩放结果不变）或概率混合；logps 概率混合使用 logsumexp。',
-    ports_in=(P('signals', 'MODEL_OUTPUT', '具名对齐数值', many=True),),
-    ports_out=(P('out', 'MODEL_OUTPUT', '与输入数学类型一致', mirror_input='signals'),),
-    params=(Q('mode', '运算', 'weighted_sum', options=('weighted_sum', 'probability_mixture'), phase='call'),
-            Q('weights', '逐 slot 权重', {}, type='dict', phase='call')),
-    execution='remote', surface='algorithm')
 SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对齐载荷；成对与完整组不拆散，奖励随轨迹保留。',
     ports_in=(P('batch', 'TRAJ', '原始对齐数据', optional=False, accepted_kinds=('DATA', 'BATCH')),
               P('signals', 'MODEL_OUTPUT', '具名同步筛选输入', many=True, optional=True)),
@@ -352,7 +342,7 @@ REGISTRY = {descriptor.type: descriptor for descriptor in (
     MODEL, DATASET, SAMPLER, ROLLOUT, GROUP_RULE, LOSS_COMP, SCORER_COMP,
     TOOLSET, SANDBOX_ENV, API_ENDPOINT, CODE_COMPONENT,
     DATALOADER, STREAMING_DRIVER, CHALLENGER, GENERATE, SCORE,
-    MODEL_FORWARD, PRIVILEGED_VIEW, ADVANTAGE, SIGNAL_COMBINE, SELECT,
+    MODEL_FORWARD, PRIVILEGED_VIEW, ADVANTAGE, SELECT,
     TRAIN_STEP, WEIGHT_SYNC, WEIGHT_AVERAGE, CHECKPOINT, MERGE, QUANTIZE,
     INFER, EVAL, DEPLOY, HUB_PUSH)}
 
