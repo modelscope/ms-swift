@@ -349,7 +349,8 @@ def initialize_cluster(
     # sampler handle (its sample() rides HTTP; the driver still runs locally).
     rollout = build_rollout(
         sampler, template, rollout_config, sampling_params=params, remote=not remote_run,
-        inflight=inflight_rows(rollout_config, batch_size, rl_config.num_generations))
+        inflight=inflight_rows(rollout_config, batch_size, rl_config.num_generations),
+        seed=train_config.seed)
 
     # create the reference here (a KL anchor): a bare frozen model on its own group, or the policy
     # itself with its adapter off -- the pipeline derives disable_lora from that identity.

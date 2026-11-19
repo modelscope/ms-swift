@@ -72,12 +72,15 @@ def build_rollout(sampler: Any,
                   sampling_params: Dict[str, Any],
                   remote: bool = False,
                   inflight: Optional[int] = None,
+                  seed: Optional[int] = None,
                   **kwargs: Any) -> Any:
     """One ``MultiTurnRollout`` with the run's tools; ``kwargs`` go to its constructor.
 
     ``remote`` places it on :data:`ROLLOUT_GROUP` (and the sandbox env on :data:`ENV_GROUP`);
     ``inflight`` (see :func:`inflight_rows`) sizes the threads of each replica so every running
-    episode can hold a call. A single-turn rollout is ``max_turns`` unset.
+    episode can hold a call. A single-turn rollout is ``max_turns`` unset. ``seed`` is the run's
+    base seed: the rollout derives a per-(group, sample) request seed from it so ``--seed`` reaches
+    the rollout half (defect52b); ``None`` leaves generation unseeded (the sampler's advancing RNG).
     """
     from twinkle.data_format import SamplingParams
     from twinkle_agentic.rollout import MultiTurnRollout
@@ -120,6 +123,7 @@ def build_rollout(sampler: Any,
         tool_manager=tool_manager,
         harness=agent,
         segment_policy=getattr(rollout_config, 'segment_policy', 'drop'),
+        seed=seed,
         **kwargs,
         **placement)
 
