@@ -859,6 +859,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return self._compute_loss(model, model_inputs, grpo_batch, origin_data)
 
     def _compute_loss(self, model, model_inputs, grpo_batch, origin_data=None):
+        # Check the original batch before chunking for the teacher signal used in the advantages.
+        if grpo_batch.teacher_per_token_logps is not None and (self.loss_type in ['real', 'fipo']
+                                                               or self.off_policy_sequence_mask_delta is not None):
+            raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} / '
+                             'off_policy_sequence_mask.')
         mode = 'train' if self.model.training else 'eval'
 
         # Check batch size and decide processing strategy
@@ -1024,14 +1029,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 "and 'sequence'.")
 
         coef_1 = torch.exp(log_importance_weights)
-
-        # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL signed
-        # teacher log-ratio is added per token). Edge loss types that need a per-sequence
-        # advantage (real / fipo / off_policy_sequence_mask) are not supported with a teacher.
-        if self._has_teacher and (self.loss_type in ['real', 'fipo']
-                                  or self.off_policy_sequence_mask_delta is not None):
-            raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} / '
-                             'off_policy_sequence_mask.')
 
         fipo_metrics = None
         if self.loss_type == 'cispo':
