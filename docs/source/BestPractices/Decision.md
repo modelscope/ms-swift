@@ -31,6 +31,8 @@ pip install "ms-swift>=4.6.0"
   - [ModelScope 4B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink) / [9B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink) / [27B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink)
 8. H2O-4B：已合并发布版 LoRA 的 Qwen3.5-4B hybrid + 固定 255 行 label readout，单题单序列
   - [ModelScope](https://modelscope.cn/models/h2oai/h2o-lightning-4b) / [HuggingFace](https://huggingface.co/h2oai/h2o-lightning-4b)
+9. GS1：原生 Qwen3.5 hybrid 决策模型，当前训练接入支持文本 state
+  - [0.8B](https://huggingface.co/bigai/GS1-0.8B) / [2B](https://huggingface.co/bigai/GS1-2B) / [4B](https://huggingface.co/bigai/GS1-4B) / [9B](https://huggingface.co/bigai/GS1-9B)
 
 
 | 模型         | `--model_type` | 底座                               | 头制品                                                                            | `--loss_type`  |
@@ -44,12 +46,25 @@ pip install "ms-swift>=4.6.0"
 | Laya       | `laya`         | ModernBERT-large（双向，无 adapter）   | `model.safetensors`（编码器 + 头同文件）+ `rl_agent_config.json`（结构 + per-kind/per-bucket 温度） | `ce_rps`       |
 | StartLux   | `startlux`     | 已合并的 Qwen3.5 hybrid（视觉塔，因果） | `decision_config.json`（26 个字母 token id + per-kind read-out 温度）                 | `distill_rps`  |
 | H2O-4B     | `h2o`          | 已合并 LoRA 的 Qwen3.5-4B hybrid | `label_rows.safetensors`（255×hidden 固定 readout）+ `serve_config.json`（255 个标签 + per-kind 温度） | `scoring`      |
+| GS1        | `gs1`           | GS1 原生 Qwen3.5 hybrid checkpoint | 原生 GS1 决策头（与骨干一起保存） | `gs1` |
 
 
 开发者可以将任意 CausalLM 转为决策模型，只需指定：
 
 ```shell
 swift sft --task_type decision
+```
+
+GS1 使用原生 checkpoint 的 prompt compiler、hybrid backbone 和 cross-attention 决策头，按问题选项计算
+`distribution_NLL + GS1_BRIER_WEIGHT * expected_Brier`。默认系数为 1.0，可通过环境变量调节；训练为单阶段微调，
+不提供额外 warmup 阶段。GS1 需要 `transformers>=5.3.0` 和 `typesafe-sdk==0.7.0`。当前 ms-swift 接入只支持文本 state，不支持图像/视频 state。
+
+```shell
+GS1_BRIER_WEIGHT=1.0 swift sft \
+  --model bigai/GS1-0.8B --model_type gs1 --task_type decision \
+  --external_plugins examples/train/decision/dataset.py \
+  --dataset gs1_demo --loss_type gs1 \
+  --tuner_type full --freeze_vision_tower true
 ```
 
 

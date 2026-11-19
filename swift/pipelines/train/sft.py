@@ -310,7 +310,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             return datasets
 
         origin_template_model = template.model
-        template.model = None  # Avoid serializing the model.
+        model_dependent_template = getattr(template, 'use_model', False)
+        if not model_dependent_template:
+            template.model = None  # Avoid serializing the model.
         if args.truncation_strategy == 'split':
             if args.task_type != 'causal_lm' or template.mode != 'train' or args.use_chat_template:
                 raise ValueError('`--truncation_strategy split` is currently only supported for pre-training.')
@@ -329,7 +331,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 batch_size = 100 if args.model_meta.is_multimodal else 1000
                 dataset = preprocessor(
                     dataset,
-                    num_proc=args.dataset_num_proc,
+                    num_proc=None if model_dependent_template else args.dataset_num_proc,
                     load_from_cache_file=args.load_from_cache_file,
                     strict=args.strict,
                     batch_size=batch_size)

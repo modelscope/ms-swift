@@ -2027,10 +2027,11 @@ class Template(ProcessorMixin):
     def _decision_data_collator(self,
                                 batch: List[Dict[str, Any]],
                                 *,
-                                padding_to: Optional[int] = None) -> Dict[str, Any]:
+                                padding_to: Optional[int] = None,
+                                data_collator=None) -> Dict[str, Any]:
         record_metas = [b.pop('decision_meta', None) for b in batch]
         record_targets = [b.pop('target_probs', None) for b in batch]
-        res = self._data_collator(batch, padding_to=padding_to)
+        res = (data_collator or self._data_collator)(batch, padding_to=padding_to)
 
         # -- flatten per-record decision_meta into batched flat lists (len == total_q) --
         flat: Dict[str, Any] = {
@@ -2070,10 +2071,10 @@ class Template(ProcessorMixin):
         # -- flatten + pad target_probs into [total_q, max_opt] labels tensor --
         if not all(t is None for t in record_targets) and max_opt > 0:
             rows: List[List[float]] = []
-            for targets in record_targets:
-                if targets is None:
-                    continue
-                for q in targets:
+            for meta, targets in zip(record_metas, record_targets):
+                question_count = len(meta.get('n_options') or []) if meta else 0
+                target_rows = targets if targets is not None else [[0.0] * n for n in meta.get('n_options', [])]
+                for q in target_rows[:question_count]:
                     row = [0.0] * max_opt
                     n = min(len(q), max_opt)
                     row[:n] = [float(x) for x in q[:n]]

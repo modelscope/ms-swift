@@ -31,6 +31,8 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
    - [ModelScope 4B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink) / [9B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink) / [27B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink)
 8. H2O-4B: Qwen3.5-4B hybrid with the released LoRA already merged + a fixed 255-row label readout, one question per sequence
    - [ModelScope](https://modelscope.cn/models/h2oai/h2o-lightning-4b) / [HuggingFace](https://huggingface.co/h2oai/h2o-lightning-4b)
+9. GS1: native Qwen3.5 hybrid decision models; training integration currently supports text states
+   - [0.8B](https://huggingface.co/bigai/GS1-0.8B) / [2B](https://huggingface.co/bigai/GS1-2B) / [4B](https://huggingface.co/bigai/GS1-4B) / [9B](https://huggingface.co/bigai/GS1-9B)
 
 | Model | `--model_type` | Base | Head Artifacts | `--loss_type` |
 |-------|----------------|------|----------------|----------------|
@@ -43,11 +45,25 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 | Laya | `laya` | ModernBERT-large (bidirectional, no adapter) | `model.safetensors` (encoder + head in one file) + `rl_agent_config.json` (architecture + per-kind/per-bucket temperatures) | `ce_rps` |
 | StartLux | `startlux` | Merged Qwen3.5 hybrid (vision tower, causal) | `decision_config.json` (26 letter token ids + per-kind read-out temperatures) | `distill_rps` |
 | H2O-4B | `h2o` | Qwen3.5-4B hybrid with the released LoRA already merged | `label_rows.safetensors` (fixed 255×hidden readout) + `serve_config.json` (255 labels + per-kind temperatures) | `scoring` |
+| GS1 | `gs1` | Native GS1 Qwen3.5 hybrid checkpoint | Native GS1 decision head (saved with the backbone) | `gs1` |
 
 Developers can convert any CausalLM into a decision model by specifying:
 
 ```shell
 swift sft --task_type decision
+```
+
+GS1 uses the checkpoint's native prompt compiler, hybrid backbone, and cross-attention decision head. It trains with
+`distribution_NLL + GS1_BRIER_WEIGHT * expected_Brier`; the coefficient defaults to 1.0 and is configurable through the environment variable. Training is
+single-stage with no additional warmup stage. GS1 requires `transformers>=5.3.0` and `typesafe-sdk==0.7.0`. The current
+ms-swift integration supports text states only, not images or video.
+
+```shell
+GS1_BRIER_WEIGHT=1.0 swift sft \
+  --model bigai/GS1-0.8B --model_type gs1 --task_type decision \
+  --external_plugins examples/train/decision/dataset.py \
+  --dataset gs1_demo --loss_type gs1 \
+  --tuner_type full --freeze_vision_tower true
 ```
 
 ## Loss Functions

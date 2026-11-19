@@ -12,6 +12,7 @@ because CE-with-soft-targets equals KL up to an additive constant that does not 
 Subclasses add calibration terms (RPS for ordinal `score`, Brier for all-option calibration)
 by overriding `_extra_loss`, which is summed onto the reduced CE loss.
 """
+import math
 import os
 import torch
 from typing import Optional
@@ -72,6 +73,30 @@ class ScoringLoss(BaseLoss):
     def _extra_loss(self, outputs, target, option_mask, *, num_items_in_batch=None, loss_scale=None, **kwargs):
         """Hook for model-specific additive terms; returns a scalar tensor or None."""
         return None
+
+
+class GS1DecisionLoss(ScoringLoss):
+    """Distribution NLL plus a configurable expected multiclass Brier score."""
+
+    def __init__(self, args, trainer):
+        super().__init__(args, trainer)
+        self.brier_weight = float(os.environ.get('GS1_BRIER_WEIGHT', '1.0'))
+        if not math.isfinite(self.brier_weight) or self.brier_weight < 0:
+            raise ValueError('GS1_BRIER_WEIGHT must be finite and nonnegative.')
+
+    def _extra_loss(self, outputs, target, option_mask, *, num_items_in_batch=None, loss_scale=None, **kwargs):
+        if self.brier_weight == 0:
+            return None
+        probs = masked_softmax(outputs.logits, option_mask)
+        per_question = ((probs - target).square() * option_mask).sum(dim=-1) + 1 - (target.square() * option_mask).sum(dim=-1)
+        per_question = per_question * option_mask.any(dim=-1)
+        if num_items_in_batch is not None:
+            term = per_question.sum() / num_items_in_batch
+        else:
+            term = per_question.mean() if per_question.numel() else per_question.sum()
+        if loss_scale is not None:
+            term = term * loss_scale
+        return self.brier_weight * term
 
 
 class DistillRPSLoss(ScoringLoss):

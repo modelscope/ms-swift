@@ -10,6 +10,9 @@ assembly and head-meta contracts are fundamentally different.
 import json
 import re
 import string
+import torch
+from copy import copy
+from importlib import import_module
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..base import MaxLengthError, Template
@@ -132,6 +135,125 @@ class JevTemplate(DecisionTemplate, Qwen3_5Template):
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.jev, template_cls=JevTemplate, default_system=None))
+
+
+class GS1Template(DecisionTemplate, Qwen3_5Template):
+    """Compile a native GS1 request into one isolated decision branch."""
+
+    use_model = True
+    support_padding_free = False
+    _error_prefix = 'GS1'
+
+    @property
+    def model(self):
+        return self._gs1_model
+
+    @model.setter
+    def model(self, value):
+        self._gs1_model = value
+        if value is not None and not hasattr(self, '_gs1_compiler'):
+            model = self.get_base_model(value)
+            self._gs1_compiler = model.decision_compiler(copy(self.tokenizer), max_context=self.max_length or 65536)
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        if inputs.images or inputs.videos or inputs.audios:
+            raise NotImplementedError('GS1 training currently supports text-only states.')
+        fields = self._decision_fields(inputs)
+        criteria = inputs.extra_kwargs.get('criteria')
+        state = inputs.extra_kwargs.get('state')
+        if isinstance(criteria, (list, tuple)):
+            criteria = criteria[0] if criteria else None
+        if isinstance(state, (list, tuple)):
+            state = state[0] if state else None
+        if state is not None:
+            fields['state'] = json.loads(state)
+        if criteria is not None:
+            criteria = json.loads(criteria)
+        if criteria is not None:
+            fields['criteria'] = criteria
+        compiler = self._gs1_compiler
+        question = {
+            'type': fields['kind'],
+            'instructions': fields['question'],
+        }
+        if fields['kind'] == 'choice':
+            question['criteria'] = fields.get('criteria') or {option: None for option in fields['options']}
+        elif fields['kind'] == 'noul':
+            question['criteria'] = fields.get('criteria') or {}
+        else:
+            question['criteria'] = fields.get('criteria') or list(fields['options'])
+        request_module = import_module(f'{type(compiler).__module__.rsplit(".", 1)[0]}.schema')
+        request_type = request_module.DecisionRequest
+        request = request_type.model_validate({
+            'model': getattr(self.config, '_name_or_path', 'GS1'),
+            'state': fields['state'],
+            'questions': {
+                'q0': question
+            },
+        })
+        compiled = compiler.compile(request)
+        branch = compiled.branches[0]
+        from swift.model.decision_head import QUESTION_TYPES
+        meta = {
+            'n_options': [len(fields['options'])],
+            'kinds': [QUESTION_TYPES[fields['kind']]],
+            'gs1_branches': [{'branch': branch, 'state_length': len(compiled.state)}],
+        }
+        return {
+            'input_ids': list(compiled.state + branch.suffix),
+            'decision_meta': meta,
+        }
+
+    def _extract_extra_decision_meta(self, meta, rec_i, flat):
+        if meta is not None:
+            flat.setdefault('gs1_branches', []).extend(meta.get('gs1_branches') or [])
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return inputs
+
+    def _data_collator(self, batch, *, padding_to=None):
+        if self.is_training:
+            self.padding_side = 'left'
+        return self._gs1_data_collator(batch, padding_to=padding_to)
+
+    def _gs1_data_collator(self, batch, *, padding_to=None):
+        record_metas = [item.pop('decision_meta', None) for item in batch]
+        record_targets = [item.pop('target_probs', None) for item in batch]
+        result = Template._data_collator(self, batch, padding_to=padding_to)
+        decision_meta = {
+            'record_index': [],
+            'n_options': [],
+            'kinds': [],
+            'counts': [],
+            'gs1_branches': [],
+            'max_opt': 0,
+            'left_padding': True,
+        }
+        for index, meta in enumerate(record_metas):
+            if meta is None:
+                continue
+            count = len(meta['n_options'])
+            decision_meta['counts'].append(count)
+            decision_meta['record_index'].extend([index] * count)
+            decision_meta['n_options'].extend(meta['n_options'])
+            decision_meta['kinds'].extend(meta['kinds'])
+            decision_meta['gs1_branches'].extend(meta['gs1_branches'])
+            decision_meta['max_opt'] = max(decision_meta['max_opt'], max(meta['n_options'], default=0))
+        decision_meta['seq_lens'] = result['attention_mask'].sum(dim=-1).tolist()
+        result['decision_meta'] = decision_meta
+        if any(target is not None for target in record_targets):
+            width = decision_meta['max_opt']
+            labels = []
+            for meta, targets in zip(record_metas, record_targets):
+                question_count = len(meta.get('n_options') or []) if meta else 0
+                target_rows = targets if targets is not None else [[0.0] * n for n in meta.get('n_options', [])]
+                for target in target_rows[:question_count]:
+                    labels.append(target + [0.0] * (width - len(target)))
+            result['labels'] = torch.tensor(labels, dtype=torch.float32)
+        return result
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.gs1, template_cls=GS1Template, default_system=None))
 
 
 class GenericDecisionTemplate(DecisionTemplate, Template):
