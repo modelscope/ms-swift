@@ -133,6 +133,9 @@ class RolloutConfig:
     # OpenEnv environment package name for sandbox_kind='openenv'/'openenv_client'
     # (e.g. 'coding_env' for OpenEnv's code environments: pip install openenv-<name>).
     sandbox_env_name: Optional[str] = None
+    # Constructor kwargs for the OpenEnv environment class (e.g. '{"game_name": "blackjack"}'
+    # for openspiel_env, whose default game is 'catch'). None builds the package's default env.
+    sandbox_env_kwargs: Optional[Dict[str, Any]] = None
     # AgentENV template name/ID; None builds a local LocalEnv.
     sandbox_template: Optional[str] = None
     # Directory holding the LocalEnv sessions' workspaces; None uses a temp dir.

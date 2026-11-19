@@ -69,7 +69,7 @@ def build_env_pool(rollout_config: 'RolloutConfig', *, remote_group: Optional[st
                 f"sandbox_kind='{kind}' needs sandbox_env_name (the OpenEnv environment package, "
                 "e.g. 'coding_env'; pip install openenv-<name>).")
         if kind == 'openenv':
-            return OpenEnv(env_name=env_name, **common)
+            return OpenEnv(env_name=env_name, env_kwargs=rollout_config.sandbox_env_kwargs, **common)
         base_url = rollout_config.sandbox_api_url
         if not base_url and not os.environ.get('OPENENV_BASE_URL'):
             raise ValueError(
