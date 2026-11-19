@@ -570,6 +570,34 @@ def _grpo_extra_metrics(
     return extra
 
 
+def _finalize_grpo_resources(state, driver, cluster, *, remote_run, engine_core_job_id,
+                             perf_shutdown, reap):
+    """Teardown in fixed order; a cleanup error must not mask the in-flight training exception (defect499)."""
+    orig = sys.exc_info()
+    errors = []
+
+    def _guard(label, fn):
+        try:
+            fn()
+        except Exception as e:
+            logger.warning('GRPO cleanup %s failed: %s', label, e, exc_info=True)
+            errors.append(e)
+
+    _guard('finish_rollout_metrics', lambda: state.finish_rollout_metrics(
+        stream_stats=driver.stats(),
+        status='failed' if orig[0] is not None else 'loop_completed') if not remote_run else None)
+    _guard('Perf.shutdown', perf_shutdown)
+    _guard('rollout.close', cluster.rollout.close)
+    _guard('sampler.shutdown', lambda: cluster.sampler.shutdown() if not remote_run else None)
+    _guard('reap_engine_core_orphans',
+           lambda: reap(engine_core_job_id) if (not remote_run and engine_core_job_id) else None)
+    _guard('tracker.close', state.tracker.close)
+    # On the success path a real teardown failure must still surface; while a training
+    # exception is in flight it wins and cleanup errors stay logged above.
+    if orig[0] is None and errors:
+        raise errors[0]
+
+
 def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
              dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
              distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
@@ -830,30 +858,16 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
                         completion_log=completion_log,
                         )
     finally:
-        try:
-            state.finish_rollout_metrics(
-                stream_stats=driver.stats(),
-                status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None
-        finally:
-            try:
-                Perf.shutdown()
-            finally:
-                try:
-                    cluster.rollout.close()
-                finally:
-                    try:
-                        # A served sampler's lifecycle is the server session's, not this client's.
-                        cluster.sampler.shutdown() if not remote_run else None
-                    finally:
-                        try:
-                            # defect58 part②: sampler.shutdown() is a ray RPC that raises ActorDiedError
-                            # when the raylet died first, leaving the EngineCore OS process orphaned.
-                            # Reap its recorded PIDs directly, bypassing the dead actor (identity-verified).
-                            if not remote_run and _engine_core_job_id:
-                                from twinkle.sampler.vllm_sampler.engine_core_reaper import reap_engine_core_orphans
-                                reap_engine_core_orphans(_engine_core_job_id)
-                        finally:
-                            state.tracker.close()
+        def _reap_engine_core(job_id):
+            # defect58 part②: a dead raylet leaves the EngineCore OS process orphaned; reap its
+            # recorded PIDs directly, bypassing the dead actor (identity-verified).
+            from twinkle.sampler.vllm_sampler.engine_core_reaper import reap_engine_core_orphans
+            reap_engine_core_orphans(job_id)
+
+        _finalize_grpo_resources(
+            state, driver, cluster, remote_run=remote_run,
+            engine_core_job_id=_engine_core_job_id,
+            perf_shutdown=Perf.shutdown, reap=_reap_engine_core)
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.
     save_final_checkpoint(cluster.model, save, enabled=_save_final)
