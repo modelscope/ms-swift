@@ -193,6 +193,7 @@ def test_balance_metrics_reach_tracker_and_jsonl_without_leaking_to_next_step(tm
     state.global_step, state.micro_step, state.epoch, state.best_metric = 0, 0, 0, None
     state.manual_gc, state.manual_gc_steps, state.empty_cache_steps = False, 0, None
     state._logging_config, state._extra_metrics_fn, state._log_formatter = None, None, None
+    state._extra_metrics_granularity = 'step'
     state._output_dir = str(tmp_path)
     state.history = []
     tracked = []
@@ -211,6 +212,82 @@ def test_balance_metrics_reach_tracker_and_jsonl_without_leaking_to_next_step(tm
     saved = [json.loads(line) for line in (tmp_path / "metrics.jsonl").read_text().splitlines()]
     assert tracked[0][metric] == saved[0][metric] == state.history[0][metric] == 1.01
     assert all(metric not in record for record in (tracked[1], saved[1], state.history[1]))
+
+
+def _granularity_state(tmp_path, granularity, extra_fn):
+    """A StepState wired just enough for record() to emit one logged step to metrics.jsonl."""
+    from swift.dev.recipe.utils import StepState
+
+    state = StepState.__new__(StepState)
+    state.model = SimpleNamespace(calculate_metric=lambda **kwargs: {"loss": 1.0, "grad_norm": 2.0})
+    state.global_step, state.micro_step, state.epoch, state.best_metric = 0, 0, 0, None
+    state.manual_gc, state.manual_gc_steps, state.empty_cache_steps = False, 0, None
+    state._logging_config, state._log_formatter = None, None
+    state._extra_metrics_fn = extra_fn
+    state._extra_metrics_granularity = granularity
+    state._output_dir = str(tmp_path)
+    state.history = []
+    state.tracker = SimpleNamespace(log=lambda record, step: record)
+    state.handler = SimpleNamespace(
+        state=SimpleNamespace(), control=SimpleNamespace(should_log=True), on_log=lambda **kwargs: None
+    )
+    return state
+
+
+def test_iteration_granularity_tags_extra_and_persists(tmp_path):
+    """defect53 PLAN (option B granularity label):
+
+    | case | input | expected | failure it kills |
+    | iteration_recipe_tags_extra | gran=iteration, model={loss,grad_norm}, extra={adv,policy_version} | adv/policy_version->iteration, loss/grad_norm->step, read back from jsonl | extra mislabeled step (the defect); map not persisted |
+    | step_arg_stays_step | extra_metrics arg {token_ratio_max} | token_ratio_max->step | per-step arg folded into iteration |
+    | step_recipe_emits_no_map | gran=step (default), extra present | no metric_granularity key | blanket map mislabeling PPO mixed extra / SFT schema churn |
+    | empty_extra_no_map | gran=iteration, extra={} | no metric_granularity key | empty map emitted |
+    | map_excludes_record_keys | gran=iteration | 'step'/'metric_granularity' absent from map | self-referential / step-key pollution |
+    | extra_overrides_model_key | model={loss}, extra={loss} gran=iteration | map[loss]=iteration | collision tagged step (wrong provenance) |
+    """
+    import json
+
+    extra = {"advantage/absmean": 0.5, "policy_version": 2}
+    state = _granularity_state(tmp_path, "iteration", lambda: dict(extra))
+    state.record(extra_metrics={"token_ratio_max": 1.5})
+    saved = json.loads((tmp_path / "metrics.jsonl").read_text().splitlines()[0])
+    gran = saved["metric_granularity"]
+    # Independent oracle: hand-computed from the known model/extra/arg provenance.
+    assert gran["advantage/absmean"] == "iteration"
+    assert gran["policy_version"] == "iteration"
+    assert gran["loss"] == "step"
+    assert gran["grad_norm"] == "step"
+    assert gran["token_ratio_max"] == "step"
+    assert "step" not in gran and "metric_granularity" not in gran
+    # The numeric values are untouched by the label (backward compatible).
+    assert saved["advantage/absmean"] == 0.5 and saved["loss"] == 1.0
+
+
+def test_step_granularity_emits_no_map(tmp_path):
+    state = _granularity_state(tmp_path, "step", lambda: {"advantage/absmean": 0.5})
+    record = state.record()
+    assert "metric_granularity" not in record
+
+
+def test_iteration_granularity_empty_extra_emits_no_map(tmp_path):
+    state = _granularity_state(tmp_path, "iteration", lambda: {})
+    record = state.record()
+    assert "metric_granularity" not in record
+
+
+def test_extra_overriding_model_key_takes_extra_granularity(tmp_path):
+    state = _granularity_state(tmp_path, "iteration", lambda: {"loss": 9.0})
+    record = state.record()
+    assert record["metric_granularity"]["loss"] == "iteration"
+    assert record["loss"] == 9.0
+
+
+def test_reverse_verify_mislabeling_extra_as_step_is_detected(tmp_path):
+    """Reverse verification: declaring the iteration recipe's extra as 'step' must drop the
+    iteration tag (the very defect53 confusion), proving the assertion above detects it."""
+    state = _granularity_state(tmp_path, "step", lambda: {"advantage/absmean": 0.5})
+    record = state.record()
+    assert "metric_granularity" not in record  # no iteration tag exists -> mislabel exposed
 
 
 def test_full_update_keeps_input_order_and_all_auxiliary_fields_aligned():

@@ -542,7 +542,8 @@ class StepState:
                  empty_cache_steps: Optional[int] = None,
                  extra_metrics_fn: Optional[Callable[[], Dict[str, Any]]] = None,
                  log_formatter: Optional[Callable[[Dict[str, Any], float], str]] = None,
-                 padding_free: bool = False, dp_balance: bool = False):
+                 padding_free: bool = False, dp_balance: bool = False,
+                 extra_metrics_granularity: str = 'step'):
         # The tracker initializes its reporters as a construction side effect (validation ran above).
 
         from swift.dev.callbacks import build_callbacks
@@ -562,6 +563,7 @@ class StepState:
         self.empty_cache_steps = empty_cache_steps
         self._logging_config = logging_config
         self._extra_metrics_fn = extra_metrics_fn
+        self._extra_metrics_granularity = extra_metrics_granularity
         self._log_formatter = log_formatter
         self.global_step = 0
         self.micro_step = 0
@@ -631,14 +633,28 @@ class StepState:
         record.update(normalize_metric_values(metrics))
         record['loss'] = loss
         record.update(_mtp_metrics(self.model))
+        extra: Dict[str, Any] = {}
         if self._extra_metrics_fn is not None:
-            record.update(normalize_metric_values(self._extra_metrics_fn()))
+            extra = normalize_metric_values(self._extra_metrics_fn())
+            record.update(extra)
         if extra_metrics is not None:
             record.update(normalize_metric_values(extra_metrics))
         if should_log:
             # Fold the window's merged per-rank perf summary in only on a logging step: the
             # perf_dump fan-out is blocking, so keeping it off every step leaves it off the hot path.
             record.update(Perf.collect_step_summary())
+        # defect53: a rollout recipe's extra aggregates (advantage, reward, policy_version, staleness)
+        # are measured once per rollout batch and stay constant across the ga window's optimizer steps,
+        # yet they sit in the same step-keyed record as the genuinely per-step loss/grad_norm/lr. Without
+        # a label a reader cannot tell an iteration-level constant from a fresh per-step measurement. Tag
+        # provenance only when the recipe declares its extra iteration-level (GRPO); the default 'step'
+        # recipes (SFT, and PPO/RFT whose extra mixes per-step critic objectives) emit no map, so no
+        # field is mislabeled and their schema is unchanged.
+        if self._extra_metrics_granularity != 'step' and extra:
+            granularity = {key: 'step' for key in record if key not in ('step', 'metric_granularity')}
+            for key in extra:
+                granularity[key] = self._extra_metrics_granularity
+            record['metric_granularity'] = granularity
         from twinkle.perf import default_recorder
 
         # '_logging' on the shared recorder: the excluded band rollout_iteration_metrics carves

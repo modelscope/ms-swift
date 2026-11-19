@@ -336,6 +336,7 @@ def _recorder_with(model):
     recorder.empty_cache_steps = None
     recorder._logging_config = None
     recorder._extra_metrics_fn = None
+    recorder._extra_metrics_granularity = 'step'
     recorder._log_formatter = None
     # record() writes metrics.jsonl into _output_dir on its fallback logging cadence (the helper
     # bypasses __init__, which is what normally sets it).

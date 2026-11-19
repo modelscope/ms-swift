@@ -708,6 +708,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         manual_gc_steps=megatron_config.manual_gc_steps if megatron_config else 0,
         empty_cache_steps=train_config.torch_empty_cache_steps,
         extra_metrics_fn=_extra_metrics,
+        extra_metrics_granularity='iteration',
         log_formatter=_grpo_log_line)
     completion_log = None
     if rl_config.log_completions or state.tracker.logs_prompts:
