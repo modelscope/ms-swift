@@ -626,6 +626,15 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         batch_size=batch_size, quantize_config=quantize_config, megatron_config=megatron_config,
         moe_config=moe_config, generation_config=generation_config, resource_plan=resource_plan,
         auxiliary_meshes=auxiliary_meshes, teacher_prompt=teacher_prompt)
+    # defect58 part②: capture the ray job id while ray is healthy so teardown can reap orphan
+    # EngineCore PIDs even after the raylet dies (the runtime context may be unusable by then).
+    _engine_core_job_id = None
+    try:
+        import ray
+        if ray.is_initialized():
+            _engine_core_job_id = str(ray.get_runtime_context().get_job_id())
+    except Exception:  # noqa: BLE001 - reaper is a safety net, never block training
+        _engine_core_job_id = None
     # segment 4: dataloader + driver + the step cadence + the save closure.
     from swift.dev.builders import build_prompt_dataloader
     from swift.dev.builders.optimizer import resolve_max_grad_norm
@@ -817,7 +826,15 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
                         # A served sampler's lifecycle is the server session's, not this client's.
                         cluster.sampler.shutdown() if not remote_run else None
                     finally:
-                        state.tracker.close()
+                        try:
+                            # defect58 part②: sampler.shutdown() is a ray RPC that raises ActorDiedError
+                            # when the raylet died first, leaving the EngineCore OS process orphaned.
+                            # Reap its recorded PIDs directly, bypassing the dead actor (identity-verified).
+                            if not remote_run and _engine_core_job_id:
+                                from twinkle.sampler.vllm_sampler.engine_core_reaper import reap_engine_core_orphans
+                                reap_engine_core_orphans(_engine_core_job_id)
+                        finally:
+                            state.tracker.close()
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.
     save_final_checkpoint(cluster.model, save, enabled=_save_final)
