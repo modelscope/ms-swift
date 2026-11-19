@@ -1,0 +1,1 @@
+{"msg": "error", "model_type": "llava_onevision2", "model": "lmms-lab/LLaVA-OneVision-2-8B-Instruct", "arch_list": ["LlavaOnevision2ForConditionalGeneration"]}
