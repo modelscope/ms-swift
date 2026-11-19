@@ -596,11 +596,15 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
             rl_config, reward_config, distributed_config, tuner_config)))
     remote_run = distributed_config.mode == 'remote'
     # the optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer.
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builders import build_dp_mesh, build_parallel_mesh, is_megatron_backend
 
     if remote_run:
         # One client process drives the server: the policy handle's own mesh sizes the batches.
         dp_size = 1
+    elif is_megatron_backend(distributed_config):
+        # Megatron's data-parallel size is the ranks LEFT OVER after tp*pp*cp (the whole world
+        # only when model parallelism is 1); build_dp_mesh would count every rank as data parallel.
+        dp_size = build_parallel_mesh(distributed_config).data_world_size
     else:
         dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
     train_batch_size = train_config.per_device_train_batch_size * dp_size
