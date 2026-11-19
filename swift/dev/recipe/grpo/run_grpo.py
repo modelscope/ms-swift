@@ -615,6 +615,13 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         rollout_config.generation_batch_size, num_prompts=len(prompts),
         num_generations=rl_config.num_generations, num_iterations=rl_config.num_iterations,
         train_batch_size=train_batch_size, gradient_accumulation_steps=ga)
+    # Batch-derivation reconciliation oracle (QUEUE4034): expose the resolved geometry so a real run
+    # can be checked against a hand-computed per_device x dp (x ga) independent of the derivation path.
+    logger.info(
+        'RL batch geometry: dp_size=%d train_batch_size=%d (per_device=%d x dp) ga=%d '
+        'update_batch_size=%d generation_batch_size=%d',
+        dp_size, train_batch_size, train_config.per_device_train_batch_size, ga,
+        train_batch_size * ga, generation_batch_size)
     colocate = effective_colocate(rollout_config, resource_plan)
     batch_size = stream_batch_size(
         colocate=colocate, generation_batch_size=generation_batch_size,
