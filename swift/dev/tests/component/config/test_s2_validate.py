@@ -355,10 +355,13 @@ def test_auxiliary_adapters_and_channel_companions():
 
 def test_multi_turn_and_rollout_basics():
     """S2-38: bounds live in validate_multi_turn_config (pinned in the infer suite); here the
-    GRPO-only multi-turn gate and the sandbox guard run through validate_rollout_config."""
-    with pytest.raises(ValueError, match='GRPO-only'):
+    grpo/ppo multi-turn gate and the sandbox guard run through validate_rollout_config. PPO shares
+    the MultiTurnRollout mechanism (continuous GAE + turn_spans/loss_scale mask), so it is accepted
+    alongside GRPO; the other scalar algorithms are still refused."""
+    with pytest.raises(ValueError, match='grpo/ppo'):
         validate_rollout_config(RolloutConfig(max_turns=4), RLConfig(rl_type='dpo'))
     validate_rollout_config(RolloutConfig(max_turns=4, sampler_mode='colocate'), RLConfig(rl_type='grpo'))
+    validate_rollout_config(RolloutConfig(max_turns=4, sampler_mode='colocate'), RLConfig(rl_type='ppo'))
     validate_rollout_config(RolloutConfig(max_turns=4))  # sampling (TUI): exempt
     with pytest.raises(ValueError, match='sandbox_num_envs'):
         validate_rollout_config(RolloutConfig(sandbox_num_envs=0))
@@ -917,8 +920,9 @@ def test_backend_specific_dispatch_refuses_the_wrong_side(backend):
 def test_remote_rl_refuses_only_the_local_fabric_gaps():
     """mode='remote' + RL refuses exactly the local-fabric gaps with no client port, one per
     behaviour, message-matched so a rewrite cannot lose the guidance: the in-process replay
-    engines, the EMA reference sync, the colocate / elastic devices, the delta weight
-    transports, and the multi-turn sandbox."""
+    engines, the EMA reference sync, the colocate / elastic devices, and the delta weight
+    transports. The multi-turn rollout / tools are NOT refused (fa41237929): the rollout, its
+    sandbox env and the driver run in-process in the client, sampling each turn via HTTPSampler."""
     cases = [
         (RLConfig(rl_type='grpo', router_replay_mode='R2'), None, 'router_replay_mode'),
         (RLConfig(rl_type='grpo', enable_sampling_replay=True), None, 'enable_sampling_replay'),
@@ -926,8 +930,6 @@ def test_remote_rl_refuses_only_the_local_fabric_gaps():
         (RLConfig(rl_type='ppo'), RolloutConfig(sampler_mode='colocate'), 'colocate'),
         (RLConfig(rl_type='ppo'), RolloutConfig(resource_mode='adaptive'), 'adaptive'),
         (RLConfig(rl_type='ppo'), RolloutConfig(weight_sync_backend='delta_sharded'), 'weight_sync_backend'),
-        (RLConfig(rl_type='grpo'), RolloutConfig(max_turns=4), 'multi-turn'),
-        (RLConfig(rl_type='grpo'), RolloutConfig(tools=['sandbox']), 'multi-turn'),
     ]
     for rl_config, rollout_config, needle in cases:
         with pytest.raises(ValueError, match=needle):
@@ -943,13 +945,16 @@ def test_remote_rl_allows_every_recipe_algorithm_with_defaults():
 
 
 def test_remote_rl_multi_turn_boundary_and_missing_rollout():
-    """max_turns=None (off) and the explicit single-turn rollout pass; tools alone trips even
-    at max_turns=1 (the guard reads BOTH); a None rollout_config (the offline preference
-    family) must neither trip the rollout guards nor dereference them."""
-    _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(max_turns=None))
-    _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(max_turns=1))
-    with pytest.raises(ValueError, match='multi-turn'):
-        _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(max_turns=1, tools=['sandbox']))
+    """Remote multi-turn is supported (fa41237929): the rollout, sandbox env and driver run
+    in-process in the client, sampling each turn through HTTPSampler, so max_turns>1 and tools
+    pass for both grpo and ppo (no refusal). max_turns=None (off) and single-turn pass too; a
+    None rollout_config (the offline preference family) must not dereference the rollout guards."""
+    for rl_type in ('grpo', 'ppo'):
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=None))
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=1))
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=4))
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=1, tools=['sandbox']))
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=4, tools=['sandbox']))
     for rl_type in ('dpo', 'kto', 'rm'):
         _check_remote_rl(RLConfig(rl_type=rl_type), None)
 

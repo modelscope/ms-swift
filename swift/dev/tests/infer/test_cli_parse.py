@@ -335,15 +335,17 @@ def test_build_engine_args_transformers_uses_max_batch_size():
 
 def test_validate_tools_require_max_turns():
     """Naming a tool without max_turns is a single-turn rollout with no turn to call it in: rejected.
-    A multi-turn rollout is GRPO-only -- the GRPO recipe is the one assembling trajectories."""
+    Multi-turn rollout is supported by grpo/ppo -- both build the shared MultiTurnRollout mechanism
+    (PPO's GAE recurses continuously over the multi-turn sequence); the other algorithms are refused."""
     from swift.dev.config import RLConfig
     from swift.dev.config.validate import _check_rollout_tools
     with pytest.raises(ValueError, match='requires a multi-turn rollout'):
         _check_rollout_tools(RolloutConfig(tools=['sandbox']), RLConfig(rl_type='grpo'))
-    with pytest.raises(ValueError, match='GRPO-only'):
+    with pytest.raises(ValueError, match='grpo/ppo'):
         _check_rollout_tools(RolloutConfig(tools=['sandbox'], max_turns=4), RLConfig(rl_type='dpo'))
-    # with max_turns set (on the RolloutConfig itself now) the same tools pass on grpo
+    # with max_turns set (on the RolloutConfig itself now) the same tools pass on grpo and ppo
     _check_rollout_tools(RolloutConfig(tools=['sandbox'], max_turns=4), RLConfig(rl_type='grpo'))
+    _check_rollout_tools(RolloutConfig(tools=['sandbox'], max_turns=4), RLConfig(rl_type='ppo'))
 
 
 def test_validate_sandbox_num_envs_positive():

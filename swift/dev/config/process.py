@@ -549,15 +549,15 @@ def _derive_rl_loss_scale(template_config: 'TemplateConfig', rl_config: Optional
                             rollout_config: Optional['RolloutConfig'] = None) -> None:
     """Default the loss-mask strategy to the algorithm's sensible one (legacy _set_loss_scale).
 
-    'last_round' everywhere except GRPO multi-turn (-> 'default'); coincide on single-turn data.
+    'last_round' everywhere except GRPO/PPO multi-turn (-> 'default'); coincide on single-turn data.
     """
     if rl_config is None or getattr(rl_config, 'rl_type', None) is None:
         return
     if 'loss_scale' in getattr(template_config, '_explicit_fields', set()):
         return
-    # dev's multi-turn rollout is GRPO-only (validate rejects max_turns elsewhere), so every other
-    # rl_type always takes 'last_round' here.
-    if rl_config.rl_type == 'grpo' and rollout_config is not None and rollout_config.max_turns is not None:
+    # GRPO and PPO multi-turn both train every assistant turn ('default'); single-turn (and the other
+    # scalar algorithms) train the last round only. The two coincide on single-turn data.
+    if rl_config.rl_type in ('grpo', 'ppo') and rollout_config is not None and rollout_config.max_turns is not None:
         template_config.loss_scale = 'default'
     else:
         template_config.loss_scale = 'last_round'

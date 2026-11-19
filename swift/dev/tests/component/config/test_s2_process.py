@@ -353,8 +353,9 @@ def test_rlhf_beta_defaults(rl_type, expected):
 
 
 def test_rlhf_loss_scale_derivation():
-    """S2-14: every rl_type defaults loss_scale to last_round except grpo-with-max_turns (default);
-    an explicit loss_scale survives."""
+    """S2-14: every rl_type defaults loss_scale to last_round except grpo/ppo-with-max_turns
+    (default -- both train every assistant turn via the shared multi-turn mask); an explicit
+    loss_scale survives."""
     template = TemplateConfig()
     _derive_rl_loss_scale(template, RLConfig(rl_type='dpo'))
     assert template.loss_scale == 'last_round'
@@ -369,6 +370,14 @@ def test_rlhf_loss_scale_derivation():
 
     template = TemplateConfig()
     _derive_rl_loss_scale(template, RLConfig(rl_type='grpo'))  # single-turn grpo stays last_round
+    assert template.loss_scale == 'last_round'
+
+    template = TemplateConfig()
+    _derive_rl_loss_scale(template, RLConfig(rl_type='ppo'), RolloutConfig(max_turns=4))
+    assert template.loss_scale == 'default'  # PPO multi-turn trains every turn (D3)
+
+    template = TemplateConfig()
+    _derive_rl_loss_scale(template, RLConfig(rl_type='ppo'))  # single-turn ppo stays last_round
     assert template.loss_scale == 'last_round'
 
     template = _explicit(TemplateConfig(loss_scale='all'), 'loss_scale')

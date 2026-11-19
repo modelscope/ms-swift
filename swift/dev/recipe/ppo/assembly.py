@@ -293,7 +293,9 @@ def initialize_ppo_cluster(
         adapter = build_cluster_adapter(
             resource_plan, rollout_config, model=model, sampler=sampler, checkpoint_manager=engine, lend=False)
     params = rollout_sampling_params(rl_config.max_completion_length, generation_config)
-    # PPO rolls out single-turn: under ray on the rollout CPU group, remotely a plain in-process
+    # PPO shares the MultiTurnRollout mechanism with GRPO: single-turn by default, multi-turn when
+    # rollout_config.max_turns is set (GAE recurses continuously over the longer sequence; the cross-turn
+    # mask reuses turn_spans/loss_scale). Under ray on the rollout CPU group, remotely a plain in-process
     # object over the client sampler handle.
     rollout = build_rollout(
         sampler, template, rollout_config, sampling_params=params, remote=not remote_run,

@@ -769,11 +769,12 @@ def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
     for name in ('sandbox_num_envs', 'sandbox_num_workers', 'rollout_num_workers'):
         if getattr(rollout_config, name) < 1:
             raise ValueError(f'{name} must be >= 1, got {getattr(rollout_config, name)}.')
-    # Multi-turn is orchestrated by the GRPO recipe only; sampling (rl_config is None, the TUI) is exempt.
-    if rollout_config.max_turns is not None and rl_config is not None and rl_config.rl_type != 'grpo':
-        raise ValueError(f'multi-turn rollout (max_turns) is GRPO-only, but rl_type={rl_config.rl_type!r}: the '
-                         'GRPO recipe is the only one that assembles multi-turn trajectories. Use '
-                         'rl_type=grpo, or leave max_turns unset.')
+    # Multi-turn rollout is assembled by the shared MultiTurnRollout/StreamingDriver mechanism, which
+    # GRPO and PPO both build (PPO's GAE recurses continuously over the longer multi-turn sequence and
+    # its cross-turn mask reuses the same turn_spans/loss_scale). Sampling (rl_config is None, TUI) exempt.
+    if rollout_config.max_turns is not None and rl_config is not None and rl_config.rl_type not in ('grpo', 'ppo'):
+        raise ValueError(f'multi-turn rollout (max_turns) is supported by rl_type grpo/ppo, but '
+                         f'rl_type={rl_config.rl_type!r}: use rl_type=grpo or ppo, or leave max_turns unset.')
     if not rollout_config.tools:
         return
     # Tools are injected per-turn by the multi-turn engine, so a single-turn rollout has no turn to
