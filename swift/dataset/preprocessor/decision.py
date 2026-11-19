@@ -21,6 +21,7 @@ where each question is a dict `{'kind', 'question', 'options', 'gold'}` and `gol
 option index (int) or a full distribution (sequence of floats, for distillation targets).
 """
 import json
+import math
 import random as _random
 import re
 from dataclasses import dataclass
@@ -1038,6 +1039,102 @@ class GenericDecisionPreprocessor(JevPreprocessor):
     ``JevTemplate``), which renders the same bare prompt layout for any text CausalLM.
     """
     pass
+
+
+class GS1Preprocessor(GenericDecisionPreprocessor):
+    """Normalize text-only GS1 records while preserving dict state as canonical JSON."""
+
+    @staticmethod
+    def _state_to_text(state: Any) -> str:
+        if isinstance(state, dict):
+            return json.dumps(state, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
+        return GenericDecisionPreprocessor._state_to_text(state)
+
+    def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
+        request = row.get('request')
+        targets = row.get('targets')
+        if not isinstance(request, dict) or not isinstance(request.get('questions'), dict):
+            return super().parse_record(row)
+        state = request.get('state')
+        if isinstance(state, list) and any(
+                isinstance(part, dict) and part.get('type') in ('image', 'video') for part in state):
+            raise ValueError('GS1 training currently supports text-only states.')
+        if not isinstance(targets, dict) or set(targets) != set(request['questions']):
+            raise ValueError('GS1 native request question IDs must match target IDs.')
+        questions = []
+        for qid, source in request['questions'].items():
+            kind = self._normalize_kind(source.get('type'))
+            criteria = source.get('criteria') or {}
+            if kind == 'choice':
+                keys = list(criteria)
+                options = [f'{key}: {criteria[key]}' if criteria[key] is not None else str(key) for key in keys]
+            elif kind == 'noul':
+                keys = ['false', 'true']
+                options = [str(criteria.get(key) or key) for key in keys]
+            else:
+                keys = [str(i) for i in range(len(criteria))]
+                options = [str(value) for value in criteria]
+            target = targets[qid]
+            candidate_ids = target.get('candidate_ids')
+            distribution = target.get('distribution')
+            if (not isinstance(candidate_ids, list) or len(candidate_ids) != len(keys)
+                    or set(candidate_ids) != set(keys) or not isinstance(distribution, list)
+                    or len(distribution) != len(keys)):
+                raise ValueError(f'GS1 target candidate IDs do not match question {qid!r}.')
+            target_by_id = dict(zip(candidate_ids, distribution))
+            target_distribution = [float(target_by_id[candidate]) for candidate in keys]
+            if (any(not math.isfinite(value) or value < 0 for value in target_distribution)
+                    or not math.isclose(sum(target_distribution), 1.0, rel_tol=0, abs_tol=1e-6)):
+                raise ValueError(
+                    f'GS1 target distribution for question {qid!r} must be finite, nonnegative, and sum to one.')
+            questions.append({
+                'kind': kind,
+                'question': source.get('instructions') or 'Choose the best matching option.',
+                'options': options,
+                '_gs1_criteria': criteria,
+                'gold': target_distribution,
+            })
+        return state, questions
+
+    def _resolve_options(self, question: Dict[str, Any]) -> List[str]:
+        options = question.get('options')
+        if options:
+            return list(options)
+        return super()._resolve_options(question)
+
+    def _normalize_question(self, source: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = super()._normalize_question(source)
+        kind = normalized['kind']
+        original = self._first(source, self.OPTION_KEYS, default=None)
+        if kind == 'choice' and isinstance(original, dict):
+            criteria = {str(key): value for key, value in original.items()}
+            normalized['options'] = [
+                str(value) if isinstance(value, str) else str(key) for key, value in criteria.items()
+            ]
+            normalized['_gs1_criteria'] = criteria
+        elif kind == 'choice' and isinstance(original, (list, tuple)):
+            criteria = {}
+            for index, option in enumerate(original):
+                value = self._as_option_dict(option)
+                key = str(value.get('key') or value.get('id') or value.get('text') or f'option_{index}')
+                criteria[key] = value.get('description', value.get('text'))
+            normalized['options'] = [
+                str(description) if description is not None else key for key, description in criteria.items()
+            ]
+            normalized['_gs1_criteria'] = criteria
+        elif kind == 'noul':
+            normalized['_gs1_criteria'] = self._first(source, ('criteria', 'descriptions'), default={}) or {}
+        elif kind == 'score':
+            normalized['_gs1_criteria'] = original
+        return normalized
+
+    def _build_row(self, row: Dict[str, Any], state: Any, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        result = super()._build_row(row, state, questions)
+        result['state'] = json.dumps(state, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
+        result['criteria'] = [
+            json.dumps(q.get('_gs1_criteria'), ensure_ascii=False, separators=(',', ':')) for q in questions
+        ]
+        return result
 
 
 class LayaPreprocessor(KevPreprocessor):

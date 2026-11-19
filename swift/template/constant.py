@@ -165,6 +165,7 @@ class MLLMTemplateType:
     qwen3_5_emb = 'qwen3_5_emb'
     wemm_embedding = 'wemm_embedding'
 
+    gs1 = 'gs1'
     jev = 'jev'
     clef = 'clef'
     omnijev = 'omnijev'
