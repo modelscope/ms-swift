@@ -16,7 +16,8 @@ from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_env_args, get_logger, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
+from swift.utils import (get_env_args, get_logger, get_nested_submodule, get_packed_seq_params, is_deepspeed_enabled,
+                         to_float_dtype)
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
@@ -902,6 +903,59 @@ def trim_audio_to_hop_length(x: np.ndarray, hop_length: int) -> np.ndarray:
     return x
 
 
+def _get_omni_video_defaults(processor, version):
+    # transformers>=5.23 moves the processing defaults from ProcessorKwargs._defaults onto the processor class.
+    seconds_per_chunk = getattr(processor, 'seconds_per_chunk', None)
+    position_id_per_seconds = getattr(processor, 'position_id_per_seconds', None)
+    if seconds_per_chunk is not None and position_id_per_seconds is not None:
+        return seconds_per_chunk, position_id_per_seconds
+    if version == 'omni_v2_5':
+        from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
+        default = Qwen2_5OmniProcessorKwargs._defaults
+    elif version == 'omni_v3':
+        from transformers.models.qwen3_omni_moe.processing_qwen3_omni_moe import Qwen3OmniMoeProcessorKwargs
+        default = Qwen3OmniMoeProcessorKwargs._defaults
+        # Fix: WhisperFeatureExtractor defaults to truncation=True, which silently
+        # truncates audio longer than 30s. Qwen3 Omni supports variable-length audio,
+        # so we must disable truncation. See: huggingface/transformers#41473
+        default.setdefault('audio_kwargs', {})
+        default['audio_kwargs']['truncation'] = False
+    else:
+        raise ValueError(f'Unsupported omni version: {version!r}')
+    videos_kwargs = default['videos_kwargs']
+    return videos_kwargs['seconds_per_chunk'], videos_kwargs['position_id_per_seconds']
+
+
+def _build_media_placeholder_text(processor, audios, images, videos) -> str:
+    """Prompt containing exactly one placeholder per media input.
+
+    transformers>=5.23 validates that the number of multimodal placeholders in `text` matches the number of media
+    inputs. The Omni templates only keep the processed media features (the tokenized text is dropped), so a
+    placeholder-only prompt is enough to satisfy the validator.
+    """
+
+    def _repeat(name, count):
+        if count == 0:
+            return ''
+        token = getattr(processor, name, None)
+        if token is None:
+            raise AttributeError(f'{type(processor).__name__} has no `{name}`; cannot build media placeholders')
+        return token * count
+
+    return (_repeat('audio_token', len(audios)) + _repeat('image_token', len(images))
+            + _repeat('video_token', len(videos)))
+
+
+def _get_thinker_embed_tokens(thinker):
+    # transformers>=5.23 nests the text model under `thinker.model.language_model`.
+    text_model = getattr(thinker, 'model', None)
+    if text_model is not None and hasattr(text_model, 'language_model'):
+        text_model = text_model.language_model
+    if text_model is None or not hasattr(text_model, 'embed_tokens'):
+        raise AttributeError(f'{type(thinker).__name__} has no `embed_tokens` submodule')
+    return text_model.embed_tokens
+
+
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     version = 'omni_v2_5'
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
@@ -911,19 +965,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         if processor is None:
             return
         super().init_processor(processor)
-        if self.version == 'omni_v2_5':
-            from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
-            default = Qwen2_5OmniProcessorKwargs._defaults
-        elif self.version == 'omni_v3':
-            from transformers.models.qwen3_omni_moe.processing_qwen3_omni_moe import Qwen3OmniMoeProcessorKwargs
-            default = Qwen3OmniMoeProcessorKwargs._defaults
-            # Fix: WhisperFeatureExtractor defaults to truncation=True, which silently
-            # truncates audio longer than 30s. Qwen3 Omni supports variable-length audio,
-            # so we must disable truncation. See: huggingface/transformers#41473
-            default.setdefault('audio_kwargs', {})
-            default['audio_kwargs']['truncation'] = False
-        self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
-        self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
+        self.seconds_per_chunk, self.position_id_per_seconds = _get_omni_video_defaults(processor, self.version)
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
         self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
 
@@ -1084,8 +1126,9 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             else:
                 video_audios_mask.append(False)
         video_audios_mask = torch.tensor(video_audios_mask)
+        media_text = _build_media_placeholder_text(processor, inputs.audios, inputs.images, inputs.videos)
         media_inputs = processor(
-            text='',
+            text=media_text,
             audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
@@ -1176,23 +1219,25 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         feature_attention_mask = inputs.get('feature_attention_mask')
 
         base_model = self.get_base_model(model)
-        inputs_embeds = base_model.thinker.model.embed_tokens(input_ids)
-        thinker_config = model.config.thinker_config
-        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.thinker.visual, self.processor,
-                                                   thinker_config)
+        thinker = base_model.thinker
+        inputs_embeds = _get_thinker_embed_tokens(thinker)(input_ids)
+        visual = get_nested_submodule(thinker, 'visual')
+        audio_tower = get_nested_submodule(thinker, 'audio_tower')
+        thinker_config = base_model.config.thinker_config
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, visual, self.processor, thinker_config)
         if input_features is None:
             if is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
                 # Note: ZeRO-3 still results in hangs; for audio training, please use ZeRO-2.
-                input_features = input_ids.new_zeros([1, 128, 128], dtype=model.thinker.audio_tower.dtype)
+                input_features = input_ids.new_zeros([1, 128, 128], dtype=audio_tower.dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
-                audio_res = model.thinker.get_audio_features(input_features, feature_attention_mask)
+                audio_res = thinker.get_audio_features(input_features, feature_attention_mask)
                 if hasattr(audio_res, 'last_hidden_state'):
                     audio_embeds = audio_res.last_hidden_state
                 else:
                     audio_embeds = audio_res
                 inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
-            audio_res = model.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_res = thinker.get_audio_features(input_features, feature_attention_mask)
             if hasattr(audio_res, 'last_hidden_state'):
                 audio_embeds = audio_res.last_hidden_state
             else:

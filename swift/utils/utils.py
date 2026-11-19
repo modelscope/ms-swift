@@ -120,6 +120,20 @@ def deep_getattr(obj, attr: str, default=None):
     return obj
 
 
+def get_nested_submodule(obj, name: str, nested: str = 'model'):
+    """Get `obj.<name>`, falling back to `obj.<nested>.<name>`.
+
+    Some transformers architectures move submodules (e.g. Omni visual/audio towers) under the inner model
+    between releases. This keeps the access version-agnostic and fails loudly when neither layout exists.
+    """
+    submodule = getattr(obj, name, None)
+    if submodule is None and nested:
+        submodule = getattr(getattr(obj, nested, None), name, None)
+    if submodule is None:
+        raise AttributeError(f'{type(obj).__name__} has no `{name}` submodule')
+    return submodule
+
+
 def seed_everything(seed: Optional[int] = None, full_determinism: bool = False) -> int:
 
     if seed is None:
