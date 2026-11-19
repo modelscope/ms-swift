@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # The distillation recipes' visible training main: five segments, then ONE loop over the streaming driver.
 from __future__ import annotations
-
 import math
 import random
 import sys
@@ -9,22 +8,51 @@ from itertools import count
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from swift.dev.recipe.batching import balance_update
+from swift.dev.recipe.distill.assembly import (
+    DISTILL_SIGNALS,
+    Cluster,
+    build_distill_driver,
+    distill_dataset_rows,
+    distill_group_requests,
+    initialize_distill_cluster,
+)
+from swift.dev.recipe.utils import (
+    StepState,
+    build_save_knobs,
+    effective_colocate,
+    initialize_rl_devices,
+    optimizer_batch_slices,
+    prompt_rows_from_dataset,
+    resolve_generation_batch_size,
+    resolve_rollout_max_steps,
+    resume_training,
+    rollout_step_budget,
+    save_final_checkpoint,
+    save_training_step,
+    snapshot_initial_adapter,
+    stream_batch_size,
+)
 from swift.dev.utils.logger import get_logger
 from swift.dev.utils.scoring import copy_inputs
 
-from swift.dev.recipe.distill.assembly import (
-    DISTILL_SIGNALS, Cluster, build_distill_driver, distill_dataset_rows, distill_group_requests,
-    initialize_distill_cluster)
-from swift.dev.recipe.utils import (
-    StepState, build_save_knobs, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    resolve_generation_batch_size, resolve_rollout_max_steps, resume_training, rollout_step_budget,
-    save_final_checkpoint, save_training_step, snapshot_initial_adapter, stream_batch_size)
-
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig, MegatronConfig,
-        ModelConfig, MoEConfig, QuantizeConfig, RLConfig, RewardConfig, RolloutConfig, TemplateConfig,
-        TrainConfig, TunerConfig)
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        GenerationConfig,
+        LoggingConfig,
+        MegatronConfig,
+        ModelConfig,
+        MoEConfig,
+        QuantizeConfig,
+        RewardConfig,
+        RLConfig,
+        RolloutConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = get_logger()
 
@@ -180,7 +208,7 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     batch_size = stream_batch_size(
-        colocate=rollout_config.sampler_mode == "colocate", generation_batch_size=generation_batch_size,
+        colocate=effective_colocate(rollout_config, resource_plan), generation_batch_size=generation_batch_size,
         num_generations=max(1, rl_config.num_generations), train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     num_train_epochs = math.ceil(train_config.num_train_epochs)

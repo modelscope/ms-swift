@@ -5,7 +5,14 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
-from swift.dev.recipe.utils import REF_GROUP, TEACHER_GROUP, auxiliary_mesh, build_rl_sampler, resolve_reward_scorers
+from swift.dev.recipe.utils import (
+    REF_GROUP,
+    TEACHER_GROUP,
+    auxiliary_mesh,
+    build_rl_sampler,
+    effective_colocate,
+    resolve_reward_scorers,
+)
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -45,7 +52,6 @@ def group_variance(rewards_block: List[List[Any]], weights: Any) -> float:
     are twinkle's own, so admission and estimation cannot drift apart.
     """
     import torch
-
     from twinkle.advantage import nanstd, reduce_rewards
 
     if len(rewards_block) <= 1:
@@ -321,7 +327,7 @@ def initialize_cluster(
         sampling_temperature = float(generation_config.temperature)
     configure_rl_metrics(model, rl_config, sampling_temperature=sampling_temperature)
 
-    colocate = rollout_config.sampler_mode == "colocate"
+    colocate = effective_colocate(rollout_config, resource_plan)
     sampler = build_rl_sampler(
         model_config=model_config,
         rollout_config=rollout_config,
@@ -338,7 +344,7 @@ def initialize_cluster(
 
         engine = RemoteWeightSync(model, sampler)
     else:
-        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         adapter = build_cluster_adapter(

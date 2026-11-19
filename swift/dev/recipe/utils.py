@@ -1084,6 +1084,20 @@ def resolve_rollout_max_steps(explicit_max_steps: int, budget: int, *, recipe: s
     return budget
 
 
+def effective_colocate(rollout_config: 'RolloutConfig', resource_plan: Optional[Any]) -> bool:
+    """Whether trainer and sampler ACTUALLY share devices -- the placement, not the request.
+
+    ``sampler_mode='colocate'`` is a request an estimate/adaptive plan may override: the estimator
+    places the sampler on disjoint ranks whenever the memory budget says it must. The weight-sync
+    engine (IPC is colocate-only: its endpoint is each peer's own GPU UUID), the sleep/offload
+    dance, and the stream batch shape all follow the APPLIED plan, so reading the request alone
+    hands a disaggregated run the colocate machinery and the two peers never meet.
+    """
+    if resource_plan is not None:
+        return set(resource_plan.sampler.ranks).issubset(set(resource_plan.trainer.ranks))
+    return rollout_config.sampler_mode == 'colocate'
+
+
 def plan_device_groups(nproc_per_node: int, sampler_mode: Optional[str], sampler_world_size: int,
                        auxiliary: Sequence[Tuple[str, int]]) -> Tuple[List[Tuple[str, List[int]]], bool]:
     """Plan the twinkle DeviceGroups for an online-RL run (pure: no twinkle import).
@@ -1174,15 +1188,15 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     the GPUs) or ``None``; the meshes map each auxiliary group to the DeviceMesh its model shards with
     (empty under an estimate plan). ``group_requests`` supplies this recipe's own frozen-model groups.
     """
+    import twinkle
+    from twinkle import DeviceGroup, DeviceMesh, Platform
     from twinkle.perf import Perf
     from twinkle_agentic.async_rl import estimate_plan, resource_device_groups
 
-    import twinkle
     from swift.dev.builders import build_dp_mesh, build_template, load_model_processor
     from swift.dev.builders.sandbox import SANDBOX
     from swift.dev.builders.streaming import CONTROL_GROUP, ENV_GROUP, ROLLOUT_GROUP
     from swift.dev.config import process_configs, validate_configs
-    from twinkle import DeviceGroup, DeviceMesh, Platform
 
     process_configs(
         model_config, template_config, dataset_config, train_config, distributed_config,
@@ -1325,8 +1339,9 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         # RolloutState and media, stamps the synced adapter per call, and returns the twinkle
         # SampleResponse the rollout's type guards require (the bare handle speaks protocol models).
         return HTTPSampler(sampler, template)
-    from swift.dev.builders import build_engine_args, build_sampler
     from twinkle import DeviceMesh
+
+    from swift.dev.builders import build_engine_args, build_sampler
 
     backend = rollout_config.rollout_sampler
     sampler_engine_args = build_engine_args(backend, None, rollout_config)

@@ -4,7 +4,13 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
-from swift.dev.recipe.utils import REF_GROUP, auxiliary_mesh, build_rl_sampler, resolve_reward_scorers
+from swift.dev.recipe.utils import (
+    REF_GROUP,
+    auxiliary_mesh,
+    build_rl_sampler,
+    effective_colocate,
+    resolve_reward_scorers,
+)
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -236,6 +242,7 @@ def initialize_ppo_cluster(
                 'with mode=ray for the local full-parameter critic.')
         value_model = build_remote_model(value_config, distributed_config)
         from peft import LoraConfig
+
         from swift.dev.builders.adapter import _lora_common_kwargs
 
         value_model.add_adapter_to_model(
@@ -273,7 +280,7 @@ def initialize_ppo_cluster(
     )
     configure_ppo_value_metric(value_model, rl_config)
 
-    colocate = rollout_config.sampler_mode == "colocate"
+    colocate = effective_colocate(rollout_config, resource_plan)
     sampler = build_rl_sampler(
         model_config=model_config,
         rollout_config=rollout_config,
@@ -290,7 +297,7 @@ def initialize_ppo_cluster(
 
         engine = RemoteWeightSync(model, sampler)
     else:
-        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         # Only the flex ranks: the trainer's ranks also hold the critic, which lending would leave

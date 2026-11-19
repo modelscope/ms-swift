@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
-from swift.dev.recipe.utils import build_rl_sampler, resolve_reward_scorers
+from swift.dev.recipe.utils import build_rl_sampler, effective_colocate, resolve_reward_scorers
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -178,7 +178,7 @@ def initialize_rft_cluster(
         tuner_config=tuner_config,
         plugin_config=None,
     )
-    colocate = rollout_config.sampler_mode == "colocate"
+    colocate = effective_colocate(rollout_config, resource_plan)
     sampler = build_rl_sampler(
         model_config=model_config,
         rollout_config=rollout_config,
@@ -201,7 +201,7 @@ def initialize_rft_cluster(
 
         engine = RemoteWeightSync(model, sampler)
     else:
-        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True)
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
     orm_scorers, orm_scorer_names = resolve_reward_scorers(
         "orm",
         reward_config=reward_config,

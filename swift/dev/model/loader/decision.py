@@ -63,8 +63,16 @@ def _register_thx02_autoconfig() -> None:
     group) runs a plain ``AutoConfig.from_pretrained`` on the model dir and would raise. Registering a
     ``Qwen3_5Config`` subclass that reads ``backbone_config`` keeps every ``AutoConfig`` consumer
     working; re-registering the same class is a no-op.
+
+    The Qwen3.5 config family only exists on transformers >= 5. On older stacks (e.g. the isolated
+    qwen_asr env pinned to 4.57.6) the backbone class is absent -- thx02 cannot load there anyway,
+    so skip the registration instead of breaking every OTHER loader's import of this module.
     """
-    from transformers import AutoConfig, Qwen3_5Config
+    try:
+        from transformers import Qwen3_5Config
+    except ImportError:
+        return
+    from transformers import AutoConfig
 
     class Thx02BackboneConfig(Qwen3_5Config):
         model_type = "thx02"

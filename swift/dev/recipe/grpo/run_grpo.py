@@ -17,6 +17,7 @@ from swift.dev.recipe.utils import (
     _log_line,
     build_save_knobs,
     collect,
+    effective_colocate,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -610,7 +611,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         rollout_config.generation_batch_size, num_prompts=len(prompts),
         num_generations=rl_config.num_generations, num_iterations=rl_config.num_iterations,
         train_batch_size=train_batch_size, gradient_accumulation_steps=ga)
-    colocate = rollout_config.sampler_mode == "colocate"
+    colocate = effective_colocate(rollout_config, resource_plan)
     batch_size = stream_batch_size(
         colocate=colocate, generation_batch_size=generation_batch_size,
         num_generations=rl_config.num_generations, train_batch_size=train_batch_size,

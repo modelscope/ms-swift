@@ -7,7 +7,6 @@ interval, the session and thread bounds of the rollout and env replicas, the pla
 written once. Scoring, the group verdicts (``on_group``) and the advantage stay with the callers.
 """
 from __future__ import annotations
-
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 #: CPU groups of a remote run: the rollout replicas (``rollout_num_workers`` ranks), the sandbox env
@@ -128,11 +127,14 @@ def build_rollout(sampler: Any,
         **placement)
 
 
-def build_checkpoint_manager(model: Any, sampler: Any, rollout_config: Any, *, remote: bool = False) -> Any:
+def build_checkpoint_manager(model: Any, sampler: Any, rollout_config: Any, *, remote: bool = False,
+                             resource_plan: Any = None) -> Any:
     """The policy -> sampler weight sync: colocate wakes / offloads around it, standalone pauses generation."""
     from twinkle.checkpoint_engine import CheckpointEngineManager
 
-    colocate = rollout_config.sampler_mode == 'colocate'
+    from swift.dev.recipe.utils import effective_colocate
+
+    colocate = effective_colocate(rollout_config, resource_plan)
     return CheckpointEngineManager(
         model=model,
         sampler=sampler,

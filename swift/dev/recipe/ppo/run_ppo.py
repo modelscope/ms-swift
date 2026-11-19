@@ -12,6 +12,7 @@ from swift.dev.recipe.utils import (
     RolloutStepState,
     StepState,
     build_save_knobs,
+    effective_colocate,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -349,7 +350,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     num_generations = max(1, rl_config.num_generations)
     batch_size = stream_batch_size(
-        colocate=rollout_config.sampler_mode == "colocate", generation_batch_size=generation_batch_size,
+        colocate=effective_colocate(rollout_config, resource_plan), generation_batch_size=generation_batch_size,
         num_generations=num_generations, train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     num_train_epochs = math.ceil(train_config.num_train_epochs)

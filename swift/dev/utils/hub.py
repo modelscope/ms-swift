@@ -154,14 +154,11 @@ def _load_with_cache_fallback(online_fn, offline_fn, *, describe: str):
 
     * ``online_fn`` -- the normal hub load (``MsDataset.load`` on ModelScope, ``datasets.load_dataset``
       on HuggingFace);
-    * ``offline_fn`` -- loads straight from the local cache through ``datasets.load_dataset(...,
-      cache_dir=<hub cache>)`` under the forced-offline mode this wrapper sets, which routes to
-      datasets' ``CachedDatasetModuleFactory``. On ModelScope it deliberately does *not* re-invoke
-      ``MsDataset.load``: that loader resolves the repo over the network first (``get_repo_info``) and
-      so never reaches modelscope's own cache fallback when offline. Going through ``datasets`` against
-      ``MS_DATASETS_CACHE`` reproduces exactly the ``CachedDatasetModuleFactory(path,
-      cache_dir=MS_DATASETS_CACHE)`` modelscope would have fallen back to, minus the unreachable
-      network prelude.
+    * ``offline_fn`` -- loads straight from the local cache under the forced-offline mode this wrapper
+      sets. On ModelScope it re-invokes ``MsDataset.load`` (modelscope falls back to its own built
+      cache offline, and it is the only reader that understands modelscope builder-script datasets
+      on datasets >= 4, which dropped dataset-script support), with the plain ``datasets`` factory
+      against ``MS_DATASETS_CACHE`` as the secondary path for parquet/json builds.
 
     Policy:
 
@@ -252,22 +249,37 @@ class MSHub:
                 )
 
         def offline_fn():
-            # MsDataset.load cannot be reused offline: it resolves the repo over the network first and
-            # never reaches modelscope's cache fallback. Load through datasets against the ModelScope
-            # dataset cache instead -- the same CachedDatasetModuleFactory(path, MS_DATASETS_CACHE) that
-            # modelscope's loader falls back to, just without the unreachable network prelude. revision
-            # and download_mode are dropped: the cache scan ignores them, and only an already-cached
-            # build can be served offline.
-            from datasets import load_dataset
-            from modelscope.utils.config_ds import MS_DATASETS_CACHE
-            return load_dataset(
-                dataset_id,
-                name=subset_name,
-                split=split,
-                streaming=streaming,
-                cache_dir=MS_DATASETS_CACHE,
-                **load_kwargs,
-            )
+            # MsDataset.load serves its OWN cache offline (modelscope >= 1.29 falls back to the
+            # built dataset under MS_DATASETS_CACHE when the hub is unreachable), and it is the
+            # only reader that understands modelscope's builder-script datasets: datasets >= 4
+            # dropped dataset-script support, so a plain datasets.load_dataset against the cache
+            # treats a cached builder dataset (e.g. speech_asr) as an unknown hub id and fails.
+            # Try the modelscope reader first; keep the datasets factory as the secondary path
+            # for caches it can serve (parquet/json builds).
+            try:
+                with _ms_logger_context(logging.ERROR):
+                    return MsDataset.load(
+                        dataset_id,
+                        subset_name=subset_name,
+                        split=split,
+                        version=revision,
+                        download_mode=download_mode,
+                        use_streaming=streaming,
+                        **load_kwargs,
+                    )
+            except Exception as ms_exc:
+                if not _is_network_error(ms_exc):
+                    raise
+                from datasets import load_dataset
+                from modelscope.utils.config_ds import MS_DATASETS_CACHE
+                return load_dataset(
+                    dataset_id,
+                    name=subset_name,
+                    split=split,
+                    streaming=streaming,
+                    cache_dir=MS_DATASETS_CACHE,
+                    **load_kwargs,
+                )
 
         return _load_with_cache_fallback(
             online_fn, offline_fn, describe=f'ms://{dataset_id}:{subset_name}#{split}')
