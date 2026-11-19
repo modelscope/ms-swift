@@ -374,9 +374,10 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
     if cfg.rl_type == 'grpo' and not (reward_config and (reward_config.orm or reward_config.prm)):
         raise ValueError('rl_type=grpo needs at least one reward channel: pass --orm (models or rule '
                          'plugins) or --prm. Without one every group folds NaN into its advantage.')
-    if cfg.rl_type == 'ppo' and not (reward_config and reward_config.orm):
-        raise ValueError('rl_type=ppo needs the --orm reward channel (PRM is GRPO\'s per-token path); '
-                         'without rewards the GAE anchors are all zero.')
+    if cfg.rl_type == 'ppo' and not (reward_config and (reward_config.orm or reward_config.prm)):
+        raise ValueError('rl_type=ppo needs at least one reward channel: pass --orm (models or rule '
+                         'plugins) or --prm (the process reward fused into the GAE token rewards). '
+                         'Without rewards the GAE anchors are all zero.')
     _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
     _check_reference_sync(cfg, train_config, distributed_config)
@@ -1101,13 +1102,13 @@ def _check_segments(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'],
 
 
 def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
-    """Reject GRPO process-reward (PRM) combinations the loop cannot honour (no silently dead knob).
+    """Reject GRPO/PPO process-reward (PRM) combinations the loop cannot honour (no silently dead knob).
 
     Refuses RLSD/SDAR overlap, prm_orm_mix with no --prm channel or outside [0, 1], and the
     segmentation knobs (prm_scorer / prm_step_delimiter) with no channel either.
     The prm channel and its knobs all live on the RewardConfig; a missing one counts as "no channel".
     """
-    if cfg.rl_type != 'grpo':
+    if cfg.rl_type not in ('grpo', 'ppo'):
         return
     scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter', 'prm_orm_mix'}.intersection(
         _changed_fields(reward_config)))
@@ -1115,13 +1116,13 @@ def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) 
         if scorer_knobs:
             details = ', '.join(f'--{name}' for name in scorer_knobs)
             raise ValueError(
-                f'{details} shape the GRPO process reward but no --prm channel is set, so they would do '
+                f'{details} shape the process reward but no --prm channel is set, so they would do '
                 'nothing. Add a --prm item (a rule name or a frozen PRM model id), or drop them.')
         return
     if not 0.0 <= reward_config.prm_orm_mix <= 1.0:
         raise ValueError(
-            f'prm_orm_mix must be in [0, 1] (the PRM/ORM convex-combination ratio: 0 is standard GRPO, 1 is '
-            f'pure process reward), got {reward_config.prm_orm_mix}.')
+            f'prm_orm_mix must be in [0, 1] (the PRM/ORM convex-combination ratio: 0 is the standard '
+            f'outcome-reward run, 1 is pure process reward), got {reward_config.prm_orm_mix}.')
     if not reward_config.orm and reward_config.prm_orm_mix < 1.0:
         raise ValueError(
             f'prm_orm_mix={reward_config.prm_orm_mix} blends an --orm half, but no --orm channel is set: the '

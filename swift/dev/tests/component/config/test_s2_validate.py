@@ -248,7 +248,9 @@ def test_chord_router_replay_and_sampling_replay():
 
 def test_prm_channel_and_scorer_knobs():
     """S2-35: PRM scorer knobs without a --prm channel do nothing (refused); prm_orm_mix is the
-    convex-combination ratio in [0,1]; PRM cannot stack with RLSD/SDAR (both per-token)."""
+    convex-combination ratio in [0,1]; PRM cannot stack with RLSD/SDAR (both per-token). The same
+    guards apply to PPO (its GAE fuses the process reward into the token rewards); other rl_types
+    early-return (PRM is a grpo/ppo channel)."""
     # prm_orm_mix is the only knob _check_prm treats as shaping the process reward, and it is
     # refused even at its default value once the CLI set it explicitly: with no --prm channel there
     # is nothing for the ratio to blend, so the knob would be silently dead.
@@ -274,6 +276,17 @@ def test_prm_channel_and_scorer_knobs():
         _check_prm(RLConfig(rl_type='grpo', sdar_loss_coef=0.1), reward)
 
     _check_prm(RLConfig(rl_type='grpo'), RewardConfig(prm=['Qwen/PRM-7B'], orm=['accuracy'], prm_orm_mix=0.5))
+
+    # PPO shares the PRM channel: the same mix/orm guards apply, and the GAE token-reward fusion
+    # reads prm_orm_mix/prm_weights (Phase2 §2). mix=0.5 blend + mix=1 pure both valid with the
+    # matching channel; a non-grpo/ppo rl_type early-returns even with PRM knobs set.
+    _check_prm(RLConfig(rl_type='ppo'), RewardConfig(prm=['Qwen/PRM-7B'], orm=['accuracy'], prm_orm_mix=0.5))
+    _check_prm(RLConfig(rl_type='ppo'), RewardConfig(prm=['Qwen/PRM-7B'], prm_orm_mix=1.0))
+    with pytest.raises(ValueError, match='blends an --orm half'):
+        _check_prm(RLConfig(rl_type='ppo'), RewardConfig(prm=['Qwen/PRM-7B'], prm_orm_mix=0.5))
+    with pytest.raises(ValueError, match='no --prm channel is set'):
+        _check_prm(RLConfig(rl_type='ppo'), _explicit(RewardConfig(), 'prm_orm_mix'))
+    _check_prm(RLConfig(rl_type='dpo'), _explicit(RewardConfig(), 'prm_orm_mix'))  # early-return, no PRM
 
 
 def test_distillation_family_and_self_distill():

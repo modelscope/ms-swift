@@ -38,7 +38,8 @@ def ppo_group_requests(
     Mirrors the builds in :func:`initialize_ppo_cluster`: PPO ALWAYS anchors the KL -- a
     full-parameter run keeps a frozen ref copy (under sync_ref_model it inherits the policy's
     sharding); only a LoRA run reuses the policy actor and plans NO group. Each orm MODEL gets
-    its ``reward_<i>`` group; the critic shares the policy's 'model' group, so it plans none.
+    its ``reward_<i>`` group; a PRM MODEL gets ``prm_0``; the critic shares the policy's 'model'
+    group, so it plans none.
     """
     from swift.dev.rewards.scorer import split_channel
 
@@ -52,6 +53,8 @@ def ppo_group_requests(
         requests.append((REF_GROUP, spec))
     for index in range(len(split_channel(list(reward_config.orm))[1])):
         requests.append((f"reward_{index}", reward_config.orm_parallel_spec))
+    if split_channel(list(reward_config.prm))[1]:
+        requests.append(("prm_0", reward_config.prm_parallel_spec))
     return requests
 
 
@@ -73,6 +76,8 @@ class Cluster(NamedTuple):
     reference: Any
     orm_scorers: List[Any]
     orm_names: List[str]
+    prm_scorers: List[Any]
+    prm_names: List[str]
     sampling_params: Dict[str, Any]
     colocate: bool
     advantage: Any
@@ -344,7 +349,24 @@ def initialize_ppo_cluster(
         worker_group=None if remote_run else CONTROL_GROUP,
         quantize_config=quantize_config,
     )
+    prm_scorers, prm_names = resolve_reward_scorers(
+        "prm",
+        reward_config=reward_config,
+        model_config=model_config,
+        template_config=template_config,
+        distributed_config=distributed_config,
+        rollout_config=rollout_config,
+        backend=rollout_config.rollout_sampler,
+        sampler=sampler,
+        worker_group=None if remote_run else CONTROL_GROUP,
+        quantize_config=quantize_config,
+    )
     group = {"remote_group": None if remote_run else CONTROL_GROUP}
+    # PRM fusion rides the GAE token rewards (process reward as intermediate MDP reward): the
+    # outcome reward scaled by (1-mix) on the last token, each turn's process reward by mix on its
+    # turn-last token. use_prm wires the knobs the estimator reads; mix=0 leaves pure ORM-terminal PPO.
+    prm_kwargs = ({'use_prm': True, 'prm_orm_mix': float(reward_config.prm_orm_mix),
+                  'prm_weights': reward_config.prm_weights} if prm_scorers else {})
     return Cluster(
         model=model,
         value_model=value_model,
@@ -355,24 +377,29 @@ def initialize_ppo_cluster(
         reference=reference,
         orm_scorers=orm_scorers,
         orm_names=orm_names,
+        prm_scorers=prm_scorers,
+        prm_names=prm_names,
         sampling_params=params,
         colocate=colocate,
         advantage=GAEAdvantage(kl_kind='k1', gamma=rl_config.gamma, gae_lambda=rl_config.lam,
-                               normalize=rl_config.whiten_rewards, kl_coef=rl_config.kl_coef, **group),
+                               normalize=rl_config.whiten_rewards, kl_coef=rl_config.kl_coef,
+                               **prm_kwargs, **group),
         traj_filter=TrajectoryFilter(**group),
     )
 
 
 def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config: 'RolloutConfig',
-                     prompt_dataloader: Any, batch_size: int, num_train_epochs: float,
-                     max_steps: Optional[int]) -> Any:
-    """Assemble twinkle's StreamingDriver for PPO: ORM-scored episodes, no group verdict.
+                     reward_config: 'RewardConfig', prompt_dataloader: Any, batch_size: int,
+                     num_train_epochs: float, max_steps: Optional[int]) -> Any:
+    """Assemble twinkle's StreamingDriver for PPO: ORM/PRM-scored episodes, no group verdict.
 
     PPO has no group contract (per-token GAE scores each trajectory on its own); every async_mode
-    rides this one stream. The driver hands out named score columns (``orm_names`` name the
-    scorers) and its light batch summary.
+    rides this one stream. The driver hands out named score columns (``orm_names`` / ``prm_names``
+    name the scorers) and its light batch summary. The PRM segment predicate (turn boundaries for a
+    multi-turn rollout) feeds the process-reward lane the GAE token rewards fuse.
     """
     from swift.dev.builders.streaming import build_streaming_driver
+    from swift.dev.rewards.prm import build_prm_segment
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,
@@ -385,6 +412,9 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
         checkpoint_manager=cluster.engine,
         orms=cluster.orm_scorers,
         orm_names=cluster.orm_names,
+        prms=cluster.prm_scorers,
+        prm_names=cluster.prm_names,
+        prm_segment=build_prm_segment(reward_config, rollout_config),
         cluster_adapter=cluster.adapter,
         remote=True,
     )

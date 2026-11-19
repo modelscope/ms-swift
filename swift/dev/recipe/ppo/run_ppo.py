@@ -387,8 +387,9 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     steps_per_batch = max(1, batch_size * max(1, rl_config.num_ppo_epochs)
                           // (train_batch_size * train_config.gradient_accumulation_steps))
     driver = build_ppo_driver(
-        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config, prompt_dataloader=dataloader,
-        batch_size=batch_size, num_train_epochs=num_train_epochs, max_steps=math.ceil(max_steps / steps_per_batch))
+        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config, reward_config=reward_config,
+        prompt_dataloader=dataloader, batch_size=batch_size, num_train_epochs=num_train_epochs,
+        max_steps=math.ceil(max_steps / steps_per_batch))
     reward_metric = CompletionRewardMetric()
     _versions_cell: List[List[int]] = []
     _unscored_cell: List[int] = [0]
