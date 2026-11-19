@@ -774,6 +774,21 @@ def test_rlhf_reference_and_layout_gates():
                               RLConfig(rl_type='cpo', ref_model='m'))
     _check_rl_ref_model(ModelConfig(), None, RLConfig(rl_type='dpo', ref_model='m'))
 
+    # defect79 (4fc6255b8): LoRA + sync_ref_model + explicit ref_model is the legal separate-frozen-
+    # reference lane; without the sync term in uses_ref the gate rejected it (the defect itself).
+    # PLAN: syncref-legal pass / stray-ref (no sync) refused / beta0 drops uses_ref even under sync.
+    lora = TunerConfig(tuner='lora')
+    _check_rl_ref_model(ModelConfig(), lora,
+                        RLConfig(rl_type='grpo', beta=0.04, sync_ref_model=True, ref_model='m'))
+    with pytest.raises(ValueError, match='not used by rl_type'):
+        _check_rl_ref_model(ModelConfig(), lora,
+                            RLConfig(rl_type='grpo', beta=0.04, ref_model='m'))
+    with pytest.raises(ValueError, match='not used by rl_type'):
+        _check_rl_ref_model(ModelConfig(), lora,
+                            RLConfig(rl_type='grpo', beta=0.0, sync_ref_model=True, ref_model='m'))
+    _check_rl_ref_model(ModelConfig(), lora,
+                        RLConfig(rl_type='grpo', beta=0.04, ref_adapters=['a'], ref_model='m'))
+
     for rl_type, message in (('ppo', 'value-head critic'), ('opsd', 'teacher->student'),
                              ('mopd', 'K teacher logps')):
         with pytest.raises(ValueError, match=message):

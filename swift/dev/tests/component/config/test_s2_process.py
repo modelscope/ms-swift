@@ -406,6 +406,19 @@ def test_rlhf_ref_model_derivation():
     _derive_rl_ref_model(model, TunerConfig(tuner='lora'), rl)
     assert rl.ref_adapters == ['a'] and rl.ref_model == 'm'
 
+    # defect79 (4fc6255b8): LoRA + sync_ref_model suppresses the in-actor disable_adapter reference,
+    # so without an explicit ref the EMA/KL anchor would silently not exist -- fail loudly instead.
+    # PLAN: derive-loud (no ref) / derive-keeps (explicit ref untouched) / full-control (default).
+    lora = TunerConfig(tuner='lora')
+    with pytest.raises(ValueError, match='needs an explicit --ref_model'):
+        _derive_rl_ref_model(model, lora, RLConfig(rl_type='grpo', beta=0.04, sync_ref_model=True))
+    rl = RLConfig(rl_type='grpo', beta=0.04, sync_ref_model=True, ref_model='m')
+    _derive_rl_ref_model(model, lora, rl)
+    assert rl.ref_model == 'm'
+    rl = RLConfig(rl_type='grpo', beta=0.04)
+    _derive_rl_ref_model(model, None, rl)
+    assert rl.ref_model == 'm' and rl.ref_model_type == 'qwen2'
+
 
 def test_grpo_reward_defaults():
     """S2-16: kl_in_reward only for the reinforce-family estimators; scale_rewards follows the
