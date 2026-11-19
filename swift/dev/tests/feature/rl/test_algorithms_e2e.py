@@ -668,7 +668,7 @@ def test_grpo_rlsd_sdar_teacher_signal_reweighting(mode_over, tiny_qwen2_5, rl_d
     completions hint-augmented (``privileged_features`` re-encodes the first user turn with the hint).
 
     ORACLE (fail-loudly guard, driver-observable as a run-level failure): ``RewardWorker.grpo_advantages``
-    REFUSES an RLSD/SDAR run whose teacher lane produced no ``teacher_logps`` ('requires a teacher signal') --
+    REFUSES an RLSD/SDAR run whose teacher lane produced no ``teacher_logps`` ('requires teacher_out') --
     without the guard a missing teacher would silently degrade the run to plain GRPO (a dead-parameter trap).
     So a GREEN run proves the teacher lane ran and fed per-token teacher logps into the reweighting; the
     REVERSE leg feeds the same flags a prompt-only dataset (no teacher_prompt, no --teacher_model) and asserts
@@ -693,7 +693,7 @@ def test_grpo_rlsd_without_teacher_signal_refused(tiny_qwen2_5, rl_data, tmp_pat
     """S7-13 refusal leg: RLSD/SDAR with NO teacher lane fails loudly instead of degrading silently.
 
     A prompt-only dataset plus no ``--teacher_model`` leaves the teacher lane off entirely, so
-    ``teacher_logps`` is None -- the worker guard must raise ('requires a teacher signal') rather than run
+    ``teacher_logps`` is None -- the worker guard must raise ('requires teacher_out') rather than run
     plain GRPO with the flag silently ignored (the dead-parameter trap the guard exists for). This is the
     reverse-verification of the positive test above, pinned as its own assertion.
     """
@@ -706,7 +706,7 @@ def test_grpo_rlsd_without_teacher_signal_refused(tiny_qwen2_5, rl_data, tmp_pat
         rlhf_over={'num_generations': 4, 'advantage_reweight': 'rlsd', 'rlsd_lambda': 0.5},
         reward_over={'orm': [_varied_content_reward]},
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16})
-    with _pytest.raises(ValueError, match='requires a teacher signal'):
+    with _pytest.raises(ValueError, match='requires teacher_out'):
         run_rl(configs)
 
 

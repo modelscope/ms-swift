@@ -417,7 +417,13 @@ def _train_loop(
                 # teacher_prompt without a dedicated teacher: the policy grades the privileged view itself.
                 t_model = cluster.teacher if cluster.teacher is not None else cluster.model
                 t_disable = cluster.teacher is not None and cluster.teacher is cluster.model
-                view = cluster.privileged(lane_trajs) if cluster.privileged is not None else lane_trajs
+                # The privileged view is a stashed lazy handle (lazy_collect + stash): its collect
+                # surfaces per-row ObjectRefs that forward_only's argument resolver does not recurse
+                # into, so a raw handle reaches the worker as a list of refs and trips the dict-leaf
+                # assert. Materialise it to a plain list of row handles -- the same shape the reference
+                # lane passes (lane_trajs) -- so forward_only resolves each row to a dict at its worker
+                # (the row payloads stay worker-side, never materialising in the driver).
+                view = collect(cluster.privileged(lane_trajs)) if cluster.privileged is not None else lane_trajs
                 teacher_out = t_model.forward_only(
                     inputs=view, output_frame='response', output_fields=('logps',), temperature=temperature,
                     **batching, **({'disable_lora': True} if t_disable else {}))

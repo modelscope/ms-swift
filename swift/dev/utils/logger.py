@@ -10,9 +10,31 @@ attached to that same logger too, every record would be emitted twice. A distinc
 import importlib.util
 import logging
 import os
+import sys
 from contextlib import contextmanager
 from types import MethodType
 from typing import Optional
+
+
+class _LateBoundStreamHandler(logging.StreamHandler):
+    """Resolve ``sys.stderr`` at EMIT time instead of pinning it at construction.
+
+    A plain ``StreamHandler()`` captures the import-time ``sys.stderr`` object. Under fd-level
+    capture (pytest ``capfd``) the fixture redirects fd 2 to a tmpfile AFTER import, but the
+    pinned handler keeps writing into the old stream object, so the record never reaches the
+    fixture -- e.g. the ``twinkle initialized with DeviceGroups`` line vanishes from
+    ``capfd.readouterr()`` even though it shows in the report's global capture. Binding live
+    makes any consumer's stderr redirection (capfd/capsys, ray worker forwarding) see the log.
+    """
+
+    @property
+    def stream(self):
+        return sys.stderr
+
+    @stream.setter
+    def stream(self, value):
+        # Always resolve live; ignore StreamHandler.__init__'s construction-time assignment.
+        pass
 
 
 # Avoid circular reference
@@ -102,7 +124,7 @@ def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, 
         if type(handler) is logging.StreamHandler:
             handler.setLevel(logging.ERROR)
 
-    stream_handler = logging.StreamHandler()
+    stream_handler = _LateBoundStreamHandler()
     handlers = [stream_handler]
 
     is_worker0 = _is_local_master()
