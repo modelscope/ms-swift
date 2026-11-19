@@ -261,15 +261,30 @@ class TrainStepStage(StageComponent):
             set_loss = getattr(model, 'set_loss', None)
             if not callable(set_loss):
                 raise ComponentError(f'{self.node_id}: model exposes no set_loss()')
-            set_loss(loss, loss_key=loss_key)
-            # A keyed loss DISABLES the model's default LossMetric (the metric
-            # dispatcher only accumulates a metric whose key matches the
-            # forward's), so one keyed LossMetric rides the same registration:
-            # without it calculate_metric reports nothing and the loss stays
-            # invisible in the node's preview. The same keyed-metric pattern
-            # ``configure_rl_metrics`` applies for the algorithm metrics.
-            from twinkle.metric import LossMetric
-            model.add_metric(LossMetric, is_training=True, loss_key=loss_key)
+            from swift.dev.builders.remote import RemoteLossSpec, RemoteModel
+            if isinstance(model, RemoteModel):
+                # A served model installs the loss by NAME + scalar kwargs (a remote loss node's
+                # resident IS that spec); the keyed registration rides the kwargs the
+                # server-side set_loss pops, and the keyed LossMetric rides its NAME the same
+                # way -- everything the canvas registers here crosses HTTP as strings and
+                # scalars.
+                if not isinstance(loss, RemoteLossSpec):
+                    raise ComponentError(
+                        f'{self.node_id}: a remote train_step needs a remote-compatible loss '
+                        '(a loss node under a remote resource produces the class-name spec); '
+                        'an in-process loss object cannot cross HTTP.')
+                set_loss(loss.name, loss_key=loss_key, **loss.kwargs)
+                model.add_metric('LossMetric', is_training=True, loss_key=loss_key)
+            else:
+                set_loss(loss, loss_key=loss_key)
+                # A keyed loss DISABLES the model's default LossMetric (the metric
+                # dispatcher only accumulates a metric whose key matches the
+                # forward's), so one keyed LossMetric rides the same registration:
+                # without it calculate_metric reports nothing and the loss stays
+                # invisible in the node's preview. The same keyed-metric pattern
+                # ``configure_rl_metrics`` applies for the algorithm metrics.
+                from twinkle.metric import LossMetric
+                model.add_metric(LossMetric, is_training=True, loss_key=loss_key)
             self._loss_registered = True
         self._configure_optimizer(model)
         from swift.dev.recipe.utils import backend_owns_gradient_accumulation, is_grad_sync_boundary
@@ -390,14 +405,26 @@ class WeightSyncStage(StageComponent):
                          'targets': [getattr(t, 'name', str(i)) for i, t in enumerate(targets)]}}
 
     def _manager_for(self, model: Any, target: Any) -> Any:
-        """One resident CheckpointEngineManager per (model, sampler) pair."""
+        """One resident sync engine per (model, sampler) pair, in every mode.
+
+        mode='remote': the pair is (client handle, served sampler) with no local ranks to
+        carry a device-to-device channel, so the sync is the server's own store hand-off
+        (``RemoteWeightSync``: save a sampler-serving checkpoint, stamp the returned
+        ``twinkle://`` URI onto the client sampler) -- the same face the recipes drive their
+        remote engines with, so this stage's call sites are mode-blind.
+        """
         managers = getattr(self, '_managers', None)
         if managers is None:
             managers = self._managers = {}
         manager = managers.get((id(model), id(target)))
         if manager is None:
-            from twinkle.checkpoint_engine import CheckpointEngineManager
-            manager = CheckpointEngineManager(model=model, sampler=target)
+            from swift.dev.builders.remote import RemoteModel, RemoteWeightSync
+
+            if isinstance(model, RemoteModel):
+                manager = RemoteWeightSync(model, target)
+            else:
+                from twinkle.checkpoint_engine import CheckpointEngineManager
+                manager = CheckpointEngineManager(model=model, sampler=target)
             managers[(id(model), id(target))] = manager
         return manager
 
@@ -418,6 +445,16 @@ class WeightAverageStage(StageComponent):
         target = inputs.get('target')
         if source is None or target is None:
             raise ComponentError(f'{self.node_id}: weight_average needs source and target')
+        from swift.dev.builders.remote import RemoteModel
+
+        if isinstance(source, RemoteModel) or isinstance(target, RemoteModel):
+            # The copy/EMA transfers read in-process state dicts and rank-local channels; a
+            # remote pair has neither (the CLI's validate refuses sync_ref_model under remote
+            # for the same gap). Fail loudly instead of degrading.
+            raise ComponentError(
+                f'{self.node_id}: weight_average needs in-process model pairs; a remote '
+                'served-model pair has no local state dict or transfer channel to blend. Run '
+                'on a local / cluster resource, or drop the node.')
         mode = str(self.params.get('mode', 'ema') or 'ema')
         alpha = float(self.params.get('alpha', '0.9') or 0.9)
         if mode == 'copy':

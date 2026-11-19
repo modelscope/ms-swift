@@ -370,14 +370,29 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
     if cfg.sync_ref_model and cfg.rl_type not in ('grpo', 'ppo'):
         raise ValueError('sync_ref_model requires rl_type grpo or ppo (only they have a reference model).')
     # Without a reward channel there is nothing to reinforce: GRPO would fold NaN rows into every
-    # group's advantage, PPO would train on all-zero rewards. legacy fails this loudly too.
-    if cfg.rl_type == 'grpo' and not (reward_config and (reward_config.orm or reward_config.prm)):
+    # group's advantage, PPO would train on all-zero rewards. legacy fails this loudly too. The
+    # sandbox env counts as a channel: its session rewards and the dataset's terminal ``checks``
+    # column ride the rollout's own reward keys (rewards.env / rewards.check) into the same fold.
+    env_channel = bool(rollout_config is not None
+                        and 'sandbox' in (getattr(rollout_config, 'tools', None) or []))
+    if cfg.rl_type == 'grpo' and not env_channel \
+            and not (reward_config and (reward_config.orm or reward_config.prm)):
         raise ValueError('rl_type=grpo needs at least one reward channel: pass --orm (models or rule '
-                         'plugins) or --prm. Without one every group folds NaN into its advantage.')
-    if cfg.rl_type == 'ppo' and not (reward_config and (reward_config.orm or reward_config.prm)):
+                         'plugins) or --prm, or wire the sandbox env (--tools sandbox: the env session '
+                         'rewards plus the dataset\'s terminal checks column). Without one every group '
+                         'folds NaN into its advantage.')
+    if cfg.rl_type == 'ppo' and not env_channel \
+            and not (reward_config and (reward_config.orm or reward_config.prm)):
         raise ValueError('rl_type=ppo needs at least one reward channel: pass --orm (models or rule '
-                         'plugins) or --prm (the process reward fused into the GAE token rewards). '
-                         'Without rewards the GAE anchors are all zero.')
+                         'plugins) or --prm (the process reward fused into the GAE token rewards), or '
+                         'wire the sandbox env (--tools sandbox: the env session rewards plus the '
+                         'dataset\'s terminal checks column). Without rewards the GAE anchors are '
+                         'all zero.')
+    if reward_config is not None and reward_config.env_reward_weight < 0:
+        raise ValueError(
+            f'env_reward_weight must be non-negative (1.0 folds the env-family rewards -- the env '
+            "session reward plus the terminal checks column -- into the reward fold; 0.0 keeps them "
+            f'recorded but out of training), got {reward_config.env_reward_weight}.')
     _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
     _check_reference_sync(cfg, train_config, distributed_config)

@@ -54,7 +54,9 @@ class ResourceSpec:
 
     ``local`` picks explicit card ids on this machine (the session process is
     launched with exactly those cards visible); ``cluster`` names a ray
-    address plus the total GPU count the remote cluster offers. An empty
+    address plus the total GPU count the remote cluster offers. ``remote``
+    names a twinkle-server endpoint: the model / sampler engines are served
+    objects over HTTP and no local card is planned at all. An empty
     local spec means "no GPU allocated" -- any GPU component then fails
     loudly at DeviceGroup planning instead of silently falling back.
     """
@@ -62,6 +64,8 @@ class ResourceSpec:
     cards: Tuple[int, ...] = ()
     cluster_address: str = ''
     cluster_gpus: int = 0
+    server_url: str = ''
+    server_api_key: str = ''
 
 
 class Graph:
@@ -182,13 +186,15 @@ class Graph:
 
     @staticmethod
     def _parse_resource(value: Any) -> ResourceSpec:
-        """The resource page's GPU allocation; absent means no GPU allocated."""
+        """The resource page's allocation; absent means no GPU allocated."""
         if value is None:
             return ResourceSpec()
-        Graph._mapping(value, 'resource', {'mode', 'cards', 'cluster_address', 'cluster_gpus'})
+        Graph._mapping(value, 'resource',
+                       {'mode', 'cards', 'cluster_address', 'cluster_gpus',
+                        'server_url', 'server_api_key'})
         mode = value.get('mode', 'local')
-        if mode not in ('local', 'cluster'):
-            raise GraphValidationError('resource.mode: 需要 local 或 cluster')
+        if mode not in ('local', 'cluster', 'remote'):
+            raise GraphValidationError('resource.mode: 需要 local、cluster 或 remote')
         if mode == 'cluster':
             address = value.get('cluster_address', '')
             gpus = value.get('cluster_gpus', 0)
@@ -197,6 +203,15 @@ class Graph:
             if type(gpus) is not int or gpus < 1:
                 raise GraphValidationError('resource.cluster_gpus: 集群卡数必须是正整数')
             return ResourceSpec(mode='cluster', cluster_address=address, cluster_gpus=gpus)
+        if mode == 'remote':
+            server_url = value.get('server_url', '')
+            api_key = value.get('server_api_key', '')
+            if not isinstance(server_url, str) or not server_url.strip():
+                raise GraphValidationError('resource.server_url: remote 模式必须给出 twinkle-server 地址')
+            if not isinstance(api_key, str):
+                raise GraphValidationError('resource.server_api_key: 必须是字符串（可留空 = 无鉴权）')
+            return ResourceSpec(mode='remote', server_url=server_url.strip(),
+                                server_api_key=api_key)
         cards = value.get('cards', [])
         if type(cards) is not list or any(type(card) is not int or card < 0 for card in cards):
             raise GraphValidationError('resource.cards: 需要非负整数卡编号列表')

@@ -37,7 +37,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
-from .component import COMPONENT_CLASSES, ComponentError
+from .component import COMPONENT_CLASSES, ComponentError, RemoteTarget
 from .dag import DAGController, DAGError
 from .graph import Graph, GraphValidationError, NodeSpec
 from .placement import NUMERIC_GROUP, plan_device_groups
@@ -154,6 +154,7 @@ class GraphSession:
             # as an instance field); the code component reads it back here.
             component.code = node.code
         component.remote_group = self._device_plan.remote_groups.get(node.id, '')
+        component.remote_target = _remote_target(self._graph.resource)
         return component
 
     def _fingerprint(self, node: NodeSpec) -> str:
@@ -542,6 +543,13 @@ def _optional_int(value: Any, name: str) -> Optional[int]:
     return result
 
 
+def _remote_target(resource: Any) -> Optional[RemoteTarget]:
+    """The session's server endpoint, or None when the resource page is not in remote mode."""
+    if resource.mode != 'remote':
+        return None
+    return RemoteTarget(server_url=resource.server_url, server_api_key=resource.server_api_key)
+
+
 def _bootstrap(declaration: Dict[str, Any]) -> None:
     """Bring up the ALWAYS-ray runtime and declare the graph's device groups.
 
@@ -558,6 +566,27 @@ def _bootstrap(declaration: Dict[str, Any]) -> None:
     import twinkle
     from twinkle import DeviceGroup, Platform
 
+    if graph.resource.mode == 'remote':
+        # mode='remote': the model / sampler engines are served objects, so no local GPU group
+        # is declared and no card is made visible. The local ray runtime still boots for the
+        # resident CPU-side components (the numeric group); the client transport is bound HERE,
+        # so a dead server fails the session loudly at bootstrap instead of at the first node
+        # build. The env vars double as the documented fallback every later client object
+        # (the sampler over the same context) reads.
+        from twinkle import init_twinkle_client
+
+        target = _remote_target(graph.resource)
+        os.environ['TWINKLE_SERVER_URL'] = target.server_url
+        if target.server_api_key:
+            os.environ['TWINKLE_SERVER_TOKEN'] = target.server_api_key
+        init_twinkle_client(base_url=target.server_url,
+                            api_key=target.server_api_key or None)
+        device_groups = [DeviceGroup(name=NUMERIC_GROUP, ranks=1, device_type='CPU')]
+        twinkle.initialize(mode='ray', nproc_per_node=1, groups=device_groups,
+                           name='webui_session')
+        print(f'[workflow-bootstrap] remote target: {target.server_url!r} '
+              f'(served engines; CPU-only local runtime)', file=sys.stderr)
+        return
     if graph.resource.mode == 'cluster':
         # One namespace PER SESSION PROCESS: actor names are deterministic
         # (remote class + call site), so two concurrent sessions sharing one

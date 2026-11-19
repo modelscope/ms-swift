@@ -155,44 +155,37 @@ def initialize_ppo_cluster(
         # a tuned policy keeps the original base and reloads its adapter via resume (run_ppo).
         policy_config = copy.deepcopy(model_config)
         policy_config.model = resume_dir
-    if remote_run:
-        from swift.dev.builders.remote import (
-            apply_remote_tuner,
-            build_remote_model,
-            configure_remote_processor,
+    # The policy's model / tuner / freeze ride the ONE builders entry in every mode
+    # (mode='remote' self-dispatches inside build_model / apply_tuner / apply_full_param_freeze
+    # to the client handle); what genuinely differs by mode is the processor source below. The
+    # critic below keeps its own shape per mode (a LoRA seq_cls head over the adapter channel
+    # remotely, a full-parameter seq_cls build locally).
+    model = build_model(
+        policy_config,
+        distributed_config,
+        train_config,
+        tuner_config,
+        device_mesh=sp_mesh,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
+        torch_dtype="float32",
+    )
+    if tuner_config is not None:
+        apply_tuner(
+            model,
+            tuner_config,
+            gradient_accumulation_steps=1,
+            task_type=model_config.task_type,
+            model_config=model_config,
         )
+    else:
+        apply_full_param_freeze(model, train_config)
+    if remote_run:
+        from swift.dev.builders.remote import configure_remote_processor
 
-        model = build_remote_model(model_config, distributed_config)
-        if tuner_config is not None:
-            apply_remote_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=model_config.task_type,
-                model_config=model_config,
-            )
         configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
-        model = build_model(
-            policy_config,
-            distributed_config,
-            train_config,
-            tuner_config,
-            device_mesh=sp_mesh,
-            quantize_config=quantize_config,
-            megatron_config=megatron_config,
-            moe_config=moe_config,
-            torch_dtype="float32",
-        )
-        if tuner_config is not None:
-            apply_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=model_config.task_type,
-            )
-        else:
-            apply_full_param_freeze(model, train_config)
         model.set_processor(
             InputProcessor,
             padding_free=template_config.padding_free,
@@ -390,6 +383,7 @@ def initialize_ppo_cluster(
         colocate=colocate,
         advantage=GAEAdvantage(kl_kind='k1', gamma=rl_config.gamma, gae_lambda=rl_config.lam,
                                normalize=rl_config.whiten_rewards, kl_coef=rl_config.kl_coef,
+                               env_reward_weight=float(reward_config.env_reward_weight),
                                **prm_kwargs, **group),
         traj_filter=TrajectoryFilter(**group),
     )

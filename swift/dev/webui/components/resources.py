@@ -222,13 +222,17 @@ def encode_rows(template: Any, data: Any) -> list:
 class ModelComponent(ResourceComponent):
     """The trainable f_theta: build_model over ModelConfig/DistributedConfig.
 
-    The session is ALWAYS ray: mode is fixed here, and the placement rides
-    the session's device plan -- the injected ``remote_group`` names the
+    The session is ALWAYS ray or remote: mode is fixed here, and the placement
+    rides the session's device plan -- the injected ``remote_group`` names the
     model's own DeviceGroup, the card spec sizes ``nproc_per_node``, and
-    ``parallel_spec`` (explicit tp/pp/dp) shapes the mesh. The backend is a
-    plain parameter: both tiers go through the SAME ``build_model`` entry
-    with zero backend branches here; the megatron tier additionally passes
-    its megatron/moe config groups through."""
+    ``parallel_spec`` (explicit tp/pp/dp) shapes the mesh. A remote-mode
+    session (``remote_target``) instead builds a served-model handle over the
+    twinkle-server: no local cards, no DeviceGroup, and build_model /
+    apply_tuner self-dispatch inside the builders (the same entry every
+    recipe uses, so the canvas and the recipes cannot drift apart). The
+    backend is a plain parameter: both tiers go through the SAME
+    ``build_model`` entry with zero backend branches here; the megatron tier
+    additionally passes its megatron/moe config groups through."""
 
     type = 'model'
 
@@ -246,12 +250,23 @@ class ModelComponent(ResourceComponent):
         model_kv['model'] = self.params.get('model')
         model_config = _fill(config_pkg.ModelConfig, model_kv, self.node_id)
         dist_kv = dict(self.params.get('distributed_config') or {})
-        dist_kv.update({'mode': 'ray',  # the session boots ray; there is no local form
-                        'backend': backend,
-                        'nproc_per_node': self._card_count(),
-                        'parallel_spec': str(self.params.get('parallel_spec') or '') or None})
+        if self.remote_target is not None:
+            # mode='remote': the model is a served-model handle over the endpoint the resource
+            # page names; ``model`` is the server-side served id. build_model self-dispatches
+            # inside the builders, so everything below is the same call the local mode makes.
+            dist_kv.update({'mode': 'remote', 'backend': backend,
+                            'server_base_url': self.remote_target.server_url})
+            if self.remote_target.server_api_key:
+                dist_kv['server_api_key'] = self.remote_target.server_api_key
+        else:
+            # The session boots ray; there is no local form. The placement rides the session's
+            # device plan: the card spec sizes nproc_per_node, parallel_spec shapes the mesh.
+            dist_kv.update({'mode': 'ray',
+                            'backend': backend,
+                            'nproc_per_node': self._card_count(),
+                            'parallel_spec': str(self.params.get('parallel_spec') or '') or None})
         dist_config = _fill(config_pkg.DistributedConfig, dist_kv, self.node_id)
-        if not self.remote_group:
+        if self.remote_target is None and not self.remote_group:
             raise ComponentError(
                 f'{self.node_id}: a model needs its planned DeviceGroup -- '
                 'run it through a booted session (the resource page picks the cards)')
@@ -276,10 +291,11 @@ class ModelComponent(ResourceComponent):
         # The mesh is derived inside build_model from parallel_spec +
         # nproc_per_node (build_dp_mesh for transformers, the megatron bridge
         # for megatron) -- the same derivation every recipe uses, so the
-        # webui and run_grpo cannot drift apart in placement.
+        # webui and run_grpo cannot drift apart in placement. Under remote the served
+        # engine owns the layout and the builders' entry ignores the placement inputs.
         self.obj = build_model(model_config, dist_config, train_config=train_config,
                                tuner_config=tuner_config, megatron_config=megatron_config,
-                               moe_config=moe_config, remote_group=self.remote_group)
+                               moe_config=moe_config, remote_group=self.remote_group or None)
         if tuner_config is not None:
             # The adapter install is a SEPARATE step after build_model (the same
             # apply_tuner every recipe runs); without it train_type='lora'
@@ -290,8 +306,16 @@ class ModelComponent(ResourceComponent):
                 self.obj, tuner_config,
                 gradient_accumulation_steps=(
                     train_config.gradient_accumulation_steps if train_config else 1),
-                task_type=model_config.task_type)
+                task_type=model_config.task_type,
+                model_config=model_config)
         if self.params.get('freeze'):
+            if self.remote_target is not None:
+                # The client handle has no in-process parameter graph to freeze: a frozen
+                # resident is a local concept (a served model's adapter policy is
+                # server-side).
+                raise ComponentError(
+                    f'{self.node_id}: a remote served-model handle cannot freeze parameters '
+                    'in-process. Drop freeze, or run this node on a local / cluster resource.')
             # A frozen resident (reference / teacher / value anchor): the
             # driver-facing handle works on every placement, proxy included.
             self.obj.freeze_parameters(freeze_ratio=1.0)
@@ -346,7 +370,7 @@ class SamplerComponent(ResourceComponent):
         model_id = str(self.params.get('model') or '').strip()
         if not model_id:
             raise ComponentError(f'{self.node_id}: sampler needs params.model (the model id)')
-        if not self.remote_group:
+        if self.remote_target is None and not self.remote_group:
             raise ComponentError(
                 f'{self.node_id}: a sampler needs its planned DeviceGroup -- '
                 'run it through a booted session (the resource page picks the cards)')
@@ -360,6 +384,28 @@ class SamplerComponent(ResourceComponent):
         except TypeError as exc:
             raise ComponentError(f'{self.node_id}: model_config: {exc}') from None
         engine = str(self.params.get('engine', 'vllm') or 'vllm')
+        if self.remote_target is not None:
+            # A remote session serves the engines on the twinkle-server: the sampler is the
+            # client handle over the served one (build_sampler's own 'twinkle' tier -- the
+            # transport is already bound by the session bootstrap). Local placement knobs
+            # have nothing to size, so setting them is refused rather than dropped.
+            if engine != 'twinkle':
+                raise ComponentError(
+                    f'{self.node_id}: a remote resource page serves the engines on a '
+                    "twinkle-server -- set the sampler's engine to 'twinkle' (the client "
+                    'handle over the served one) instead of a local engine.')
+            if self.params.get('engine_args') or self.params.get('parallel_spec'):
+                raise ComponentError(
+                    f'{self.node_id}: engine_args / parallel_spec size a LOCAL engine layout; '
+                    'a served engine owns its layout server-side. Drop them.')
+            from twinkle import DeviceMesh
+
+            self.obj = build_sampler(
+                model_config,
+                backend='twinkle',
+                device_mesh=DeviceMesh.from_sizes(dp_size=1),
+                template=template)
+            return self.obj
         engine_args = dict(self.params.get('engine_args') or {})
         # The engine's shape mirrors its DeviceGroup: tp GPUs per worker,
         # cards/tp workers. Derived from the declared spec exactly as the
@@ -488,6 +534,13 @@ class LossComponent(ResourceComponent):
     def build(self, inputs: Dict[str, Any]) -> Any:
         code = str(self.params.get('code', '') or '')
         if code:
+            if self.remote_target is not None:
+                # A formula is a callable bound to THIS process; only a class NAME plus
+                # scalar kwargs can cross HTTP, so a remote train_step cannot install it.
+                raise ComponentError(
+                    f'{self.node_id}: a custom loss formula cannot cross HTTP -- a remote '
+                    'train_step sets the loss by class name + scalar kwargs. Drop the '
+                    'formula, or run this node on a local / cluster resource.')
             self.obj = _UserFormulaLoss(load_code_component(code, 'loss'))
             return self.obj
         from twinkle.loss import torch_loss_mapping
@@ -503,6 +556,15 @@ class LossComponent(ResourceComponent):
         # defaults without a trace. Type mismatches still surface from the
         # constructor itself.
         _reject_unknown_kwargs(cls, kwargs, self.node_id, f'loss {kind!r}')
+        if self.remote_target is not None:
+            # A remote train_step installs the loss on the served model by NAME + scalar
+            # kwargs (the panel values are JSON scalars by construction, so they cross
+            # verbatim); the resident is the spec instead of the in-process instance.
+            from swift.dev.builders.remote import RemoteLossSpec
+
+            self.obj = RemoteLossSpec(name=cls.__name__, kwargs=kwargs,
+                                      require_values=bool(getattr(cls, 'require_values', False)))
+            return self.obj
         try:
             self.obj = cls(**kwargs)
         except TypeError as exc:

@@ -356,7 +356,11 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
             name,
             save_optimizer=not knobs.no_save_optim,
             consumed_train_samples=consumed_train_samples)
-        return getattr(response, 'twinkle_path', name)
+        path = getattr(response, 'twinkle_path', name)
+        # The URI reaches the log on purpose: it is the resume handle, and its run-id segment is
+        # what the webui executor parses to drive the server-side training-run APIs.
+        logger.info(f'remote checkpoint saved: {path}')
+        return path
 
     component_states = dict(component_states or {})
     component_states["training"] = {"micro_step": handler.state.micro_step}

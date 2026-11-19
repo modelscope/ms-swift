@@ -24,6 +24,7 @@ sources load via ``twinkle.utils.load_module`` (no new plugin downloader).
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 from .descriptor import ComponentDescriptor
@@ -46,6 +47,22 @@ def slot_values(entries: Any) -> List[Any]:
     return [value for _slot, value in entries]
 
 
+@dataclass(frozen=True)
+class RemoteTarget:
+    """The twinkle-server endpoint a remote-mode session drives.
+
+    Set on the resource page: the whole experiment runs its model / sampler
+    engines on the server (client handles over HTTP) while everything else --
+    the data, the scoring, the driver -- stays in the session process. The
+    token rides the experiment declaration the same way the card selection
+    does (the gateway's own auth, the same trust level the training page's
+    ``server_api_key`` parameter has).
+    """
+
+    server_url: str
+    server_api_key: str = ''
+
+
 class ResourceComponent:
     """Base for built-once resources: model, sampler, template, trainer..."""
 
@@ -57,6 +74,12 @@ class ResourceComponent:
     #: place residents are born -- because groups exist only at
     #: twinkle.initialize time, never at build time.
     remote_group: str = ''
+
+    #: The server endpoint when the session's resource page is in remote mode
+    #: (None otherwise); injected by the session beside ``remote_group``. The
+    #: components that build served objects (model / sampler / loss) read it;
+    #: everything else is mode-blind.
+    remote_target: Optional[RemoteTarget] = None
 
     #: Build-chain entry modules. The runner imports them SERIALLY on the
     #: calling thread before parallel construction starts, so a pool worker's
