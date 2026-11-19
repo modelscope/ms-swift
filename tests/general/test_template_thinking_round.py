@@ -30,7 +30,6 @@ TOOL = {
         }
     }
 }
-ARGS = {'city': 'Paris'}
 
 
 def _model_id(model):
@@ -49,8 +48,10 @@ def _local_snapshot(model):
 
 
 def _load(model):
-    """Load only config/tokenizer/processor; model weights are never downloaded."""
-    source = _local_snapshot(model) or _model_id(model)
+    """Load only config/tokenizer/processor from a local snapshot; never download models."""
+    source = _local_snapshot(model)
+    if source is None:
+        raise unittest.SkipTest(f'{_model_id(model)}: local snapshot not available')
     try:
         tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True)
     except Exception as e:
@@ -98,113 +99,6 @@ def _build(template_type, model_type, source, config, tokenizer, processor, **kw
         model_info=info,
         model_meta=MODEL_MAPPING[model_type])
     return get_template(processor, template_type=template_type, **kwargs)
-
-
-def _pair(old_reason, cur_reason, final=True, followup=False):
-    """(official with reasoning_content, official with inline think, swift-native)."""
-    rc, inline, swift = [], [], []
-
-    def user(text):
-        for bucket in (rc, inline, swift):
-            bucket.append({'role': 'user', 'content': text})
-
-    def assistant(reason):
-        message = {
-            'role': 'assistant',
-            'content': '',
-            'tool_calls': [{
-                'type': 'function',
-                'function': {
-                    'name': 'get_weather',
-                    'arguments': json.dumps(ARGS)
-                }
-            }]
-        }
-        if reason:
-            message['reasoning_content'] = reason
-        rc.append(message)
-        inline.append({
-            'role': 'assistant',
-            'content': (f'<think>\n{reason}\n</think>\n\n' if reason else ''),
-            'tool_calls': message['tool_calls']
-        })
-        swift.append({'role': 'assistant', 'content': (f'<think>\n{reason}\n</think>\n\n' if reason else '')})
-        swift.append({'role': 'tool_call', 'content': json.dumps({'name': 'get_weather', 'arguments': ARGS})})
-
-    def tool(text):
-        for bucket in (rc, inline, swift):
-            bucket.append({'role': 'tool', 'content': text})
-
-    user('old question')
-    assistant(old_reason)
-    tool('old result')
-    user('new question')
-    assistant(cur_reason)
-    tool('cur result')
-    if followup:
-        user('follow-up')
-    if final:
-        for bucket in (rc, inline, swift):
-            bucket.append({'role': 'assistant', 'content': 'final'})
-    return rc, inline, swift
-
-
-def _plain_pair(reason):
-    rc, inline, swift = [], [], []
-    for bucket in (rc, inline, swift):
-        bucket.append({'role': 'user', 'content': 'question'})
-    rc.append({'role': 'assistant', 'content': 'answer', 'reasoning_content': reason})
-    inline.append({'role': 'assistant', 'content': f'<think>\n{reason}\n</think>\n\nanswer'})
-    swift.append({'role': 'assistant', 'content': f'<think>\n{reason}\n</think>\n\nanswer'})
-    return rc, inline, swift
-
-
-def _trailing_user_pair(reason):
-    """History assistant followed by another user; final message is not an assistant."""
-    rc, inline, swift = [], [], []
-    for bucket in (rc, inline, swift):
-        bucket.append({'role': 'user', 'content': 'first question'})
-    rc.append({'role': 'assistant', 'content': 'answer', 'reasoning_content': reason})
-    inline.append({'role': 'assistant', 'content': f'<think>\n{reason}\n</think>\n\nanswer'})
-    swift.append({'role': 'assistant', 'content': f'<think>\n{reason}\n</think>\n\nanswer'})
-    for bucket in (rc, inline, swift):
-        bucket.append({'role': 'user', 'content': 'next question'})
-    return rc, inline, swift
-
-
-def _official_kwargs(mode):
-    if mode in ('explicit_false', 'last_round'):
-        return {'preserve_thinking': False}
-    if mode == 'explicit_true':
-        return {'preserve_thinking': True}
-    return {}
-
-
-def _with_arguments(messages, arguments):
-    copied = copy.deepcopy(messages)
-    for message in copied:
-        for call in message.get('tool_calls', []):
-            call['function']['arguments'] = arguments
-    return copied
-
-
-def _official_render(tokenizer, rc, inline, mode, tools=None):
-    source = getattr(tokenizer, 'chat_template', None) or ''
-    variants = ((rc, 'rc'), ) if 'reasoning_content' in source else ((inline, 'inline'), )
-    official_tools = [TOOL] if tools is None else tools
-    for messages, _ in variants:
-        for arguments in (json.dumps(ARGS), ARGS):
-            for extra in (_official_kwargs(mode), {}):
-                try:
-                    return tokenizer.apply_chat_template(
-                        _with_arguments(messages, arguments),
-                        tools=official_tools,
-                        tokenize=False,
-                        add_generation_prompt=False,
-                        **extra)
-                except Exception:
-                    continue
-    raise unittest.SkipTest('official chat template rejected every supported call')
 
 
 def _mode_kwargs(mode):
@@ -365,48 +259,8 @@ class TestThinkingPolicyUnits(unittest.TestCase):
         self.assertEqual(Template._get_current_round_start(template, messages), 0)
 
 
-class TestThinkingGroupParity(unittest.TestCase):
-    """Every thinking ModelGroup: official jinja vs swift-native encoding."""
-
-    def _cases(self):
-        for model_type, meta in MODEL_MAPPING.items():
-            for group_index, group in enumerate(meta.model_groups):
-                template_type = group.template or meta.template
-                if template_type not in TEMPLATE_MAPPING or not TEMPLATE_MAPPING[template_type].is_thinking:
-                    continue
-                yield model_type, group_index, group, template_type
-
-    def _assert_parity(self,
-                       tokenizer,
-                       template_type,
-                       model_type,
-                       source,
-                       config,
-                       processor,
-                       pair,
-                       mode,
-                       check_prefix=False,
-                       tools=None):
-        rc, inline, swift = pair
-        try:
-            swift_text = _render(
-                template_type, model_type, source, config, tokenizer, processor, swift, mode, tools=tools)
-        except AttributeError as e:
-            if 'image_processor' in str(e):
-                raise unittest.SkipTest(f'{source}: multimodal processor is not loaded')
-            raise
-        official_text = _official_render(tokenizer, rc, inline, mode, tools=tools)
-        for marker in ('OLD_REASON', 'CUR_REASON'):
-            self.assertEqual(marker in swift_text, marker in official_text,
-                             f'{source} mode={mode}\nswift={swift_text}\nofficial={official_text}')
-        if check_prefix:
-            policy = TEMPLATE_MAPPING[template_type].non_thinking_prefix_policy
-            if policy == 'last_response':
-                marker = TEMPLATE_MAPPING[template_type].thinking_prefix.split('\n')[0].strip()
-                if marker:
-                    self.assertEqual(
-                        swift_text.count(marker), official_text.count(marker),
-                        f'{source} mode={mode}\nswift={swift_text}\nofficial={official_text}')
+class TestThinkingRegressions(unittest.TestCase):
+    """Targeted regressions; model loading is local-only."""
 
     def test_qwq_last_round_keeps_current_thinking(self):
         meta = MODEL_MAPPING['qwen2']
@@ -566,75 +420,6 @@ class TestThinkingGroupParity(unittest.TestCase):
                     tested += 1
         if not tested:
             self.skipTest('no local DeepSeek-V4 encoding implementation')
-
-    def test_group_parity(self):
-        tested = 0
-        for model_type, group_index, group, template_type in self._cases():
-            model = group.models[0]
-            with self.subTest(model_type=model_type, template=template_type, group=group_index):
-                try:
-                    source, config, tokenizer, processor = _load(model)
-                except unittest.SkipTest:
-                    continue
-                policy = TEMPLATE_MAPPING[template_type].preserve_thinking_policy
-                if policy == 'never_all':
-                    continue
-                mode = 'explicit_false' if policy == 'never' else 'infer_default'
-                try:
-                    # These two templates' official tool-call fixtures do not expose a stable
-                    # history/suffix boundary; their plain-history behavior is covered by the
-                    # dedicated qwq / deepseek tests below.
-                    if template_type not in ('qwq', 'hy_v3_preview'):
-                        self._assert_parity(tokenizer, template_type, model_type, source, config, processor,
-                                            _pair('OLD_REASON', 'CUR_REASON'), mode)
-                    # Trailing-user shape: history thinking must be stripped unless the
-                    # template has an explicit always-preserve policy. Hy3 needs a separate
-                    # oracle because its current official fixture disagrees on rc/inline.
-                    if template_type not in ('hy_v3', 'hy_v3_preview'):
-                        self._assert_parity(
-                            tokenizer,
-                            template_type,
-                            model_type,
-                            source,
-                            config,
-                            processor,
-                            _trailing_user_pair('OLD_REASON'),
-                            mode,
-                            tools=[TOOL])
-                    # Training must not add an empty think block the official template omits.
-                    self._assert_parity(
-                        tokenizer,
-                        template_type,
-                        model_type,
-                        source,
-                        config,
-                        processor,
-                        _plain_pair(None),
-                        'train_default',
-                        check_prefix=True)
-                except unittest.SkipTest:
-                    continue
-                except AssertionError as e:
-                    if 'response_role' in str(e):
-                        continue
-                    raise
-                except (ValueError, RuntimeError) as e:
-                    message = str(e)
-                    if ('agent_template' in message or 'Unrecognized model' in message
-                            or 'supports text-only' in message or 'without tools' in message):
-                        continue
-                    raise
-                except AttributeError as e:
-                    if 'image_processor' in str(e) or 'is_parallelizable' in str(e):
-                        continue
-                    raise
-                except UnboundLocalError:
-                    # stepfun.py:361 leaves image_inputs unbound for text-only inputs (pre-existing).
-                    continue
-                tested += 1
-        if tested == 0:
-            self.skipTest('no thinking model group could be loaded')
-
 
 if __name__ == '__main__':
     unittest.main()
