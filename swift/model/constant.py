@@ -276,6 +276,7 @@ class MLLMModelType:
     phi4_multimodal = 'phi4_multimodal'
     florence = 'florence'
     idefics3 = 'idefics3'
+    smolvlm2 = 'smolvlm2'
     paligemma = 'paligemma'
     molmo = 'molmo'
     molmo2 = 'molmo2'
