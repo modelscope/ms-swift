@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import gc
+import os
 
 from .base import MegatronCallback
 
@@ -29,8 +30,20 @@ class DefaultFlowCallback(MegatronCallback):
             if args.eval_iters > 0:
                 state.should_eval = True
             state.should_save = True
+
         if args.manual_gc and args.manual_gc_steps != 0 and state.iteration % args.manual_gc_steps == 0:
             gc.collect()
+
+        # Prevent GPU memory growth caused by cached causal masks of varying sequence lengths.
+        if os.environ.get('SWIFT_CLEAR_MASK_CACHE', '1').lower() not in ('0', '', 'false', 'no'):
+            try:
+                from transformer_engine.pytorch.attention.dot_product_attention import softmax as te_softmax
+            except ImportError:
+                pass
+            else:
+                mask_cache = getattr(te_softmax, '_default_causal_mask', None)
+                if mask_cache is not None:
+                    mask_cache.clear()
 
     def on_eval_begin(self):
         args = self.args
