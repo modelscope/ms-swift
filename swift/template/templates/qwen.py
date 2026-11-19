@@ -324,6 +324,12 @@ class Qwen2VLTemplate(Template):
 
     @property
     def requires_mm_token_type_ids(self):
+        if getattr(self.config, 'vision_config', None) is None:
+            # Text-only backbones of a VL model family (e.g. `Qwen3_5TextConfig` /
+            # `Qwen3_5ForCausalLM`, used by `autotrust/JEV-9B`) have no vision tower, no
+            # `get_rope_index` and no `mm_token_type_ids` argument: their `forward` is the plain
+            # text one, so injecting zeros would make the call fail with an unexpected kwarg.
+            return False
         return self.transformers_5_3 and self._requires_mm_token_type_ids
 
     def _get_max_pixels(self, inputs=None):
@@ -456,6 +462,11 @@ class Qwen2VLTemplate(Template):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
+            return inputs
+        if getattr(model, 'visual', None) is None:
+            # Text-only backbone (see `requires_mm_token_type_ids` above): without a vision tower
+            # there are no visual tokens to splice into the embeddings, so `input_ids` is already
+            # the final model input. Touching `model.visual` here would raise AttributeError.
             return inputs
         input_ids = inputs['input_ids']
         base_model = self.get_base_model(model)
