@@ -1305,16 +1305,16 @@ class Template(ProcessorMixin):
 
     def _get_current_round_start(self, messages) -> int:
         """Boundary for history thinking: assistants before it lose their thinking."""
-        policy = self.template_meta.preserve_thinking_policy
-        last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
-        if policy in ('never', 'never_all'):
-            if policy == 'never_all' and not self.is_training:
-                return len(messages)
-            round_start = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'user' or (
-                messages[i]['role'] == 'tool' and messages[i].get('_tool_user_followup'))), -1)
-            if last_assistant == len(messages) - 1:
-                return min(round_start, last_assistant)
-            return round_start
+        if self.template_meta.preserve_thinking_policy == 'never_all' and not self.is_training:
+            return len(messages)
+        for i in range(len(messages) - 1, -1, -1):
+            message = messages[i]
+            if message['role'] == 'user' or (message['role'] == 'tool' and message.get('_tool_user_followup')):
+                return i
+        return -1
+
+    def _non_thinking_prefix_start(self, messages) -> int:
+        """Start of the round used when inserting an empty-think prefix."""
         for i in range(len(messages) - 1, -1, -1):
             message = messages[i]
             if message['role'] == 'user' or (message['role'] == 'tool' and message.get('_tool_user_followup')):
@@ -1343,7 +1343,7 @@ class Template(ProcessorMixin):
                         or self._get_preserve_thinking(inputs)):
                     start_idx = get_last_user_round(messages)
                 else:
-                    start_idx = self._get_current_round_start(messages)
+                    start_idx = self._non_thinking_prefix_start(messages)
             else:
                 start_idx = -1
             last_assistant_idx = next(

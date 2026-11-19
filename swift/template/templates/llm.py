@@ -418,8 +418,7 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
-        agent_template='hy_v3_preview',
-        preserve_thinking_policy='default'))
+        agent_template='hy_v3_preview'))
 
 
 class HyV3Template(HyV3PreviewTemplate):
@@ -446,8 +445,7 @@ register_template(
         thinking_prefix='<think:opensource>',
         non_thinking_prefix='<think:opensource></think:opensource>',
         history_thinking_prefix='<think:opensource></think:opensource>',
-        agent_template='hy_v3',
-        preserve_thinking_policy='default'))
+        agent_template='hy_v3'))
 
 
 class GptTemplate(Template):
@@ -684,14 +682,9 @@ register_template(
     ))
 
 
-class NemotronHTemplate(Template):
-    pass
-
-
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.nemotron_h,
-        template_cls=NemotronHTemplate,
         default_system=None,
         is_thinking=True,
         thinking_prefix='<think>\n',

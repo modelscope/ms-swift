@@ -231,22 +231,22 @@ class TestThinkingPolicyUnits(unittest.TestCase):
             template._get_response_prefix(SimpleNamespace(chat_template_kwargs={'enable_thinking': False})),
             '<think>\n\n</think>\n\n')
 
-    def test_preserve_policy_always_and_never(self):
+    def test_preserve_policy_always_default_and_never_all(self):
         always = copy.deepcopy(TEMPLATE_MAPPING['glm5_3'])
-        never = copy.deepcopy(TEMPLATE_MAPPING['qwq'])
+        default_policy = copy.deepcopy(TEMPLATE_MAPPING['qwq'])
         self.assertIs(Template._get_preserve_thinking(self._fake(always), None), True)
         self.assertIs(Template._get_preserve_thinking(self._fake(always, preserve_thinking=False), None), False)
-        self.assertIs(Template._get_preserve_thinking(self._fake(never, preserve_thinking=False), None), False)
-        self.assertIs(Template._get_preserve_thinking(self._fake(never), None), True)
+        self.assertIs(Template._get_preserve_thinking(self._fake(default_policy, preserve_thinking=False), None), False)
+        self.assertIs(Template._get_preserve_thinking(self._fake(default_policy), None), True)
         messages = self._messages()
-        self.assertEqual(Template._get_current_round_start(self._fake(never), messages), 4)
-        self.assertEqual(Template._get_current_round_start(self._fake(never, is_training=False), messages), 4)
+        self.assertEqual(Template._get_current_round_start(self._fake(default_policy), messages), 4)
+        self.assertEqual(Template._get_current_round_start(self._fake(default_policy, is_training=False), messages), 4)
         never_all = copy.deepcopy(TEMPLATE_MAPPING['glm4_z1_rumination'])
         self.assertEqual(
             Template._get_current_round_start(self._fake(never_all, is_training=False), messages), len(messages))
         ends_with_assistant = [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}]
         self.assertEqual(
-            Template._get_current_round_start(self._fake(never, is_training=False), ends_with_assistant), 0)
+            Template._get_current_round_start(self._fake(default_policy, is_training=False), ends_with_assistant), 0)
         self.assertEqual(
             Template._get_current_round_start(self._fake(never_all, is_training=False), ends_with_assistant),
             len(ends_with_assistant))
@@ -420,6 +420,52 @@ class TestThinkingRegressions(unittest.TestCase):
                     tested += 1
         if not tested:
             self.skipTest('no local DeepSeek-V4 encoding implementation')
+
+
+class TestThinkingDefaultParity(unittest.TestCase):
+    """Compare resolved enable_thinking defaults with the local official template."""
+
+    def test_default_enable_thinking_matches_official(self):
+        seen = set()
+        tested = 0
+        for model_type, meta in MODEL_MAPPING.items():
+            for group in meta.model_groups:
+                template_type = group.template or meta.template
+                if template_type in seen or template_type not in TEMPLATE_MAPPING:
+                    continue
+                if not TEMPLATE_MAPPING[template_type].is_thinking:
+                    continue
+                seen.add(template_type)
+                try:
+                    source, config, tokenizer, processor = _load(group.models[0])
+                except unittest.SkipTest:
+                    continue
+                try:
+                    template = _build(template_type, model_type, source, config, tokenizer, processor)
+                    swift = template._get_enable_thinking()
+                except Exception:
+                    continue
+                key = getattr(template, 'jinja_enable_thinking_key', 'enable_thinking')
+                messages = [{'role': 'user', 'content': 'hi'}]
+                try:
+                    default = tokenizer.apply_chat_template(
+                        messages, tokenize=False, add_generation_prompt=True)
+                    as_true = tokenizer.apply_chat_template(
+                        messages, tokenize=False, add_generation_prompt=True, **{key: True})
+                    as_false = tokenizer.apply_chat_template(
+                        messages, tokenize=False, add_generation_prompt=True, **{key: False})
+                except Exception:
+                    continue
+                if default == as_true and default != as_false:
+                    expected = True
+                elif default == as_false and default != as_true:
+                    expected = False
+                else:
+                    continue
+                self.assertEqual(swift, expected, f'{template_type}: swift={swift} official={expected}')
+                tested += 1
+        if not tested:
+            self.skipTest('no local thinking template with distinguishable default')
 
 
 if __name__ == '__main__':

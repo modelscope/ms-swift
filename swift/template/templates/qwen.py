@@ -60,8 +60,7 @@ register_template(
         LLMTemplateType.qwq,
         default_system=None,
         is_thinking=True,
-        thinking_prefix='<think>\n',
-        preserve_thinking_policy='never'))
+        thinking_prefix='<think>\n'))
 
 
 @dataclass

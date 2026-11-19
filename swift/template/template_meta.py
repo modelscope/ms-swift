@@ -65,10 +65,8 @@ class TemplateMeta:
     #            strip history before the current round; normal training preserves it;
     #            non-thinking templates are a no-op.
     # 'always': always keep history.
-    # 'never': strip history before the last user; keep the final assistant only when it is
-    #          the final message.
     # 'never_all': strip all history at inference; keep only the final assistant in training.
-    preserve_thinking_policy: Literal['default', 'always', 'never', 'never_all'] = 'default'
+    preserve_thinking_policy: Literal['default', 'always', 'never_all'] = 'default'
     # Whether whitespace after a removed historical ``</think>`` is stripped.
     strip_history_thinking: bool = True
     # During encoding, historical thinking content will be removed.
