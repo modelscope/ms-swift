@@ -47,15 +47,27 @@ class TemplateMeta:
     is_thinking: bool = False  # Automatically remove think content
     thinking_prefix: str = ''
     non_thinking_prefix: str = ''  # Automatically add non_thinking_prefix for hybrid thinking models
-    # Where to add the empty think block: all assistants, only the final one, or only after a user turn.
+    # Where to insert the empty-think prefix when enable_thinking is False.
+    # 'all': every assistant turn.
+    # 'last_response': only the final assistant message.
+    # 'after_user': only an assistant immediately following a user (or _tool_user_followup);
+    #               NOT every assistant that appears after any user message.
     non_thinking_prefix_policy: Literal['all', 'last_response', 'after_user'] = 'all'
     # Value used when the caller does not specify enable_thinking.
     default_enable_thinking: Optional[bool] = None
-    # Model capability policy: 'auto' leaves enable_thinking unset so the model may decide.
+    # 'default': resolve default_enable_thinking / is_thinking fallback to a concrete bool.
+    # 'auto': keep enable_thinking unset; add neither thinking_prefix nor non_thinking_prefix,
+    #         letting the model decide (e.g. MiniCPM5).
     enable_thinking_policy: Literal['default', 'auto'] = 'default'
     preserve_thinking: Optional[bool] = None  # Whether the model itself keeps historical thinking content.
-    # Model-level handling of historical thinking: default by mode, always keep, never keep
-    # history, or never keep any thinking (including the final assistant during inference).
+    # Model-level handling of historical thinking:
+    # 'default': no model override. For thinking templates, inference and last_round training
+    #            strip history before the current round; normal training preserves it;
+    #            non-thinking templates are a no-op.
+    # 'always': always keep history.
+    # 'never': strip history before the last user; keep the final assistant only when it is
+    #          the final message.
+    # 'never_all': strip all history at inference; keep only the final assistant in training.
     preserve_thinking_policy: Literal['default', 'always', 'never', 'never_all'] = 'default'
     # Whether whitespace after a removed historical ``</think>`` is stripped.
     strip_history_thinking: bool = True
