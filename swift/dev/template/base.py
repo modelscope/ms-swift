@@ -847,7 +847,9 @@ class Template(ProcessorMixin):
             raise ValueError("encode_prompt requires one unsplit prompt feature.")
         prompt_inputs = sample if isinstance(sample, TemplateInputs) else TemplateInputs.from_dict(sample)
         engine_ids = list(engine_feature["input_ids"])
-        media = MediaBundle.from_sources(sample, feature)
+        # Engine encoding retains the images after the same resize used for
+        # the expanded training feature.
+        media = MediaBundle.from_sources({"images": engine_feature.get("images")}, sample, feature)
         if self.is_multimodal:
             self._check_engine_placeholders(engine_ids, media)
         state = RolloutState(
@@ -2643,7 +2645,7 @@ class Template(ProcessorMixin):
         res = []
         for b in batch:
             if b.get(attr_name) is not None:
-                res.append(b.pop(attr_name))
+                res.append(torch.as_tensor(b.pop(attr_name)))
         return torch.concat(res, dim=dim) if res else None
 
     def _rlhf_data_collator(
@@ -3015,19 +3017,14 @@ class Template(ProcessorMixin):
         return mm_token_type_ids
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        # multimodal
+        # Encoded media from HTTP arrives as nested lists.
         res = {}
-        pixel_values = [b["pixel_values"] for b in batch if b.get("pixel_values") is not None]
-        if len(pixel_values) > 0:
-            res["pixel_values"] = torch.concat(pixel_values)
-
-            image_sizes = [b["image_sizes"] for b in batch if b.get("image_sizes") is not None]
-            if len(image_sizes) > 0:
-                res["image_sizes"] = torch.concat(image_sizes)
-
-        pixel_values_videos = [b["pixel_values_videos"] for b in batch if b.get("pixel_values_videos") is not None]
-        if len(pixel_values_videos) > 0:
-            res["pixel_values_videos"] = torch.concat(pixel_values_videos)
+        for key in ("pixel_values", "image_sizes", "pixel_values_videos"):
+            if key == "image_sizes" and "pixel_values" not in res:
+                continue
+            values = [torch.as_tensor(row[key]) for row in batch if row.get(key) is not None]
+            if values:
+                res[key] = torch.concat(values)
 
         for media_type in ["image", "video"]:
             grid_thw = self.concat_tensor(batch, f"{media_type}_grid_thw", 0)
