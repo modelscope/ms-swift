@@ -57,8 +57,8 @@ from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
                     get_even_process_data, identity_data_collator, load_pil_img, make_chord_sft_dataset,
-                    pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context, profiling_decorator,
-                    replace_assistant_response_with_ids, selective_log_softmax, swanlab_get_run)
+                    mu_schedule_function, pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context,
+                    profiling_decorator, replace_assistant_response_with_ids, selective_log_softmax, swanlab_get_run)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -1085,6 +1085,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
         elif self.loss_type == 'bnpo':
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+            bnpo_policy_loss = loss
         elif self.loss_type == 'dr_grpo':
             batch_size = completion_mask.shape[0]
             loss = (per_token_loss * completion_mask).sum() / (batch_size * self.max_completion_length)
@@ -1168,6 +1169,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion_token_count': completion_token_count,
         }
 
+        if self.loss_type == 'bnpo':
+            metrics_data['bnpo_policy_loss'] = bnpo_policy_loss
+
         if fipo_metrics is not None:
             fipo_future_kl = masked_batch_mean(fipo_metrics['future_kl'])
             fipo_influence_weight = masked_batch_mean(fipo_metrics['influence_weight'])
@@ -1223,6 +1227,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             }
         if mode == 'train' and self.chord_sft_iterator is not None:
             loss = compute_chord_loss(self, grpo_loss=loss)
+            if self.loss_type == 'bnpo':
+                mu = mu_schedule_function(self.state.global_step, self.args.chord_mu_warmup_steps,
+                                          self.args.chord_mu_decay_steps, self.args.chord_mu_peak,
+                                          self.args.chord_mu_valley)
+                metrics_data['bnpo_policy_loss'] = bnpo_policy_loss * (1 - mu)
 
         return loss, metrics_data
 
@@ -1306,6 +1315,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         new_chunk_size = (batch_size + max_chunks - 1) // max_chunks
 
         losses, weights = [], []
+        bnpo_numerators, bnpo_token_counts = [], []
         all_metrics_data = []
         chunk_model_inputs, chunk_grpo_batch = {}, None
         for chunk_idx in range(max_chunks):
@@ -1329,6 +1339,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 policy_loss_scale=batch_size / chunk_weight if not is_dummy else 1.0)
 
             if not is_dummy:
+                if self.loss_type == 'bnpo':
+                    policy_loss = chunk_metrics_data.pop('bnpo_policy_loss')
+                    token_count = chunk_metrics_data['completion_mask'].sum()
+                    bnpo_numerators.append(policy_loss * token_count)
+                    bnpo_token_counts.append(token_count)
+                    # Auxiliary losses retain their existing sample-weighted mean.
+                    chunk_loss = chunk_loss - policy_loss
                 losses.append(chunk_loss * chunk_weight)
                 weights.append(chunk_weight)
                 all_metrics_data.append((chunk_metrics_data, chunk_weight))
@@ -1342,6 +1359,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             final_loss = torch.stack(losses).sum() / total_weight
         else:
             final_loss = torch.stack(losses).sum()
+
+        if bnpo_numerators:
+            # Use effective post-filter tokens; empty chunks do not add a clamped pseudo-token.
+            final_loss = final_loss + torch.stack(bnpo_numerators).sum() / torch.stack(bnpo_token_counts).sum().clamp(
+                min=1)
 
         # Aggregate metrics across all chunks
         self._aggregate_and_update_metrics(all_metrics_data, mode)
