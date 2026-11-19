@@ -5,6 +5,23 @@ from tqdm import tqdm
 from swift.utils import to_device
 
 
+def compute_streaming_skip_batches(consumed_samples: int, micro_batch_size: int, dp_world_size: int) -> int:
+    """Number of dispatcher batches to skip when resuming a streaming run.
+
+    One `DataLoaderDispatcher` logical step consumes exactly
+    `micro_batch_size * dp_world_size` samples: rank 0 draws one base batch of
+    `micro_batch_size` per rank and scatters one to each. Training checkpoints
+    count global samples (`consumed_train_samples`), so the number of logical
+    steps already consumed is `consumed_samples // (micro_batch_size *
+    dp_world_size)`. A non-divisible remainder is replayed rather than skipped
+    past, so unseen data is never dropped.
+    """
+    samples_per_step = micro_batch_size * dp_world_size
+    if consumed_samples <= 0 or samples_per_step <= 0:
+        return 0
+    return consumed_samples // samples_per_step
+
+
 class DataLoaderDispatcher:
 
     def __init__(self, base_dataloader, device=None, skip_batches: int = 0):
