@@ -421,5 +421,6 @@ class TestThinkingRegressions(unittest.TestCase):
         if not tested:
             self.skipTest('no local DeepSeek-V4 encoding implementation')
 
+
 if __name__ == '__main__':
     unittest.main()
