@@ -2,10 +2,9 @@
 import torch
 import transformers
 import unittest
+from packaging import version
 from types import SimpleNamespace
 from unittest.mock import patch
-
-from packaging import version
 
 from swift.model.models.qwen import _get_qwen3_omni_output_cls, _get_qwen3_vl_output_cls
 from swift.template.templates.qwen import _build_media_placeholder_text
@@ -18,17 +17,50 @@ def _tiny_qwen3_omni_thinker():
     from transformers import Qwen3OmniMoeThinkerConfig, Qwen3OmniMoeThinkerForConditionalGeneration
 
     cfg = Qwen3OmniMoeThinkerConfig(
-        text_config=dict(hidden_size=32, intermediate_size=64, moe_intermediate_size=32, num_hidden_layers=1,
-                         num_attention_heads=4, num_key_value_heads=2, num_experts=4, num_experts_per_tok=2,
-                         decoder_sparse_step=1, vocab_size=128, max_position_embeddings=128, mlp_only_layers=[]),
-        vision_config=dict(depth=1, hidden_size=32, intermediate_size=64, num_heads=4, in_channels=3,
-                           out_hidden_size=32, patch_size=16, temporal_patch_size=2, spatial_merge_size=2,
-                           deepstack_visual_indexes=[], num_position_embeddings=16),
-        audio_config=dict(d_model=32, encoder_layers=1, encoder_attention_heads=4, encoder_ffn_dim=64,
-                          num_mel_bins=128, max_source_positions=32, output_dim=32, downsample_hidden_size=32,
-                          scale_embedding=True, n_window=50, n_window_infer=200),
-        image_token_id=100, video_token_id=101, audio_token_id=102,
-        vision_start_token_id=103, vision_end_token_id=104, audio_start_token_id=105, audio_end_token_id=106)
+        text_config=dict(
+            hidden_size=32,
+            intermediate_size=64,
+            moe_intermediate_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            num_experts=4,
+            num_experts_per_tok=2,
+            decoder_sparse_step=1,
+            vocab_size=128,
+            max_position_embeddings=128,
+            mlp_only_layers=[]),
+        vision_config=dict(
+            depth=1,
+            hidden_size=32,
+            intermediate_size=64,
+            num_heads=4,
+            in_channels=3,
+            out_hidden_size=32,
+            patch_size=16,
+            temporal_patch_size=2,
+            spatial_merge_size=2,
+            deepstack_visual_indexes=[],
+            num_position_embeddings=16),
+        audio_config=dict(
+            d_model=32,
+            encoder_layers=1,
+            encoder_attention_heads=4,
+            encoder_ffn_dim=64,
+            num_mel_bins=128,
+            max_source_positions=32,
+            output_dim=32,
+            downsample_hidden_size=32,
+            scale_embedding=True,
+            n_window=50,
+            n_window_infer=200),
+        image_token_id=100,
+        video_token_id=101,
+        audio_token_id=102,
+        vision_start_token_id=103,
+        vision_end_token_id=104,
+        audio_start_token_id=105,
+        audio_end_token_id=106)
     return Qwen3OmniMoeThinkerForConditionalGeneration(cfg).eval()
 
 
@@ -36,15 +68,41 @@ def _tiny_qwen25_omni_thinker():
     from transformers import Qwen2_5OmniThinkerConfig, Qwen2_5OmniThinkerForConditionalGeneration
 
     cfg = Qwen2_5OmniThinkerConfig(
-        text_config=dict(hidden_size=32, intermediate_size=64, num_hidden_layers=1, num_attention_heads=4,
-                         num_key_value_heads=2, vocab_size=128, max_position_embeddings=128),
-        vision_config=dict(depth=1, hidden_size=32, intermediate_size=64, num_heads=4, in_channels=3,
-                           out_hidden_size=32, patch_size=14, temporal_patch_size=2, spatial_merge_size=2),
-        audio_config=dict(d_model=32, encoder_layers=1, encoder_attention_heads=4, encoder_ffn_dim=64,
-                          num_mel_bins=128, max_source_positions=32, output_dim=32, downsample_hidden_size=32,
-                          scale_embedding=True),
-        image_token_id=100, video_token_id=101, audio_token_id=102,
-        vision_start_token_id=103, vision_end_token_id=104, audio_start_token_id=105, audio_end_token_id=106)
+        text_config=dict(
+            hidden_size=32,
+            intermediate_size=64,
+            num_hidden_layers=1,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            vocab_size=128,
+            max_position_embeddings=128),
+        vision_config=dict(
+            depth=1,
+            hidden_size=32,
+            intermediate_size=64,
+            num_heads=4,
+            in_channels=3,
+            out_hidden_size=32,
+            patch_size=14,
+            temporal_patch_size=2,
+            spatial_merge_size=2),
+        audio_config=dict(
+            d_model=32,
+            encoder_layers=1,
+            encoder_attention_heads=4,
+            encoder_ffn_dim=64,
+            num_mel_bins=128,
+            max_source_positions=32,
+            output_dim=32,
+            downsample_hidden_size=32,
+            scale_embedding=True),
+        image_token_id=100,
+        video_token_id=101,
+        audio_token_id=102,
+        vision_start_token_id=103,
+        vision_end_token_id=104,
+        audio_start_token_id=105,
+        audio_end_token_id=106)
     return Qwen2_5OmniThinkerForConditionalGeneration(cfg).eval()
 
 
