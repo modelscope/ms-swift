@@ -200,6 +200,9 @@ class MegatronBridgeBackend:
                     llm_config.num_nextn_predict_layers = mtp_config_layers
 
             HfConfigFactory.del_config_attr(hf_config, 'quantization_config')
+            patch_export_config = getattr(self._bridge, 'patch_export_hf_config', None)
+            if patch_export_config is not None:
+                patch_export_config(hf_config)
 
             # FP8: write back quantization_config
             expert_dtype = None
