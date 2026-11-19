@@ -611,8 +611,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         print('usage: python -m swift.dev.webui.session graph.json',
               file=sys.stderr)
         return 2
-    _bootstrap(declaration)
-    session = GraphSession(declaration, output_dir=output_dir)
+    try:
+        _bootstrap(declaration)
+        session = GraphSession(declaration, output_dir=output_dir)
+    except Exception as exc:  # noqa: BLE001
+        # A bootstrap failure -- an invalid declaration the graph gate rejects
+        # (e.g. a v4 graph, which this webui does not run) or a runtime that
+        # cannot start -- must ride the stdout protocol as a loud diagnostic,
+        # not a silent EOF. The frontend only parses [workflow] lines; a crash
+        # to stderr would leave it watching a dead pipe with no error. Emit one
+        # error event on the protocol channel, then exit cleanly non-zero.
+        import traceback
+        traceback.print_exc()
+        sys.stdout.write(PREFIX + json.dumps(
+            {'event': 'error', 'stage': 'bootstrap', 'error': str(exc)},
+            ensure_ascii=False, default=str) + '\n')
+        sys.stdout.flush()
+        return 1
     session.emit('session', state='idle', nodes=len(session._graph.nodes))
     for line in sys.stdin:
         line = line.strip()

@@ -117,8 +117,11 @@ class TestUpdateAndRelease:
         # the fingerprint unchanged, the resident would survive, and the case would go red for the
         # wrong reason (or, once the default moves, pass without touching anything).
         declared = next(p for p in REGISTRY['advantage'].params if p.name == 'num_generations')
+        # num_generations is a frame group-width param: the upstream (driver) and the
+        # consumer (adv) must carry the SAME value (graph._validate_group_width rejects a
+        # lone consumer edit). Move both so the edit is legal AND adv's fingerprint changes.
         for entry in declaration['nodes']:
-            if entry['id'] == 'adv':
+            if entry['id'] in ('driver', 'adv'):
                 entry['params']['num_generations'] = declared.default + 1
         reply = session.command({'op': 'update', 'declaration': declaration})
         assert reply['ok'] and reply['revision'] == 1

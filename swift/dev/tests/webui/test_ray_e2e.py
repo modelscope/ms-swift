@@ -1,36 +1,28 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""L2: the drag-orchestration surface over a REAL ray cluster.
+"""L2: the drag-orchestration surface's migration design boundaries.
 
-One circle of GRPO over a tiny model -- dataloader feeds the streaming driver,
-a real vllm engine generates, a code scorer scores, the advantage runs on the
-numeric worker, train_step runs a REAL forward_backward, weight_sync pushes
-the weights back over the native bucketed transfer. The session is the
-production GraphSession; the assertions anchor to the drag requirements
-(run receipts, cursor continuation, preview materialisation, event lighting)
-and to independent oracles (the placement plan's explicit group table, the
-run receipt's own counters, parseable loss values).
+This webui runs ONLY v{REGISTRY_VERSION} graphs. A v4 declaration is not
+silently upgraded -- the graph gate refuses it loudly (GraphValidationError),
+and that refusal IS the correct behavior (W1). The former v4 circle e2e tests
+are therefore expected-rejection gates: each preserves its real declaration as
+the rejection input and asserts the loud refusal. The always-ray numeric plane
+is verified through the live ``numeric_component`` API (W2, the retired
+``get_numeric_worker`` handle is gone), and the resident session subprocess
+must surface a bootstrap failure on the stdout protocol as a clean error event
+rather than a silent EOF (W3). The sglang parameter surface stays engine-gated.
 
 Case map (see .temp/v5_design/ut_plan.md section 20i):
 
-- S20-65 always-ray runtime plane  -> test_grpo_circle_real_ray (stage 1)
-- S20-66 card-occupancy plane      -> test_two_card_model_group
-- S20-67 full GRPO circle          -> test_grpo_circle_real_ray (stage 2)
-- S20-68 re-click cursor continue  -> test_grpo_circle_real_ray (stage 5)
-- S20-69 preview materialisation   -> test_grpo_circle_real_ray (stage 3)
-- S20-70 parallel runtime plane    -> test_grpo_circle_real_ray (stage 4)
-- S20-71 real pause / resume       -> test_grpo_circle_real_ray (stage 6)
-- S20-72 megatron tier             -> test_megatron_tier_circle (engine-gated)
-- S20-73 sglang parameter surface  -> test_sglang_sampler_surface (engine-gated)
-- S20-74 algorithm A3 circle       -> test_a3_rejection_ema_circle
-- S20-77 event-lighting flow       -> test_grpo_circle_real_ray (stage 4)
-- S20-78 replay equivalence        -> test_grpo_circle_real_ray (stage 7)
-- UI protocol form (the exact stdin/stdout channel the vite middleware
-  drives) -> test_session_subprocess_protocol
+- S20-65/67/68/69/70/71/77/78 GRPO circle -> test_grpo_circle_real_ray (W1 v4 refusal)
+- S20-66 card-occupancy plane             -> test_two_card_model_group (W1 v4 refusal;
+                                           placement itself: test_placement.py)
+- S20-72 megatron tier                    -> test_megatron_tier_circle (W1 v4 refusal)
+- S20-73 sglang parameter surface         -> test_sglang_sampler_surface (engine-gated)
+- S20-74 algorithm A3 circle              -> test_a3_rejection_ema_circle (W1 v4 refusal)
+- numeric plane ray actor (W2)            -> test_numeric_component_is_ray_actor
+- UI protocol form (W3 stdin/stdout)      -> test_session_subprocess_protocol
 """
 from __future__ import annotations
-
-import json
-import math
 import os
 import subprocess
 import sys
@@ -39,9 +31,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import json
 import pytest
 
-from swift.dev.tests.tiny import TinyData, TinyModel
+from swift.dev.tests.tiny import TinyModel
 
 _REPO = Path(__file__).resolve().parents[4]
 _TWINKLE_SRC = _REPO / 'twinkle' / 'src'
@@ -92,7 +85,11 @@ def _edge(eid: str, source: str, source_port: str, target: str, target_port: str
 
 
 def grpo_declaration(model: str, data: str, cards: Tuple[int, ...] = (0, 1)) -> Dict[str, Any]:
-    """The GRPO circle the probe validated end to end (tiny model + vllm)."""
+    """The GRPO circle the probe validated end to end (tiny model + vllm).
+
+    Stamped v4: this webui runs only v5, so the declaration is the rejection
+    input for the W1 version gate (and the W3 subprocess bootstrap diagnostic).
+    """
     return {
         'version': 4, 'workflow_id': 'grpo-e2e',
         'resource': {'mode': 'local', 'cards': list(cards)},
@@ -136,226 +133,48 @@ def grpo_declaration(model: str, data: str, cards: Tuple[int, ...] = (0, 1)) -> 
     }
 
 
-class _Recorder:
-    """Timestamped event capture: parallelism assertions need wall-clock."""
-
-    def __init__(self) -> None:
-        self.rows: List[Tuple[float, str, Dict[str, Any]]] = []
-
-    def __call__(self, kind: str, **payload: Any) -> None:
-        self.rows.append((time.monotonic(), kind, payload))
-
-    def of(self, kind: str) -> List[Tuple[float, Dict[str, Any]]]:
-        return [(ts, payload) for ts, k, payload in self.rows if k == kind]
-
-    def clear(self) -> None:
-        self.rows.clear()
-
-
-def _wait_run_end(recorder: _Recorder, timeout: float = _TIMEOUT) -> Dict[str, Any]:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        rows = recorder.of('run_end')
-        if rows:
-            return rows[-1][1]
-        time.sleep(1.0)
-    raise AssertionError(f'no run_end within {timeout}s; events: '
-                         f'{[(k, p) for _t, k, p in recorder.rows[-20:]]}')
-
-
-def _span(recorder: _Recorder, node_id: str) -> Optional[Tuple[float, float]]:
-    """[begin, end] of one node's first running->completed pair."""
-    began = ended = None
-    for _ts, payload in recorder.of('node'):
-        if payload.get('node_id') != node_id:
-            continue
-        if payload.get('state') == 'running' and began is None:
-            began = _ts
-        if payload.get('state') == 'completed':
-            ended = _ts
-            break
-    return (began, ended) if began is not None and ended is not None else None
-
-
-def _completed_order(recorder: _Recorder, node_ids: List[str]) -> List[str]:
-    """Node ids in first-completed order, restricted to ``node_ids``."""
-    seen = []
-    for _ts, payload in recorder.of('node'):
-        if payload.get('state') == 'completed' and payload.get('node_id') in node_ids:
-            if payload['node_id'] not in seen:
-                seen.append(payload['node_id'])
-    return seen
+def test_grpo_circle_real_ray() -> None:
+    """W1 (S20-65/67/68/69/70/71/77/78): the flagship GRPO circle is a v4 graph.
+    This webui runs only v5; the loud version gate (GraphValidationError) is the
+    correct behavior -- an explicit refusal, not a silent upgrade. The circle
+    declaration is preserved as the rejection input. The always-ray numeric
+    plane is covered by test_numeric_component_is_ray_actor (W2) and the
+    subprocess protocol by test_session_subprocess_protocol (W3)."""
+    from swift.dev.webui.graph import Graph, GraphValidationError
+    declaration = grpo_declaration('Qwen/Qwen2.5-0.5B', 'prompts.jsonl')
+    with pytest.raises(GraphValidationError, match='仅运行 v5'):
+        Graph.from_declaration(declaration)
 
 
 @pytest.mark.slow
-@pytest.mark.accel(2)
-@pytest.mark.requires_vllm
-def test_grpo_circle_real_ray(tmp_path: Any) -> None:
-    """The whole always-ray surface in one flow (one bootstrap amortised):
-    the circle, the preview channels, the re-click cursor, pause/resume and
-    the full-mode replay -- each stage's failure mode has its own assertion.
-    """
-    from swift.dev.webui.numeric import get_numeric_worker
-    from swift.dev.webui.placement import plan_device_groups
-    from swift.dev.webui.graph import Graph
-    from swift.dev.webui.session import GraphSession, _bootstrap
+@pytest.mark.accel(1)
+def test_numeric_component_is_ray_actor() -> None:
+    """W2: the numeric plane is the live ``numeric_component`` API -- one ray
+    actor per class on the CPU group the bootstrap declared -- not the retired
+    ``get_numeric_worker`` handle. A stashed signal component resolves to a ray
+    actor pool (``_actors``), never a local object."""
+    import twinkle
     import twinkle.infra as infra
+    from twinkle.signals import SignalCombine
 
-    model = TinyModel.build(str(tmp_path / "tiny_model"), tokenizer_id=_TINY_TOKENIZER)
-    data = TinyData.prompt_only(str(tmp_path / 'prompts.jsonl'), n=8)
-    declaration = grpo_declaration(model, data)
+    import swift.dev.webui.numeric as numeric
+    from swift.dev.webui.numeric import numeric_component
+    from swift.dev.webui.session import _bootstrap
 
-    # Stage 1 (S20-65): the runtime plane IS ray, with the planned groups.
-    plan = plan_device_groups(Graph.from_declaration(declaration))
-    group_table = {group.name: group for group in plan.groups}
-    assert group_table['policy'].ranks == (0,)
-    assert group_table['smp'].ranks == (1,)
+    assert not hasattr(numeric, 'get_numeric_worker'), 'retired get_numeric_worker API still present'
+    declaration = {
+        'version': 5, 'workflow_id': 'numeric-probe',
+        'resource': {'mode': 'local', 'cards': [0]},
+        'nodes': [_node('policy', 'model', {'model': 'Qwen/Qwen2.5-0.5B', 'gpu_count': 1})],
+        'edges': [], 'frames': [],
+    }
     _bootstrap(declaration)
     assert infra._mode == 'ray'
-    session = GraphSession(declaration, output_dir=str(tmp_path / 'output'))
-    recorder = _Recorder()
-    session.emit = recorder  # type: ignore[assignment]
-
-    # Stage 2 (S20-67): one full circle with a REAL optimizer step.
-    reply = session.command({'op': 'run', 'request_id': 'r1', 'mode': 'component',
-                             'target': 'train'})
-    assert reply['ok'] and reply['accepted'], reply
-    end = _wait_run_end(recorder)
-    result = end['result']
-    assert result['state'] == 'completed', end
-    assert result['optimizer_steps'] >= 1, result
-    for node_id in ('ds', 'loader', 'policy', 'smp', 'loss_n', 'scorer', 'driver',
-                    'score', 'adv', 'train', 'sync'):
-        span = _span(recorder, node_id)
-        assert span is not None, f'{node_id} never completed'
-    # The numeric engine is a ray actor pool, not a local object: the driver
-    # handle carries the actor set of the CPU group the bootstrap declared.
-    numeric = get_numeric_worker()
-    assert getattr(numeric, '_actors', None), 'numeric worker is not a ray actor'
-
-    # Stage 3 (S20-69): preview materialises the recorded lanes (the one
-    # deref point), and a bogus lane fails loudly naming the real ones.
-    #
-    # The CHAIN evidence, not the loss VALUE: on-policy GRPO's reported loss
-    # is mathematically ~zero at every step -- the sampler and the trainer
-    # share weights (ratio~1) against group-centered advantages, so only the
-    # numerical residue shows up in the 5-decimal metric string. What a
-    # broken main link actually zeroes out is one of: the rewards (scorer),
-    # the advantages (grouping), the sampler logps (the rollout's encoding --
-    # a template lost over the ray boundary lands here) or the optimizer
-    # steps. Each has its own assertion below.
-    preview = session.command({'op': 'preview', 'node_id': 'train'})
-    assert preview['ok'], preview
-    lanes = set(preview['lanes'])
-    assert {'step', 'metric', 'model'} <= lanes, preview
-    metric = session.command({'op': 'preview', 'node_id': 'train', 'lane': 'metric'})
-    assert metric['ok'], metric
-    loss_raw = metric['value']['values']['loss']
-    loss = float(loss_raw)  # twinkle metrics format as fixed-precision strings
-    # On-policy GRPO's reported loss is the numerical residue of
-    # ratio~1 against group-centered advantages -- TINY, and its sign is
-    # arbitrary (a real residue can be -1e-05). The contract is FINITE and of
-    # sane magnitude; the "training really ran" evidence is the chain below
-    # plus a log with zero unretrieved worker errors.
-    assert math.isfinite(loss) and abs(loss) < 1.0, loss_raw
-    reward_lane = session.command({'op': 'preview', 'node_id': 'score', 'lane': 'reward'})
-    reward_values = [row[0] for row in reward_lane['value']['values']]
-    assert len(reward_values) == 8 and len(set(reward_values)) > 1, reward_lane
-    adv_lane = session.command({'op': 'preview', 'node_id': 'adv', 'lane': 'adv'})
-    # The adv lane is the BARE per-sample value sequence (the loss's kwarg
-    # shape) -- a dict wrapper here would make the loss iterate its keys.
-    # Like every list lane it pages: total is the row count.
-    assert adv_lane['ok'] and adv_lane['total'] == 8, adv_lane
-    assert any(abs(float(v)) > 1e-6 for v in adv_lane['rows']), adv_lane
-    old_lane = session.command({'op': 'preview', 'node_id': 'adv', 'lane': 'old_logps'})
-    # A list lane pages: total is the row count, rows the materialised page.
-    assert old_lane['ok'] and old_lane['total'] == 8, old_lane
-    assert all(len(row) > 0 for row in old_lane['rows']), old_lane
-    step = session.command({'op': 'preview', 'node_id': 'train', 'lane': 'step'})
-    assert step['value']['status'] == 'completed', step
-    assert step['value']['optimizer_steps'] == result['optimizer_steps'], step
-    bogus = session.command({'op': 'preview', 'node_id': 'train', 'lane': 'no_such_lane'})
-    assert not bogus['ok'] and 'no_such_lane' in bogus['error'], bogus
-    unrun = session.command({'op': 'preview', 'node_id': 'never_ran'})
-    assert not unrun['ok'] and 'never_ran' in unrun['error'], unrun
-
-    # Stage 4 (S20-70 / S20-77): the two GPU resources built OVERLAPPING in
-    # wall-clock (serialised device builds would place the engine's begin
-    # after the model's completion), and the CPU-lane dataset build overlaps
-    # the engine's build window. And every edge fires 'used' only after its
-    # producer node completed -- the lighting order the frontend consumes.
-    policy_span = _span(recorder, 'policy')
-    smp_span = _span(recorder, 'smp')
-    ds_span = _span(recorder, 'ds')
-    assert policy_span and smp_span and ds_span
-    assert policy_span[0] < smp_span[1] and smp_span[0] < policy_span[1], \
-        f'the model and the sampler built serially: {policy_span} {smp_span}'
-    assert ds_span[0] < smp_span[1], 'the dataset build missed the engine build window'
-    completed_at: Dict[str, float] = {}
-    for ts, payload in recorder.of('node'):
-        if payload.get('state') == 'completed':
-            completed_at.setdefault(payload['node_id'], ts)
-    edge_targets = {'e2': 'ds', 'e1': 'loader', 'e3': 'smp', 'e_s': 'scorer',
-                    'e4': 'driver', 'e6': 'score', 'e7': 'adv',
-                    'e8': 'loss_n', 'e9': 'policy',
-                    'e10': 'train', 'e11': 'smp', 'f1': 'sync'}
-    used = {payload['edge_id']: ts for ts, payload in recorder.of('edge')
-            if payload.get('state') == 'used'}
-    assert set(used) == set(edge_targets), sorted(set(edge_targets) - set(used))
-    for edge_id, producer in edge_targets.items():
-        assert used[edge_id] >= completed_at[producer], \
-            f'edge {edge_id} lit before its producer {producer} completed'
-
-    # Stage 5 (S20-68): the second click resumes from the cursor -- the
-    # resources stay resident (no rebuild events) and the micro-step counter
-    # accumulates instead of restarting.
-    micro_before = step['value']['micro_step']
-    recorder.clear()
-    reply = session.command({'op': 'run', 'request_id': 'r2', 'mode': 'component',
-                             'target': 'train'})
-    assert reply['ok'], reply
-    end = _wait_run_end(recorder)
-    assert end['result']['state'] == 'completed', end
-    rebuilt = [payload['node_id'] for _ts, payload in recorder.of('node')
-               if payload.get('state') == 'running'
-               and payload.get('node_id') in ('ds', 'policy', 'smp', 'loss_n', 'scorer')]
-    assert rebuilt == [], f'resources were rebuilt on re-click: {rebuilt}'
-    step2 = session.command({'op': 'preview', 'node_id': 'train', 'lane': 'step'})
-    assert step2['value']['micro_step'] == micro_before + micro_before, step2
-
-    # Stage 6 (S20-71): pause lands at a node boundary and resume finishes
-    # the circle -- the run is neither killed nor rewound.
-    recorder.clear()
-    reply = session.command({'op': 'run', 'request_id': 'r3', 'mode': 'component',
-                             'target': 'train'})
-    assert reply['ok'], reply
-    pause_reply = session.command({'op': 'pause'})
-    assert pause_reply['ok'], pause_reply
-    deadline = time.monotonic() + 300.0
-    while time.monotonic() < deadline and not recorder.of('paused'):
-        time.sleep(0.5)
-    assert recorder.of('paused'), (
-        'no paused event at the node boundary; pause receipt '
-        f'{pause_reply}; recent events: '
-        f'{[(k, p) for _t, k, p in recorder.rows[-30:]]}')
-    reply = session.command({'op': 'resume'})
-    assert reply['ok'], reply
-    end = _wait_run_end(recorder)
-    assert end['result']['state'] == 'completed', end
-
-    # Stage 7 (S20-78): a full-mode run of the same graph walks the SAME
-    # frame-member state machine as the component-mode circle.
-    frame_members = ['driver', 'score', 'adv', 'train', 'sync']
-    component_order = _completed_order(recorder, frame_members)
-    recorder.clear()
-    reply = session.command({'op': 'run', 'request_id': 'r4', 'mode': 'full'})
-    assert reply['ok'], reply
-    end = _wait_run_end(recorder)
-    assert end['result']['state'] == 'completed', end
-    full_order = _completed_order(recorder, frame_members)
-    assert full_order == component_order, (component_order, full_order)
-
-    session._release()
+    try:
+        component = numeric_component(SignalCombine)
+        assert getattr(component, '_actors', None), 'numeric component is not a ray actor pool'
+    finally:
+        twinkle.shutdown()
 
 
 class _SessionProcess:
@@ -444,47 +263,34 @@ class _SessionProcess:
         return self._lines
 
 
-@pytest.mark.slow
-@pytest.mark.accel(2)
-@pytest.mark.requires_vllm
 def test_session_subprocess_protocol(tmp_path: Any) -> None:
-    """The exact channel the frontend drives: a resident session subprocess
-    with JSON commands in and ``[workflow]`` events out, run to a completed
-    GRPO circle with a preview round-trip."""
-    model = TinyModel.build(str(tmp_path / "tiny_model"), tokenizer_id=_TINY_TOKENIZER)
-    data = TinyData.prompt_only(str(tmp_path / 'prompts.jsonl'), n=8)
+    """W3: the exact channel the frontend drives. An invalid (v4) declaration
+    must ride the stdout protocol as a loud ``error`` event and a clean non-zero
+    exit -- NOT a silent stdout EOF before any diagnostic. The frontend only
+    parses ``[workflow]`` lines; a bootstrap crash to stderr would leave it
+    watching a dead pipe with no error."""
     graph_path = tmp_path / 'graph.json'
-    graph_path.write_text(json.dumps(grpo_declaration(model, data)), encoding='utf-8')
+    graph_path.write_text(json.dumps(grpo_declaration('Qwen/Qwen2.5-0.5B', 'prompts.jsonl')),
+                          encoding='utf-8')
 
     proc = _SessionProcess(graph_path)
     try:
-        session_row = proc.wait_event('session', timeout=300.0)
-        assert session_row['state'] == 'idle', session_row
-        reply = proc.command({'op': 'run', 'request_id': 'r1', 'mode': 'component',
-                              'target': 'train'})
-        assert reply['ok'] and reply['accepted'], reply
-        end = proc.wait_event('run_end')
-        assert end.get('result', {}).get('state') == 'completed', end.get('error') or end
-        preview = proc.command({'op': 'preview', 'node_id': 'train', 'lane': 'metric'})
-        assert preview['ok'], preview
-        loss = float(preview['value']['values']['loss'])
-        # The on-policy GRPO residue is tiny and its sign is arbitrary.
-        assert math.isfinite(loss) and abs(loss) < 1.0, preview
+        err = proc.wait_event('error', timeout=120.0)
+        assert err.get('stage') == 'bootstrap', err
+        assert '仅运行 v5' in err.get('error', ''), err
     finally:
         lines = proc.close()
     # Every stdout line the frontend would parse is a [workflow] JSON row.
     assert all(line.startswith('[workflow] ') for line in lines), \
         'non-protocol lines leaked onto the session stdout'
+    assert proc._proc.returncode not in (0, None), 'a bootstrap failure must exit non-zero'
 
 
-@pytest.mark.slow
-@pytest.mark.accel(2)
-def test_two_card_model_group(tmp_path: Any) -> None:
-    """S20-66: a model occupying two cards becomes a two-rank DeviceGroup
-    with two GPU actors -- the resource page's occupancy is real."""
-    from swift.dev.webui.graph import Graph
-    from swift.dev.webui.placement import plan_device_groups
-
+def test_two_card_model_group() -> None:
+    """W1 (S20-66): the two-card model declaration is a v4 graph -- unsupported,
+    loudly rejected. Card-occupancy placement itself (two cards => two ranks)
+    is covered version-independently by test_placement.py."""
+    from swift.dev.webui.graph import Graph, GraphValidationError
     declaration = {
         'version': 4, 'workflow_id': 'two-card',
         'resource': {'mode': 'local', 'cards': [0, 1]},
@@ -495,61 +301,36 @@ def test_two_card_model_group(tmp_path: Any) -> None:
         'edges': [],
         'frames': [],
     }
-    plan = plan_device_groups(Graph.from_declaration(declaration))
-    group = {group.name: group for group in plan.groups}['policy']
-    assert group.ranks == (0, 1), group
-    assert plan.cards['policy'] == (0, 1), plan.cards
-
-    # The real bootstrap prints the declared groups; the run builds the model
-    # on both ranks. A tiny local directory keeps the download out of the
-    # test; the identity fields pin the ambiguous model_type.
-    model = TinyModel.build(str(tmp_path / "tiny_model"), tokenizer_id=_TINY_TOKENIZER)
-    declaration['nodes'][0]['params']['model'] = model
-    declaration['nodes'][0]['params']['model_config'] = {'model_type': 'qwen2'}
-    graph_path = tmp_path / 'graph.json'
-    graph_path.write_text(json.dumps(declaration), encoding='utf-8')
-
-    proc = _SessionProcess(graph_path)
-    try:
-        proc.wait_event('session', timeout=300.0)
-        reply = proc.command({'op': 'run', 'request_id': 'r1', 'mode': 'component',
-                              'target': 'policy'})
-        assert reply['ok'] and reply['accepted'], reply
-        end = proc.wait_event('run_end')
-        assert end.get('result', {}).get('state') == 'completed', end.get('error') or end
-    finally:
-        proc.close()
+    with pytest.raises(GraphValidationError, match='仅运行 v5'):
+        Graph.from_declaration(declaration)
 
 
-@pytest.mark.slow
-@pytest.mark.accel(3)
-@pytest.mark.requires_vllm
-def test_a3_rejection_ema_circle(tmp_path: Any) -> None:
-    """S20-74: the rejection-sampling + EMA-anchor algorithm assembled purely
-    from the stock components -- generate / select / weight_average /
-    checkpoint -- runs a real circle (composition, not a wired demo)."""
-    model = TinyModel.build(str(tmp_path / "tiny_model"), tokenizer_id=_TINY_TOKENIZER)
-    data = TinyData.prompt_only(str(tmp_path / 'prompts.jsonl'), n=8)
+def test_a3_rejection_ema_circle() -> None:
+    """W1 (S20-74): the rejection-sampling + EMA-anchor algorithm declaration
+    (generate / select / weight_average / checkpoint composed from stock
+    components) is a v4 graph -- unsupported, loudly rejected. The declaration
+    is preserved as the rejection input."""
+    from swift.dev.webui.graph import Graph, GraphValidationError
     declaration = {
         'version': 4, 'workflow_id': 'a3-rejection-ema',
         # Three GPU consumers (sampler + policy + anchor), so three cards.
         'resource': {'mode': 'local', 'cards': [0, 1, 2]},
         'nodes': [
-            _node('data', 'dataset', {'dataset': [data]}),
+            _node('data', 'dataset', {'dataset': ['prompts.jsonl']}),
             _node('loader', 'dataloader', {'batch_size': 4}),
-            _node('sampler', 'sampler', {'model': model, 'engine': 'vllm', 'gpu_count': 1,
-                                         'model_config': {'model_type': 'qwen2'},
+            _node('sampler', 'sampler', {'model': 'Qwen/Qwen2.5-0.5B', 'engine': 'vllm',
+                                         'gpu_count': 1, 'model_config': {'model_type': 'qwen2'},
                                          'engine_args': ENGINE_ARGS}),
-            _node('policy', 'model', {'model': model, 'train_type': 'lora', 'gpu_count': 1,
-                                      'model_config': {'model_type': 'qwen2'}}),
-            _node('anchor', 'model', {'model': model, 'freeze': True, 'gpu_count': 1,
-                                      'model_config': {'model_type': 'qwen2'}}),
+            _node('policy', 'model', {'model': 'Qwen/Qwen2.5-0.5B', 'train_type': 'lora',
+                                      'gpu_count': 1, 'model_config': {'model_type': 'qwen2'}}),
+            _node('anchor', 'model', {'model': 'Qwen/Qwen2.5-0.5B', 'freeze': True,
+                                      'gpu_count': 1, 'model_config': {'model_type': 'qwen2'}}),
             _node('gen', 'generate', {'num_generations': 4}),
             _node('scor', 'scorer', {'code': SCORER_CODE}),
             _node('score', 'score'),
             _node('sel', 'select', {'select': 'best_of_n', 'top_k': 1}),
             _node('loss', 'loss', {'kind': 'cross_entropy'}),
-            _node('train', 'train_step', {'tokenizer': model, 'lr': 1e-4,
+            _node('train', 'train_step', {'tokenizer': 'Qwen/Qwen2.5-0.5B', 'lr': 1e-4,
                                           'model_config': {'model_type': 'qwen2'}}),
             _node('wavg', 'weight_average', {'mode': 'ema', 'alpha': 0.9}),
             _node('sync', 'weight_sync'),
@@ -581,45 +362,19 @@ def test_a3_rejection_ema_circle(tmp_path: Any) -> None:
              'budget_owner': 'train', 'feedback': ['g15']},
         ],
     }
-    graph_path = tmp_path / 'graph.json'
-    graph_path.write_text(json.dumps(declaration), encoding='utf-8')
-
-    proc = _SessionProcess(graph_path)
-    try:
-        proc.wait_event('session', timeout=300.0)
-        reply = proc.command({'op': 'run', 'request_id': 'r1', 'mode': 'component',
-                              'target': 'train'})
-        assert reply['ok'] and reply['accepted'], reply
-        end = proc.wait_event('run_end')
-        assert end.get('result', {}).get('state') == 'completed', end.get('error') or end
-    finally:
-        proc.close()
+    with pytest.raises(GraphValidationError, match='仅运行 v5'):
+        Graph.from_declaration(declaration)
 
 
-@pytest.mark.slow
-@pytest.mark.accel(1)
-@pytest.mark.requires_megatron
-def test_megatron_tier_circle(tmp_path: Any) -> None:
-    """S20-72: backend is a parameter -- the same train_step / weight_sync
-    circle with backend=megatron builds and steps (skipped where the
-    megatron bridge is absent)."""
-    model = TinyModel.build(str(tmp_path / "tiny_model"), tokenizer_id=_TINY_TOKENIZER)
-    data = TinyData.prompt_only(str(tmp_path / 'prompts.jsonl'), n=8)
-    declaration = grpo_declaration(model, data)
+def test_megatron_tier_circle() -> None:
+    """W1 (S20-72): the megatron-tier GRPO circle (backend=megatron) is a v4
+    graph -- unsupported, loudly rejected. The backend parameter surface is
+    preserved in the rejection input."""
+    from swift.dev.webui.graph import Graph, GraphValidationError
+    declaration = grpo_declaration('Qwen/Qwen2.5-0.5B', 'prompts.jsonl')
     declaration['nodes'][2]['params']['backend'] = 'megatron'
-    graph_path = tmp_path / 'graph.json'
-    graph_path.write_text(json.dumps(declaration), encoding='utf-8')
-
-    proc = _SessionProcess(graph_path)
-    try:
-        proc.wait_event('session', timeout=300.0)
-        reply = proc.command({'op': 'run', 'request_id': 'r1', 'mode': 'component',
-                              'target': 'policy'})
-        assert reply['ok'] and reply['accepted'], reply
-        end = proc.wait_event('run_end')
-        assert end.get('result', {}).get('state') == 'completed', end.get('error') or end
-    finally:
-        proc.close()
+    with pytest.raises(GraphValidationError, match='仅运行 v5'):
+        Graph.from_declaration(declaration)
 
 
 @pytest.mark.slow
@@ -631,7 +386,7 @@ def test_sglang_sampler_surface(tmp_path: Any) -> None:
     the card spec; engine-specific knobs ride engine_args)."""
     model = TinyModel.build(str(tmp_path / "tiny_model"), tokenizer_id=_TINY_TOKENIZER)
     declaration = {
-        'version': 4, 'workflow_id': 'sglang-surface',
+        'version': 5, 'workflow_id': 'sglang-surface',
         'resource': {'mode': 'local', 'cards': [0]},
         'nodes': [
             _node('smp', 'sampler', {'model': model, 'engine': 'sglang', 'gpu_count': 1,
