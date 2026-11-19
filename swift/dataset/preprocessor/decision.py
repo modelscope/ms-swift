@@ -1063,6 +1063,8 @@ class GS1Preprocessor(GenericDecisionPreprocessor):
             raise ValueError('GS1 native request question IDs must match target IDs.')
         questions = []
         for qid, source in request['questions'].items():
+            if not isinstance(source.get('instructions'), str) or not source['instructions'].strip():
+                raise ValueError(f'GS1 question {qid!r} requires non-empty instructions.')
             kind = self._normalize_kind(source.get('type'))
             criteria = source.get('criteria') or {}
             if kind == 'choice':
@@ -1089,7 +1091,7 @@ class GS1Preprocessor(GenericDecisionPreprocessor):
                     f'GS1 target distribution for question {qid!r} must be finite, nonnegative, and sum to one.')
             questions.append({
                 'kind': kind,
-                'question': source.get('instructions') or 'Choose the best matching option.',
+                'question': source['instructions'],
                 'options': options,
                 '_gs1_criteria': criteria,
                 'gold': target_distribution,

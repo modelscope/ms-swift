@@ -54,12 +54,12 @@ swift sft --task_type decision
 ```
 
 GS1 uses the checkpoint's native prompt compiler, hybrid backbone, and cross-attention decision head. It trains with
-`distribution_NLL + brier_weight * expected_Brier`; `brier_weight` defaults to 1.0 and is configured with the
-`GS1_BRIER_WEIGHT` environment variable. GS1 requires `transformers>=5.3.0` and `typesafe-sdk==0.7.0`. The current
+`distribution_NLL + GS1_BRIER_WEIGHT * expected_Brier`; the coefficient defaults to 1.0 and is configurable through the environment variable. Training is
+single-stage with no additional warmup stage. GS1 requires `transformers>=5.3.0` and `typesafe-sdk==0.7.0`. The current
 ms-swift integration supports text states only, not images or video.
 
 ```shell
-swift sft \
+GS1_BRIER_WEIGHT=1.0 swift sft \
   --model bigai/GS1-0.8B --model_type gs1 --task_type decision \
   --external_plugins examples/train/decision/dataset.py \
   --dataset gs1_demo --loss_type gs1 \

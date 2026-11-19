@@ -158,7 +158,7 @@ def test_gs1_collator_uses_left_padding_and_native_position_ids():
                 'kinds': [2],
                 'gs1_branches': ['short']
             },
-            'target_probs': [[0.2, 0.3, 0.5]],
+            'target_probs': None,
         },
     ]
     result = template._data_collator(batch)
@@ -166,7 +166,7 @@ def test_gs1_collator_uses_left_padding_and_native_position_ids():
     assert result['position_ids'].tolist() == [[0, 1, 2], [0, 0, 1]]
     assert result['decision_meta']['kinds'] == [1, 2]
     assert result['decision_meta']['gs1_branches'] == ['long', 'short']
-    torch.testing.assert_close(result['labels'], torch.tensor([[0.75, 0.25, 0.0], [0.2, 0.3, 0.5]]))
+    torch.testing.assert_close(result['labels'], torch.tensor([[0.75, 0.25, 0.0], [0.0, 0.0, 0.0]]))
 
 
 def test_gs1_loader_preserves_native_inference_and_freezes_calibrator(monkeypatch):

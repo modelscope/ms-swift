@@ -1,5 +1,5 @@
 # Single-stage full-parameter fine-tuning of a native GS1 checkpoint.
-# The objective is distribution NLL + brier_weight * expected multiclass Brier.
+# The objective is distribution NLL + GS1_BRIER_WEIGHT * expected multiclass Brier.
 # Replace the demo dataset with a sampled, registered GS1 training dataset.
 GS1_BRIER_WEIGHT=${GS1_BRIER_WEIGHT:-1.0} \
 USE_HF=1 \

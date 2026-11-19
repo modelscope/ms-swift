@@ -88,8 +88,8 @@ class GS1DecisionLoss(ScoringLoss):
         if self.brier_weight == 0:
             return None
         probs = masked_softmax(outputs.logits, option_mask)
-        per_question = ((probs - target).square() * option_mask).sum(dim=-1) + 1 - target.square().sum(dim=-1)
-        per_question = per_question.masked_fill(~option_mask.any(dim=-1), 0.0)
+        per_question = ((probs - target).square() * option_mask).sum(dim=-1) + 1 - (target.square() * option_mask).sum(dim=-1)
+        per_question = per_question * option_mask.any(dim=-1)
         if num_items_in_batch is not None:
             term = per_question.sum() / num_items_in_batch
         else:

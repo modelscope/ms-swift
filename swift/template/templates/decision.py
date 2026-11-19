@@ -174,7 +174,7 @@ class GS1Template(DecisionTemplate, Qwen3_5Template):
         compiler = self._gs1_compiler
         question = {
             'type': fields['kind'],
-            'instructions': fields['question'] or 'Choose the best matching option.',
+            'instructions': fields['question'],
         }
         if fields['kind'] == 'choice':
             question['criteria'] = fields.get('criteria') or {option: None for option in fields['options']}
@@ -194,14 +194,10 @@ class GS1Template(DecisionTemplate, Qwen3_5Template):
         compiled = compiler.compile(request)
         branch = compiled.branches[0]
         from swift.model.decision_head import QUESTION_TYPES
-
         meta = {
             'n_options': [len(fields['options'])],
             'kinds': [QUESTION_TYPES[fields['kind']]],
-            'gs1_branches': [{
-                'branch': branch,
-                'state_length': len(compiled.state)
-            }],
+            'gs1_branches': [{'branch': branch, 'state_length': len(compiled.state)}],
         }
         return {
             'input_ids': list(compiled.state + branch.suffix),
@@ -248,10 +244,10 @@ class GS1Template(DecisionTemplate, Qwen3_5Template):
         if any(target is not None for target in record_targets):
             width = decision_meta['max_opt']
             labels = []
-            for targets in record_targets:
-                if targets is None:
-                    continue
-                for target in targets:
+            for meta, targets in zip(record_metas, record_targets):
+                question_count = len(meta.get('n_options') or []) if meta else 0
+                target_rows = targets if targets is not None else [[0.0] * n for n in meta.get('n_options', [])]
+                for target in target_rows[:question_count]:
                     labels.append(target + [0.0] * (width - len(target)))
             result['labels'] = torch.tensor(labels, dtype=torch.float32)
         return result
