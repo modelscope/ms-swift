@@ -116,10 +116,17 @@ class Qwen2_5OmniTemplate(Template):
         if processor is None:
             return
         super().init_processor(processor)
-        from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
-        default = Qwen2_5OmniProcessorKwargs._defaults
-        self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
-        self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
+        seconds_per_chunk = getattr(processor, 'seconds_per_chunk', None)
+        position_id_per_seconds = getattr(processor, 'position_id_per_seconds', None)
+        if not (isinstance(seconds_per_chunk, (int, float)) and not isinstance(seconds_per_chunk, bool)
+                and isinstance(position_id_per_seconds,
+                               (int, float)) and not isinstance(position_id_per_seconds, bool)):
+            from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
+            default = Qwen2_5OmniProcessorKwargs._defaults
+            seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
+            position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
+        self.seconds_per_chunk = seconds_per_chunk
+        self.position_id_per_seconds = position_id_per_seconds
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
         self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
         # See grounding dataset customization documentation for `QWENVL_BBOX_FORMAT` meaning

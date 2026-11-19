@@ -911,19 +911,27 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         if processor is None:
             return
         super().init_processor(processor)
-        if self.version == 'omni_v2_5':
-            from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
-            default = Qwen2_5OmniProcessorKwargs._defaults
-        elif self.version == 'omni_v3':
-            from transformers.models.qwen3_omni_moe.processing_qwen3_omni_moe import Qwen3OmniMoeProcessorKwargs
-            default = Qwen3OmniMoeProcessorKwargs._defaults
-            # Fix: WhisperFeatureExtractor defaults to truncation=True, which silently
-            # truncates audio longer than 30s. Qwen3 Omni supports variable-length audio,
-            # so we must disable truncation. See: huggingface/transformers#41473
-            default.setdefault('audio_kwargs', {})
-            default['audio_kwargs']['truncation'] = False
-        self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
-        self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
+        seconds_per_chunk = getattr(processor, 'seconds_per_chunk', None)
+        position_id_per_seconds = getattr(processor, 'position_id_per_seconds', None)
+        if (isinstance(seconds_per_chunk, (int, float)) and not isinstance(seconds_per_chunk, bool)
+                and isinstance(position_id_per_seconds,
+                               (int, float)) and not isinstance(position_id_per_seconds, bool)):
+            self.seconds_per_chunk = seconds_per_chunk
+            self.position_id_per_seconds = position_id_per_seconds
+        else:
+            if self.version == 'omni_v2_5':
+                from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
+                default = Qwen2_5OmniProcessorKwargs._defaults
+            elif self.version == 'omni_v3':
+                from transformers.models.qwen3_omni_moe.processing_qwen3_omni_moe import Qwen3OmniMoeProcessorKwargs
+                default = Qwen3OmniMoeProcessorKwargs._defaults
+                # Fix: WhisperFeatureExtractor defaults to truncation=True, which silently
+                # truncates audio longer than 30s. Qwen3 Omni supports variable-length audio,
+                # so we must disable truncation. See: huggingface/transformers#41473
+                default.setdefault('audio_kwargs', {})
+                default['audio_kwargs']['truncation'] = False
+            self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
+            self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
         self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
 
