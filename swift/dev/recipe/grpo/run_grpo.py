@@ -640,7 +640,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
     from swift.dev.builders.optimizer import resolve_max_grad_norm
 
     dataloader = build_prompt_dataloader(
-        prompts, prompt_extras, seed=train_config.seed,
+        prompts, prompt_extras, seed=dataset_config.data_seed,
         shuffle=dataset_config.train_dataloader_shuffle,
         batch_size=generation_batch_size,
     )

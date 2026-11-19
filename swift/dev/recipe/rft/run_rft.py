@@ -384,7 +384,7 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
 
     # Every round reads the whole prompt set once, in order; generation_batch_size prompts run at once.
     dataloader = build_prompt_dataloader(
-        prompts, prompt_extras, seed=train_config.seed, shuffle=False, batch_size=generation_batch_size)
+        prompts, prompt_extras, seed=dataset_config.data_seed, shuffle=False, batch_size=generation_batch_size)
 
     selector = RFTSelector(
         num_generations=num_samples, rft_select=rl_config.rft_select,
