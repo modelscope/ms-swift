@@ -372,8 +372,10 @@ def _build_teachers(
                 "built; they must match, or leave teacher_weights unset for uniform weights."
             )
         # pack shares the ONE teacher group (serial forwards); spread gives each its own (parallel).
-        placements = [(teacher_group(index) if spread else TEACHER_GROUP) for index in range(len(teachers))]
-        return teachers, {"placements": placements, "teacher_weights": weights}
+        # The key must NOT be `placements`: remote_class forwards that keyword to create_workers as
+        # ray placement dicts, so a domain kwarg of that name crashes construction (string indices).
+        teacher_groups = [(teacher_group(index) if spread else TEACHER_GROUP) for index in range(len(teachers))]
+        return teachers, {"teacher_groups": teacher_groups, "teacher_weights": weights}
 
     # GKD / OPSD: one teacher, three shapes.
     if signal == "logits" and rl_config.offload_teacher_model and rl_config._teacher_use_disable_adapter:

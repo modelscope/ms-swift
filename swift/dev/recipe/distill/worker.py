@@ -65,7 +65,7 @@ class DistillWorker:
 
     def __init__(self, *, teachers: Sequence[Any], signal: str, template: Any = None,
                  disable_lora: bool = False, offload: bool = False,
-                 placements: Optional[Sequence[str]] = None, gkd_logits_topk: Optional[int] = None,
+                 teacher_groups: Optional[Sequence[str]] = None, gkd_logits_topk: Optional[int] = None,
                  sft_alpha: float = 0.0, teacher_weights: Optional[Sequence[float]] = None,
                  train_batch_size: int = 1):
         if signal not in ('logits', 'logps', 'multi_logps'):
@@ -75,7 +75,7 @@ class DistillWorker:
         self.template = template
         self.disable_lora = disable_lora
         self.offload = offload
-        self.placements = None if placements is None else list(placements)
+        self.teacher_groups = None if teacher_groups is None else list(teacher_groups)
         self.gkd_logits_topk = gkd_logits_topk
         self.sft_alpha = sft_alpha
         self.teacher_weights = None if teacher_weights is None else list(teacher_weights)
@@ -139,7 +139,7 @@ class DistillWorker:
             return {'teacher_logps': self._response_logps(self.teachers[0], privileged, disable_lora=self.disable_lora)}
         # K response-only channels, overlapped across disjoint placements, plus the mixture weights.
         # A dict keeps the teacher axis separate from DP/micro-batch slicing of each sample channel.
-        tasks = [(self.placements[index], lambda index=index: self._response_logps(self.teachers[index], trajs))
+        tasks = [(self.teacher_groups[index], lambda index=index: self._response_logps(self.teachers[index], trajs))
                  for index in range(len(self.teachers))]
         signal_kwargs: Dict[str, Any] = {'teacher_logps': dict(enumerate(_run_grouped(tasks)))}
         if self.teacher_weights is not None:

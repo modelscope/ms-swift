@@ -145,14 +145,56 @@ def test_build_teachers_mopd_builds_k_weighted_teachers(monkeypatch):
     teachers, options = _build(cfg)
     assert teachers == ['ref[a#teacher0]', 'ref[b#teacher1]']
     assert [c['instance_id'] for c in calls] == ['teacher0', 'teacher1']
-    assert options == {'placements': ['teacher', 'teacher'], 'teacher_weights': [0.6, 0.4]}
+    assert options == {'teacher_groups': ['teacher', 'teacher'], 'teacher_weights': [0.6, 0.4]}
 
     calls.clear()
     cfg = RLConfig(rl_type='mopd', teacher_model=['a', 'b'], auxiliary_placement='spread')
     teachers, options = _build(cfg)
     assert [c['name'] for c in calls] == ['teacher_0', 'teacher_1']
-    assert options['placements'] == ['teacher_0', 'teacher_1']
+    assert options['teacher_groups'] == ['teacher_0', 'teacher_1']
     assert options['teacher_weights'] is None
+
+
+def test_distill_worker_init_avoids_infra_reserved_placements_kwarg():
+    """Root-cause guard for the MOPD multi-teacher ``string indices must be integers`` crash.
+
+    ``remote_class`` forwards a constructor's ``placements`` keyword straight to
+    ``RayHelper.create_workers`` as the RAY PLACEMENT DICTS: it pops instance_id / remote_group /
+    extra_torch_kwargs / max_concurrency before forwarding, but NOT placements. A remote component
+    that names a DOMAIN parameter ``placements`` therefore (1) starves its own ``__init__`` (the value
+    is consumed by create_workers) and (2) hands create_workers a list of group-name STRINGS, which
+    dies at ``placements[0]['placement_group']`` (ray_helper.py) with ``string indices must be
+    integers, not 'str'`` -- at construction, before any teacher forward runs.
+
+    DistillWorker's per-teacher group names must ride a NON-reserved keyword (``teacher_groups``).
+    The reserved name is read off the infra's OWN create_workers signature, so a rename back to
+    ``placements``翻红 here deterministically without a GPU.
+    """
+    import inspect
+
+    from twinkle.infra._ray.ray_helper import RayHelper
+
+    from swift.dev.recipe.distill.worker import DistillWorker
+
+    reserved = set(inspect.signature(RayHelper.create_workers).parameters) - {
+        'cls', 'group', 'execute', 'args', 'kwargs'
+    }
+    assert 'placements' in reserved, 'infra contract changed: re-derive the reserved-kwarg guard'
+    init_params = set(inspect.signature(DistillWorker.__init__).parameters)
+    assert 'placements' not in init_params, (
+        'DistillWorker.__init__ declares the infra-reserved `placements` kwarg; remote_class would '
+        'forward it to create_workers as ray placement dicts and crash on the group-name strings. '
+        'Use teacher_groups.')
+    assert 'teacher_groups' in init_params
+
+
+def test_build_teachers_mopd_options_key_is_not_infra_reserved(monkeypatch):
+    """The teacher_options dict fed to DistillWorker must key the group names under teacher_groups,
+    never the infra-reserved placements (which create_workers would intercept)."""
+    _stub_teachers(monkeypatch)
+    _, options = _build(RLConfig(rl_type='mopd', teacher_model=['a', 'b'], teacher_weights=[0.6, 0.4]))
+    assert 'placements' not in options
+    assert options['teacher_groups'] == ['teacher', 'teacher']
 
 
 # --- row 12: the guards (ambiguous / infeasible teacher combos must refuse) -------------------
