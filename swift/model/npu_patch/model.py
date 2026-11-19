@@ -290,8 +290,9 @@ _TRANSFORMERS_FLA_PROBE_MODULES = ('transformers.utils', 'transformers.utils.imp
 
 def _is_flash_linear_attention_importable_on_npu() -> bool:
     try:
+        from fla.modules import FusedRMSNormGated  # noqa: F401
         from fla.modules.convolution import causal_conv1d  # noqa: F401
-        from fla.ops.gated_delta_rule import chunk_gated_delta_rule  # noqa: F401
+        from fla.ops.gated_delta_rule import chunk_gated_delta_rule, fused_recurrent_gated_delta_rule  # noqa: F401
         return True
     except Exception:
         return False
