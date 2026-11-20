@@ -448,8 +448,7 @@ class TestThinkingDefaultParity(unittest.TestCase):
                 key = getattr(template, 'jinja_enable_thinking_key', 'enable_thinking')
                 messages = [{'role': 'user', 'content': 'hi'}]
                 try:
-                    default = tokenizer.apply_chat_template(
-                        messages, tokenize=False, add_generation_prompt=True)
+                    default = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                     as_true = tokenizer.apply_chat_template(
                         messages, tokenize=False, add_generation_prompt=True, **{key: True})
                     as_false = tokenizer.apply_chat_template(

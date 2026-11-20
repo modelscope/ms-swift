@@ -681,7 +681,6 @@ register_template(
         preserve_thinking=True,
     ))
 
-
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.nemotron_h,

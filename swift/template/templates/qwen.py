@@ -56,11 +56,7 @@ register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
 register_template(
-    QwenTemplateMeta(
-        LLMTemplateType.qwq,
-        default_system=None,
-        is_thinking=True,
-        thinking_prefix='<think>\n'))
+    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, is_thinking=True, thinking_prefix='<think>\n'))
 
 
 @dataclass
