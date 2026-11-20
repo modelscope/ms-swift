@@ -262,7 +262,25 @@ class RewardModel:
         logits = outputs.get('logits')
         if logits is None:
             raise RuntimeError('reward model forward returned no logits.')
-        return torch.as_tensor(logits).reshape(-1).tolist()
+        logits = torch.as_tensor(logits)
+        if logits.dim() == 3:
+            # A process reward model (Qwen2.5-Math-PRM) emits per-token [B, L, C] logits, not a pooled
+            # [B, C] score. One score per row is the reward at the row's LAST valid token (the step-end
+            # the PRM judges); a multi-class head reduces to the positive-class softmax probability.
+            # Without this, reshape(-1) hands the driver B*L*C floats and it silently reads the first
+            # prompt token's logit as the segment score (defect123).
+            def _mask(f):
+                return f.get('attention_mask') if isinstance(f, dict) else getattr(f, 'attention_mask', None)
+
+            masks = [_mask(f) for f in features]
+            if all(m is not None for m in masks):
+                last = torch.tensor([int(torch.as_tensor(m).nonzero()[-1]) for m in masks], dtype=torch.long)
+            else:
+                last = torch.full((logits.shape[0],), logits.shape[1] - 1, dtype=torch.long)
+            logits = logits[torch.arange(logits.shape[0]), last]
+            if logits.shape[-1] > 1:
+                logits = torch.softmax(logits.float(), dim=-1)[..., -1]
+        return logits.reshape(-1).tolist()
 
     #: The reward protocol (``scorer(trajectories)``) a ``FunctionWorker`` calls.
     __call__ = score

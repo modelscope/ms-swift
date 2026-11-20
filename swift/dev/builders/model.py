@@ -793,7 +793,19 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, config, model_l
         text_config = getattr(config, "text_config", None)
         if text_config is not None:
             text_config.pad_token_id = config.pad_token_id
-    kwargs["model_cls"] = "AutoModelForSequenceClassification"
+    model_cls_name = "AutoModelForSequenceClassification"
+    # A remote-code reward checkpoint (Qwen2.5-Math-PRM, internlm2-reward) maps only AutoModel in its
+    # auto_map and brings its own head, so the forced seq-cls auto class cannot resolve it and
+    # from_pretrained raises "Unrecognized configuration class" (defect123). Honor the family loader's
+    # declared class when it resolves the config's auto_map instead, and pass trust_remote_code so the
+    # worker-side from_pretrained resolves the checkpoint's own class.
+    auto_map = getattr(config, "auto_map", None)
+    if model_loader is not None and auto_map and model_cls_name not in auto_map:
+        loader_cls = model_loader.resolve_model_cls(config)
+        if getattr(loader_cls, "__name__", "") in auto_map:
+            model_cls_name = loader_cls.__name__
+            kwargs["trust_remote_code"] = True
+    kwargs["model_cls"] = model_cls_name
     kwargs["config"] = config
 
 

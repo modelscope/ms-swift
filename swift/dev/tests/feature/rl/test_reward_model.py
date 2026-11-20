@@ -108,3 +108,89 @@ def test_judge_query_strips_trailing_assistant_and_formats():
 
     messages = [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'cand'}]
     assert judge_query('P={prompt} C={completion}', messages, 'cand') == 'P=User: q C=cand'
+
+
+# --- defect123: process-RM (token-level) score reduction -----------------------------------------
+# PLAN (case | input | expected | failure it kills):
+#  T1 token-level [B,L,C>1], right-padded rows | last-valid-token softmax positive class per row
+#     | reshape(-1) leaking B*L*C floats / reading the first prompt token's logit as the score.
+#  T2 token-level [B,L,1] | last-valid-token scalar (no softmax) | dropping the last-token readout
+#     for a single-class process head.
+#  T3 token-level, no attention_mask | falls back to the final position | IndexError / wrong row.
+#  T4 pooled [B,1] (sequence RM) | unchanged flatten | regressing the existing scalar-RM path.
+# Independent oracle: manual per-row last-valid-token extraction computed in the test, not the
+# scorer's own index math. Stubs stand in for model/template (no GPU); the real ray PRM run signs E2E.
+class _StubTokenTemplate:
+
+    def __init__(self, masks):
+        self._masks = masks
+        self.i = 0
+
+    def encode(self, row):
+        m = self._masks[self.i]
+        self.i += 1
+        return {'attention_mask': m}
+
+
+class _StubTokenModel:
+
+    def __init__(self, logits):
+        self._logits = logits
+
+    def forward_only(self, *, inputs, return_logits, task):
+        assert task == 'seq_cls'
+        return {'logits': self._logits}
+
+
+def _prm_rows(n):
+    return [{'messages': [{'role': 'user', 'content': f'q{i}'}]} for i in range(n)]
+
+
+def test_defect123_token_level_multiclass_last_token_softmax():
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    torch.manual_seed(0)
+    logits = torch.randn(3, 7, 2)
+    masks = [[1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 0, 0, 0], [1, 1, 1, 1, 1, 0, 0]]
+    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate(masks))
+    scores = rm.score(_prm_rows(3))
+    oracle = [torch.softmax(logits[i, sum(masks[i]) - 1].float(), dim=-1)[-1].item() for i in range(3)]
+    assert len(scores) == 3  # one score per row, NOT B*L*C
+    assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))
+
+
+def test_defect123_token_level_single_class_last_token():
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    logits = torch.randn(2, 5, 1)
+    masks = [[1, 1, 1, 0, 0], [1, 1, 1, 1, 1]]
+    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate(masks))
+    scores = rm.score(_prm_rows(2))
+    assert scores == [logits[0, 2, 0].item(), logits[1, 4, 0].item()]
+
+
+def test_defect123_token_level_no_mask_falls_back_to_final_position():
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    logits = torch.randn(2, 4, 2)
+
+    class _NoMaskTemplate:
+        def encode(self, row):
+            return {'input_ids': [1, 2, 3, 4]}
+
+    rm = RewardModel(_StubTokenModel(logits), _NoMaskTemplate())
+    scores = rm.score(_prm_rows(2))
+    oracle = [torch.softmax(logits[i, 3].float(), dim=-1)[-1].item() for i in range(2)]
+    assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))
+
+
+def test_defect123_pooled_sequence_rm_path_unchanged():
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    logits = torch.tensor([[0.25], [0.75], [1.5]])
+    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate([[1], [1], [1]]))
+    assert rm.score(_prm_rows(3)) == [0.25, 0.75, 1.5]
