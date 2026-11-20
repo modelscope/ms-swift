@@ -807,7 +807,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
         ema_manager = CheckpointEngineManager(
-            model=cluster.model, sampler=cluster.reference, mode='standalone')
+            model=cluster.model, sampler=cluster.reference, mode='standalone', channel='ema')
     chord_fn = None
     chord_offset = [0]
     chord_train_batch_size = 0
