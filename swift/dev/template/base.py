@@ -847,9 +847,22 @@ class Template(ProcessorMixin):
             raise ValueError("encode_prompt requires one unsplit prompt feature.")
         prompt_inputs = sample if isinstance(sample, TemplateInputs) else TemplateInputs.from_dict(sample)
         engine_ids = list(engine_feature["input_ids"])
-        # Engine encoding retains the images after the same resize used for
-        # the expanded training feature.
-        media = MediaBundle.from_sources({"images": engine_feature.get("images")}, sample, feature)
+        # Serving engines retain resized images here. Transformers templates may
+        # use the same key for tensors consumed by the model.
+        engine_images = engine_feature.get("images") if backend in ("vllm", "sglang", "lmdeploy") else None
+        media = MediaBundle.from_sources({"images": engine_images}, sample, feature)
+        processor_kwargs = dict(engine_feature.get("mm_processor_kwargs") or {})
+        if backend == "vllm" and media.videos:
+            # The rollout uploads the original videos, which vLLM must process.
+            if processor_kwargs.get("do_resize") is False:
+                processor_kwargs.pop("do_resize")
+                if engine_images:
+                    image_kwargs = dict(processor_kwargs.get("images_kwargs") or {})
+                    image_kwargs.setdefault("do_resize", False)
+                    processor_kwargs["images_kwargs"] = image_kwargs
+            if processor_kwargs.get("do_sample_frames") is False:
+                processor_kwargs.pop("do_sample_frames")
+            processor_kwargs.pop("video_metadata", None)
         if self.is_multimodal:
             self._check_engine_placeholders(engine_ids, media)
         state = RolloutState(
@@ -859,6 +872,7 @@ class Template(ProcessorMixin):
             tools=tuple(deepcopy(prompt_inputs.chosen.tools or ())),
             reasoning_started=self._reasoning_started(feature["input_ids"]),
             media=media,
+            mm_processor_kwargs=processor_kwargs,
         )
         return PromptEncoding(state)
 
@@ -939,6 +953,7 @@ class Template(ProcessorMixin):
             tools=state.tools,
             reasoning_started=bool(response.reasoning_started),
             media=state.media,
+            mm_processor_kwargs=state.mm_processor_kwargs,
         )
         return CompletionEncoding(next_state, response)
 
