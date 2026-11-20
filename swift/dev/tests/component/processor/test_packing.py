@@ -304,3 +304,78 @@ def test_explicit_lazy_tokenize_with_streaming_raises():
     dataset_config = DatasetConfig(dataset=["d"], streaming=True, lazy_tokenize=True)
     with pytest.raises(ValueError, match="lazy_tokenize"):
         _validate(dataset_config)
+
+
+# --- defect124: embedding contrastive groups must survive megatron micro-batching -------------
+# prepare_inputs flattens an embedding group (anchor+positive+negatives) into flat per-sequence
+# rows carrying a scalar anchor mask (1.0 on the anchor). The megatron scheduler then micro-batches
+# those flat rows; splitting mid-group orphans anchors/negatives and InfoNCE's nonzero(labels) parse
+# builds ragged groups that index past the doc bank. micro_batch_size must count GROUPS here.
+
+
+def _emb_row(ids, anchor):
+    return {"input_ids": list(ids), "labels": 1.0 if anchor else 0.0, "position_ids": torch.arange(len(ids))}
+
+
+def _emb_groups(n_groups, negs=(1,)):
+    rows = []
+    for g in range(n_groups):
+        rows.append(_emb_row([1 + g, 2, 3], True))
+        rows.append(_emb_row([4 + g, 5], False))
+        for _n in range(negs[g % len(negs)]):
+            rows.append(_emb_row([7 + g, 8, 9, 10], False))
+    return rows
+
+
+def _flat(value):
+    """Collated text fields stay lists when no padding is needed; normalize to a flat list."""
+    return value.view(-1).tolist() if torch.is_tensor(value) else list(value)
+
+
+def _nrows(value):
+    return value.shape[0] if torch.is_tensor(value) else len(value)
+
+
+@pytest.mark.parametrize("framework", ["megatron", "transformers"])
+def test_embedding_micro_batch_counts_groups_not_sequences(framework):
+    proc = InputProcessor(framework=framework, task_type="embedding", padding_free=False)
+    out = proc.collate_fn(_emb_groups(2), micro_batch_size=1)  # 1 GROUP per micro-batch
+    assert len(out) == 2, f"expected 2 group-intact micro-batches, got {len(out)}"
+    for mb in out:
+        assert _flat(mb["labels"]) == [1.0, 0.0, 0.0], "group torn across micro-batches"
+        assert _nrows(mb["input_ids"]) == 3
+
+
+def test_embedding_micro_batch_two_groups_per_batch():
+    proc = InputProcessor(framework="megatron", task_type="embedding", padding_free=False)
+    out = proc.collate_fn(_emb_groups(4), micro_batch_size=2)
+    assert len(out) == 2
+    for mb in out:
+        assert _flat(mb["labels"]) == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+        assert _nrows(mb["input_ids"]) == 6
+
+
+def test_embedding_micro_batch_variable_negative_counts():
+    proc = InputProcessor(framework="megatron", task_type="embedding", padding_free=False)
+    out = proc.collate_fn(_emb_groups(2, negs=(1, 2)), micro_batch_size=1)
+    assert len(out) == 2
+    assert _nrows(out[0]["input_ids"]) == 3  # anchor+pos+1neg
+    assert _nrows(out[1]["input_ids"]) == 4  # anchor+pos+2neg
+    assert _flat(out[1]["labels"]) == [1.0, 0.0, 0.0, 0.0]
+
+
+def test_embedding_micro_batch_none_keeps_whole_batch():
+    proc = InputProcessor(framework="megatron", task_type="embedding", padding_free=False)
+    out = proc.collate_fn(_emb_groups(2), micro_batch_size=None)
+    assert len(out) == 1
+    assert _flat(out[0]["labels"]) == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_non_embedding_micro_batch_still_counts_sequences():
+    """Negative control: the group-intact plan must NOT leak into causal_lm SFT micro-batching."""
+    proc = InputProcessor(framework="megatron", task_type=None, padding_free=False)
+    rows = [{"input_ids": [i, i + 1, i + 2], "labels": [i, i + 1, i + 2],
+             "position_ids": torch.arange(3)} for i in range(5)]
+    out = proc.collate_fn(rows, micro_batch_size=2)
+    assert len(out) == 3  # ceil(5/2) sequence-counted micro-batches
+    assert [_nrows(mb["input_ids"]) for mb in out] == [2, 2, 1]

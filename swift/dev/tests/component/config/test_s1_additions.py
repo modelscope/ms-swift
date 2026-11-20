@@ -67,13 +67,53 @@ def _training_configs(task_type='causal_lm', backend=None, rl_type=None):
     return configs
 
 
-def test_sft_main_rejects_megatron_with_non_causal_task(monkeypatch):
-    """S1-03: ``--backend megatron`` + task_type=seq_cls is refused with the transformers alternative
-    named, rather than silently training a classification head on the wrong backend."""
+@pytest.mark.parametrize('task_type,recipe', [
+    ('seq_cls', 'run_seq_cls'),
+    ('embedding', 'run_embedding'),
+    ('reranker', 'run_reranker'),
+    ('generative_reranker', 'run_reranker'),
+    ('causal_lm', 'run_sft'),
+    ('decision', 'run_decision'),
+])
+def test_sft_main_megatron_dispatches_every_task_family_with_configs(monkeypatch, task_type, recipe):
+    """defect124: --backend megatron dispatches ALL six SFT task families and forwards the Megatron
+    Configs -- the head is built worker-side (mcore-bridge / decision family loader), so the backend
+    choice is orthogonal to the task family. The old causal_lm/decision-only guard rejected three
+    families the loader already supports; these cases pin the acceptance contract (reverse-verified:
+    restoring the guard turns the four non-causal/decision cases RED)."""
+    import swift.dev.recipe.sft as sft_pkg
+    mc, mo = object(), object()
+    configs = _training_configs(task_type=task_type, backend='megatron')
+    configs['megatron_config'], configs['moe_config'] = mc, mo
     monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_a, **_k: None)
-    configs = _training_configs(task_type='seq_cls', backend='megatron')
     monkeypatch.setattr('swift.dev.cli.sft.parse_sft_configs', lambda _argv: configs)
-    with pytest.raises(ValueError, match='supports only causal_lm / decision SFT'):
+    seen = {}
+    monkeypatch.setattr(sft_pkg, recipe, lambda *a, **k: seen.update(k) or [])
+    sft_main([])
+    assert seen['megatron_config'] is mc
+    assert seen['moe_config'] is mo
+
+
+def test_sft_main_transformers_path_passes_no_megatron_kwargs(monkeypatch):
+    """defect124 guard-shrink must not leak Megatron Configs into the HF path: the recipes accept
+    them keyword-only, but a transformers run forwards none (old signatures would TypeError)."""
+    import swift.dev.recipe.sft as sft_pkg
+    configs = _training_configs(task_type='seq_cls', backend=None)
+    monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_a, **_k: None)
+    monkeypatch.setattr('swift.dev.cli.sft.parse_sft_configs', lambda _argv: configs)
+    seen = {}
+    monkeypatch.setattr(sft_pkg, 'run_seq_cls', lambda *a, **k: seen.update(k) or [])
+    sft_main([])
+    assert 'megatron_config' not in seen and 'moe_config' not in seen
+
+
+def test_sft_main_still_refuses_unknown_task_type(monkeypatch):
+    """defect124: removing the megatron-only guard must keep the recipe-table refusal for an
+    unknown task_type (the guard shrink is not a blanket pass-through)."""
+    configs = _training_configs(task_type='bogus', backend='megatron')
+    monkeypatch.setattr('swift.dev.config.process_and_validate_configs', lambda *_a, **_k: None)
+    monkeypatch.setattr('swift.dev.cli.sft.parse_sft_configs', lambda _argv: configs)
+    with pytest.raises(ValueError, match='Unsupported SFT task_type'):
         sft_main([])
 
 
