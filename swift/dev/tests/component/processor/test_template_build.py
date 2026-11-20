@@ -156,9 +156,11 @@ def test_replace_derives_without_touching_the_original(template):
         template.replace(padding_free=True)
 
 
-#: Names only dev registers, each an alias of a template the same family already ships.
+#: Names only dev registers: either an alias of a template the same family already ships, or a
+#: family dev onboarded that legacy never shipped.
 DEV_ONLY_TEMPLATES = {
     'qwen3_vl_thinking': 'the Thinking checkpoints ship a different jinja, so dev splits the family by name',
+    'h2o': 'H2O-4B decision template ported dev-only (#10588); legacy has no h2o family',
 }
 
 #: Legacy families dev has not onboarded. Onboarding one is a decision, so it is registered here

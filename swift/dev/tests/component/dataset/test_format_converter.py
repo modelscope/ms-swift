@@ -323,3 +323,23 @@ def test_converted_rows_encode_to_input_ids(processor, raw):
     row = encoded[0]
     assert row['input_ids'] and all(isinstance(token, int) for token in row['input_ids'])
     assert row['labels'] and len(row['labels']) == len(row['input_ids'])
+
+
+def test_detection_priorities_are_the_pinned_numbers():
+    """The order tests pin the sequence; this pins the numeric values the sequence derives from,
+    so a renumbering that keeps the order (or breaks a tie differently) is still caught."""
+    from swift.dev.dataset.format_converter import FORMAT_MAPPING
+    assert {name: cls.priority for name, cls in FORMAT_MAPPING.items()} == {
+        'openai': 10, 'preference': 15, 'alpaca': 20, 'response': 1000}
+
+
+def test_role_aliases_normalize_through_a_real_convert():
+    rows = convert_rows([{
+        'conversations': [
+            {'from': 'system', 'value': 'be helpful'},
+            {'from': 'human', 'value': 'hello'},
+            {'from': 'gpt', 'value': 'hi'},
+            {'from': 'bot', 'value': 'hi again'},
+        ]
+    }])
+    assert [m['role'] for m in rows[0]['messages']] == ['system', 'user', 'assistant', 'assistant']
