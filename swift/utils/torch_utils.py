@@ -12,12 +12,37 @@ import uuid
 from contextlib import contextmanager
 from datasets.utils.filelock import FileLock
 from datetime import timedelta
+from filelock import UnixFileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers.utils import (is_torch_cuda_available, is_torch_mps_available, is_torch_musa_available,
                                 is_torch_npu_available)
 from typing import Any, Mapping, Optional, Union
 
 from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master, is_mp
+
+
+def _patch_filelock():
+    acquire = UnixFileLock._acquire
+    if getattr(acquire, '_swift_patched', False):
+        return
+
+    def _acquire(self):
+        # A peer can create or unlink the file between filelock's existence check and open.
+        # Returning without a descriptor lets filelock poll again with the caller's timeout.
+        try:
+            return acquire(self)
+        except FileExistsError:
+            if os.path.islink(self.lock_file) or not os.path.isdir(os.path.dirname(os.path.abspath(self.lock_file))):
+                raise
+        except FileNotFoundError:
+            if not os.path.isdir(os.path.dirname(os.path.abspath(self.lock_file))):
+                raise
+
+    _acquire._swift_patched = True
+    UnixFileLock._acquire = _acquire
+
+
+_patch_filelock()
 
 
 def nanstd(tensor: torch.Tensor, dim: Optional[Union[int, tuple]] = None, keepdim: bool = False) -> torch.Tensor:
