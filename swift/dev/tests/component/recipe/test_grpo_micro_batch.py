@@ -41,6 +41,11 @@ def make_state(ga=4, dp=2, max_steps=100):
     )
     state.reached_max = lambda: state.global_step >= state.max_steps
     state.should_stop = lambda: False
+    # defect121 mirrored the SFT per-step callback dispatch into the RL loops; the stub must carry
+    # the three per-step hooks the real CallbackHandler always has.
+    state.handler = SimpleNamespace(
+        on_step_begin=lambda: None, on_pre_optimizer_step=lambda: None, on_optimizer_step=lambda: None,
+    )
 
     def record(*, extra_metrics=None):
         state.global_step += 1

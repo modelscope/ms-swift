@@ -56,7 +56,10 @@ def state(model=None, max_steps=100):
     result.should_stop = lambda: False
     result.publish_state = lambda: None
     result.handler = SimpleNamespace(
-        on_epoch_begin=lambda: None, on_epoch_end=lambda: None, control=SimpleNamespace(should_save=False)
+        on_epoch_begin=lambda: None, on_epoch_end=lambda: None, control=SimpleNamespace(should_save=False),
+        # defect121 mirrored the SFT per-step callback dispatch into update_step; the stub must
+        # carry the three per-step hooks the real CallbackHandler always has.
+        on_step_begin=lambda: None, on_pre_optimizer_step=lambda: None, on_optimizer_step=lambda: None,
     )
     result.tracker = SimpleNamespace(log=lambda *args, **kwargs: None)
 
