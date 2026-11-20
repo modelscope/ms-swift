@@ -2571,6 +2571,28 @@ def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'Temp
                              f'attn_impl={model_config.attn_impl!r}. Use one of '
                              f'{", ".join(repr(i) for i in _SP_PADDING_FREE_ATTN_IMPLS)}, or set padding_free=False '
                              '(packing implies padding_free, so drop packing too).')
+    else:
+        # Non-packed (padding-mask) layout: on NPU (HCCL), sdpa/eager crash with a vector-core
+        # exception (507035: IndexCheckKernel bounds=local_seq_len vs global position ids) inside
+        # the SP attention path — the sharded attention mask / position ids are not reconstructed
+        # correctly for non-flash kernels. Flash-attention backends take the varlen path and are
+        # unaffected. Gate the rejection on NPU so CUDA behavior (unvalidated there, but not
+        # known-broken) is unchanged.
+        try:
+            import torch
+            try:
+                import torch_npu  # noqa: F401  -- registers torch.npu
+                on_npu = torch.npu.is_available()
+            except ImportError:
+                on_npu = False
+        except Exception:
+            on_npu = False
+        if on_npu and model_config.attn_impl not in _SP_PADDING_FREE_ATTN_IMPLS:
+            raise ValueError(f'sequence_parallel_size={sp} with packing=False (padding-mask layout) requires a '
+                             f'flash attention kernel on NPU: under attn_impl={model_config.attn_impl!r} the SP '
+                             f'attention path crashes with an NPU vector-core exception (507035). Use one of '
+                             f'{", ".join(repr(i) for i in _SP_PADDING_FREE_ATTN_IMPLS)}, or enable packing '
+                             '(packing implies padding_free).')
 
 
 def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
