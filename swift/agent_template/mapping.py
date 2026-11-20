@@ -16,7 +16,7 @@ from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minicpm5 import MiniCPM5AgentTemplate
 from .minimax_m2 import MinimaxM2AgentTemplate
 from .minimax_m3 import MinimaxM3AgentTemplate
-from .mistral import MistralAgentTemplate
+from .mistral import Mistral2512AgentTemplate, MistralAgentTemplate
 from .nemotron import Nemotron3_5AgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .qwen3_coder import Qwen3_5AgentTemplate, Qwen3CoderAgentTemplate
@@ -71,6 +71,8 @@ agent_template_map = {
     # extra
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate,
+    # ref: https://modelscope.cn/models/mistralai/Ministral-3-8B-Instruct-2512
+    'mistral_2512': Mistral2512AgentTemplate,
     'youtu': YoutuAgentTemplate,
     'kimi_k25': KimiK25AgentTemplate,
     'kimi_k3': KimiK3AgentTemplate,
