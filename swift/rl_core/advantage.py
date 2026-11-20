@@ -128,7 +128,7 @@ def compute_advantages_dynamic(
         prompt_ids: Length-N list of prompt identifiers.
         request_ids: Length-N list of request identifiers (may have duplicates).
         advantage_estimator: ``'grpo'``, ``'rloo'``, or ``'reinforce_plus_plus'``.
-        scale_rewards: ``'batch'``, ``'group'``, ``'none'``.
+        scale_rewards: ``'batch'``, ``'group'``, ``'none'``, or ``'gdpo'``.
         kl_in_reward: Subtract ref model KL from rewards (pre-normalization).
         beta: Ref model KL penalty coefficient.
         kl_values: ``[N]`` ref model KL values.
@@ -197,6 +197,21 @@ def compute_advantages_dynamic(
                 idx_t = torch.tensor(idxs, device=device)
                 r_group = unique_rewards[idx_t]
                 prompt_stds[idx_t] = r_group.std() if len(idxs) > 1 else 0.0
+        elif scale_rewards == 'gdpo':
+            # Same as compute_advantages: normalize each reward function within its prompt group,
+            # sum with the reward weights, then normalize the sum over the batch.
+            unique_rewards_per_func = rewards_per_func[unique_indices]
+            summed = torch.zeros(len(unique_rewards), device=device)
+            for i in range(unique_rewards_per_func.shape[1]):
+                norm_i = torch.zeros(len(unique_rewards), device=device)
+                for pid, idxs in prompt_to_indices.items():
+                    idx_t = torch.tensor(idxs, device=device)
+                    r_i = unique_rewards_per_func[idx_t, i]
+                    g_std = nanstd(r_i.unsqueeze(0), dim=1) + 1e-8
+                    norm_i[idx_t] = torch.nan_to_num((r_i - torch.nanmean(r_i)) / g_std, nan=0.0)
+                summed = summed + reward_weights[i] * norm_i
+            request_advantages = (summed - summed.mean()) / (summed.std() + 1e-8)
+            prompt_stds = None
         else:
             prompt_stds = None
 
