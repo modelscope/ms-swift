@@ -3,8 +3,28 @@
 import torch
 from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
+from torch.distributed.nn.functional import all_gather
 
-from swift.rlhf_trainers.gkd_loss import TeacherOutput
+from swift.rlhf_trainers.gkd_loss import TeacherOutput, _align_vocab
+
+
+def tp_align_vocab(student_logits: torch.Tensor, teacher_logits: torch.Tensor):
+    """Align shared global token IDs to the smaller model's TP partitioning."""
+    stu_vocab, tea_vocab = student_logits.shape[-1], teacher_logits.shape[-1]
+    if stu_vocab == tea_vocab or mpu.get_tensor_model_parallel_world_size() == 1:
+        return _align_vocab(student_logits, teacher_logits)
+
+    # Local prefixes refer to different global IDs when partition widths differ.
+    # Gather only the wider side, then select the shared IDs owned by this rank.
+    # The differentiable gather routes student gradients back to their original owners.
+    shared_vocab = min(stu_vocab, tea_vocab)
+    start = mpu.get_tensor_model_parallel_rank() * shared_vocab
+    wider_logits = student_logits if stu_vocab > tea_vocab else teacher_logits
+    gathered = all_gather(wider_logits, group=mpu.get_tensor_model_parallel_group())
+    aligned = torch.cat(gathered, dim=-1)[..., start:start + shared_vocab]
+    if stu_vocab > tea_vocab:
+        return aligned, teacher_logits
+    return student_logits, aligned
 
 
 def vocab_parallel_topk(logits: torch.Tensor, k: int) -> tuple:
