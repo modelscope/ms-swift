@@ -280,6 +280,13 @@ class RewardModel:
             logits = logits[torch.arange(logits.shape[0]), last]
             if logits.shape[-1] > 1:
                 logits = torch.softmax(logits.float(), dim=-1)[..., -1]
+        elif logits.dim() == 2 and logits.shape[-1] > 1:
+            # twinkle's seq_cls postprocess (_postprocess_seq_cls) already pooled the per-token
+            # [B, T, C] to [B, C] at the last valid token, so the dim==3 branch above never fires
+            # on that path. A multi-class head still carries C logits per row; without this reduce,
+            # reshape(-1) leaks C scores per row and the FunctionWorker rejects the batch
+            # ("returned 2 scores for 1 trajectories", the real PRM ray run).
+            logits = torch.softmax(logits.float(), dim=-1)[..., -1]
         return logits.reshape(-1).tolist()
 
     #: The reward protocol (``scorer(trajectories)``) a ``FunctionWorker`` calls.

@@ -118,6 +118,9 @@ def test_judge_query_strips_trailing_assistant_and_formats():
 #     for a single-class process head.
 #  T3 token-level, no attention_mask | falls back to the final position | IndexError / wrong row.
 #  T4 pooled [B,1] (sequence RM) | unchanged flatten | regressing the existing scalar-RM path.
+#  T5 twinkle-pooled [B,C>1] (seq_cls postprocess already gathered the last valid token) | per-row
+#     softmax positive class | the real-ray failure: reshape(-1) leaking C class logits per row
+#     ("FunctionWorker returned 2 scores for 1 trajectories", prm_test attempt1/2).
 # Independent oracle: manual per-row last-valid-token extraction computed in the test, not the
 # scorer's own index math. Stubs stand in for model/template (no GPU); the real ray PRM run signs E2E.
 class _StubTokenTemplate:
@@ -194,3 +197,18 @@ def test_defect123_pooled_sequence_rm_path_unchanged():
     logits = torch.tensor([[0.25], [0.75], [1.5]])
     rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate([[1], [1], [1]]))
     assert rm.score(_prm_rows(3)) == [0.25, 0.75, 1.5]
+
+
+def test_defect123_twinkle_pooled_multiclass_reduces_to_positive_class():
+    """T5: twinkle's _postprocess_seq_cls pools [B,T,C] -> [B,C] BEFORE score sees it; a C>1 head
+    must still yield ONE score per row (the positive-class softmax probability), not C logits."""
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    torch.manual_seed(1)
+    logits = torch.randn(3, 2)  # the exact shape the real PRM run delivered for 1-row batches
+    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate([[1], [1], [1]]))
+    scores = rm.score(_prm_rows(3))
+    oracle = torch.softmax(logits.float(), dim=-1)[..., -1].tolist()
+    assert len(scores) == 3  # one per row, NOT 3*2 class logits
+    assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))
