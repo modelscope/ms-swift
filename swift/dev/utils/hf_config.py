@@ -322,8 +322,9 @@ def make_remote_code_config_picklable(config: PretrainedConfig,
 
     def __reduce__(self):
         source = getattr(self, '_swift_remote_code_dir', None) or self._name_or_path
+        state = {k: v for k, v in self.to_dict().items() if not k.startswith('_swift_remote_code_')}
         return (_rebuild_remote_code_config,
-                (source, getattr(self, '_swift_remote_code_revision', None), self.to_dict()))
+                (source, getattr(self, '_swift_remote_code_revision', None), state))
 
     def __deepcopy__(self, memo):
         import copy
@@ -333,7 +334,14 @@ def make_remote_code_config_picklable(config: PretrainedConfig,
             setattr(new, key, copy.deepcopy(value, memo))
         return new
 
+    def to_dict(self):
+        # The reduction bookkeeping is transport metadata, not config state: keep it out of the
+        # serialized dict (it travels as reduce args) so actor-side configs stay attribute-clean.
+        return {k: v for k, v in orig_to_dict(self).items() if not k.startswith('_swift_remote_code_')}
+
+    orig_to_dict = cls.to_dict
     cls.__reduce__ = __reduce__
     cls.__deepcopy__ = __deepcopy__
+    cls.to_dict = to_dict
     setattr(cls, _REMOTE_CODE_REDUCE_MARKER, True)
     return config
