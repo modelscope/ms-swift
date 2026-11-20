@@ -62,9 +62,10 @@ def test_build_env_pool_local_builds_one_slot_per_env(monkeypatch, tmp_path):
 
     class _FakeLocalEnv:
 
-        def __init__(self, root, command_timeout, memory_limit_gb, max_sessions):
+        def __init__(self, root, command_timeout, memory_limit_gb, max_sessions, session_wait_timeout=None):
             built.update(root=root, command_timeout=command_timeout,
-                         memory_limit_gb=memory_limit_gb, max_sessions=max_sessions)
+                         memory_limit_gb=memory_limit_gb, max_sessions=max_sessions,
+                         session_wait_timeout=session_wait_timeout)
 
     import twinkle_agentic.envs as envs_mod
     monkeypatch.setattr(envs_mod, 'LocalEnv', _FakeLocalEnv, raising=False)
@@ -75,6 +76,7 @@ def test_build_env_pool_local_builds_one_slot_per_env(monkeypatch, tmp_path):
     assert built['root'] == str(tmp_path)
     # one worker in-process, so the cap is the whole budget: ceil(2 / 1)
     assert built['max_sessions'] == 2
+    assert built['session_wait_timeout'] == cfg.sandbox_session_wait
 
 
 def test_build_tools_with_tools_builds_pool_and_manager(monkeypatch, tmp_path):
