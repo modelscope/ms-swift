@@ -19,7 +19,7 @@ from trl import DPOConfig as HfDPOConfig
 from trl import GRPOConfig as HfGRPOConfig
 from trl import KTOConfig as HfKTOConfig
 from trl import RewardConfig as HfRewardConfig
-from typing import Optional
+from typing import Literal, Optional
 
 from swift.trainers import TrainArgumentsMixin
 from .args_mixin import GRPOArgumentsMixin, RolloutTrainerArgumentsMixin
@@ -81,6 +81,7 @@ class PPOConfig(TrainArgumentsMixin, HfPPOConfig):
 @dataclass
 class GKDConfig(RolloutTrainerArgumentsMixin, TrainArgumentsMixin, HfGKDConfig):
     sft_alpha: float = 0
+    gkd_loss_type: Literal['jsd', 'mopd'] = 'jsd'
 
     offload_teacher_model: bool = False
     max_completion_length: int = 512
