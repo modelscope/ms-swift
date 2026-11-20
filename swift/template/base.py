@@ -70,11 +70,6 @@ class Template(ProcessorMixin):
     # For pure text models, the default is True; for multimodal models, the default is False.
     support_padding_free = None
     jinja_enable_thinking_key = 'enable_thinking'
-    # If True, only inject non_thinking_prefix when the previous turn is a 'user' turn.
-    # Set this in subclasses where thinking / tool_call / tool_response / follow-up
-    # assistant text live in the same logical turn (e.g. Gemma4, DeepSeekV3.1), so
-    # the assistant turn after a tool_response should NOT open a new thinking block.
-    non_thinking_prefix_only_after_user: bool = False
     model_accepts_loss_kwargs: Optional[bool] = None
 
     is_encoder_decoder = False
@@ -129,8 +124,11 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
-        if enable_thinking is None:
-            enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
+        policy = template_meta.enable_thinking_policy
+        if enable_thinking is None and policy != 'auto':
+            enable_thinking = template_meta.default_enable_thinking
+            if enable_thinking is None:
+                enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
         self.response_prefix = response_prefix
         self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
@@ -174,6 +172,8 @@ class Template(ProcessorMixin):
         preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
+        if preserve_thinking is None and self.template_meta.preserve_thinking_policy == 'always':
+            preserve_thinking = True
         if preserve_thinking is None:
             # Models that keep historical thinking themselves always preserve it, unless the user
             # explicitly opts out above.
@@ -198,6 +198,8 @@ class Template(ProcessorMixin):
         elif not self.use_chat_template:
             return ''
         enable_thinking = self._get_enable_thinking(inputs)
+        if enable_thinking is None:
+            return ''
         if enable_thinking:
             return self.template_meta.thinking_prefix
         else:
@@ -1275,9 +1277,13 @@ class Template(ProcessorMixin):
         if inputs.tools:
             kwargs['tools'] = inputs.tools
         enable_thinking = self._get_enable_thinking(inputs)
-        if self.template_meta.is_thinking or enable_thinking:
+        if enable_thinking is not None and (self.template_meta.is_thinking or enable_thinking):
             kwargs[self.jinja_enable_thinking_key] = enable_thinking
-            kwargs['preserve_thinking'] = self._get_preserve_thinking(inputs)
+        preserve_thinking = self._get_preserve_thinking(inputs)
+        explicit_preserve = inputs is not None and 'preserve_thinking' in inputs.chat_template_kwargs
+        if self.template_meta.is_thinking and (enable_thinking is not None or explicit_preserve
+                                               or self.preserve_thinking is not None):
+            kwargs['preserve_thinking'] = preserve_thinking
         kwargs.update(self.chat_template_kwargs)
         kwargs.update(inputs.chat_template_kwargs)
         text = self.tokenizer.apply_chat_template(
@@ -1297,12 +1303,30 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
+    def _get_current_round_start(self, messages) -> int:
+        """Boundary for history thinking: assistants before it lose their thinking."""
+        if self.template_meta.preserve_thinking_policy == 'never_all' and not self.is_training:
+            return len(messages)
+        for i in range(len(messages) - 1, -1, -1):
+            message = messages[i]
+            if message['role'] == 'user' or (message['role'] == 'tool' and message.get('_tool_user_followup')):
+                return i
+        return -1
+
+    def _non_thinking_prefix_start(self, messages) -> int:
+        """Start of the round used when inserting an empty-think prefix."""
+        for i in range(len(messages) - 1, -1, -1):
+            message = messages[i]
+            if message['role'] == 'user' or (message['role'] == 'tool' and message.get('_tool_user_followup')):
+                return i
+        return -1
+
     def _is_add_non_thinking_round(self, messages, i: int, start_idx: int):
         message = messages[i]
         if not (i >= start_idx and message['role'] == 'assistant'):
             return False
-        if self.non_thinking_prefix_only_after_user and not (i > 0 and (messages[i - 1]['role'] == 'user'
-                                                                        or messages[i - 1].get('_tool_user_followup'))):
+        if self.template_meta.non_thinking_prefix_policy == 'after_user' and not (
+                i > 0 and (messages[i - 1]['role'] == 'user' or messages[i - 1].get('_tool_user_followup'))):
             return False
         return True
 
@@ -1315,11 +1339,19 @@ class Template(ProcessorMixin):
             # Otherwise, process all messages (start_idx = -1 means start from the beginning)
             if ((not self.is_training or self.loss_scale.base_strategy == 'last_round')
                     and not self.template_meta.preserve_thinking):
-                start_idx = get_last_user_round(messages)
+                if (self.template_meta.non_thinking_prefix_policy == 'last_response'
+                        or self._get_preserve_thinking(inputs)):
+                    start_idx = get_last_user_round(messages)
+                else:
+                    start_idx = self._non_thinking_prefix_start(messages)
             else:
                 start_idx = -1
+            last_assistant_idx = next(
+                (i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
             for i, message in enumerate(messages):
                 if not self._is_add_non_thinking_round(messages, i, start_idx):
+                    continue
+                if (self.template_meta.non_thinking_prefix_policy == 'last_response' and i != last_assistant_idx):
                     continue
                 content = message['content']
                 # After merge, content may be a list; only process the first element.
@@ -1333,16 +1365,22 @@ class Template(ProcessorMixin):
                         message['content'] = non_thinking_prefix + content
 
     def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
+        if thinking_suffix in content and not self.template_meta.strip_history_thinking:
+            return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
         content = content.split(thinking_suffix)[-1].strip()
         return self.template_meta.history_thinking_prefix + content
 
-    def _remove_history_thinking(self, inputs) -> None:
+    def _remove_history_thinking(self, inputs, keep_tool_call_history: bool = False) -> None:
         messages = inputs.messages
         # Delete the previous 'think' entries from the messages.
-        last_user_round = get_last_user_round(messages)
+        last_user_round = self._get_current_round_start(messages)
         for i, message in enumerate(messages):
             # Delete the content before '</think>' in all assistant turns except the last round.
             if message['role'] == 'assistant' and i < last_user_round:
+                if keep_tool_call_history:
+                    next_role = messages[i + 1]['role'] if i + 1 < len(messages) else None
+                    if next_role == 'tool':
+                        continue
                 content = message['content']
                 # After merge, content may be a list; only process the first element.
                 if isinstance(content, list) and content and isinstance(content[0], str):
@@ -1429,7 +1467,7 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         if self.use_chat_template:
-            if self.add_non_thinking_prefix:
+            if self.add_non_thinking_prefix and self._get_enable_thinking(inputs) is not None:
                 self._add_non_thinking_prefix(inputs)
             preserve_thinking = self._get_preserve_thinking(inputs)
             if not preserve_thinking:

@@ -99,9 +99,6 @@ class NemotronHOmniTemplate(Template):
     video_patch = -203
     placeholder_tokens = ['<image>']
 
-    def __init__(self, *args, enable_thinking=True, **kwargs):
-        super().__init__(*args, enable_thinking=True if enable_thinking is None else enable_thinking, **kwargs)
-
     @staticmethod
     def _normalize_messages(messages):
         # Run before StdTemplateInputs discards structured content and reasoning on tool calls.
@@ -284,6 +281,9 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        preserve_thinking=False,
+        default_enable_thinking=True,
+        strip_history_thinking=False,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))
@@ -297,6 +297,9 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        preserve_thinking=False,
+        default_enable_thinking=True,
+        strip_history_thinking=False,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))

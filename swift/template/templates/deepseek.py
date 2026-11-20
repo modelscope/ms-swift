@@ -726,7 +726,25 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_think
 
 class DeepseekV3_1Template(Template):
     jinja_enable_thinking_key = 'thinking'
-    non_thinking_prefix_only_after_user = True
+
+    def _remove_history_thinking(self, inputs) -> None:
+        messages = inputs.messages
+        last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
+        for i, message in enumerate(messages):
+            if message['role'] != 'assistant':
+                continue
+            if self.is_training and i == last_assistant:
+                continue
+            # Official V3.1 keeps tool-call assistant content verbatim and strips only plain
+            # assistant turns.
+            next_role = messages[i + 1]['role'] if i + 1 < len(messages) else None
+            if next_role in ('tool', 'tool_call'):
+                continue
+            content = message['content']
+            if isinstance(content, list) and content and isinstance(content[0], str):
+                content[0] = self._remove_thinking_content(content[0])
+            elif isinstance(content, str):
+                message['content'] = self._remove_thinking_content(content)
 
 
 register_template(
@@ -737,6 +755,7 @@ register_template(
         template_cls=DeepseekV3_1Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
+        non_thinking_prefix_policy='after_user',
         history_thinking_prefix='</think>'))
 
 # Reasoning-effort prefixes, prepended at the very beginning of the conversation
@@ -813,7 +832,7 @@ class DeepseekV4Template(DeepseekV3_1Template):
         # reasoning across tool calls.
         if inputs.tools:
             return
-        super()._remove_history_thinking(inputs)
+        Template._remove_history_thinking(self, inputs, keep_tool_call_history=True)
 
 
 register_template(
@@ -824,6 +843,8 @@ register_template(
         template_cls=DeepseekV4Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
+        strip_history_thinking=False,
+        default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 
 
@@ -890,14 +911,12 @@ class DeepseekV41Template(DeepseekV3_1Template):
                 else:
                     message['content'] = prefix + first
 
-    def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
-        return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
-
     def _remove_history_thinking(self, inputs) -> None:
-        # The official V4.1 encoder retains reasoning whenever tools are defined.
+        # The official V4 encoder drops reasoning before the last user turn but keeps the
+        # final assistant turn; with tools it keeps every turn.
         if inputs.tools:
             return
-        super()._remove_history_thinking(inputs)
+        Template._remove_history_thinking(self, inputs, keep_tool_call_history=True)
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         super()._swift_prepare_inputs(inputs)
@@ -1041,6 +1060,8 @@ register_template(
         template_cls=DeepseekV41Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
+        strip_history_thinking=False,
+        default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 
 
@@ -1064,6 +1085,8 @@ register_template(
         template_cls=DeepseekV4FlashTemplate,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
+        strip_history_thinking=False,
+        default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 
 

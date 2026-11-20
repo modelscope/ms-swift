@@ -106,6 +106,13 @@ class KimiK25Template(Template):
     support_padding_free = True
     skip_prompt = False
 
+    def _get_current_round_start(self, messages) -> int:
+        """The round starts after the last assistant turn that is not followed by a tool result."""
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i]['role'] == 'assistant' and (i + 1 == len(messages) or messages[i + 1]['role'] != 'tool'):
+                return i + 1
+        return 0
+
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         system = super()._get_system(inputs)
         if system is not None and '<|im_middle|>' not in system:  # compat agent
@@ -194,6 +201,7 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        default_enable_thinking=True,
         agent_template='kimi_k25',
     ))
 

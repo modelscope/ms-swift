@@ -364,6 +364,7 @@ register_template(
         template_cls=HunyuanTemplate,
         is_thinking=True,
         non_thinking_prefix='<think>\n\n</think>\n',
+        default_enable_thinking=True,
         agent_template='hunyuan_hermes'))
 
 
@@ -422,6 +423,13 @@ register_template(
 
 class HyV3Template(HyV3PreviewTemplate):
     HYTK = ':opensource'
+
+    def _get_preserve_thinking(self, inputs=None):
+        explicit = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
+        if explicit is None and self.preserve_thinking is None and inputs is not None and getattr(
+                inputs, 'tools', None):
+            return True
+        return super()._get_preserve_thinking(inputs)
 
 
 register_template(
@@ -526,6 +534,7 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         agent_template='ling3',
+        preserve_thinking_policy='always',
     ))
 
 register_template(
@@ -605,6 +614,7 @@ register_template(
         suffix=['<|end_of_text|>'],
         is_thinking=True,
         non_thinking_prefix='<think>\n\n</think>\n\n',
+        default_enable_thinking=True,
         agent_template='youtu',
     ))
 
@@ -677,6 +687,12 @@ register_template(
         default_system=None,
         is_thinking=True,
         thinking_prefix='<think>\n',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        # Official jinja truncates historical thinking by default (truncate_history_thinking=True).
+        preserve_thinking=False,
+        default_enable_thinking=True,
+        strip_history_thinking=False,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))

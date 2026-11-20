@@ -71,6 +71,7 @@ class GLM4_5TemplateMeta(GLM4TemplateMeta):
     is_thinking: bool = True
     non_thinking_prefix: str = '<think></think>\n'
     history_thinking_prefix: str = '<think></think>\n'
+    default_enable_thinking: bool = True
 
 
 class ChatGLM4VTemplate(Template):
@@ -409,6 +410,7 @@ register_template(
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
         preserve_thinking=True,
+        preserve_thinking_policy='always',
     ))
 
 
@@ -502,6 +504,7 @@ register_template(
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
         preserve_thinking=True,
+        preserve_thinking_policy='always',
     ))
 
 glm4z1rumination_system = (
@@ -542,7 +545,8 @@ register_template(
         LLMTemplateType.glm4_z1_rumination,
         template_cls=GLM4Template,
         default_system=glm4z1rumination_system,
-        is_thinking=True))
+        is_thinking=True,
+        preserve_thinking_policy='never_all'))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 

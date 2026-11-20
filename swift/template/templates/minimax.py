@@ -298,4 +298,6 @@ class MinimaxM3VLTemplateMeta(TemplateMeta):
     history_thinking_prefix: str = '</mm:think>'
 
 
-register_template(MinimaxM3VLTemplateMeta(MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate))
+register_template(
+    MinimaxM3VLTemplateMeta(
+        MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate, preserve_thinking_policy='always'))

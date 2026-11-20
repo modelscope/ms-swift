@@ -66,7 +66,12 @@ class Qwen3MixedTemplateMeta(QwenTemplateMeta):
     non_thinking_prefix: str = '<think>\n\n</think>\n\n'
 
 
-register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, is_thinking=True))
+register_template(
+    Qwen3MixedTemplateMeta(
+        LLMTemplateType.qwen3,
+        is_thinking=True,
+        non_thinking_prefix_policy='last_response',
+        default_enable_thinking=True))
 
 QWEN3_GUARD_TEMPLATE = (
     '<|im_start|>user\n'
@@ -744,6 +749,7 @@ register_template(
         default_system=None,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
+        default_enable_thinking=True,
         agent_template='qwen3_5',
         is_thinking=True))
 
@@ -756,6 +762,7 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n\n',
         agent_template='qwen3_5',
         preserve_thinking=True,
+        default_enable_thinking=True,
         is_thinking=True))
 
 register_template(
