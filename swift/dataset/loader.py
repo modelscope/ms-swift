@@ -247,6 +247,22 @@ def _inject_dataset_routing_tag(dataset: DATASET_TYPE, ds_name: str) -> DATASET_
         return dataset.map(lambda example: {**example, 'dataset': ds_name})
     if 'dataset' in dataset.column_names:
         dataset = dataset.remove_columns('dataset')
+    if dataset.column_names and len(dataset):
+        first_column = dataset.column_names[0]
+        # Materialize through a batched map so the routing column is written to
+        # disk together with the other columns. `add_column()` would create an
+        # in-memory column on top of a memory-mapped table, and pickling a slice
+        # of that mixed layout re-carries the shared parent buffers (serialized
+        # shard size grows by orders of magnitude on multi-proc map).
+        # safe_ddp_context serializes the cache write across ranks, matching the
+        # pattern used for dataset loading above.
+        with safe_ddp_context(hash_id=f'routing_tag_{dataset._fingerprint}', use_barrier=True):
+            return dataset.map(
+                lambda batch: {'dataset': [ds_name] * len(batch[first_column])},
+                batched=True,
+            )
+    # Zero rows or no columns: map() would skip the callback entirely and the
+    # column would never be added, so keep add_column() here.
     return dataset.add_column('dataset', [ds_name] * len(dataset))
 
 
