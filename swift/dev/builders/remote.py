@@ -16,8 +16,11 @@ worker startup via ``TWINKLE_WORKER_SETUP_HOOK``; the client asks for it by clas
 ships a serialized ``TemplateSpec`` so the server rebuilds the dev Template itself.
 """
 from __future__ import annotations
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
+from uuid import uuid4
 
 from swift.dev.utils.logger import get_logger
 
@@ -63,10 +66,10 @@ def build_remote_model(model_config: 'ModelConfig', distributed_config: 'Distrib
 
     from twinkle import init_twinkle_client
 
-    init_twinkle_client(base_url=distributed_config.server_base_url, api_key=distributed_config.server_api_key)
+    client = init_twinkle_client(base_url=distributed_config.server_base_url, api_key=distributed_config.server_api_key)
     handle = MultiLoraTransformersModel(model_config.model or '')
     logger.info(f"[remote] driving server {distributed_config.server_base_url!r} model {model_config.model!r}")
-    return RemoteModel(handle)
+    return RemoteModel(handle, client)
 
 
 class RemoteModel:
@@ -79,8 +82,9 @@ class RemoteModel:
     lives here with the other remote object sources instead of at every consumption point.
     """
 
-    def __init__(self, handle: Any) -> None:
+    def __init__(self, handle: Any, client: Any = None) -> None:
         self._handle = handle
+        self.client = client
         # The shared loop sizes its per-rank micro-batches off ``device_mesh.data_world_size``;
         # remotely ONE client process drives the server, whose own sharding splits the batch it
         # receives. A single-process mesh (dp=1) keeps every division correct.
@@ -294,53 +298,170 @@ def configure_remote_loss(model: Any, train_config: 'TrainConfig',
 
 
 class RemoteWeightSync:
-    """The policy -> sampler weight sync over HTTP: the save -> adapter_uri hand-off.
+    """Publish the remote policy's LoRA weights to the sampler over HTTP.
 
-    The SAME face the streaming driver and the training loop drive a CheckpointEngineManager
-    with (``sync_weights`` / ``version`` / ``close``), so the recipes stay mode-blind; the
-    transport underneath is the server's own store instead of an NCCL/IPC channel: every sync
-    saves a sampler-serving checkpoint (``is_sampler=True`` keeps only the newest server-side)
-    and stamps the returned ``twinkle://`` URI onto the client sampler, whose ``sample`` falls
-    back to it when a call names no adapter. A new sync REPLACES the stamped URI; the version
-    counter advances exactly once per completed sync, matching the ray engine's contract.
+    Async rollout retains named snapshots while sampling requests use them.
     """
 
-    def __init__(self, model: Any, sampler: Any) -> None:
+    def __init__(self, model: Any, sampler: Any, *, versioned: bool = False) -> None:
         self.model = model
         self.sampler = sampler
         self._version = 0
+        self._versioned = versioned
+        self._publish_lock = threading.Lock()
+        self._snapshot_lock = threading.Lock()
+        self._snapshots: dict[str, int] = {}
+        self._unconfirmed: dict[str, set[str | None]] = {}
+        self._pending_saves: dict[str, str | None] = {}
+        self._retiring: set[str] = set()
+        self._closed = False
+        if versioned:
+            if not hasattr(sampler, 'on_adapter_task_unknown') or getattr(model, 'client', None) is None:
+                raise RuntimeError('Remote async GRPO requires a Twinkle HTTP sampler with adapter lease support.')
+            sampler.adapter_lease = self._lease_adapter
+            sampler.on_adapter_task_unknown = self._note_unknown_sample
+
+    @contextmanager
+    def _lease_adapter(self, uri):
+        with self._snapshot_lock:
+            if self._closed:
+                raise RuntimeError('Remote weight sync is closed.')
+            if uri is None:
+                uri = self.sampler.adapter_path
+            if uri in self._retiring:
+                raise ValueError(f'Remote sampler snapshot is being reclaimed: {uri}')
+            tracked = uri in self._snapshots
+            if tracked:
+                self._snapshots[uri] += 1
+        try:
+            yield uri
+        finally:
+            if tracked:
+                with self._snapshot_lock:
+                    self._snapshots[uri] -= 1
+                    reclaim = self._closed
+                if reclaim:
+                    with self._publish_lock:
+                        self._reclaim_snapshots()
+
+    def _note_unknown_sample(self, uri, request_id) -> None:
+        with self._snapshot_lock:
+            if uri in self._snapshots:
+                self._unconfirmed.setdefault(uri, set()).add(request_id)
 
     def sync_weights(self, merge_and_sync: bool = True) -> None:
+        with self._publish_lock:
+            if self._closed:
+                raise RuntimeError('Remote weight sync is closed.')
+            self._publish()
+
+    def _publish(self) -> None:
         import os
         import time
+
         perf = os.environ.get('TWINKLE_PERF') == '1'
         start = time.perf_counter() if perf else None
-        response = self.model.save('remote-sampler-weights', save_optimizer=False, is_sampler=True)
+        name = f'remote-sampler-weights-{uuid4().hex}' if self._versioned else 'remote-sampler-weights'
+        options = {}
+        if self._versioned:
+            options['on_outcome_unknown'] = lambda request_id: self._pending_saves.__setitem__(name, request_id)
+        response = self.model.save(name, save_optimizer=False, is_sampler=True, **options)
         if perf:
-            # The client blocks to the terminal save state, so this round-trip spans the HTTP call
-            # plus the server's disk save; the server-side disk fraction needs server instrumentation.
             logger.info(f'[remote][perf] weight-sync save round-trip {time.perf_counter() - start:.3f}s '
                         f'version={self._version + 1}')
-        twinkle_path = getattr(response, 'twinkle_path', None)
-        if not twinkle_path:
-            # Refused BEFORE stamping: overwriting the held URI with None would drop the sampler's
-            # last good adapter on a sync that never completed.
+        uri = getattr(response, 'twinkle_path', None)
+        if not uri:
             raise ValueError('the remote weight sync got no twinkle:// path back from model.save().')
-        # The rollout's client face (HTTPSampler) names the stamped URI 'adapter_path'; a bare
-        # served-sampler handle names it 'adapter_uri'. Stamp whichever this sampler carries.
-        if hasattr(self.sampler, 'adapter_path'):
-            self.sampler.adapter_path = twinkle_path
-        else:
-            self.sampler.adapter_uri = twinkle_path
-        self._version += 1
+        with self._snapshot_lock:
+            if hasattr(self.sampler, 'adapter_path'):
+                self.sampler.adapter_path = uri
+            else:
+                self.sampler.adapter_uri = uri
+            self._version += 1
+            if self._versioned:
+                self._snapshots[uri] = 0
+        if self._versioned:
+            self._reclaim_snapshots(keep=uri)
+
+    def _reclaim_snapshots(self, *, keep=None) -> None:
+        self._reconcile_tasks()
+        with self._snapshot_lock:
+            candidates = [
+                uri for uri, count in self._snapshots.items()
+                if uri != keep and count == 0 and uri not in self._unconfirmed
+            ]
+        for uri in candidates:
+            with self._snapshot_lock:
+                if self._snapshots[uri] or uri in self._unconfirmed:
+                    continue
+                del self._snapshots[uri]
+                self._retiring.add(uri)
+            try:
+                run_id, kind, name = uri.removeprefix('twinkle://').split('/')
+                if not uri.startswith('twinkle://') or kind != 'sampler_weights':
+                    raise ValueError(f'Unexpected sampler checkpoint URI: {uri!r}')
+                self.model.client.delete_checkpoint(run_id, f'{kind}/{name}')
+            except Exception as exc:
+                # Failed deletions are retried at the next publication or close.
+                logger.warning(f'Could not reclaim remote sampler snapshot {uri}: {exc}')
+                with self._snapshot_lock:
+                    self._snapshots[uri] = 0
+                # The delete may still finish on the server after a transport error.
+                # Keep the URI unavailable to new readers while retrying.
+            else:
+                with self._snapshot_lock:
+                    self._retiring.remove(uri)
+
+    def _retrieve_task(self, request_id):
+        from requests import RequestException
+
+        if request_id is None:
+            return None
+        try:
+            return self.model.client.retrieve_task(request_id)
+        except (RequestException, ValueError):
+            return None
+
+    def _reconcile_tasks(self) -> None:
+        from twinkle.protocol.types.lifecycle import TERMINAL_STATUSES
+
+        for name, request_id in tuple(self._pending_saves.items()):
+            task = self._retrieve_task(request_id)
+            if task is None or task.status not in TERMINAL_STATUSES:
+                continue
+            if task.status == 'completed':
+                uri = task.result.get('twinkle_path') if isinstance(task.result, dict) else None
+                if not isinstance(uri, str) or not uri.endswith(f'/sampler_weights/{name}'):
+                    logger.warning(f'Could not identify the completed sampler snapshot {name}')
+                    continue
+                with self._snapshot_lock:
+                    self._snapshots[uri] = 0
+            del self._pending_saves[name]
+
+        with self._snapshot_lock:
+            unknown_samples = [(uri, tuple(ids)) for uri, ids in self._unconfirmed.items()
+                               if self._snapshots[uri] == 0]
+        for uri, request_ids in unknown_samples:
+            for request_id in request_ids:
+                task = self._retrieve_task(request_id)
+                if task is not None and task.status in TERMINAL_STATUSES:
+                    with self._snapshot_lock:
+                        self._unconfirmed[uri].discard(request_id)
+                        if not self._unconfirmed[uri]:
+                            del self._unconfirmed[uri]
 
     def version(self) -> int:
         return self._version
 
     def close(self) -> None:
-        # No channel to tear down: the transport is the server's store, and the stamped URI
-        # simply goes stale on the next sync.
-        return None
+        if self._versioned:
+            with self._publish_lock:
+                with self._snapshot_lock:
+                    self._closed = True
+                self._reclaim_snapshots()
+                if self._pending_saves or self._unconfirmed:
+                    logger.warning('Keeping remote sampler snapshots with unresolved server tasks: saves=%s, samples=%s',
+                                   self._pending_saves, self._unconfirmed)
 
 
 def configure_remote_metric(model: Any, task_type: Optional[str] = None) -> None:
