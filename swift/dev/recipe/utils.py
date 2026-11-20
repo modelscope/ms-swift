@@ -1267,8 +1267,7 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
         shared = group_name != MODEL_GROUP and bool(rank_set) and rank_set.issubset(allocated)
         # A sampler group's workers each span the engine's parallel width; every other group is one
         # GPU per rank.
-        sampler_group = (group_name in (SAMPLER_GROUP, 'shared_sampler') or group_name.startswith('sampler_')
-                         or group_name.startswith('shared_sampler_') or group_name.startswith('flex_sampler_'))
+        sampler_group = (group_name in (SAMPLER_GROUP, ) or group_name.startswith('sampler_'))
         width = sampler_width if sampler_group else 1
         device_groups.append(
             DeviceGroup(name=group_name, ranks=ranks,
