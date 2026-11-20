@@ -149,16 +149,14 @@ def test_grpo_circle_real_ray() -> None:
 @pytest.mark.slow
 @pytest.mark.accel(1)
 def test_numeric_component_is_ray_actor() -> None:
-    """W2: the numeric plane is the live ``numeric_component`` API -- one ray
-    actor per class on the CPU group the bootstrap declared -- not the retired
-    ``get_numeric_worker`` handle. A stashed signal component resolves to a ray
-    actor pool (``_actors``), never a local object."""
+    """W2: the numeric plane is remote -- the advantage stage's twinkle estimator
+    is constructed under the CPU group the bootstrap declared and resolves to a
+    ray actor pool (``_actors``), never a local object."""
     import twinkle
     import twinkle.infra as infra
-    from twinkle.signals import SignalCombine
 
     import swift.dev.webui.numeric as numeric
-    from swift.dev.webui.numeric import numeric_component
+    from swift.dev.webui.components.signals import AdvantageStage
     from swift.dev.webui.session import _bootstrap
 
     assert not hasattr(numeric, 'get_numeric_worker'), 'retired get_numeric_worker API still present'
@@ -171,8 +169,10 @@ def test_numeric_component_is_ray_actor() -> None:
     _bootstrap(declaration)
     assert infra._mode == 'ray'
     try:
-        component = numeric_component(SignalCombine)
+        stage = AdvantageStage('adv', {'estimator': 'grpo', 'num_generations': 4})
+        component = stage._estimator()
         assert getattr(component, '_actors', None), 'numeric component is not a ray actor pool'
+        component.close()
     finally:
         twinkle.shutdown()
 
