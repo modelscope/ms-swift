@@ -82,7 +82,7 @@ def test_checkpoint_paths_checkpoint_then_resume_roundtrip(tmp_path):
     paths.prepare(resume=False)
     with open(paths.tmp, 'w', encoding='utf-8') as f:
         f.write(json.dumps({'response': 'a'}) + '\n')
-    paths.checkpoint(3)  # snapshot tmp -> resume, then record batch_index 3
+    paths.checkpoint(3, os.path.getsize(paths.tmp))  # snapshot tmp -> resume, then record batch_index 3
     assert os.path.exists(paths.resume) and os.path.exists(paths.state)
     # a crash leaves tmp half-written; resume copies the clean snapshot back over it
     with open(paths.tmp, 'w', encoding='utf-8') as f:
@@ -97,7 +97,7 @@ def test_checkpoint_paths_finalize_publishes_final(tmp_path):
     paths.prepare(resume=False)
     with open(paths.tmp, 'w', encoding='utf-8') as f:
         f.write(json.dumps({'response': 'a'}) + '\n')
-    paths.checkpoint(0)
+    paths.checkpoint(0, os.path.getsize(paths.tmp))
     paths.finalize()
     assert os.path.exists(paths.final)
     assert _read_jsonl(paths.final) == [{'response': 'a'}]
@@ -152,6 +152,110 @@ def test_checkpoint_writer_resume_skips_finished_batches(tmp_path):
     w2.finish([])
     rows = _read_jsonl(path)
     assert {'response': 'a'} in rows and {'response': 'b'} in rows
+
+
+# --- StoreWriter, checkpoint mode: crash-window reconciliation (defect120) --------------
+
+
+def test_resume_drops_snapshot_rows_beyond_the_state_record(tmp_path):
+    """Crash inside checkpoint(): the snapshot copy landed but the state write did not, so the
+    snapshot holds one group more than the state records. Resume must drop the unrecorded rows
+    and re-emit that group exactly once -- not append it onto the snapshot's copy."""
+    import shutil
+    path = str(tmp_path / 'out.jsonl')
+    w1 = StoreWriter(path, 'jsonl', checkpoint=True)
+    w1.write([{'response': 'a'}])
+    w1.checkpoint(0)
+    w1.write([{'response': 'b'}])  # written, never checkpointed
+    shutil.copyfile(w1._paths.tmp, w1._paths.resume)  # the snapshot half of checkpoint(1)
+    w1._f.close()
+    w2 = StoreWriter(path, 'jsonl', checkpoint=True, resume=True)
+    assert w2.skip(0) is True and w2.skip(1) is False
+    assert _read_jsonl(w2._paths.tmp) == [{'response': 'a'}]
+    w2.write([{'response': 'b'}])
+    w2.checkpoint(1)
+    w2.finish([])
+    assert _read_jsonl(path) == [{'response': 'a'}, {'response': 'b'}]
+
+
+def test_resume_without_state_redoes_from_scratch(tmp_path):
+    """A snapshot with no state file is untrusted: resume re-drives everything into an empty tmp
+    instead of appending the whole run onto the snapshot's prefix (full duplication)."""
+    path = str(tmp_path / 'out.jsonl')
+    w1 = StoreWriter(path, 'jsonl', checkpoint=True)
+    w1.write([{'response': 'a'}, {'response': 'b'}])
+    w1.checkpoint(1)
+    w1._f.close()
+    os.remove(w1._paths.state)
+    w2 = StoreWriter(path, 'jsonl', checkpoint=True, resume=True)
+    assert w2.skip(0) is False
+    assert _read_jsonl(w2._paths.tmp) == []
+    w2.write([{'response': 'a'}, {'response': 'b'}])
+    w2.checkpoint(1)
+    w2.finish([])
+    assert _read_jsonl(path) == [{'response': 'a'}, {'response': 'b'}]
+
+
+def test_resume_with_corrupt_state_redoes_from_scratch(tmp_path):
+    path = str(tmp_path / 'out.jsonl')
+    w1 = StoreWriter(path, 'jsonl', checkpoint=True)
+    w1.write([{'response': 'a'}])
+    w1.checkpoint(0)
+    w1._f.close()
+    with open(w1._paths.state, 'w') as f:
+        f.write('{"batch_index": trunc')
+    w2 = StoreWriter(path, 'jsonl', checkpoint=True, resume=True)
+    assert w2.skip(0) is False
+    assert _read_jsonl(w2._paths.tmp) == []
+    w2.write([{'response': 'a'}])
+    w2.checkpoint(0)
+    w2.finish([])
+    assert _read_jsonl(path) == [{'response': 'a'}]
+
+
+def test_resume_half_line_without_snapshot_is_discarded(tmp_path):
+    """A mid-write kill before the first checkpoint leaves a half line in tmp and no snapshot or
+    state. Resume must not append after the half line (concatenation corrupts the next row)."""
+    path = str(tmp_path / 'out.jsonl')
+    w1 = StoreWriter(path, 'jsonl', checkpoint=True)
+    w1.write([{'response': 'a'}])
+    with open(w1._paths.tmp, 'a', encoding='utf-8') as f:
+        f.write('{"trunc')
+    w1._f.close()
+    assert not os.path.exists(w1._paths.resume) and not os.path.exists(w1._paths.state)
+    w2 = StoreWriter(path, 'jsonl', checkpoint=True, resume=True)
+    assert w2.skip(0) is False
+    assert _read_jsonl(w2._paths.tmp) == []
+    w2.write([{'response': 'a'}])
+    w2.checkpoint(0)
+    w2.finish([])
+    assert _read_jsonl(path) == [{'response': 'a'}]
+
+
+def test_resume_state_ahead_of_snapshot_fails_loudly(tmp_path):
+    """State recording more bytes than the snapshot holds would skip groups whose rows were never
+    saved -- refuse instead of silently losing data."""
+    path = str(tmp_path / 'out.jsonl')
+    w1 = StoreWriter(path, 'jsonl', checkpoint=True)
+    w1.write([{'response': 'a'}])
+    w1.checkpoint(0)
+    w1._f.close()
+    with open(w1._paths.state, 'w') as f:
+        json.dump({'batch_index': 5, 'byte_offset': 10**9}, f)
+    with pytest.raises(ValueError, match='byte'):
+        StoreWriter(path, 'jsonl', checkpoint=True, resume=True)
+
+
+def test_checkpoint_state_records_byte_offset(tmp_path):
+    path = str(tmp_path / 'out.jsonl')
+    w1 = StoreWriter(path, 'jsonl', checkpoint=True)
+    w1.write([{'response': 'a'}, {'response': 'b'}])
+    w1.checkpoint(1)
+    with open(w1._paths.state, encoding='utf-8') as f:
+        state = json.load(f)
+    assert state['batch_index'] == 1
+    assert state['byte_offset'] == os.path.getsize(w1._paths.tmp)
+    w1._f.close()
 
 
 # --- StoreWriter, batch mode (arrow) ----------------------------------------------------
