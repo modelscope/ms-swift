@@ -34,10 +34,15 @@ def normalize_openai_tool_calls(messages: Messages) -> Messages:
             messages[index + 1:end] = sorted(responses, key=lambda response: call_order[response['tool_call_id']])
 
         content = message.get('content')
-        if content:
+        if content or message.get('reasoning_content') is not None:
             normalized.append({
-                key: value
-                for key, value in message.items() if key in {'role', 'content', 'loss', 'loss_scale'}
+                **{
+                    key: value
+                    for key, value in message.items() if key in {
+                        'role', 'content', 'reasoning_content', 'loss', 'loss_scale'
+                    }
+                },
+                'content': content or '',
             })
         for tool_call in tool_calls:
             # no function field, back to tool_call

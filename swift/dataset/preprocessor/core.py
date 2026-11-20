@@ -55,7 +55,7 @@ class RowPreprocessor:
     # validating it when `cache_file_name` is passed explicitly, so without this tag a newer
     # ms-swift silently loads caches written by an older, schema-incompatible release.
     # Same cache-busting approach as Template._version.
-    cache_format_version = 'v2'
+    cache_format_version = 'v3'
 
     def __init__(self,
                  *,
@@ -89,6 +89,8 @@ class RowPreprocessor:
         # fix swift/SlimOrca (concat)
         for message in messages:
             keys = set(message.keys()) - {'role', 'content', 'loss', 'loss_scale'}
+            if message.get('role') == 'assistant':
+                keys.discard('reasoning_content')
             if message.get('role') in {'tool', 'tool_response'}:
                 # Native agent templates (e.g. Gemma4) use the tool response name.
                 keys.discard('name')
