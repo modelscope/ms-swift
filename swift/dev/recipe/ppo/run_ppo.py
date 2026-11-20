@@ -98,12 +98,16 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
         state.micro_step += (hi - lo) // train_batch_size
         # forward_backward is declared sync=True on the model: a worker-side failure raises
         # at this call, failing THIS step instead of riding an unread handle.
+        # Mirror the SFT per-step callback dispatch (defect121): fan on_step_begin / on_pre_optimizer_step /
+        # on_optimizer_step around the policy+value optimizer steps, not only on_step_end via step_tail.
+        state.handler.on_step_begin()
         model.forward_backward(
             inputs=update,
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             temperature=temperature,
         )
+        state.handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         value_model.forward_backward(
             inputs=[trajs[index] for index in indices],
@@ -112,6 +116,7 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
             micro_batch_size=micro_batch_size,
         )
         value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
         state.record(extra_metrics=balance_metrics)
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:

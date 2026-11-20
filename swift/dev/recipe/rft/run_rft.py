@@ -282,12 +282,17 @@ def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, sa
             state, update, lengths[start:end],
             micro_batch_kwargs={'micro_batch_size': micro_batch_size})
         state.micro_step += (end - start) // train_batch_size
+        # Mirror the SFT per-step callback dispatch (defect121): fan on_step_begin / on_pre_optimizer_step /
+        # on_optimizer_step, not only on_step_end via step_tail.
+        state.handler.on_step_begin()
         cluster.model.forward_backward(
             inputs=copy_inputs(update),
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
         )
+        state.handler.on_pre_optimizer_step()
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
         state.record(extra_metrics=balance_metrics)
         # The periodic save is DEFERRED to the round boundary (the round component
         # commits with it, keeping every checkpoint round-atomic); snapshot the

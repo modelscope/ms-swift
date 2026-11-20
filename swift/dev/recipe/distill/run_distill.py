@@ -83,9 +83,14 @@ def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], lengths: O
         # The worker runs the teacher forward -- the driver never sees the full-vocab logits or the
         # logps, only the light kwargs carrying them as refs.
         signal = dict(cluster.worker.forward_kwargs(update, use_student))
+        # Mirror the SFT per-step callback dispatch (defect121): fan on_step_begin / on_pre_optimizer_step /
+        # on_optimizer_step, not only on_step_end via step_tail.
+        state.handler.on_step_begin()
         cluster.model.forward_backward(
             inputs=copy_inputs(update), gradient_accumulation_steps=1, micro_batch_size=micro_batch_size, **signal)
+        state.handler.on_pre_optimizer_step()
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
         state.record(extra_metrics=balance_metrics)
         optimizer_steps += 1
         state.step_tail(save=save)
