@@ -344,16 +344,41 @@ class SequenceParallel:
 
         base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
 
+    @staticmethod
+    def _get_gqa_kv_repeat(config, num_kv_heads: Optional[int], num_q_heads: Optional[int], sp_size: int) -> int:
+        if not (num_kv_heads and num_q_heads and sp_size and sp_size > num_kv_heads):
+            return 1
+        if num_q_heads % num_kv_heads != 0:
+            return 1
+        max_heads = num_q_heads
+        for attr in ('linear_num_key_heads', 'linear_num_value_heads'):
+            linear_heads = HfConfigFactory.get_config_attr(config, attr)
+            if linear_heads is not None:
+                max_heads = math.gcd(max_heads, linear_heads)
+        target_sp = math.gcd(max_heads, sp_size)
+        if target_sp > num_kv_heads and target_sp % num_kv_heads == 0:
+            return target_sp // num_kv_heads
+        return 1
+
     def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer, padding_free: bool):
         from swift.model import get_llm_model
-        self.num_heads = HfConfigFactory.get_config_attr(model.config, 'num_key_value_heads')
-        if self.num_heads is None:
-            self.num_heads = HfConfigFactory.get_config_attr(model.config, 'num_attention_heads')
+        num_kv_heads = HfConfigFactory.get_config_attr(model.config, 'num_key_value_heads')
+        num_q_heads = HfConfigFactory.get_config_attr(model.config, 'num_attention_heads')
+        self.num_heads = num_kv_heads if num_kv_heads is not None else num_q_heads
         assert self.num_heads is not None, 'Cannot find num_heads config in config.json'
         self.padding_free = padding_free
         self.world_size = sp_size
 
         llm_model = get_llm_model(model)
+        self._gqa_kv_repeat = self._get_gqa_kv_repeat(model.config, num_kv_heads, num_q_heads, sp_size)
+        if self._gqa_kv_repeat > 1:
+            self.num_heads = num_kv_heads * self._gqa_kv_repeat
+            for m in llm_model.modules():
+                if hasattr(m, 'num_key_value_groups'):
+                    orig_groups = getattr(m, '_orig_num_key_value_groups', m.num_key_value_groups)
+                    m._orig_num_key_value_groups = orig_groups
+                    if orig_groups % self._gqa_kv_repeat == 0:
+                        m.num_key_value_groups = orig_groups // self._gqa_kv_repeat
 
         if hasattr(llm_model, 'language_model'):
             if hasattr(llm_model.language_model, '_update_causal_mask'):
