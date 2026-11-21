@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, get_
 from transformers import HfArgumentParser
 
 from swift.dev.utils.logger import get_logger
+from swift.dev.utils.storage import is_remote_url
 
 from .legacy_coverage import LEGACY_ALIASES
 from swift.dev.config.checkpoint_config import (
@@ -397,6 +398,15 @@ def _resolve_checkpoint_args_source(configs: Dict[str, Any]) -> Optional[str]:
                        or getattr(configs.get('distributed_config'), 'mode', None) == 'remote')
     for owner, key, source, downloadable, revision in candidates:
         resolved = source
+        if is_remote_url(resolved):
+            # An object-store checkpoint: probe only its args.json (a single small object),
+            # never a snapshot download; a missing object just moves on to the next candidate.
+            from swift.dev.utils.storage import Storage
+
+            args_object = f'{resolved.rstrip("/")}/args.json'
+            if Storage.from_url(resolved).exists(args_object):
+                return Storage.from_url(resolved).download_file(args_object)
+            continue
         args_path = os.path.join(resolved, 'args.json')
         if not os.path.isfile(args_path) and downloadable and not remote_only:
             from swift.dev.utils.hub import safe_snapshot_download

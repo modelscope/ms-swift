@@ -404,6 +404,12 @@ def safe_snapshot_download(model_id_or_path: str,
         ValueError: an absolute path (``/...``) that does not exist.
     """
     from twinkle.utils import processing_lock
+    from twinkle.utils.storage import is_remote_url, to_local
+
+    if is_remote_url(model_id_or_path):
+        # An oss:// / s3:// model dir is no hub id (its ':' would split as a subfolder):
+        # materialize it into the local cache, which every model consumer then reads.
+        return to_local(model_id_or_path)
     if check_local:
         model_suffix = model_id_or_path.rsplit('/', 1)[-1]
         if os.path.exists(model_suffix):

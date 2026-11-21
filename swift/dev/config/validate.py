@@ -170,6 +170,18 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
     """
     if distributed_config.mode != 'remote':
         return
+    if checkpoint_config is not None:
+        # The server-side checkpoint store is local-disk + twinkle:// URIs (the weight-sync
+        # hand-off); an object-store output would have no consumer in the server's path.
+        from swift.dev.utils.storage import is_remote_url
+
+        for label, path in (('output_dir', checkpoint_config.output_dir),
+                            ('resume_from_checkpoint', checkpoint_config.resume_from_checkpoint)):
+            if path and is_remote_url(path):
+                raise ValueError(
+                    f'--mode remote does not support oss:// / s3:// {label}: server-side '
+                    'checkpoints are local-disk only (weight sync goes through the twinkle:// '
+                    'hand-off). Use mode=local/ray to checkpoint into object storage.')
     if not distributed_config.server_base_url:
         raise ValueError(
             "--mode remote requires --server_base_url (the twinkle-server gateway root; "
@@ -819,6 +831,17 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
     if infer_config is None:
         return
     from swift.dev.dataset.storage import STORAGE_MAPPING, validate_store_format
+    from swift.dev.utils.storage import is_remote_url
+
+    if is_remote_url(infer_config.result_path):
+        # The incremental writers append + resume against .tmp/.resume/.final beside the real
+        # output; a staging-upload lease cannot express that, so an object-store result_path
+        # would silently create a bogus local `oss:` tree. Refuse until a remote store
+        # writer exists; point at a local path (upload afterwards) instead.
+        raise ValueError(
+            f'--result_path does not support oss:// / s3:// yet: the infer output is appended '
+            'and resumed in place, which object storage cannot host. Write to a local path '
+            'and upload the result afterwards.')
     # A store format is an open registry key, so check the name resolves (and is writable) here -- after
     # --external_plugins is imported -- rather than after the run has generated rows it cannot write.
     validate_store_format(infer_config.store_format, writable=True)

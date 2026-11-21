@@ -202,10 +202,13 @@ def snapshot_initial_adapter(model: Any, initial_adapter_dir: Optional[str]) -> 
     """
     if initial_adapter_dir is None or not is_main_process():
         return
+    from swift.dev.utils.storage import Storage
+
+    # Probed on the dir's own medium (a local path or an oss:// / s3:// one); the model's
+    # save_initial_adapter creates the dir and writes through to its medium.
     marker = os.path.join(initial_adapter_dir, 'adapter_config.json')
-    if os.path.exists(marker):
+    if Storage.from_url(marker).exists(marker):
         return
-    os.makedirs(initial_adapter_dir, exist_ok=True)
     model.save_initial_adapter(initial_adapter_dir)
 
 
@@ -271,7 +274,6 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
     # guards on Platform.is_master()), so an unguarded open() elsewhere raised under multi-GPU DDP.
     if dist.is_available() and dist.is_initialized() and dist.get_rank() != 0:
         return
-    os.makedirs(ckpt_dir, exist_ok=True)
 
     from swift.dev.config.checkpoint_config import (
         CHECKPOINT_DATA_FIELDS,
@@ -329,8 +331,13 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
         # back as full too (the reader force-loads tuner_type over its own default 'lora').
         args['tuner_type'] = 'full'
     args = {key: value for key, value in args.items() if value is not None}
-    with open(os.path.join(ckpt_dir, 'args.json'), 'w', encoding='utf-8') as f:
-        json.dump(args, f, ensure_ascii=False, indent=2)
+    # write_dir takes the local dir directly; an oss:// / s3:// ckpt_dir stages, uploads
+    # and drops the staging copy, so run-level metadata reaches the store too.
+    from swift.dev.utils.storage import write_dir
+
+    with write_dir(ckpt_dir) as local:
+        with open(os.path.join(local, 'args.json'), 'w', encoding='utf-8') as f:
+            json.dump(args, f, ensure_ascii=False, indent=2)
 
 
 def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
@@ -380,6 +387,8 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
         # be re-quantized in place.
         requantize_source=requantize_source if (is_final or not knobs.async_save) else None,
     )
+    from swift.dev.utils.storage import to_local
+
     ckpt_dir = os.path.join(knobs.output_dir, name)
     if knobs.initial_adapter_dir is not None and is_main_process():
         # The portable form of a base-modifying adapter: fold the init factor back out, so a
@@ -389,7 +398,9 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
     # 'end' pushes only the final checkpoint; the push-on-save strategies push every one.
     if knobs.hub_pusher is not None and (knobs.hub_strategy != 'end' or is_final) and is_main_process():
         handler.on_push_begin(checkpoint_dir=ckpt_dir)
-        knobs.hub_pusher(ckpt_dir)
+        # The pusher takes a local directory: to_local passes locals through and reads a
+        # remote checkpoint from its local cache.
+        knobs.hub_pusher(to_local(ckpt_dir))
     return ckpt_dir
 
 
@@ -405,6 +416,7 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
     reloads its adapter through the ``adapter_name`` path below.
     """
     from swift.dev.builders import is_megatron_backend
+    from swift.dev.utils.storage import Storage
 
     path = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     if not path:
@@ -427,7 +439,8 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
         resume_kwargs['adapter_name'] = adapter_name
 
     trainer_state_path = os.path.join(path, 'trainer_state.json')
-    if not os.path.isfile(trainer_state_path):
+    # Probed on the checkpoint's own medium: a local isfile misreads every oss:// one.
+    if not Storage.from_url(path).exists(trainer_state_path):
         if not resume_kwargs['resume_only_model']:
             raise FileNotFoundError(
                 f'{trainer_state_path} is missing, so this model-only checkpoint cannot resume '
@@ -576,8 +589,15 @@ class StepState:
         self.epoch = 0
         self.best_metric: Optional[float] = None
         self.history: List[dict] = []
-        self._output_dir = output_dir
-        self.tracker = RunTracker(logging_config, output_dir)
+        # Run-level logs (metrics_raw / summary / metrics.jsonl, reporter dirs) are appended in
+        # place, so an oss:// / s3:// output_dir keeps them on local disk; checkpoint callbacks
+        # still get the real output_dir.
+        from swift.dev.utils.storage import local_run_dir
+
+        self._output_dir = local_run_dir(output_dir)
+        if self._output_dir != output_dir:
+            logger.info(f'Run logs for {output_dir} are written locally to {self._output_dir}.')
+        self.tracker = RunTracker(logging_config, self._output_dir)
         self.handler = CallbackHandler(build_callbacks(train_config), output_dir=output_dir)
 
     def reached_max(self) -> bool:
@@ -1668,6 +1688,7 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
     if not train_config.predict_with_generate:
         return None
     from swift.dev.eval import build_task_config, model_name, validate_eval_datasets
+    from swift.dev.utils.storage import local_run_dir
 
     cfg = train_config
     eval_datasets = validate_eval_datasets(cfg.eval_dataset)
@@ -1675,7 +1696,7 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
     # TrainConfig carries no eval_output_dir / eval_num_proc (those belong to ``swift eval``'s
     # EvalConfig): the work dir derives from output_dir, the concurrency is EvalScope's default.
     task_config = build_task_config(
-        work_dir=os.path.join(output_dir, 'eval'),
+        work_dir=os.path.join(local_run_dir(output_dir), 'eval'),
         limit=cfg.eval_limit,
         dataset_args=cfg.eval_dataset_args,
         generation_config=cfg.eval_generation_config,

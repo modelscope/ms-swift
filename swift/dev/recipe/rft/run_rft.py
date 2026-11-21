@@ -202,9 +202,13 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
     if not path or checkpoint_config.resume_only_model:
         return rft_state.next_round
     trainer_state_path = os.path.join(path, 'trainer_state.json')
-    if not os.path.isfile(trainer_state_path):
+    from swift.dev.utils.storage import Storage
+
+    # Probed and read on the checkpoint's own medium (local: the file itself).
+    storage = Storage.from_url(path)
+    if not storage.exists(trainer_state_path):
         return rft_state.next_round
-    with open(trainer_state_path) as f:
+    with open(storage.download_file(trainer_state_path)) as f:
         component_states = json.load(f).get('component_states', {})
     if 'rft' in component_states:
         rft_state.load_state(component_states['rft'])

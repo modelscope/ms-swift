@@ -31,6 +31,7 @@ from swift.dev.recipe.utils import (
     stream_batch_size,
 )
 from swift.dev.utils.logger import get_logger
+from swift.dev.utils.storage import local_run_dir
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -377,7 +378,8 @@ def _train_loop(
                 if completion_log is not None:
                     rows = completion_log(
                         trajs, step=state.global_step + 1,
-                        path=os.path.join(output_dir, 'completions.jsonl') if rl_config.log_completions else None,
+                        path=(os.path.join(local_run_dir(output_dir), 'completions.jsonl')
+                              if rl_config.log_completions else None),
                         scores=batch_facts.get('scores'))
                     if state.tracker.logs_prompts:
                         state.tracker.log_prompts(rows, state.global_step + 1)
