@@ -114,6 +114,11 @@ class DistributedAttention(torch.nn.Module):
 
         # gather ulysses first, ring-attention next
         if self.sequence_parallel.sp_world_size > 1:
+            sp_world_size = self.sequence_parallel.sp_world_size
+            if key.shape[self.scatter_idx] < sp_world_size and sp_world_size % key.shape[self.scatter_idx] == 0:
+                rep = sp_world_size // key.shape[self.scatter_idx]
+                key = key.repeat_interleave(rep, dim=self.scatter_idx)
+                value = value.repeat_interleave(rep, dim=self.scatter_idx)
             query_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, query, self.scatter_idx, self.gather_idx)
             key_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, key, self.scatter_idx, self.gather_idx)
             value_layer = _SeqAllToAll.apply(self.sequence_parallel.sp_group, value, self.scatter_idx, self.gather_idx)
