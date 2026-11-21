@@ -86,6 +86,10 @@ def default_gather(logits: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     return torch.gather(logits, dim=-1, index=indices)
 
 
+def default_vocab_sum(values: torch.Tensor) -> torch.Tensor:
+    return values.sum(dim=-1)
+
+
 # ---------------------------------------------------------------------------
 # jsd_loss — the single place to modify KL/JSD computation logic
 # ---------------------------------------------------------------------------
@@ -144,6 +148,111 @@ def jsd_loss(
             jsd = beta_t * kl_div_fn(m_log, t_log) + (1 - beta_t) * kl_div_fn(m_log, s_log)
 
         total = total + jsd.sum()
+
+    return total
+
+
+def _scaled_expm1(log_scale: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    """exp(log_scale) * expm1(x), without overflowing exp(x) before scaling."""
+    positive = x.clamp_min(0)
+    return (log_scale + positive).exp() * (torch.expm1(x - positive) - torch.expm1(-positive))
+
+
+class _ABKDDivergence(torch.autograd.Function):
+    """Keep only log probabilities for backward, rather than the elementwise loss graph."""
+
+    @staticmethod
+    def forward(ctx, log_p, log_q, alpha, beta):
+        ctx.save_for_backward(log_p, log_q)
+        ctx.alpha, ctx.beta = alpha, beta
+
+        if alpha == 0 or beta == 0 or alpha + beta == 0:
+            gap = log_p - log_q
+
+        if alpha == 0 and beta == 0:
+            divergence = 0.5 * gap.square()
+        elif alpha == 0:
+            divergence = (_scaled_expm1(beta * log_q, beta * gap) - beta * gap * (beta * log_q).exp()) / beta**2
+        elif beta == 0:
+            if alpha > 0:
+                # Teacher APIs can omit top-k entries (log p = -inf). At p = 0,
+                # this branch has the finite limit q**alpha / alpha**2.
+                zero_teacher = torch.isneginf(log_p)
+                log_p = torch.where(zero_teacher, log_q, log_p)
+                gap = log_p - log_q
+            divergence = (_scaled_expm1(alpha * log_p, -alpha * gap) + alpha * gap * (alpha * log_p).exp()) / alpha**2
+            if alpha > 0:
+                divergence = torch.where(zero_teacher, (alpha * log_q).exp() / alpha**2, divergence)
+        elif alpha + beta == 0:
+            divergence = (torch.expm1(alpha * gap) - alpha * gap) / alpha**2
+        else:
+            power_p = (alpha + beta) * log_p
+            power_q = (alpha + beta) * log_q
+            cross = alpha * log_p + beta * log_q
+            scale = torch.maximum(torch.maximum(power_p, power_q), cross)
+            # The three constant terms cancel. expm1 preserves small differences,
+            # and the shared scale keeps all three exponential arguments nonpositive.
+            numerator = (
+                alpha * torch.expm1(power_p - scale) + beta * torch.expm1(power_q - scale) -
+                (alpha + beta) * torch.expm1(cross - scale))
+            divergence = scale.exp() * numerator / (alpha * beta * (alpha + beta))
+        return divergence
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        log_p, log_q = ctx.saved_tensors
+        alpha, beta = ctx.alpha, ctx.beta
+        gap = log_p - log_q
+        grad_p = grad_q = None
+        if ctx.needs_input_grad[0]:
+            # dD/d(log p) = (p**(alpha + beta) - p**alpha * q**beta) / beta.
+            # The log-probability derivative tends to zero at p = 0 when the
+            # divergence is finite. Teacher gradients also cover vocabulary padding.
+            teacher_gap = gap
+            if alpha > 0 and alpha + beta > 0:
+                teacher_gap = gap.masked_fill(torch.isneginf(log_p), 0)
+            if beta == 0:
+                grad_p = teacher_gap * (alpha * log_p).exp()
+            else:
+                grad_p = -_scaled_expm1((alpha + beta) * log_p, -beta * teacher_gap) / beta
+            grad_p = grad_p * grad_output
+        if ctx.needs_input_grad[1]:
+            # dD/d(log q) = (q**(alpha + beta) - p**alpha * q**beta) / alpha.
+            if alpha == 0:
+                grad_q = -gap * (beta * log_q).exp()
+            else:
+                grad_q = -_scaled_expm1((alpha + beta) * log_q, alpha * gap) / alpha
+            grad_q = grad_q * grad_output
+        return grad_p, grad_q, None, None
+
+
+def abkd_loss(
+    s_logits: torch.Tensor,
+    t_logits: torch.Tensor,
+    alpha: float = 0.2,
+    beta: float = 0.7,
+    log_softmax_fn: Callable = default_log_softmax,
+    sum_fn: Callable = default_vocab_sum,
+    chunk_size: int = 512,
+    temperature: float = 1.0,
+) -> torch.Tensor:
+    """Chunked alpha-beta divergence D_AB(teacher || student).
+
+    Computation uses at least FP32, including temperature scaling and normalization.
+    ``sum_fn`` reduces the vocabulary dimension (across TP ranks when sharded).
+    The zero-parameter branches are the continuous limits of the same divergence.
+    """
+    total = s_logits.new_zeros((), dtype=torch.promote_types(s_logits.dtype, torch.float32))
+    if s_logits.size(0) == 0:
+        return s_logits.sum().to(total.dtype)
+
+    for start in range(0, s_logits.size(0), chunk_size):
+        s = s_logits[start:start + chunk_size].to(total.dtype) / temperature
+        t = t_logits[start:start + chunk_size].to(total.dtype) / temperature
+        log_q = log_softmax_fn(s)
+        log_p = log_softmax_fn(t)
+        divergence = _ABKDDivergence.apply(log_p, log_q, alpha, beta)
+        total = total + sum_fn(divergence).sum()
 
     return total
 
@@ -217,7 +326,7 @@ def extract_active(
 
 
 # ---------------------------------------------------------------------------
-# gkd_loss — full pipeline: mask → prepare → jsd
+# gkd_loss — full pipeline: mask → prepare → divergence
 # ---------------------------------------------------------------------------
 
 
@@ -231,6 +340,10 @@ def gkd_loss(
     log_softmax_fn: Callable = default_log_softmax,
     kl_div_fn: Callable = default_kl_div,
     chunk_size: int = 512,
+    loss_type: str = 'jsd',
+    abkd_alpha: float = 0.2,
+    abkd_beta: float = 0.7,
+    sum_fn: Callable = default_vocab_sum,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Full GKD loss pipeline. Returns (total_loss, num_valid).
 
@@ -247,6 +360,10 @@ def gkd_loss(
         log_softmax_fn: logits -> log_probs (may be TP-aware for full-vocab)
         kl_div_fn: (input_log, target_log) -> per_position KL (may be TP-aware)
         chunk_size: chunk size for memory efficiency
+        loss_type: distillation objective, 'jsd' or 'abkd'
+        abkd_alpha: alpha parameter of alpha-beta divergence
+        abkd_beta: beta parameter of alpha-beta divergence (independent of JSD beta)
+        sum_fn: values -> per-position vocabulary sum (may be TP-aware)
 
     Returns:
         (total_loss, num_valid) — unnormalized total and count of valid positions.
@@ -258,14 +375,17 @@ def gkd_loss(
         s_logits = gather_fn(s_active, t_active.topk_indices)
         t_logits = t_active.topk_logprobs
         lsf, kdf = default_log_softmax, default_kl_div
+        sum_fn = default_vocab_sum
     else:
         s_logits = s_active
         t_logits = t_active.full_logits
         s_logits, t_logits = _align_vocab(s_logits, t_logits)
         lsf, kdf = log_softmax_fn, kl_div_fn
 
-    s_logits = s_logits / temperature
-    t_logits = t_logits / temperature
-
-    total = jsd_loss(s_logits, t_logits, beta, lsf, kdf, chunk_size)
+    if loss_type == 'abkd':
+        total = abkd_loss(s_logits, t_logits, abkd_alpha, abkd_beta, lsf, sum_fn, chunk_size, temperature)
+    else:
+        s_logits = s_logits / temperature
+        t_logits = t_logits / temperature
+        total = jsd_loss(s_logits, t_logits, beta, lsf, kdf, chunk_size)
     return total, num_valid

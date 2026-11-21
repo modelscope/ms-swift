@@ -221,6 +221,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         sft_alpha (float): The weight for the SFT loss component in GKD. The final loss is calculated as
             gkd_loss + sft_alpha * sft_loss`. Defaults to 0.
         lmbda (float): The lambda parameter for GKD, balancing policy and value losses. Defaults to 0.5.
+        abkd_alpha (float): Alpha parameter of alpha-beta divergence for GKD with loss_type='abkd'. Defaults to 0.2.
+        abkd_beta (float): Beta parameter of alpha-beta divergence, independent of the JSD beta. Defaults to 0.7.
         seq_kd (bool): Deprecated. Sequential KD (teacher-generated responses) is not implemented.
         gkd_logits_topk (Optional[int]): The number of top-k logits to use for KL divergence computation in GKD.
             If None, uses full vocabulary for KL computation (more accurate but memory-intensive).
@@ -259,6 +261,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     # RM
     center_rewards_coefficient: Optional[float] = None
     # GKD
+    abkd_alpha: float = 0.2
+    abkd_beta: float = 0.7
     sft_alpha: float = 0
     lmbda: float = 0.5
     seq_kd: bool = False  # Deprecated
@@ -404,7 +408,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if not teacher_set:
             if self.rlhf_type == 'gkd':
                 logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
-                if self.use_liger_kernel:
+                if self.use_liger_kernel and self.loss_type != 'abkd':
                     raise ValueError('Self-distillation mode with liger kernel loss is not supported yet')
             if self.rlhf_type == 'grpo' and self.num_generations == 1:
                 raise ValueError('num_generations must be greater than 1 for GRPO')
@@ -525,6 +529,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 self.loss_type = 'kto'
             elif self.rlhf_type == 'grpo':
                 self.loss_type = 'grpo'
+            elif self.rlhf_type == 'gkd':
+                self.loss_type = 'jsd'
         if self.gradient_accumulation_steps is None:
             if self.rlhf_type == 'grpo':
                 self.gradient_accumulation_steps = 1
@@ -769,5 +775,5 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
             raise ValueError(f'gkd_logits_topk must be a positive integer, got {self.gkd_logits_topk}')
 
-        if self.gkd_logits_topk is not None and self.use_liger_kernel:
+        if self.gkd_logits_topk is not None and self.use_liger_kernel and self.loss_type != 'abkd':
             raise ValueError('gkd_logits_topk is not supported when using liger kernel')
