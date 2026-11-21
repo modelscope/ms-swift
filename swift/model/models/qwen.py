@@ -1589,6 +1589,50 @@ def _patch_qwen3_5_keep_in_fp32_modules(model_cls: Type[PreTrainedModel], keep_i
                 delattr(model_cls, attr_name)
 
 
+def _patch_qwen3_5_fla_causal_conv1d_fallback(modeling_module) -> None:
+    if importlib.util.find_spec('causal_conv1d') is not None:
+        return
+    _try_import_flash_linear_attention_kernels()
+    if causal_conv1d is None:
+        return
+    origin_causal_conv1d_fn = getattr(modeling_module, 'causal_conv1d_fn', None)
+    if getattr(origin_causal_conv1d_fn, '_ms_swift_fla_conv1d_patched', False):
+        return
+
+    def fla_causal_conv1d_fn(
+        x: torch.Tensor,
+        weight: torch.Tensor,
+        bias: Optional[torch.Tensor] = None,
+        activation: Optional[str] = 'silu',
+        seq_idx: Optional[torch.Tensor] = None,
+        initial_states: Optional[torch.Tensor] = None,
+        return_final_states: bool = False,
+        final_states_out: Optional[torch.Tensor] = None,
+        cu_seq_lens_q: Optional[torch.Tensor] = None,
+        cu_seqlens: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        if not x.is_cuda or initial_states is not None or return_final_states or final_states_out is not None:
+            if origin_causal_conv1d_fn is not None:
+                return origin_causal_conv1d_fn(
+                    x, weight, bias=bias, activation=activation, cu_seq_lens_q=cu_seq_lens_q, **kwargs)
+        cseqlens = cu_seqlens if cu_seqlens is not None else cu_seq_lens_q
+        out = causal_conv1d(
+            x=x.transpose(1, 2).contiguous(),
+            weight=weight,
+            bias=bias,
+            activation=activation,
+            cu_seqlens=cseqlens,
+        )
+        out = out[0] if isinstance(out, tuple) else out
+        return out.transpose(1, 2)
+
+    fla_causal_conv1d_fn._ms_swift_fla_conv1d_patched = True
+    if origin_causal_conv1d_fn is not None:
+        fla_causal_conv1d_fn.__wrapped__ = origin_causal_conv1d_fn
+    modeling_module.causal_conv1d_fn = fla_causal_conv1d_fn
+
+
 def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
     gated_delta_net_specs = []
     class_specs = (
@@ -1599,15 +1643,17 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
     for module_name, class_name in class_specs:
         try:
             modeling_module = import_module(module_name)
+            _patch_qwen3_5_fla_causal_conv1d_fallback(modeling_module)
             gated_delta_net_cls = getattr(modeling_module, class_name)
             apply_mask_to_padding_states = getattr(modeling_module, 'apply_mask_to_padding_states')
             torch_chunk_gated_delta_rule = getattr(modeling_module, 'torch_chunk_gated_delta_rule', None)
             gated_delta_net_specs.append(
-                (gated_delta_net_cls, apply_mask_to_padding_states, torch_chunk_gated_delta_rule))
+                (modeling_module, gated_delta_net_cls, apply_mask_to_padding_states, torch_chunk_gated_delta_rule))
         except Exception:
             pass
 
-    def patch_gated_delta_net(gated_delta_net_cls, apply_mask_to_padding_states, torch_chunk_gated_delta_rule):
+    def patch_gated_delta_net(modeling_module, gated_delta_net_cls, apply_mask_to_padding_states,
+                              torch_chunk_gated_delta_rule):
         if getattr(gated_delta_net_cls, '_ms_swift_sp_linear_patched', False):
             return
 
@@ -1628,6 +1674,9 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
             # padding-free kernels, which may be unavailable on platforms where the Transformers path still works.
             cu_seqlens = kwargs.get('cu_seq_lens_q')
             if not sequence_parallel.enabled() and not _has_multiple_sequences(cu_seqlens):
+                if (getattr(mod, 'causal_conv1d_fn', None) is None
+                        and getattr(modeling_module, 'causal_conv1d_fn', None) is not None):
+                    mod.causal_conv1d_fn = modeling_module.causal_conv1d_fn
                 kwargs = {}
                 if 'cache_position' in parameters:
                     kwargs['cache_position'] = cache_position
@@ -1657,8 +1706,10 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
         gated_delta_net_cls.forward = sp_linear_forward
         gated_delta_net_cls._ms_swift_sp_linear_patched = True
 
-    for gated_delta_net_cls, apply_mask_to_padding_states, torch_chunk_gated_delta_rule in gated_delta_net_specs:
-        patch_gated_delta_net(gated_delta_net_cls, apply_mask_to_padding_states, torch_chunk_gated_delta_rule)
+    for (modeling_module, gated_delta_net_cls, apply_mask_to_padding_states,
+         torch_chunk_gated_delta_rule) in gated_delta_net_specs:
+        patch_gated_delta_net(modeling_module, gated_delta_net_cls, apply_mask_to_padding_states,
+                              torch_chunk_gated_delta_rule)
 
 
 class Qwen3_5MoeLoader(Qwen3VLLoader):
