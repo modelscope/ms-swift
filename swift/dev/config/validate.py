@@ -407,6 +407,7 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
             f'recorded but out of training), got {reward_config.env_reward_weight}.')
     _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
+    _check_ppo_controls(cfg)
     _check_reference_sync(cfg, train_config, distributed_config)
     _check_chord(cfg)
     _check_router_replay(cfg)
@@ -867,7 +868,7 @@ def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
 # The GRPO-family loss_type values dev accepts (each maps onto a twinkle GRPOLoss subclass). One constant
 # so the GRPO-only gate in _check_grpo_controls and the support check in _check_grpo_loss_type cannot drift.
 _GRPO_LOSS_TYPES = frozenset({
-    'grpo', 'dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real', 'gpg', 'dro', 'dppo_tv',
+    'grpo', 'dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'dis', 'bnpo', 'dr_grpo', 'real', 'gpg', 'dro', 'dppo_tv',
     'dppo_kl', 'geo_mean', 'clip_cov', 'kl_cov'
 })
 
@@ -966,6 +967,23 @@ def _check_grpo_loss_knobs(cfg: 'RLConfig', loss_type: str) -> None:
                          f'{cfg.clip_cov_lb} >= {cfg.clip_cov_ub}.')
     if loss_type == 'kl_cov' and cfg.kl_cov_ratio <= 0:
         raise ValueError(f'loss_type=kl_cov requires kl_cov_ratio > 0, got {cfg.kl_cov_ratio}.')
+    if loss_type == 'dis':
+        # DIS's trust interval reuses the shared clip knobs; the lower offset must stay below 1
+        # (a bound of 1 would reject every token) and the upper offset non-negative.
+        if not 0.0 <= cfg.epsilon < 1.0:
+            raise ValueError(f'loss_type=dis requires epsilon in [0, 1), got {cfg.epsilon}.')
+        if cfg.epsilon_high is not None and cfg.epsilon_high < 0:
+            raise ValueError(f'loss_type=dis requires epsilon_high >= 0, got {cfg.epsilon_high}.')
+
+
+def _check_ppo_controls(cfg: 'RLConfig') -> None:
+    """PPO-only knob: the length-adaptive GAE lambda has no reader on other rl_types."""
+    if cfg.rl_type == 'ppo':
+        if cfg.lam_alpha is not None and cfg.lam_alpha <= 0:
+            raise ValueError(f'lam_alpha must be positive, got {cfg.lam_alpha}.')
+        return
+    if cfg.lam_alpha is not None:
+        raise ValueError('lam_alpha is PPO-only: it shapes the GAE lambda, which no other rl_type runs.')
 
 
 #: The online RL family: every one rolls out from raw prompt messages via prompt_rows_from_dataset,

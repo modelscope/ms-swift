@@ -382,6 +382,7 @@ def initialize_ppo_cluster(
         sampling_params=params,
         colocate=colocate,
         advantage=GAEAdvantage(kl_kind='k1', gamma=rl_config.gamma, gae_lambda=rl_config.lam,
+                               gae_lambda_alpha=rl_config.lam_alpha,
                                normalize=rl_config.whiten_rewards, kl_coef=rl_config.kl_coef,
                                env_reward_weight=float(reward_config.env_reward_weight),
                                **prm_kwargs, **group),
