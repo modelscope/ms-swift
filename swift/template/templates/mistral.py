@@ -179,13 +179,33 @@ class Mistral2512Template(Mistral2506Template):
         yesterday = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
         return system_prompt.format(today=today, yesterday=yesterday)
 
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        if inputs.system is None and system.startswith('[/SYSTEM_PROMPT][AVAILABLE_TOOLS]'):
+            # `mistral_2512` tools without a system message: as in the chat_template.jinja,
+            # the default system prompt precedes the tools.
+            system = self._get_mistral_system() + system
+        return system
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
+        # The `mistral_2512` agent template declares the tools after the system block and closes the
+        # block itself, so drop the closing tag that the system prefix appends after the tools.
+        first = res_context_list[0] if res_context_list else None
+        if inputs.tools and isinstance(first, str) and '[/SYSTEM_PROMPT][AVAILABLE_TOOLS]' in first:
+            res_context_list[0] = first.replace('[/AVAILABLE_TOOLS][/SYSTEM_PROMPT]', '[/AVAILABLE_TOOLS]', 1)
+        return res_context_list, loss_scale_list, answer_len
+
 
 register_template(
     Mistral3TemplateMeta(
-        MLLMTemplateType.mistral_2512, default_system=None, template_cls=Mistral2512Template, agent_template='mistral'))
+        MLLMTemplateType.mistral_2512,
+        default_system=None,
+        template_cls=Mistral2512Template,
+        agent_template='mistral_2512'))
 
 
-class Mistral2512ThinkingTemplate(Mistral2506Template):
+class Mistral2512ThinkingTemplate(Mistral2512Template):
 
     def _get_mistral_system(self):
         model_dir = self.model_info.model_dir
@@ -200,4 +220,4 @@ register_template(
         MLLMTemplateType.mistral_2512_thinking,
         default_system=None,
         template_cls=Mistral2512ThinkingTemplate,
-        agent_template='mistral'))
+        agent_template='mistral_2512'))
