@@ -331,7 +331,7 @@ def initialize_cluster(
     if remote_run:
         from swift.dev.builders.remote import RemoteWeightSync
 
-        engine = RemoteWeightSync(model, sampler)
+        engine = RemoteWeightSync(model, sampler, versioned=rollout_config.async_mode != 'none')
     else:
         engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
     adapter = None
