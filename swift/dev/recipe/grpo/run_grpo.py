@@ -16,6 +16,7 @@ from swift.dev.recipe.utils import (
     RolloutStepState,
     _log_line,
     build_save_knobs,
+    close_driver_preserving_error,
     collect,
     effective_colocate,
     initialize_rl_devices,
@@ -508,7 +509,7 @@ def _train_loop(
             state.begin_rollout_iteration()
     finally:
         # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
-        driver.close()
+        close_driver_preserving_error(driver)
         if lent:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
