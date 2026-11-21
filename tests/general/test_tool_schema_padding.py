@@ -359,5 +359,86 @@ class TestToolsColumnNormalization(unittest.TestCase):
         self.assertNotIn('rejected_tools', row)
 
 
+class TestSeparatePreprocessingStaysConcatenatable(unittest.TestCase):
+    """Datasets preprocessed by separate `RowPreprocessor` calls must stay schema-compatible.
+
+    `Dataset.map` performs the Arrow writes inside worker processes, and Windows/macOS spawn
+    fresh interpreters for them (`datasets` >= 4.8 pools even `num_proc=1`), so forcing the
+    `List(Json())` columns only in the parent process never reaches the writes. The tool
+    columns then come back as cross-row-aligned structs: the fields a tool never defined are
+    padded with null, and two datasets preprocessed separately get mutually incompatible
+    schemas, so `concatenate_datasets` raises.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_dir = tempfile.mkdtemp()
+        # Both rows carry both tools: aligning them into one struct pads each tool with the
+        # other one's fields (issue #6467).
+        cls.mixed_path = cls._write_jsonl('mixed', make_rows([HETEROGENEOUS_TOOLS, HETEROGENEOUS_TOOLS]))
+        cls.split_paths = [
+            cls._write_jsonl(f'single{i}', make_rows([tool])) for i, tool in enumerate(HETEROGENEOUS_TOOLS)
+        ]
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_dir, ignore_errors=True)
+
+    @classmethod
+    def _write_jsonl(cls, name, rows):
+        path = os.path.join(cls.temp_dir, f'{name}.jsonl')
+        with open(path, 'w', encoding='utf-8') as f:
+            for row in rows:
+                f.write(f'{json.dumps(row, ensure_ascii=False)}\n')
+        return path
+
+    @staticmethod
+    def _preprocess(path, num_proc=2):
+        try:
+            from datasets import Dataset
+
+            from swift.dataset import RowPreprocessor
+        except ImportError as e:
+            raise unittest.SkipTest(str(e))
+        with open(path, encoding='utf-8') as f:
+            rows = [json.loads(line) for line in f]
+        dataset = Dataset.from_list(deepcopy(rows))
+        return RowPreprocessor()(dataset, num_proc=num_proc, load_from_cache_file=False)
+
+    def test_datasets_preprocessed_separately_concatenate(self):
+        try:
+            from datasets import concatenate_datasets
+        except ImportError as e:
+            raise unittest.SkipTest(str(e))
+        # `make_rows([tool])` numbers the messages from `query0` in every file, so the
+        # expectation is built per file rather than from one shared row list.
+        expected_rows = [make_rows([tool])[0] for tool in HETEROGENEOUS_TOOLS]
+
+        merged = concatenate_datasets([self._preprocess(path) for path in self.split_paths])
+
+        self.assertEqual([row['tools'] for row in merged], [row['tools'] for row in expected_rows])
+        self.assertEqual([row['messages'] for row in merged], [row['messages'] for row in expected_rows])
+
+    def test_message_and_tool_columns_are_stored_as_json(self):
+        try:
+            from datasets.features import Json, List
+        except ImportError as e:
+            raise unittest.SkipTest(str(e))
+
+        dataset = self._preprocess(self.mixed_path)
+
+        for key in ['messages', 'tools']:
+            feature = dataset.features[key]
+            self.assertIsInstance(feature, List, key)
+            self.assertIsInstance(feature.feature, Json, key)
+
+    def test_heterogeneous_tools_are_not_struct_padded(self):
+        rows = make_rows([HETEROGENEOUS_TOOLS, HETEROGENEOUS_TOOLS])
+
+        dataset = self._preprocess(self.mixed_path)
+
+        self.assertEqual([row['tools'] for row in dataset], [row['tools'] for row in rows])
+
+
 if __name__ == '__main__':
     unittest.main()
