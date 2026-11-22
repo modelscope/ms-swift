@@ -2,6 +2,5 @@ expecttest
 modelscope
 pre-commit
 pytest
-ruff
+ruff==0.13.0 # pin version to ensure consistent lint/format results across environments
 scikit-learn
-yapf==0.30.0 # use fix version to ensure consistent auto-styling

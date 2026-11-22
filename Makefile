@@ -10,7 +10,8 @@ docs:
 
 .PHONY: linter
 linter:
-	bash .dev_scripts/linter.sh
+	ruff check .
+	ruff format --check .
 
 .PHONY: test
 test:
