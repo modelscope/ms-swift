@@ -15,7 +15,7 @@ linter:
 
 .PHONY: test
 test:
-	bash .dev_scripts/citest.sh
+	pytest -m "not slow"
 
 .PHONY: whl
 whl:
