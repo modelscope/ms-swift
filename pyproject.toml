@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-testpaths = ["swift/dev/tests", "tests"]
+testpaths = ["tests/v5"]
 addopts = "--strict-markers -ra"
 markers = [
   "accel(n): needs n accelerators (CUDA or NPU); defaults to 1",
