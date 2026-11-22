@@ -12,6 +12,7 @@ from swift.dev.recipe.utils import (
     RolloutStepState,
     StepState,
     build_save_knobs,
+    close_driver_preserving_error,
     effective_colocate,
     initialize_rl_devices,
     optimizer_batch_slices,
@@ -242,7 +243,7 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
             state.begin_rollout_iteration()
     finally:
         # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
-        driver.close()
+        close_driver_preserving_error(driver)
         if lent:
             # ended with the devices lent: give them back so the final save finds both models resident
             reclaim()

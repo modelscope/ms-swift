@@ -12,6 +12,7 @@ from swift.dev.recipe.rft.assembly import build_rft_driver, initialize_rft_clust
 from swift.dev.recipe.utils import (
     StepState,
     build_save_knobs,
+    close_driver_preserving_error,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -246,7 +247,7 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
             if len(trajs) % (window * num_samples) == 0:
                 logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')
     finally:
-        driver.close()
+        close_driver_preserving_error(driver)
         if cluster.colocate:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
