@@ -98,6 +98,7 @@ swift rlhf \
 - Set environment variables:
     - (Required) JUDGE0_ENDPOINT: The endpoint address for accessing Judge0.
     - (Optional) JUDGE0_X_AUTH_TOKEN: The access token for Judge0.
+    - (Optional) JUDGE0_MAX_CONCURRENCY: Maximum number of concurrent Judge0 submissions in flight (positive integer).
 - Add `external_code_reward_by_judge0` as a reward function with `--reward_funcs`.
 - Set `--external_plugins` to the path of `plugin.py`.
 
