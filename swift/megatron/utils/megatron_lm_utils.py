@@ -362,7 +362,7 @@ def save_mcore_checkpoint(
         fsdp_checkpoint.save_checkpoint(args, state_dict, models[0], checkpoint_dir)
         async_save_request = None
     else:
-        save_strategy = TorchDistSaveShardedStrategy()
+        save_strategy = TorchDistSaveShardedStrategy(backend='torch', version=1)
         save_strategy = FullyParallelSaveStrategyWrapper(
             save_strategy,
             mpu.get_data_parallel_group(with_context_parallel=True),
