@@ -3,6 +3,7 @@
 from __future__ import annotations
 import math
 import os
+import sys
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
@@ -34,6 +35,18 @@ if TYPE_CHECKING:
     from swift.dev.model import TrainableModel
 
 logger = get_logger()
+
+
+def close_driver_preserving_error(driver: Any) -> None:
+    """Preserve an in-flight exception while still attempting driver cleanup."""
+    primary_error = sys.exc_info()[0]
+    try:
+        driver.close()
+    except BaseException:
+        if primary_error is None:
+            raise
+        logger.exception('Streaming driver close failed while preserving the original exception.')
+
 
 MODEL_GROUP = 'model'
 SAMPLER_GROUP = 'sampler'
