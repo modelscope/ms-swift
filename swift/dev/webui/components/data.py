@@ -447,9 +447,12 @@ class ScoreStage(StageComponent):
         if not scorers:
             raise ComponentError(f'{self.node_id}: score needs wired scorers (one per column)')
         samples = inputs.get('traj')
-        if samples is None:
-            samples = batch
-        if samples is None:
+        if not isinstance(samples, list):
+            samples = batch if isinstance(batch, list) else []
+        if not samples:
+            # Refuse an empty/None batch rather than delegate: twinkle's score() raises a plain
+            # ValueError on empty input, but the stage contract is a ComponentError naming the
+            # unwired traj port (an empty score batch is indistinguishable from a drained one).
             raise ComponentError(f'{self.node_id}: score needs a wired traj batch')
         transform = getattr(self, '_score_transform', None)
         if transform is None:
@@ -459,7 +462,16 @@ class ScoreStage(StageComponent):
 
             transform = self._score_transform = TrajectoryUpdate(
                 remote_group=NUMERIC_GROUP, instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}')
-        trajs, scores, metric = transform.score(samples, scorers=scorers)
+        try:
+            trajs, scores, metric = transform.score(samples, scorers=scorers)
+        except (ValueError, TypeError) as e:
+            # Surface the shared scoring engine's contract violations as ComponentError so the
+            # graph executor treats them as stage failures (a scorer that does not score every
+            # row fails loudly -- no silent truncation, no padding).
+            msg = str(e)
+            if 'scores for' in msg:
+                msg = f'{msg} -- a scorer scores every row'
+            raise ComponentError(f'{self.node_id}: {msg}') from e
         return {'traj': trajs, 'scores': scores, 'metric': metric}
 
     def release(self) -> None:
