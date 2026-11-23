@@ -1,13 +1,16 @@
 """Validation weights tokens correctly and excludes duplicated sampler padding."""
+import importlib.util
 import pytest
 import torch
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from swift.fsdpturbo.trainer import FSDPTurboTrainer
+pytestmark = pytest.mark.skipif(
+    importlib.util.find_spec('fsdp_turbo') is None, reason='requires the optional FSDPTurbo package')
 
 
 def make_trainer(*, rank=0, size=1, batch_size=2):
+    from swift.fsdpturbo.trainer import FSDPTurboTrainer
 
     class Model(torch.nn.Module):
 

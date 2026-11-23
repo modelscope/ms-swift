@@ -1,3 +1,4 @@
+import importlib.util
 import pytest
 import torch
 from torch import nn
@@ -5,13 +6,15 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from swift.arguments import SftArguments
-from swift.fsdpturbo.trainer import FSDPTurboTrainer
 from tests.fsdpturbo import test_arguments as argument_tests
 
 
 @pytest.mark.parametrize('weight_decay', [0.0, 0.2])
 @pytest.mark.parametrize('host_engram', [False, True])
+@pytest.mark.skipif(importlib.util.find_spec('fsdp_turbo') is None, reason='requires the optional FSDPTurbo package')
 def test_bias_and_norm_keep_their_values_under_weight_decay(weight_decay, host_engram):
+    from swift.fsdpturbo.trainer import FSDPTurboTrainer
+
     model = nn.Sequential(nn.Linear(2, 2), nn.LayerNorm(2))
     model.register_parameter('frozen', nn.Parameter(torch.ones(2), requires_grad=False))
     if host_engram:

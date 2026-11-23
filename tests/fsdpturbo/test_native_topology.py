@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Native topology must reuse upstream TP/CP without corrupting text batches."""
+import importlib.util
 import pytest
 import torch
 from types import SimpleNamespace
@@ -9,7 +10,11 @@ from swift.fsdpturbo.data import _native_text_collator
 from swift.fsdpturbo.model_specs import get_model_spec
 from .test_cp_config import make_args
 
+requires_fsdpturbo = pytest.mark.skipif(
+    importlib.util.find_spec('fsdp_turbo') is None, reason='requires the optional FSDPTurbo package')
 
+
+@requires_fsdpturbo
 def test_v41_tp_shards_shared_experts_and_keeps_attention_replicated():
     from swift.fsdpturbo.trainer import build_fsdpturbo_config
 
@@ -24,6 +29,7 @@ def test_v41_tp_shards_shared_experts_and_keeps_attention_replicated():
     assert config.distributed.tp_plan.rowwise_parallel == ['model.layers.{*}.ffn.shared_experts.w2']
 
 
+@requires_fsdpturbo
 def test_v41_cp_uses_native_kv_allgather_and_model_owned_loss():
     from swift.fsdpturbo.trainer import build_fsdpturbo_config
 
@@ -40,6 +46,7 @@ def test_v41_cp_uses_native_kv_allgather_and_model_owned_loss():
 
 
 @pytest.mark.parametrize('cp_size', [1, 2])
+@requires_fsdpturbo
 def test_native_cp_recompute_reaches_existing_backend_configuration(cp_size):
     from swift.fsdpturbo.trainer import FSDPTurboTrainer
 
@@ -51,6 +58,7 @@ def test_native_cp_recompute_reaches_existing_backend_configuration(cp_size):
     assert initialize.call_args.kwargs['config'].distributed.kv_allgather_parallel_size == cp_size
 
 
+@requires_fsdpturbo
 def test_activation_offload_reuses_backend_plan():
     from swift.fsdpturbo.trainer import build_fsdpturbo_config
 
@@ -77,6 +85,7 @@ def test_cp_padding_uses_compression_alignment_and_keeps_labels_complete():
 
 
 @pytest.mark.parametrize('rank', [0, 1])
+@requires_fsdpturbo
 def test_native_text_is_sharded_even_with_hf_vision_metadata(rank):
     from swift.fsdpturbo.trainer import FSDPTurboTrainer
 
@@ -101,6 +110,7 @@ def test_native_text_is_sharded_even_with_hf_vision_metadata(rank):
     assert local['labels'] is labels
 
 
+@requires_fsdpturbo
 def test_native_tp_and_kv_cp_preserve_combination_constraint():
     from swift.fsdpturbo.trainer import build_fsdpturbo_config
 

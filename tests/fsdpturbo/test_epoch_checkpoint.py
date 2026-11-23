@@ -1,11 +1,16 @@
 """Epoch saves cannot capture an incomplete gradient accumulation window."""
+import importlib.util
+import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from swift.fsdpturbo.trainer import FSDPTurboTrainer
+pytestmark = pytest.mark.skipif(
+    importlib.util.find_spec('fsdp_turbo') is None, reason='requires the optional FSDPTurbo package')
 
 
 def test_epoch_checkpoint_defers_until_completed_optimizer_step():
+    from swift.fsdpturbo.trainer import FSDPTurboTrainer
+
     trainer = object.__new__(FSDPTurboTrainer)
     trainer.train_args = SimpleNamespace(eval_strategy='no', save_strategy='epoch')
     trainer._global_step = 3
@@ -21,6 +26,8 @@ def test_epoch_checkpoint_defers_until_completed_optimizer_step():
 
 
 def test_epoch_checkpoint_saves_completed_final_window():
+    from swift.fsdpturbo.trainer import FSDPTurboTrainer
+
     trainer = object.__new__(FSDPTurboTrainer)
     trainer.train_args = SimpleNamespace(eval_strategy='no', save_strategy='epoch')
     trainer._global_step = 4

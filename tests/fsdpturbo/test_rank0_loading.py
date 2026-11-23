@@ -87,6 +87,7 @@ class TestRank0Loading(unittest.TestCase):
         args.get_model_processor.assert_called_once_with(device_map='cpu')
         broadcast.assert_called_once()
 
+    @unittest.skipUnless(hasattr(torch, 'float8_e8m0fnu'), 'requires the PyTorch E8M0 dtype')
     def test_e8m0_scales_are_decoded_as_values_before_bf16_conversion(self):
         from transformers import FineGrainedFP8Config
         from transformers.integrations.finegrained_fp8 import Fp8Dequantize
