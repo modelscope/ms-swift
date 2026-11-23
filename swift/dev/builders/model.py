@@ -1574,6 +1574,26 @@ def build_parallel_mesh(distributed_config: Optional[DistributedConfig], *, none
     return mesh
 
 
+def resolve_rl_dp_size(distributed_config: DistributedConfig, sequence_parallel_size: int = 1) -> int:
+    """The data-parallel width an RL recipe sizes its batches by, per deployment mode.
+
+    remote: one client process drives the server, whose own sharding splits the batch it
+    receives (the policy handle carries a dp=1 mesh). megatron: DP is the ranks LEFT OVER
+    after tp*pp*cp -- build_dp_mesh would count every rank as data parallel. transformers:
+    the dp x ulysses mesh (SP peers share one data rank).
+    """
+    if distributed_config.mode == 'remote':
+        return 1
+    if is_megatron_backend(distributed_config):
+        return build_parallel_mesh(distributed_config).data_world_size
+    mesh = build_dp_mesh(distributed_config, sequence_parallel_size)
+    if mesh is None:
+        # Local, sp=1, no spec: no explicit mesh exists, but dp still spans every rank.
+        from twinkle import Platform
+        return Platform.get_world_size()
+    return mesh.data_world_size
+
+
 _NON_MODEL_MEGATRON_FIELDS = {
     "data_parallel_random_init",
     "manual_gc",

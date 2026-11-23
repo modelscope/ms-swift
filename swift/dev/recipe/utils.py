@@ -37,15 +37,77 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def close_driver_preserving_error(driver: Any) -> None:
-    """Preserve an in-flight exception while still attempting driver cleanup."""
+def close_driver_preserving_error(driver: Any) -> Dict[str, Any]:
+    """Return the driver's terminal statistics while preserving an in-flight training error."""
     primary_error = sys.exc_info()[0]
     try:
-        driver.close()
+        return driver.close()
     except BaseException:
         if primary_error is None:
             raise
         logger.exception('Streaming driver close failed while preserving the original exception.')
+        return {}
+
+
+def finalize_rl_resources(state: Any, cluster: Any, *, remote_run: bool,
+                          finish: Optional[Callable[[], Any]] = None,
+                          driver: Any = None, companions: Sequence[Any] = (),
+                          recipe: str = 'rl') -> None:
+    """Teardown in fixed order; a cleanup error must not mask the in-flight training exception.
+
+    ``finish`` is the recipe's terminal metric record (it reads sys.exc_info() itself for the
+    run status); it runs first so a later cleanup failure cannot skip it. On the success path a
+    real teardown failure still surfaces; while a training exception is in flight it wins and
+    cleanup errors stay logged.
+    """
+    from twinkle.perf import Perf
+
+    orig = sys.exc_info()
+    errors = []
+
+    def _guard(label, fn):
+        try:
+            fn()
+        except BaseException as e:
+            logger.warning('%s cleanup %s failed: %s', recipe, label, e, exc_info=True)
+            errors.append(e)
+
+    closed = set()
+
+    def _close(label, resource):
+        if isinstance(resource, (list, tuple)):
+            for index, item in enumerate(resource):
+                _close(f'{label}[{index}]', item)
+            return
+        if resource is None or id(resource) in closed:
+            return
+        close = getattr(resource, 'close', None)
+        if callable(close):
+            closed.add(id(resource))
+            _guard(f'{label}.close', close)
+
+    if finish is not None:
+        _guard('finish_metrics', finish)
+    _close('driver', driver)
+    _guard('Perf.shutdown', Perf.shutdown)
+    _close('companions', companions)
+    _close('engine', cluster.engine)
+    _close('rollout', cluster.rollout)
+    # The bundle contains owned resource handles and scalar configuration. Close methods
+    # enforce replica/binding ownership; aliases are visited only once.
+    for label, resource in cluster._asdict().items():
+        if label not in ('model', 'value_model', 'sampler', 'engine', 'rollout'):
+            _close(label, resource)
+    _close('value_model', getattr(cluster, 'value_model', None))
+    _close('model', cluster.model)
+    # An HTTP sampler is server-owned; closing a training binding never stops that server.
+    if not remote_run:
+        _close('sampler', cluster.sampler)
+    _guard('tracker.close', state.tracker.close)
+    if orig[0] is None and errors:
+        # Every failure was logged by _guard; the raise carries them ALL -- a plain
+        # errors[0] would silently drop the rest of the teardown failures.
+        raise BaseExceptionGroup(f'{recipe} teardown is incomplete', errors)
 
 
 MODEL_GROUP = 'model'
@@ -602,6 +664,7 @@ class StepState:
         self.epoch = 0
         self.best_metric: Optional[float] = None
         self.history: List[dict] = []
+        self.stream_stats: Dict[str, Any] = {}
         # Run-level logs (metrics_raw / summary / metrics.jsonl, reporter dirs) are appended in
         # place, so an oss:// / s3:// output_dir keeps them on local disk; checkpoint callbacks
         # still get the real output_dir.

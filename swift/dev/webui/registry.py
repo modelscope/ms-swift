@@ -188,12 +188,17 @@ GENERATE = D('generate', '批量生成', 'Stage', '仅生成 episode，评分与
               P('episode', 'ROLLOUT', '多轮引擎', optional=True)),
     ports_out=(P('traj', 'TRAJ', '生成轨迹', ('rollout',)),),
     params=(Q('num_generations', '组宽', 8, type='int', minimum=1, phase='call'),
-            Q('generation_config', '生成参数', {}, type='dict', phase='call')),
-    exclusive_inputs=(('engine', 'episode'),), surface='algorithm')
+            Q('generation_config', '生成参数', {}, type='dict', phase='call'),
+            Q('tokenizer', '裸采样器的 Tokenizer 来源', '',
+              doc='接 engine 时必须设置；接 episode 时使用其已有编码配置'),
+            Q('model_config', 'Tokenizer 模型加载配置', {}, type='dict'),
+            Q('template_config', '裸采样器的编码配置', {}, type='dict')),
+    execution='remote', exclusive_inputs=(('engine', 'episode'),), surface='algorithm')
 SCORE = D('score', '评分', 'Stage', '对接线的具名评分器打分，具名列写回轨迹；缺失不截断也不补零。',
     ports_in=(P('traj', 'TRAJ', '待评分轨迹', ('rollout', 'scored')),
               P('scorers', 'SCORER', '具名评分器', many=True)),
     ports_out=(P('traj', 'TRAJ', '携带具名评分列的轨迹', ('scored',)),
+               P('scores', 'DATA', '与轨迹逐行对齐的评分事实', ('scores',)),
                P('metric', 'METRIC', '本批评分摘要', ('summary',))),
     params=(), surface='algorithm')
 MODEL_FORWARD = D('model_forward', '模型前向', 'Stage', '按显式字段集合的一次独立前向；输出是完整 ModelOutput，logps/values 走响应 frame。',
@@ -221,6 +226,7 @@ PRIVILEGED_VIEW = D('privileged_view', '特权提示', 'Stage', '按行内 teach
     execution='remote', surface='algorithm')
 ADVANTAGE = D('advantage', '优势估计', 'Stage', '轨迹与前向 lane 进、训练目标列回轨迹；不持模型、不执行前向。',
     ports_in=(P('traj', 'TRAJ', '携带具名评分列的轨迹', ('scored',)),
+              P('scores', 'DATA', '显式评分事实；旧图由数据组件提取', ('scores',), optional=True),
               P('ref_out', 'MODEL_OUTPUT', '参考前向（kl_in_reward/损失所需）', optional=True),
               P('teacher_out', 'MODEL_OUTPUT', '教师前向（重加权/SDAR）', optional=True),
               P('old_out', 'MODEL_OUTPUT', '更新前策略前向（重要性采样/诊断）', optional=True),
@@ -236,8 +242,10 @@ ADVANTAGE = D('advantage', '优势估计', 'Stage', '轨迹与前向 lane 进、
     execution='remote', surface='algorithm')
 SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对齐载荷；成对与完整组不拆散，奖励随轨迹保留。',
     ports_in=(P('batch', 'TRAJ', '原始对齐数据', optional=False, accepted_kinds=('DATA', 'BATCH')),
+              P('scores', 'DATA', '与原始轨迹对齐的评分事实', ('scores',), optional=True),
               P('signals', 'MODEL_OUTPUT', '具名同步筛选输入', many=True, optional=True)),
     ports_out=(P('batch', 'TRAJ', '同一次选择后的数据', mirror_input='batch'),
+               P('scores', 'DATA', '同一次选择后的评分事实', ('scores',)),
                P('signals', 'MODEL_OUTPUT', '逐 slot 同步输出', optional=True, mirror_input='signals'),
                P('metric', 'METRIC', '选择摘要（保留/丢弃计数）', ('summary',))),
     params=(Q('select', '选择规则', 'threshold', options=('threshold', 'top_k', 'best_of_n'), phase='call'),

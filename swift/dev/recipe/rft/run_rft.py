@@ -13,6 +13,7 @@ from swift.dev.recipe.utils import (
     StepState,
     build_save_knobs,
     close_driver_preserving_error,
+    finalize_rl_resources,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -349,14 +350,10 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     # the rft_iterations rounds generates the whole prompt set and SFTs the kept completions, so the
     # budget sizes those rounds with the per-prompt kept count as the effective num_generations and
     # no replay (num_iterations=1); an explicit --max_steps still overrides.
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builders import resolve_rl_dp_size
 
     remote_run = distributed_config.mode == 'remote'
-    if remote_run:
-        # One client process drives the server: the policy handle's own mesh sizes the batches.
-        dp_size = 1
-    else:
-        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    dp_size = resolve_rl_dp_size(distributed_config, template_config.sequence_parallel_size)
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the round's generation chunking: the derived
     # default fills whole optimizer updates on the sampling axis (num_samples per prompt), never the
@@ -474,27 +471,15 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
                 f'{train_batch_size} mini-batch, so nothing was trained and no checkpoint is written. '
                 'Check max_steps > 0, then lower rft_threshold / rft_select, raise rft_num_samples, or enlarge '
                 'the prompt dataset so at least one round fills a mini-batch.')
+        state.handler.on_train_end()
+        save_final_checkpoint(cluster.model, save, enabled=_save_final)
     finally:
-        _failed = sys.exc_info()[0] is not None
-        try:
-            Perf.shutdown()
-        finally:
-            try:
-                # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the Cluster's
-                # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side). A served
-                # sampler's lifecycle is the server session's, not this client's.
-                cluster.rollout.close()
-            finally:
-                try:
-                    cluster.sampler.shutdown() if not remote_run else None
-                finally:
-                    try:
-                        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
-                        # record, and close() is what writes the summary.
-                        state.finish_metrics(status='failed' if _failed else 'loop_completed')
-                    finally:
-                        state.tracker.close()
-    state.handler.on_train_end()
-    # The final checkpoint is synchronous; its args.json was written at initialize_rl_devices.
-    save_final_checkpoint(cluster.model, save, enabled=_save_final)
+        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+        # record, and close() is what writes the summary -- so the finish runs first inside the
+        # guarded teardown, and a cleanup error cannot mask the in-flight training exception.
+        finalize_rl_resources(
+            state, cluster, remote_run=remote_run,
+            finish=lambda: state.finish_metrics(
+                status='failed' if sys.exc_info()[0] is not None else 'loop_completed'),
+            recipe='RFT')
     return state.history

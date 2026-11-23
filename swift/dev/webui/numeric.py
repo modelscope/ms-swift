@@ -24,8 +24,15 @@ from .placement import NUMERIC_GROUP
 
 
 def deref(value: Any) -> Any:
-    """Resolve a maybe-lazy remote result HERE (never in the driver); pass others through."""
+    """Resolve a maybe-lazy remote result HERE (never in the driver); pass others through.
+
+    A stash channel delivers its payload element-wise (a trajectory batch as a list of
+    pending handles), so a LIST is resolved member by member: a plain value list has no
+    handle members and passes through unchanged.
+    """
     from swift.dev.utils.scoring import collect
+    if isinstance(value, (list, tuple)):
+        return type(value)(collect(item) for item in value)
     return collect(value)
 
 

@@ -88,6 +88,7 @@ class Cluster(NamedTuple):
     colocate: bool
     advantage: Any
     traj_filter: Any
+    prm_segment: Any = None
 
 
 def initialize_ppo_cluster(
@@ -125,6 +126,7 @@ def initialize_ppo_cluster(
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.rewards.prm import build_prm_segment
     from swift.dev.builders.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
@@ -304,7 +306,8 @@ def initialize_ppo_cluster(
     # object over the client sampler handle.
     rollout = build_rollout(
         sampler, template, rollout_config, sampling_params=params, remote=not remote_run,
-        inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)))
+        inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)),
+        seed=train_config.seed)
 
     # PPO ALWAYS anchors the KL: the full-parameter default is a frozen policy-init copy on the ref
     # group; a LoRA run reuses the policy actor itself with its adapter off (identity-derived).
@@ -387,6 +390,7 @@ def initialize_ppo_cluster(
                                env_reward_weight=float(reward_config.env_reward_weight),
                                **prm_kwargs, **group),
         traj_filter=TrajectoryFilter(**group),
+        prm_segment=build_prm_segment(reward_config, rollout_config, remote_group=group['remote_group']),
     )
 
 
@@ -401,7 +405,6 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
     multi-turn rollout) feeds the process-reward lane the GAE token rewards fuse.
     """
     from swift.dev.builders.streaming import build_streaming_driver
-    from swift.dev.rewards.prm import build_prm_segment
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,
@@ -416,7 +419,7 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
         orm_names=cluster.orm_names,
         prms=cluster.prm_scorers,
         prm_names=cluster.prm_names,
-        prm_segment=build_prm_segment(reward_config, rollout_config),
+        prm_segment=cluster.prm_segment,
         cluster_adapter=cluster.adapter,
         remote=True,
     )

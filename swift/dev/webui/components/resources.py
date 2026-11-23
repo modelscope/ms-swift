@@ -150,6 +150,15 @@ def build_template_from(tokenizer_id: str, template_kv: Optional[dict], node_id:
     return build_template(template_config, processor)
 
 
+def _is_remote_handle(item: Any) -> bool:
+    """Whether a batch item is an infra reference rather than a row value.
+
+    A stashed channel yields raw ObjectRefs; a lazy-collected result yields a handle exposing
+    ``result``. Both dereference at the remote consumer, never in the calling process.
+    """
+    return hasattr(item, 'result') or type(item).__name__ == 'ObjectRef'
+
+
 def encode_rows(template: Any, data: Any) -> list:
     """One batch of rows / trajectories -> native encoded features.
 
@@ -177,6 +186,11 @@ def encode_rows(template: Any, data: Any) -> list:
         raise ComponentError(
             'cannot encode: a dict batch must expose a row list under "rows" '
             f'(got keys {sorted(data.keys())[:8]})')
+    if items and all(_is_remote_handle(item) for item in items):
+        # Stashed trajectory rows: their encoding was built at the rollout worker and rides
+        # as infra references; the remote forward resolves each row worker-side, so they pass
+        # through verbatim -- never re-encoded or materialised in this process.
+        return list(items)
     if items and not all(isinstance(item, dict) for item in items):
         kinds = sorted({type(item).__name__ for item in items if not isinstance(item, dict)})
         raise ComponentError(
@@ -463,10 +477,14 @@ class RolloutComponent(ResourceComponent):
                 sampling_params = SamplingParams(**gen)
             except TypeError as exc:
                 raise ComponentError(f'{self.node_id}: generation_config: {exc}') from None
+        import uuid
+        from ..placement import NUMERIC_GROUP
+
         try:
             self.obj = MultiTurnRollout(
                 sampler, template=template, env=inputs.get('env'), tool_manager=inputs.get('tools'),
-                sampling_params=sampling_params,
+                sampling_params=sampling_params, remote_group=NUMERIC_GROUP,
+                instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}',
                 max_turns=int(self.params.get('max_turns', '8') or 8), **cfg)
         except TypeError as exc:
             raise ComponentError(f'{self.node_id}: rollout_config: {exc}') from None
