@@ -22,9 +22,6 @@ from types import MethodType
 from typing import Dict, Optional
 
 from swift.utils import get_logger
-from swift.utils.import_utils import check_peft_version
-
-check_peft_version()
 
 try:
     from peft import FourierFTModel

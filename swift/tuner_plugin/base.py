@@ -3,10 +3,6 @@ import torch
 from peft import PeftModel
 from typing import TYPE_CHECKING, Optional
 
-from swift.utils.import_utils import check_peft_version
-
-check_peft_version()
-
 if TYPE_CHECKING:
     from swift.arguments import SftArguments
 
