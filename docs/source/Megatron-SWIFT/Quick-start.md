@@ -83,15 +83,15 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 |--------------|--------------|-------------|--------------------|
 | python       | >=3.10        | 3.12        |                    |
 | cuda         |              | cuda12.8/13.0      |                    |
-| torch        | >=2.0        | 2.8.0/2.11.0       |                    |
+| torch        | >=2.0        |             |                    |
 | transformer-engine    | >=2.3       |  2.16.0    |                  |
 | apex |   |  0.1 | |
 | megatron-core    |   >=0.18,<0.21    | 0.20.0      |    或 dev 分支     |
 | mcore-bridge    |    >=1.6.5    |  1.6.5    |                  |
 | flash-attn    |        | 2.8.3/4.0.0b15   |                  |
-| transformers | >=4.33       | 4.57.6/5.12.1   |                    |
+| transformers | >=4.33       | 5.23.0          |                    |
 | modelscope   | >=1.23       |             |                    |
-| peft         | >=0.11,<0.20 |             |      LoRA          |
+| peft         | >=0.11,<0.23 |             |      LoRA          |
 | trl          | >=0.15,<1.0 |       |      RLHF        |
 
 

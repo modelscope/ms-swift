@@ -176,15 +176,15 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 |--------------|--------------|---------------------|-------------------------------------------|
 | python       | >=3.10        | 3.12                |                                           |
 | cuda         |              | cuda12.8/13.0    | No need to install if using CPU, NPU or MPS |
-| torch        | >=2.0        | 2.8.0/2.11.0         |                            |
-| transformers | >=4.33       | 4.57.6/5.12.1              |                          |
+| torch        | >=2.0        |                     |                            |
+| transformers | >=4.33       | 5.23.0              |                          |
 | modelscope   | >=1.23       |                     |                                           |
 | datasets     | >=4.0,<4.8.5 | 4.8.4               |                    |
-| peft         | >=0.11,<0.20 |                     |                                           |
+| peft         | >=0.11,<0.23 |                     |                                           |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                                           |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF                                      |
 | deepspeed    | >=0.19.3,<0.20 | 0.19.7            | Training                                  |
-| vllm         | >=0.5.1      | 0.11.0/0.23.0       | Inference/Deployment                      |
+| vllm         | >=0.5.1      |                     | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |
 | gradio       |              | 5.32.1              | Web-UI/App                                |

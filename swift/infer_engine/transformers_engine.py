@@ -452,6 +452,7 @@ class TransformersEngine(InferEngine):
         generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         output = dict(self.template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
+        output.pop('cache', None)
         batched_generate_ids = output['sequences']
         batched_generate_ids = self.template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
         self.template.debug_logger({'generate_ids': batched_generate_ids})  # debug
