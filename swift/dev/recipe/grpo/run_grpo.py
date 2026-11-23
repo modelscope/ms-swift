@@ -16,6 +16,7 @@ from swift.dev.recipe.utils import (
     RolloutStepState,
     _log_line,
     build_save_knobs,
+    close_driver_preserving_error,
     collect,
     effective_colocate,
     initialize_rl_devices,
@@ -31,6 +32,7 @@ from swift.dev.recipe.utils import (
     stream_batch_size,
 )
 from swift.dev.utils.logger import get_logger
+from swift.dev.utils.storage import local_run_dir
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -251,6 +253,9 @@ def _train_mini_batches(
                                  micro_batch_size=train_batch_size // dp_size)
         kwargs.update(batching_kwargs or {})
         micro_batches = (hi - lo) // train_batch_size  # Nominal count; DBS schedules physical batches internally.
+        # Mirror the SFT per-step callback dispatch (supervised.update_step): the RL loops used to fan only
+        # on_step_end (step_tail), silently skipping on_step_begin / on_pre_optimizer_step / on_optimizer_step.
+        state.handler.on_step_begin()
         if chord_fn is not None:
             _chord_forward_backward(
                 model, rl_config, kwargs, chord_fn, step=state.global_step, num_micro_batches=micro_batches
@@ -259,7 +264,9 @@ def _train_mini_batches(
             model.forward_backward(**kwargs)
         # forward_backward and clip_grad_and_step are both declared sync=True on the model, so a
         # worker-side failure fails THIS step at the call site.
+        state.handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
         state.micro_step += micro_batches
         state.record(extra_metrics=balance_metrics)
         state.record_rollout_training(indices)
@@ -372,7 +379,8 @@ def _train_loop(
                 if completion_log is not None:
                     rows = completion_log(
                         trajs, step=state.global_step + 1,
-                        path=os.path.join(output_dir, 'completions.jsonl') if rl_config.log_completions else None,
+                        path=(os.path.join(local_run_dir(output_dir), 'completions.jsonl')
+                              if rl_config.log_completions else None),
                         scores=batch_facts.get('scores'))
                     if state.tracker.logs_prompts:
                         state.tracker.log_prompts(rows, state.global_step + 1)
@@ -501,7 +509,7 @@ def _train_loop(
             state.begin_rollout_iteration()
     finally:
         # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
-        driver.close()
+        close_driver_preserving_error(driver)
         if lent:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
@@ -570,6 +578,34 @@ def _grpo_extra_metrics(
     return extra
 
 
+def _finalize_grpo_resources(state, driver, cluster, *, remote_run, engine_core_job_id,
+                             perf_shutdown, reap):
+    """Teardown in fixed order; a cleanup error must not mask the in-flight training exception (defect499)."""
+    orig = sys.exc_info()
+    errors = []
+
+    def _guard(label, fn):
+        try:
+            fn()
+        except Exception as e:
+            logger.warning('GRPO cleanup %s failed: %s', label, e, exc_info=True)
+            errors.append(e)
+
+    _guard('finish_rollout_metrics', lambda: state.finish_rollout_metrics(
+        stream_stats=driver.stats(),
+        status='failed' if orig[0] is not None else 'loop_completed') if not remote_run else None)
+    _guard('Perf.shutdown', perf_shutdown)
+    _guard('rollout.close', cluster.rollout.close)
+    _guard('sampler.shutdown', lambda: cluster.sampler.shutdown() if not remote_run else None)
+    _guard('reap_engine_core_orphans',
+           lambda: reap(engine_core_job_id) if (not remote_run and engine_core_job_id) else None)
+    _guard('tracker.close', state.tracker.close)
+    # On the success path a real teardown failure must still surface; while a training
+    # exception is in flight it wins and cleanup errors stay logged above.
+    if orig[0] is None and errors:
+        raise errors[0]
+
+
 def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
              dataset_config: 'DatasetConfig', train_config: 'TrainConfig',
              distributed_config: 'DistributedConfig', checkpoint_config: 'CheckpointConfig',
@@ -615,6 +651,13 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         rollout_config.generation_batch_size, num_prompts=len(prompts),
         num_generations=rl_config.num_generations, num_iterations=rl_config.num_iterations,
         train_batch_size=train_batch_size, gradient_accumulation_steps=ga)
+    # Batch-derivation reconciliation oracle (QUEUE4034): expose the resolved geometry so a real run
+    # can be checked against a hand-computed per_device x dp (x ga) independent of the derivation path.
+    logger.info(
+        'RL batch geometry: dp_size=%d train_batch_size=%d (per_device=%d x dp) ga=%d '
+        'update_batch_size=%d generation_batch_size=%d',
+        dp_size, train_batch_size, train_config.per_device_train_batch_size, ga,
+        train_batch_size * ga, generation_batch_size)
     colocate = effective_colocate(rollout_config, resource_plan)
     batch_size = stream_batch_size(
         colocate=colocate, generation_batch_size=generation_batch_size,
@@ -772,7 +815,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         from twinkle.checkpoint_engine import CheckpointEngineManager
 
         ema_manager = CheckpointEngineManager(
-            model=cluster.model, sampler=cluster.reference, mode='standalone')
+            model=cluster.model, sampler=cluster.reference, mode='standalone', channel='ema')
     chord_fn = None
     chord_offset = [0]
     chord_train_batch_size = 0
@@ -823,30 +866,16 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
                         completion_log=completion_log,
                         )
     finally:
-        try:
-            state.finish_rollout_metrics(
-                stream_stats=driver.stats(),
-                status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None
-        finally:
-            try:
-                Perf.shutdown()
-            finally:
-                try:
-                    cluster.rollout.close()
-                finally:
-                    try:
-                        # A served sampler's lifecycle is the server session's, not this client's.
-                        cluster.sampler.shutdown() if not remote_run else None
-                    finally:
-                        try:
-                            # defect58 part②: sampler.shutdown() is a ray RPC that raises ActorDiedError
-                            # when the raylet died first, leaving the EngineCore OS process orphaned.
-                            # Reap its recorded PIDs directly, bypassing the dead actor (identity-verified).
-                            if not remote_run and _engine_core_job_id:
-                                from twinkle.sampler.vllm_sampler.engine_core_reaper import reap_engine_core_orphans
-                                reap_engine_core_orphans(_engine_core_job_id)
-                        finally:
-                            state.tracker.close()
+        def _reap_engine_core(job_id):
+            # defect58 part②: a dead raylet leaves the EngineCore OS process orphaned; reap its
+            # recorded PIDs directly, bypassing the dead actor (identity-verified).
+            from twinkle.sampler.vllm_sampler.engine_core_reaper import reap_engine_core_orphans
+            reap_engine_core_orphans(job_id)
+
+        _finalize_grpo_resources(
+            state, driver, cluster, remote_run=remote_run,
+            engine_core_job_id=_engine_core_job_id,
+            perf_shutdown=Perf.shutdown, reap=_reap_engine_core)
     state.handler.on_train_end()
     # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.
     save_final_checkpoint(cluster.model, save, enabled=_save_final)

@@ -293,8 +293,12 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         if Platform.get_rank() <= 0:
             unwrap = getattr(self.strategy, "unwrap_model", None)
             st_model = unwrap(self.model) if callable(unwrap) else self.model
-            os.makedirs(checkpoint_dir, exist_ok=True)
-            self._save_merged_st(st_model, checkpoint_dir)
+            # write_dir yields the real dir locally; a remote output_dir stages,
+            # uploads and drops the staging copy.
+            from swift.dev.utils.storage import write_dir
+
+            with write_dir(checkpoint_dir) as local:
+                self._save_merged_st(st_model, local)
             logger.info(f"Saved SentenceTransformer checkpoint to: {checkpoint_dir}")
         return checkpoint_dir
 

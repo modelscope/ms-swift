@@ -12,6 +12,7 @@ from swift.dev.recipe.utils import (
     RolloutStepState,
     StepState,
     build_save_knobs,
+    close_driver_preserving_error,
     effective_colocate,
     initialize_rl_devices,
     optimizer_batch_slices,
@@ -98,12 +99,16 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
         state.micro_step += (hi - lo) // train_batch_size
         # forward_backward is declared sync=True on the model: a worker-side failure raises
         # at this call, failing THIS step instead of riding an unread handle.
+        # Mirror the SFT per-step callback dispatch (defect121): fan on_step_begin / on_pre_optimizer_step /
+        # on_optimizer_step around the policy+value optimizer steps, not only on_step_end via step_tail.
+        state.handler.on_step_begin()
         model.forward_backward(
             inputs=update,
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             temperature=temperature,
         )
+        state.handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         value_model.forward_backward(
             inputs=[trajs[index] for index in indices],
@@ -112,6 +117,7 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
             micro_batch_size=micro_batch_size,
         )
         value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
         state.record(extra_metrics=balance_metrics)
         optimizer_steps += 1
         if ema_manager is not None and state.global_step % rl_config.ref_model_sync_steps == 0:
@@ -237,7 +243,7 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
             state.begin_rollout_iteration()
     finally:
         # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
-        driver.close()
+        close_driver_preserving_error(driver)
         if lent:
             # ended with the devices lent: give them back so the final save finds both models resident
             reclaim()

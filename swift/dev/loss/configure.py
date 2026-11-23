@@ -232,14 +232,14 @@ def configure_rl_metrics(model: TrainableModel, rl_config: 'RLConfig',
     ``construct_class``, the Ray boundary, HTTP to a served model); the name must live in
     twinkle.metric, or a typo would be routed to the hub-plugin loader instead of failing.
     """
-    from twinkle.metric import CISPOMetric, DPOMetric, GRPOMetric, GSPOMetric, PPOMetric
+    from twinkle.metric import CISPOMetric, DISMetric, DPOMetric, GRPOMetric, GSPOMetric, PPOMetric
 
     rl_type = rl_config.rl_type
     if rl_type == 'grpo':
         # Mirror configure_rl_loss's variant resolution: the metric's clip statistic must match the
-        # loss's (GSPO clips a per-sequence geometric-mean ratio; CISPO clips unconditionally).
+        # loss's (GSPO clips a per-sequence geometric-mean ratio; CISPO/DIS count unconditionally).
         grpo_loss_type = rl_config.loss_type[0] if rl_config.loss_type else 'grpo'
-        metric_cls = {'gspo': GSPOMetric, 'cispo': CISPOMetric}.get(grpo_loss_type, GRPOMetric)
+        metric_cls = {'gspo': GSPOMetric, 'cispo': CISPOMetric, 'dis': DISMetric}.get(grpo_loss_type, GRPOMetric)
         # ``temperature`` recovers the T=1 report scale from sampler-temperature logps, so it must be
         # the SAMPLING temperature -- NOT RLConfig.distill_temperature, which is the GKD-only knob.
         kwargs: Dict[str, Any] = {'epsilon': rl_config.epsilon, 'temperature': sampling_temperature}
@@ -355,6 +355,10 @@ def _online_loss_kwargs(rl_type: str, rl_config: 'RLConfig', grpo_loss_type: str
         # KL-Cov's selected-token fraction and the extra KL coefficient; read only by KLCovLoss.
         kwargs['kl_cov_ratio'] = rl_config.kl_cov_ratio
         kwargs['ppo_kl_coef'] = rl_config.ppo_kl_coef
+    elif grpo_loss_type == 'dis':
+        # DIS's IS-weight stop-gradient switch; the trust interval is the shared epsilon/epsilon_high
+        # forwarded above (an unset epsilon_high keeps DISLoss's wide 5.0 upper bound).
+        kwargs['detach_importance_weight'] = rl_config.dis_detach_importance_weight
     # 'gpg' (pure REINFORCE, -logp*adv) and 'geo_mean' (sequence geometric mean) read no extra knobs
     # beyond the shared epsilon/epsilon_high/beta forwarded above, so they need no variant branch.
 

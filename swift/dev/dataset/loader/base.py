@@ -17,6 +17,7 @@ import numpy as np
 
 from swift.dev.utils.tags import validate_tags
 from swift.dev.utils import get_logger
+from swift.dev.utils.storage import is_remote_url, to_local
 from ..storage import STORAGE_MAPPING, detect_storage_format
 
 __all__ = [
@@ -633,6 +634,11 @@ class DatasetLoader:
         """
         if os.path.exists(entry):
             return entry, [], None, None
+        if is_remote_url(entry):
+            # An oss:// / s3:// file or dir is a path, not a hub selector: only a row budget
+            # comes off (load_dataset materializes it into the local cache).
+            entry, sample_count = DatasetLoader.split_sample_count(entry)
+            return entry, [], sample_count, None
 
         use_hf: Optional[bool] = None
         hub, sep, rest = entry.partition('://')
@@ -768,6 +774,14 @@ def load_dataset(
     val_parts: List[DATASET_TYPE] = []
     for entry in datasets:
         dataset, entry_subsets, sample_count, entry_use_hf = DatasetLoader.parse_dataset_syntax(entry)
+        if is_remote_url(dataset):
+            if streaming:
+                raise ValueError(
+                    f'streaming=True cannot read {dataset}: an object-store dataset is materialized '
+                    'into the local cache first. Drop streaming, or point --dataset at a local copy.')
+            # Materialize the object-store dataset into the persistent local cache once;
+            # everything downstream (detect_source, the format readers) sees a local path.
+            dataset = to_local(dataset)
         if entry_use_hf is None:
             entry_use_hf = use_hf
         dataset_type = match_dataset_type(dataset, use_hf=bool(entry_use_hf))

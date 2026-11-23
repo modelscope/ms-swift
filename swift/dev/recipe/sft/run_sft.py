@@ -132,6 +132,8 @@ def run_embedding(model_config: 'ModelConfig', template_config: 'TemplateConfig'
                   tuner_config: Optional['TunerConfig'] = None,
                   logging_config: Optional['LoggingConfig'] = None,
                   quantize_config: Optional['QuantizeConfig'] = None, *,
+                  megatron_config: Optional['MegatronConfig'] = None,
+                  moe_config: Optional['MoEConfig'] = None,
                   output_dir: str = 'output', _save_final: bool = True) -> List[dict]:
     """Assemble and run embedding training from atomic Configs; returns the loss/grad_norm history.
 
@@ -151,12 +153,12 @@ def run_embedding(model_config: 'ModelConfig', template_config: 'TemplateConfig'
         dataset_config=dataset_config, train_config=train_config,
         distributed_config=distributed_config, checkpoint_config=checkpoint_config,
         tuner_config=tuner_config, logging_config=logging_config, quantize_config=quantize_config,
-        megatron_config=None, moe_config=None, task=EMBEDDING_TASK, loop_task=None,
+        megatron_config=megatron_config, moe_config=moe_config, task=EMBEDDING_TASK, loop_task=None,
         configure_loss=embedding_loss, configure_metric=configure_embedding_metric,
         output_dir=output_dir)
     return run_supervised(
         cluster, model_config, template_config, dataset_config, train_config, distributed_config,
-        checkpoint_config, tuner_config, logging_config, quantize_config, None,
+        checkpoint_config, tuner_config, logging_config, quantize_config, megatron_config,
         micro_step_fn=_supervised_micro_kwargs(cluster.forward_task),
         output_dir=output_dir,
         _save_final=_save_final,
@@ -169,6 +171,8 @@ def run_reranker(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                  tuner_config: Optional['TunerConfig'] = None,
                  logging_config: Optional['LoggingConfig'] = None,
                  quantize_config: Optional['QuantizeConfig'] = None, *,
+                 megatron_config: Optional['MegatronConfig'] = None,
+                 moe_config: Optional['MoEConfig'] = None,
                  output_dir: str = 'output', _save_final: bool = True) -> List[dict]:
     """Assemble and run reranker training from atomic Configs; returns the loss/grad_norm history.
 
@@ -195,11 +199,11 @@ def run_reranker(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         dataset_config=dataset_config, train_config=train_config,
         distributed_config=distributed_config, checkpoint_config=checkpoint_config,
         tuner_config=tuner_config, logging_config=logging_config, quantize_config=quantize_config,
-        megatron_config=None, moe_config=None, task=task_type, loop_task=None,
+        megatron_config=megatron_config, moe_config=moe_config, task=task_type, loop_task=None,
         configure_loss=reranker_loss, configure_metric=None, output_dir=output_dir)
     return run_supervised(
         cluster, model_config, template_config, dataset_config, train_config, distributed_config,
-        checkpoint_config, tuner_config, logging_config, quantize_config, None,
+        checkpoint_config, tuner_config, logging_config, quantize_config, megatron_config,
         micro_step_fn=_supervised_micro_kwargs(cluster.forward_task),
         output_dir=output_dir,
         _save_final=_save_final,
@@ -212,6 +216,8 @@ def run_seq_cls(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                 tuner_config: Optional['TunerConfig'] = None,
                 logging_config: Optional['LoggingConfig'] = None,
                 quantize_config: Optional['QuantizeConfig'] = None, *,
+                megatron_config: Optional['MegatronConfig'] = None,
+                moe_config: Optional['MoEConfig'] = None,
                 output_dir: str = 'output', _save_final: bool = True) -> List[dict]:
     """Assemble and run seq_cls training from atomic Configs; returns the loss/grad_norm history.
 
@@ -238,11 +244,11 @@ def run_seq_cls(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         dataset_config=dataset_config, train_config=train_config,
         distributed_config=distributed_config, checkpoint_config=checkpoint_config,
         tuner_config=tuner_config, logging_config=logging_config, quantize_config=quantize_config,
-        megatron_config=None, moe_config=None, task=SEQ_CLS_TASK, loop_task=None,
+        megatron_config=megatron_config, moe_config=moe_config, task=SEQ_CLS_TASK, loop_task=None,
         configure_loss=seq_cls_loss, configure_metric=None, output_dir=output_dir)
     return run_supervised(
         cluster, model_config, template_config, dataset_config, train_config, distributed_config,
-        checkpoint_config, tuner_config, logging_config, quantize_config, None,
+        checkpoint_config, tuner_config, logging_config, quantize_config, megatron_config,
         micro_step_fn=_supervised_micro_kwargs(cluster.forward_task),
         output_dir=output_dir,
         _save_final=_save_final,

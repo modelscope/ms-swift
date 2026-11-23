@@ -276,7 +276,11 @@ class TemperatureCalibrationCallback(TrainCallback):
             }
 
         save_dir = state.output_dir or "output"
-        head.save_pretrained(save_dir, save_weights=False)
+        # The calibrated head is an artifact of the output dir: an oss:// / s3:// one stages and uploads.
+        from swift.dev.utils.storage import write_dir
+
+        with write_dir(save_dir) as local:
+            head.save_pretrained(local, save_weights=False)
 
         parts = []
         for kind in range(n_kinds):

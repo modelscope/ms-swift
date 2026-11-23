@@ -19,6 +19,7 @@ from swift.dev.recipe.distill.assembly import (
 from swift.dev.recipe.utils import (
     StepState,
     build_save_knobs,
+    close_driver_preserving_error,
     effective_colocate,
     initialize_rl_devices,
     optimizer_batch_slices,
@@ -83,9 +84,14 @@ def _train_rows(cluster: Cluster, state: StepState, trajs: List[Any], lengths: O
         # The worker runs the teacher forward -- the driver never sees the full-vocab logits or the
         # logps, only the light kwargs carrying them as refs.
         signal = dict(cluster.worker.forward_kwargs(update, use_student))
+        # Mirror the SFT per-step callback dispatch (defect121): fan on_step_begin / on_pre_optimizer_step /
+        # on_optimizer_step, not only on_step_end via step_tail.
+        state.handler.on_step_begin()
         cluster.model.forward_backward(
             inputs=copy_inputs(update), gradient_accumulation_steps=1, micro_batch_size=micro_batch_size, **signal)
+        state.handler.on_pre_optimizer_step()
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
         state.record(extra_metrics=balance_metrics)
         optimizer_steps += 1
         state.step_tail(save=save)
@@ -143,7 +149,7 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig', rollout_co
                 lent = cluster.colocate
     finally:
         # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
-        driver.close()
+        close_driver_preserving_error(driver)
         if lent:
             # ended with the devices lent: give them back so the final save finds the model resident
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)

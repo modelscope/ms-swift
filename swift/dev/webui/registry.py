@@ -11,7 +11,7 @@ ADVANTAGE_OPTIONS = ('grpo', 'grpo_passk', 'gae', 'rloo', 'remax', 'gpg', 'opo',
 # ``kind`` constructs straight out of that registry (the PPO preset ships kind='ppo'), so this
 # list is its webui-facing mirror, NOT the dev recipe's own loss mapping.
 LOSS_OPTIONS = ('cross_entropy', 'channel', 'mse', 'chunked_cross_entropy', 'grpo', 'ppo',
-                'ppo_value', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real', 'gpg',
+                'ppo_value', 'gspo', 'sapo', 'cispo', 'dis', 'bnpo', 'dr_grpo', 'real', 'gpg',
                 'gkd', 'opsd', 'mopd', 'kl_cov', 'clip_cov', 'geo_mean', 'dpo', 'kto',
                 'cpo', 'orpo', 'simpo', 'dro', 'dppo_kl', 'dppo_tv', 'infonce',
                 'online_contrastive', 'cosine_similarity')
@@ -32,7 +32,7 @@ GPU_PARAMS = (
 MODEL = D('model', '模型', 'Resource', '唯一参数化函数 f_theta；独立冻结模型必须独立构造。',
     ports_in=(P('artifact', 'ARTIFACT', '模型权重来源', ('model', 'training'), optional=True),),
     ports_out=(P('model', 'MODEL', '唯一模型对象'),),
-    params=(Q('model', '模型来源', '', '模型 ID/路径；接入 artifact 时由真实产物提供'),
+    params=(Q('model', '模型来源', '', '模型 ID/路径（remote 资源下为 server 侧 served id）；接入 artifact 时由真实产物提供'),
             Q('train_type', '训练类型', 'lora', options=('lora', 'full')),
             Q('freeze', '冻结参数', False, type='bool'),
             Q('backend', '训练后端', 'hf', options=('hf', 'megatron', 'unsloth'),
@@ -43,7 +43,9 @@ MODEL = D('model', '模型', 'Resource', '唯一参数化函数 f_theta；独立
             Q('model_config', '模型配置', {}, type='dict'),
             Q('train_config', '训练参数选择', {}, type='dict'),
             Q('tuner_config', '调参配置', {}, type='dict'),
-            Q('distributed_config', '完整放置配置', {}, type='dict'),
+            Q('distributed_config', '完整放置配置', {}, type='dict',
+              doc='本地/集群形态下的放置字段；remote 资源下 mode 与端点由资源声明卡提供，'
+                  '此处字段仍可补充其余键'),
             Q('megatron_config', 'Megatron 配置', {}, type='dict',
               doc='仅 backend=megatron 时生效的 MegatronConfig 字段'),
             Q('moe_config', 'MoE 配置', {}, type='dict',
@@ -57,12 +59,16 @@ DATASET = D('dataset', '数据集', 'Resource', '原始数据分布与预处理�
 
 SAMPLER = D('sampler', '采样器', 'Resource', '常驻生成引擎；权重初始来源与编码配置是参数，同步由 weight_sync 表达。',
     ports_out=(P('sampler', 'SAMPLER', '生成引擎'),),
-    params=(Q('model', '模型来源（id/路径，同时是 tokenizer 来源）', '', required=True),
-            Q('engine', '引擎', 'vllm', options=('vllm', 'sglang', 'torch')),
+    params=(Q('model', '模型来源（id/路径，remote 资源下为 server 侧 served id）', '', required=True),
+            Q('engine', '引擎', 'vllm', options=('vllm', 'sglang', 'torch', 'twinkle'),
+              doc='vllm/sglang/torch=本地引擎（占本地卡）；twinkle=remote 资源下的 '
+                  'twinkle-server 客户端句柄（served 引擎，免占卡）'),
             Q('parallel_spec', '并行规格', '',
-              doc='tp/pp/dp 显式规格；缺省由占卡数单维推导（tp=卡数）'),
+              doc='tp/pp/dp 显式规格；缺省由占卡数单维推导（tp=卡数）；remote 资源下引擎 '
+                  '布局归 server，设置即拒绝'),
             *GPU_PARAMS,
-            Q('engine_args', '引擎参数', {}, type='dict'),
+            Q('engine_args', '引擎参数', {}, type='dict',
+              doc='本地引擎的启动参数；remote 资源下 served 引擎布局归 server，设置即拒绝'),
             Q('model_config', '模型加载配置', {}, type='dict'),
             Q('template_config', '编码配置', {}, type='dict')), owner_kind='SAMPLER', surface='resource')
 
@@ -228,16 +234,6 @@ ADVANTAGE = D('advantage', '优势估计', 'Stage', '轨迹与前向 lane 进、
               doc='Advantage 构造旋钮（gamma/gae_lambda/normalize/kl_coef/beta/kl_in_reward 等）；未被该估计器读取的旋钮会被拒绝')),
     required_when=(('estimator', 'gae', ('value_out',)),),
     execution='remote', surface='algorithm')
-# 'weighted_sum' is a weighted MEAN -- the implementation divides by the total weight, so the
-# weights act as mixture coefficients (scale-invariant) the way the sibling probability_mixture
-# mode's are. The descriptor text says so; the option key keeps its name (it is the graph
-# parameter surface, and mixture semantics is what existing pinned behavior expects).
-SIGNAL_COMBINE = D('signal_combine', '数值组合', 'Stage', '对齐通道的加权平均（权重为混合系数，同比缩放结果不变）或概率混合；logps 概率混合使用 logsumexp。',
-    ports_in=(P('signals', 'MODEL_OUTPUT', '具名对齐数值', many=True),),
-    ports_out=(P('out', 'MODEL_OUTPUT', '与输入数学类型一致', mirror_input='signals'),),
-    params=(Q('mode', '运算', 'weighted_sum', options=('weighted_sum', 'probability_mixture'), phase='call'),
-            Q('weights', '逐 slot 权重', {}, type='dict', phase='call')),
-    execution='remote', surface='algorithm')
 SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对齐载荷；成对与完整组不拆散，奖励随轨迹保留。',
     ports_in=(P('batch', 'TRAJ', '原始对齐数据', optional=False, accepted_kinds=('DATA', 'BATCH')),
               P('signals', 'MODEL_OUTPUT', '具名同步筛选输入', many=True, optional=True)),
@@ -352,7 +348,7 @@ REGISTRY = {descriptor.type: descriptor for descriptor in (
     MODEL, DATASET, SAMPLER, ROLLOUT, GROUP_RULE, LOSS_COMP, SCORER_COMP,
     TOOLSET, SANDBOX_ENV, API_ENDPOINT, CODE_COMPONENT,
     DATALOADER, STREAMING_DRIVER, CHALLENGER, GENERATE, SCORE,
-    MODEL_FORWARD, PRIVILEGED_VIEW, ADVANTAGE, SIGNAL_COMBINE, SELECT,
+    MODEL_FORWARD, PRIVILEGED_VIEW, ADVANTAGE, SELECT,
     TRAIN_STEP, WEIGHT_SYNC, WEIGHT_AVERAGE, CHECKPOINT, MERGE, QUANTIZE,
     INFER, EVAL, DEPLOY, HUB_PUSH)}
 

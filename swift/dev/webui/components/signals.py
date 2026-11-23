@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Signal-side bindings: the model forward, the privileged view, advantage, fusion.
+"""Signal-side bindings: the model forward, the privileged view, advantage.
 
 Every stage here is an independent, general math/functional meaning -- no
 algorithm name decides behaviour. All are remote-execution stages: the
@@ -10,10 +10,10 @@ in the session process.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from ..component import ComponentError, StageComponent
-from ..numeric import deref, numeric_component
+from ..numeric import deref
 from ..placement import NUMERIC_GROUP
 
 #: ModelOutput 的元字段：通道解析时排除，剩下的才是数据通道。
@@ -31,14 +31,6 @@ def output_channels(value: Any) -> Dict[str, Any]:
     if isinstance(value, dict):
         return {key: item for key, item in value.items() if key not in _OUTPUT_META_KEYS}
     return {'values': value}
-
-
-def single_channel(value: Any, *, what: str) -> Any:
-    """One MODEL_OUTPUT value's data channel: exactly one, the names in the error otherwise."""
-    channels = output_channels(value)
-    if len(channels) != 1:
-        raise ComponentError(f'{what} needs a single data channel; got {sorted(channels) or "none"}')
-    return next(iter(channels.values()))
 
 
 class ModelForwardStage(StageComponent):
@@ -269,32 +261,3 @@ class AdvantageStage(StageComponent):
                 values[key] = float(value)
         metric = {'values': values, 'invalid_count': 0}
         return {'traj': new_trajs, 'metric': metric}
-
-
-class SignalCombineStage(StageComponent):
-    """An explicit combination over named, aligned lanes: weighted sum or
-    probability mixture. logps lanes mix in probability space --
-    logsumexp_k(log w_k + logp_k) -- never as an arithmetic mean of logps.
-    A lane is one MODEL_OUTPUT value with exactly ONE data channel (the
-    explicit field); weights are non-negative with a positive sum; a lane
-    without an explicit per-slot weight defaults to uniform."""
-
-    type = 'signal_combine'
-
-    def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
-        lanes = inputs.get('signals')
-        if not isinstance(lanes, list) or not lanes:
-            raise ComponentError(f'{self.node_id}: signal_combine needs wired signal lanes')
-        mode = str(self.params.get('mode', 'weighted_sum'))
-        if mode not in ('weighted_sum', 'probability_mixture'):
-            raise ComponentError(f'{self.node_id}: unknown combine mode {mode!r}')
-        raw_weights = dict(self.params.get('weights') or {})
-        slots = [str(slot) for slot, _value in lanes]
-        weights = [float(raw_weights.get(slot, 1.0 / len(lanes))) for slot in slots]
-        if any(w < 0 for w in weights) or sum(weights) <= 0:
-            raise ComponentError(f'{self.node_id}: weights must be non-negative and sum > 0')
-        rows = [single_channel(value, what=f'{self.node_id} lane {slot!r}') for slot, value in lanes]
-        from twinkle.signals import SignalCombine
-
-        # The out port carries the VALUE sequence only; the combine mode stays a node param.
-        return {'out': numeric_component(SignalCombine)(rows, weights=weights, mode=mode)}

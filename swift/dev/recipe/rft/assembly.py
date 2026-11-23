@@ -118,48 +118,41 @@ def initialize_rft_cluster(
         # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
         policy_config = copy(model_config)
         policy_config.model = resume_dir
+    # The model / tuner / freeze ride the ONE builders entry in every mode (mode='remote'
+    # self-dispatches inside build_model / apply_tuner / apply_full_param_freeze to the client
+    # handle); what genuinely differs by mode is the processor / loss source below.
+    model = build_model(
+        policy_config,
+        distributed_config,
+        train_config,
+        tuner_config,
+        device_mesh=sp_mesh,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
+    )
+    if tuner_config is not None:
+        apply_tuner(
+            model,
+            tuner_config,
+            gradient_accumulation_steps=1,
+            task_type=model_config.task_type,
+            model_config=model_config,
+        )
+    else:
+        apply_full_param_freeze(model, train_config)
     if remote_run:
         from swift.dev.builders.remote import (
-            apply_remote_tuner,
-            build_remote_model,
             configure_remote_loss,
             configure_remote_processor,
         )
 
-        model = build_remote_model(model_config, distributed_config)
-        if tuner_config is not None:
-            apply_remote_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=model_config.task_type,
-                model_config=model_config,
-            )
         configure_remote_processor(model, template_config, model_config, distributed_config)
         # RFT trains the kept completions with plain cross-entropy SFT -- the same causal_lm
         # cross-entropy the remote supervised path sets by name (reduction='sum', no DFT).
         configure_remote_loss(model, train_config, task_type=model_config.task_type,
                               model_config=model_config)
     else:
-        model = build_model(
-            policy_config,
-            distributed_config,
-            train_config,
-            tuner_config,
-            device_mesh=sp_mesh,
-            quantize_config=quantize_config,
-            megatron_config=megatron_config,
-            moe_config=moe_config,
-        )
-        if tuner_config is not None:
-            apply_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=model_config.task_type,
-            )
-        else:
-            apply_full_param_freeze(model, train_config)
         model.set_processor(
             InputProcessor,
             padding_free=template_config.padding_free,

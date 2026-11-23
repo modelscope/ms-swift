@@ -522,7 +522,27 @@ def build_model(
     ``torch_dtype`` overrides parameter loading dtype on the transformers branch only (RL's
     trainable actor pins float32 there; the megatron branch ignores it). Compute precision
     continues to follow ModelConfig.torch_dtype, independently of parameter storage.
+
+    mode='remote' self-dispatches to the twinkle-client handle (``build_remote_model``): the
+    recipes and the webui canvas call this ONE entry in every mode, and the remote/ray
+    difference lives entirely in these builders -- the placement inputs below (device_mesh /
+    remote_group / instance_id / torch_dtype / enable_router_replay / train_config) describe the
+    LOCAL actor layout, which the server owns, so the remote branch accepts and ignores them
+    (the assemblies compute some of them for the dataloader and pass the same call in both
+    modes). Knobs that would silently die server-side are refused instead.
     """
+    if distributed_config.mode == 'remote':
+        from .remote import build_remote_model
+
+        for name, value in (('quantize_config', quantize_config),
+                            ('megatron_config', megatron_config),
+                            ('moe_config', moe_config)):
+            if value is not None:
+                raise ValueError(
+                    f'--mode remote ignores {name}: the served engine (quantization, the '
+                    'megatron/moe layout) is configured server-side by its deployment, not by '
+                    f'this client. Drop --{name.replace("_config", "")} or run mode=local/ray.')
+        return build_remote_model(model_config, distributed_config)
     # Aux models (teacher/reference/reward) arrive as bare hub ids that never pass _resolve_model;
     # resolve here so callers may hand in either form -- a local path short-circuits the download.
     if model_config.model:
@@ -574,7 +594,15 @@ def apply_full_param_freeze(model: TrainableModel, train_config: Optional[TrainC
 
     Full-param path only (adapters select via target_modules); must run BEFORE configure_optimizer
     (param groups build from requires_grad). No-op when no knob is set.
+
+    mode='remote': the knobs read requires_grad in-process, which cannot cross HTTP, so validate
+    already refuses a non-default set -- the default knobs need no server-side action (the served
+    model trains every parameter by default) and this is a no-op on a client handle.
     """
+    from .remote import RemoteModel
+
+    if isinstance(model, RemoteModel):
+        return
     if train_config is None:
         return
     freeze_names = train_config.freeze_parameters
@@ -765,7 +793,19 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig, config, model_l
         text_config = getattr(config, "text_config", None)
         if text_config is not None:
             text_config.pad_token_id = config.pad_token_id
-    kwargs["model_cls"] = "AutoModelForSequenceClassification"
+    model_cls_name = "AutoModelForSequenceClassification"
+    # A remote-code reward checkpoint (Qwen2.5-Math-PRM, internlm2-reward) maps only AutoModel in its
+    # auto_map and brings its own head, so the forced seq-cls auto class cannot resolve it and
+    # from_pretrained raises "Unrecognized configuration class" (defect123). Honor the family loader's
+    # declared class when it resolves the config's auto_map instead, and pass trust_remote_code so the
+    # worker-side from_pretrained resolves the checkpoint's own class.
+    auto_map = getattr(config, "auto_map", None)
+    if model_loader is not None and auto_map and model_cls_name not in auto_map:
+        loader_cls = model_loader.resolve_model_cls(config)
+        if getattr(loader_cls, "__name__", "") in auto_map:
+            model_cls_name = loader_cls.__name__
+            kwargs["trust_remote_code"] = True
+    kwargs["model_cls"] = model_cls_name
     kwargs["config"] = config
 
 

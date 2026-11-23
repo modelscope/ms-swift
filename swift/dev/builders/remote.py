@@ -16,6 +16,7 @@ worker startup via ``TWINKLE_WORKER_SETUP_HOOK``; the client asks for it by clas
 ships a serialized ``TemplateSpec`` so the server rebuilds the dev Template itself.
 """
 from __future__ import annotations
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from swift.dev.utils.logger import get_logger
@@ -118,10 +119,28 @@ class RemoteModel:
         return None
 
 
+@dataclass(frozen=True)
+class RemoteLossSpec:
+    """A loss as (class NAME, construction kwargs) -- what crosses HTTP.
+
+    The webui canvas wires a loss OBJECT on its LOSS channel; over HTTP only the name and the
+    (scalar) construction kwargs travel, so the remote canvas loss component produces this spec
+    and its train_step consumer calls ``set_loss(name, **kwargs)`` on the client handle. A custom
+    user formula cannot take this form and is refused at the component instead. ``require_values``
+    carries the value-task flag the local object exposes as an attribute (the PPO critic's
+    forward_backward must run the value task).
+    """
+
+    name: str
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+    require_values: bool = False
+
+
 def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
                        gradient_accumulation_steps: int,
                        task_type: Optional[str] = None,
-                       model_config: Optional['ModelConfig'] = None) -> None:
+                       model_config: Optional['ModelConfig'] = None,
+                       adapter_name: str = 'default') -> None:
     """Attach the tuner on the server: LoRA becomes a named adapter on the resident base model.
 
     trainable_tokens has no server-side counterpart yet, and 'full' needs no adapter call (the
@@ -167,8 +186,11 @@ def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
     # on the server already). GA rides the adapter because the server's grad-sync gate is
     # per-adapter state, not a forward kwarg. The head kwargs are plain names/ints, so they
     # cross HTTP with the rest of the call.
-    model.add_adapter_to_model('default', lora_config, gradient_accumulation_steps=gradient_accumulation_steps,
-                               **_remote_task_head_kwargs(task_type, model_config))
+    training_id = model.add_adapter_to_model(adapter_name, lora_config, gradient_accumulation_steps=gradient_accumulation_steps,
+                                             **_remote_task_head_kwargs(task_type, model_config))
+    # The server-side run id reaches the log on purpose: the webui executor parses it to map
+    # THIS task onto the server's training-run APIs (checkpoint list / prune / explicit stop).
+    logger.info(f'[remote] server training created: id={training_id} adapter={adapter_name!r}')
 
 
 def _remote_task_head_kwargs(task_type: Optional[str], model_config: Optional['ModelConfig']) -> Dict[str, Any]:

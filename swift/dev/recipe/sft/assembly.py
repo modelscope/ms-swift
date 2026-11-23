@@ -121,8 +121,7 @@ def build_supervised_objects(
     # instances. The dataset and template stay local (rows are encoded here and shipped as forward
     # inputs), so build_dataset/plan_supervised_steps are shared by both modes.
     from swift.dev.builders.remote import (
-        apply_remote_tuner, build_remote_model, configure_remote_loss, configure_remote_metric,
-        configure_remote_processor,
+        configure_remote_loss, configure_remote_metric, configure_remote_processor,
     )
     process_and_validate(
         model_config,
@@ -168,50 +167,50 @@ def build_supervised_objects(
     if resume_dir and tuner_config is None and not remote:
         build_config = copy.copy(model_config)
         build_config.model = resume_dir
+    # The model / tuner / freeze ride the ONE builders entry in every mode (mode='remote'
+    # self-dispatches inside build_model / apply_tuner / apply_full_param_freeze to the client
+    # handle); what genuinely differs by mode is the processor / loss / metric source below.
+    model = build_model(
+        build_config,
+        distributed_config,
+        train_config,
+        tuner_config,
+        device_mesh=sp_mesh,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
+    )
+    if tuner_config is not None:
+        # task_type threads the seq_cls/reranker head into modules_to_save: LoRA trains/saves
+        # target_modules only, so without it the head is neither trained nor persisted.
+        apply_tuner(
+            model,
+            tuner_config,
+            gradient_accumulation_steps=1,
+            task_type=task_type,
+            model_config=model_config,
+        )
+    elif remote and task_type in ('seq_cls', 'reranker', 'decision'):
+        # The readout head reaches the server ONLY through the adapter channel
+        # (add_adapter_to_model(task=...)); a local full-param build resolves a
+        # head-carrying model_cls instead. Refuse here with the workaround, loudly,
+        # rather than training a headless model.
+        raise ValueError(
+            f'--mode remote with task_type={task_type!r} and no tuner cannot attach the task '
+            'readout head: the server-side head rides the adapter channel. Use --tuner lora, '
+            'or run mode=local/ray for full-parameter task heads.')
+    else:
+        # Full-parameter path: consume the freeze/trainable knobs BEFORE configure_optimizer reads
+        # requires_grad to build its param groups; an adapter run selects through target_modules.
+        # (A no-op on the remote client handle: the knobs are validate-refused there and the
+        # served model trains all parameters by default.)
+        apply_full_param_freeze(model, train_config)
     if remote:
-        model = build_remote_model(model_config, distributed_config)
-        if tuner_config is not None:
-            apply_remote_tuner(model, tuner_config, 1, task_type=task_type, model_config=model_config)
-        elif task_type in ('seq_cls', 'reranker', 'decision'):
-            # The readout head reaches the server ONLY through the adapter channel
-            # (add_adapter_to_model(task=...)); a local full-param build resolves a
-            # head-carrying model_cls instead. Refuse here with the workaround, loudly,
-            # rather than training a headless model.
-            raise ValueError(
-                f'--mode remote with task_type={task_type!r} and no tuner cannot attach the task '
-                'readout head: the server-side head rides the adapter channel. Use --tuner lora, '
-                'or run mode=local/ray for full-parameter task heads.')
-        # Full-param remote: the server model trains all parameters by default. The local
-        # freeze/trainable knobs read requires_grad in-process, which cannot cross HTTP; a
-        # non-default freeze is refused by validate rather than silently ignored.
         # The processor is swift's own dev one, registered server-side at startup; the Template
         # is rebuilt in the worker from the serialized spec, so rows ship unfinished.
         configure_remote_processor(model, template_config, model_config, distributed_config)
         configure_remote_loss(model, train_config, task_type=task_type, model_config=model_config)
     else:
-        model = build_model(
-            build_config,
-            distributed_config,
-            train_config,
-            tuner_config,
-            device_mesh=sp_mesh,
-            quantize_config=quantize_config,
-            megatron_config=megatron_config,
-            moe_config=moe_config,
-        )
-        if tuner_config is not None:
-            # task_type threads the seq_cls/reranker head into modules_to_save: LoRA trains/saves
-            # target_modules only, so without it the head is neither trained nor persisted.
-            apply_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=task_type,
-            )
-        else:
-            # Full-parameter path: consume the freeze/trainable knobs BEFORE configure_optimizer reads
-            # requires_grad to build its param groups; an adapter run selects through target_modules.
-            apply_full_param_freeze(model, train_config)
         processor_options = processor_kwargs(template)
         cp_size = distributed_config.context_parallel_size
         if distributed_config.parallel_spec:

@@ -145,6 +145,17 @@ def run_export_configs(configs: Dict[str, Any]) -> Optional[str]:
 
     _validate_export(configs)
     _derive_output_dir(configs)
+    # After the derivation too: an oss:// adapter would otherwise derive a remote output_dir.
+    # Export writers (merge / quantize / convert / cached-dataset) produce a final artifact
+    # through local file APIs, so the store cannot host them yet.
+    from swift.dev.utils.storage import is_remote_url
+
+    output_dir = configs["checkpoint_config"].output_dir
+    if output_dir and is_remote_url(output_dir):
+        raise ValueError(
+            f"--output_dir does not support oss:// / s3:// for export: {output_dir}. "
+            "Export writes a local artifact; write to a local path and upload it afterwards."
+        )
     # Pin lazy_tokenize before the shared process/validate pass: _check_lazy_tokenize and
     # builders/dataset._encode_mode would otherwise resolve it to lazy (the multimodal default) and refuse.
     _force_eager_encoding_for_cached_dataset(configs)

@@ -150,6 +150,7 @@ def build_advantage(rl_config: "RLConfig", reward_config: "RewardConfig", *, use
     kwargs: Dict[str, Any] = dict(
         num_generations=rl_config.num_generations,
         reward_weights=reward_config.orm_weights,
+        env_reward_weight=float(reward_config.env_reward_weight),
         scale_rewards=(rl_config.scale_rewards or 'group'),
         beta=float(rl_config.beta or 0.0),
         kl_in_reward=bool(rl_config.kl_in_reward and rl_config.beta),
@@ -216,6 +217,7 @@ def initialize_cluster(
 
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
+    from swift.dev.builders.remote import configure_remote_processor
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.builders.streaming import (
         CONTROL_GROUP,
@@ -254,51 +256,38 @@ def initialize_cluster(
         # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
         policy_config = copy.copy(model_config)
         policy_config.model = resume_dir
-    # create the actor (the trainable policy) here: the in-process model, or under mode='remote'
-    # the twinkle_client handle over the server's resident one (the sft assembly's remote shape:
-    # the tuner / loss / processor travel as class names + kwargs, everything below is shared).
-    if remote_run:
-        from swift.dev.builders.remote import (
-            apply_remote_tuner,
-            build_remote_model,
-            configure_remote_processor,
+    # create the actor (the trainable policy) here, through the ONE builders entry in every
+    # mode: mode='remote' self-dispatches inside build_model / apply_tuner /
+    # apply_full_param_freeze to the client handle over the server's resident model (the
+    # placement inputs name the local actor layout, which the server owns and the entry ignores).
+    # What genuinely differs by mode is the processor source below.
+    model = build_model(
+        policy_config,
+        distributed_config,
+        train_config,
+        tuner_config,
+        device_mesh=sp_mesh,
+        quantize_config=quantize_config,
+        megatron_config=megatron_config,
+        moe_config=moe_config,
+        enable_router_replay=rl_config.router_replay_mode != "disabled",
+        torch_dtype="float32",
+    )
+    if tuner_config is not None:
+        apply_tuner(
+            model,
+            tuner_config,
+            gradient_accumulation_steps=1,
+            task_type=model_config.task_type,
+            model_config=model_config,
         )
-
-        model = build_remote_model(model_config, distributed_config)
-        if tuner_config is not None:
-            apply_remote_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=model_config.task_type,
-                model_config=model_config,
-            )
-        # Full-param remote trains every server-side parameter by default (the freeze knobs were
-        # refused at validate time); the processor ships as the dev TemplateSpec so the
-        # server-side encodes match this process's row semantics.
+    else:
+        apply_full_param_freeze(model, train_config)
+    if remote_run:
+        # The processor ships as the dev TemplateSpec so the server-side encodes match this
+        # process's row semantics; locally the built Template is set directly.
         configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
-        model = build_model(
-            policy_config,
-            distributed_config,
-            train_config,
-            tuner_config,
-            device_mesh=sp_mesh,
-            quantize_config=quantize_config,
-            megatron_config=megatron_config,
-            moe_config=moe_config,
-            enable_router_replay=rl_config.router_replay_mode != "disabled",
-            torch_dtype="float32",
-        )
-        if tuner_config is not None:
-            apply_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=model_config.task_type,
-            )
-        else:
-            apply_full_param_freeze(model, train_config)
         model.set_processor(
             InputProcessor,
             padding_free=template_config.padding_free,

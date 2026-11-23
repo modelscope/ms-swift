@@ -29,7 +29,8 @@ on:
   push:
     branches: [master, "release/**"]
   schedule:
-    - cron: "0 18 * * *"   # 02:00 Beijing
+    - cron: "0 18 * * *"   # 02:00 Beijing, daily full suite
+    - cron: "0 18 * * 0"   # Sunday 02:00 Beijing: also the weekly compatibility matrix
   workflow_dispatch:
 
 # Per-ref only: supersedes earlier runs of the *same* PR, never another PR's.
@@ -95,5 +96,64 @@ jobs:
       - run: pytest ${{ github.event_name == 'schedule' && '' || '-m "not slow"' }}
       # The container is root, the runner is not: leave the workspace deletable or the next run
       # fails in checkout. This is what citest.yaml's ResetFileMode step was working around.
+      - if: always()
+        run: chmod -R a+rwX .
+
+  # Weekly compatibility matrix (ut_refactor requirement 8): the same backbone cases run twice --
+  # once with every base library pinned to the OLDEST declared support, once upgraded to the LATEST within
+  # the declared ranges. Any red is a support-claim drift (first step of a bisect). Installs happen
+  # in this job's own disposable container, never the PR-tier environment.
+  #   oldest: transformers~=5.8.0 peft~=0.11.0 accelerate==1.14.0 megatron-core~=0.18.0
+  #           mcore-bridge==1.6.5, twinkle at vars.CI_TWINKLE_OLDEST_REF (repo variable -- the
+  #           oldest twinkle ref dev claims to support; unset => the job fails loudly, not silently
+  #           tests master twice).
+  #   latest: -U within the declared upper bounds, twinkle at master.
+  compat:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 18 * * 0'
+    strategy:
+      fail-fast: false
+      matrix:
+        side: [oldest, latest]
+    name: compat (${{ matrix.side }})
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 240
+    container:
+      image: ${{ vars.CI_GPU_IMAGE }}
+      options: --gpus all --shm-size=16gb --volume=${{ vars.CI_MODELSCOPE_CACHE }}:/root/.cache/modelscope
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve twinkle ref
+        run: |
+          if [ "${{ matrix.side }}" = oldest ]; then
+            test -n "${{ vars.CI_TWINKLE_OLDEST_REF }}" || { echo 'set repo variable CI_TWINKLE_OLDEST_REF to the oldest supported twinkle ref'; exit 1; }
+            echo "TWINKLE_REF=${{ vars.CI_TWINKLE_OLDEST_REF }}" >> "$GITHUB_ENV"
+          else
+            echo "TWINKLE_REF=master" >> "$GITHUB_ENV"
+          fi
+      - uses: actions/checkout@v4
+        with:
+          repository: modelscope/twinkle
+          ref: ${{ env.TWINKLE_REF }}
+          path: .twinkle
+      - name: Claim this slot's GPUs
+        run: .github/slot_devices.sh >> "$GITHUB_ENV"
+      - name: Install the side's version set
+        run: |
+          pip install --no-deps -e ./.twinkle -e .
+          pip install -r requirements/tests.txt
+          if [ "${{ matrix.side }}" = oldest ]; then
+            pip install 'transformers~=5.8.0' 'peft~=0.11.0' 'accelerate==1.14.0' 'megatron-core~=0.18.0' 'mcore-bridge==1.6.5'
+          else
+            pip install -U 'transformers<6.0' 'peft<0.20' accelerate 'megatron-core<0.21' mcore-bridge
+          fi
+          pip list | grep -Ei 'transformers|peft|accelerate|megatron|mcore|twinkle'
+      # Backbone: template parity core, SFT short train, LoRA merge (hand-computed delta oracle),
+      # megatron bridge roundtrip. Explicit node ids: markers must not deselect the slow ones here.
+      - run: >-
+          pytest
+          tests/v5/component/processor/test_chat_template_parity.py::test_core_templates_render_like_official_jinja
+          tests/v5/feature/sft/test_backends.py::test_dev_sft_happy_path_via_cli
+          tests/v5/component/export/test_export_e2e.py::test_merge_lora_matches_online_peft_and_hand_computed_delta
+          tests/v5/component/megatron/test_convert_e2e.py::test_hf_to_mcore_to_hf_roundtrip
       - if: always()
         run: chmod -R a+rwX .

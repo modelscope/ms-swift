@@ -54,7 +54,9 @@ class ResourceSpec:
 
     ``local`` picks explicit card ids on this machine (the session process is
     launched with exactly those cards visible); ``cluster`` names a ray
-    address plus the total GPU count the remote cluster offers. An empty
+    address plus the total GPU count the remote cluster offers. ``remote``
+    names a twinkle-server endpoint: the model / sampler engines are served
+    objects over HTTP and no local card is planned at all. An empty
     local spec means "no GPU allocated" -- any GPU component then fails
     loudly at DeviceGroup planning instead of silently falling back.
     """
@@ -62,6 +64,8 @@ class ResourceSpec:
     cards: Tuple[int, ...] = ()
     cluster_address: str = ''
     cluster_gpus: int = 0
+    server_url: str = ''
+    server_api_key: str = ''
 
 
 class Graph:
@@ -182,13 +186,15 @@ class Graph:
 
     @staticmethod
     def _parse_resource(value: Any) -> ResourceSpec:
-        """The resource page's GPU allocation; absent means no GPU allocated."""
+        """The resource page's allocation; absent means no GPU allocated."""
         if value is None:
             return ResourceSpec()
-        Graph._mapping(value, 'resource', {'mode', 'cards', 'cluster_address', 'cluster_gpus'})
+        Graph._mapping(value, 'resource',
+                       {'mode', 'cards', 'cluster_address', 'cluster_gpus',
+                        'server_url', 'server_api_key'})
         mode = value.get('mode', 'local')
-        if mode not in ('local', 'cluster'):
-            raise GraphValidationError('resource.mode: 需要 local 或 cluster')
+        if mode not in ('local', 'cluster', 'remote'):
+            raise GraphValidationError('resource.mode: 需要 local、cluster 或 remote')
         if mode == 'cluster':
             address = value.get('cluster_address', '')
             gpus = value.get('cluster_gpus', 0)
@@ -197,6 +203,15 @@ class Graph:
             if type(gpus) is not int or gpus < 1:
                 raise GraphValidationError('resource.cluster_gpus: 集群卡数必须是正整数')
             return ResourceSpec(mode='cluster', cluster_address=address, cluster_gpus=gpus)
+        if mode == 'remote':
+            server_url = value.get('server_url', '')
+            api_key = value.get('server_api_key', '')
+            if not isinstance(server_url, str) or not server_url.strip():
+                raise GraphValidationError('resource.server_url: remote 模式必须给出 twinkle-server 地址')
+            if not isinstance(api_key, str):
+                raise GraphValidationError('resource.server_api_key: 必须是字符串（可留空 = 无鉴权）')
+            return ResourceSpec(mode='remote', server_url=server_url.strip(),
+                                server_api_key=api_key)
         cards = value.get('cards', [])
         if type(cards) is not list or any(type(card) is not int or card < 0 for card in cards):
             raise GraphValidationError('resource.cards: 需要非负整数卡编号列表')
@@ -397,18 +412,6 @@ class Graph:
                 raise GraphValidationError(f'{node.id}.model: 采样器模型来源必须明确')
             if node.type == 'streaming_driver' and (('engine' in keys) == ('episode' in keys)):
                 raise GraphValidationError(f'{node.id}: engine 与 episode 必须恰接入一种来源')
-            if node.type == 'signal_combine' and node.params['mode'] == 'probability_mixture':
-                # MODEL_OUTPUT 的通道在 worker 侧解析；这里只校验确定的部分——
-                # model_forward 的 outputs 参数声明了确切字段，非纯 logps 的
-                # 前向进不了概率混合（logsumexp），其余来源交给运行期 fail-loudly。
-                for edge in self.incoming(node.id):
-                    if edge.target_port != 'signals':
-                        continue
-                    source = self.node(edge.source)
-                    if source.type == 'model_forward' \
-                            and list(source.params.get('outputs') or []) != ['logps']:
-                        raise GraphValidationError(
-                            f'{node.id}: 概率混合只能消费 logps（{edge.source}.outputs 需为 ["logps"]）')
 
     def _scope_sources(self, node_id: str) -> Dict[str, List[Tuple[str, str]]]:
         """沿身份边可达的 Resource 节点导出变量（kind -> [(节点, 输出口)]）。
@@ -717,7 +720,7 @@ class Graph:
 class GraphUpgrade:
     """旧图只在副本中展开；待选择项和校验错误未清除时不允许确认。"""
 
-    RENAMES = {'forward_signal': 'model_forward', 'signal_fusion': 'signal_combine',
+    RENAMES = {'forward_signal': 'model_forward',
                'reference_update': 'weight_average'}
     USE_ARGUMENTS = {'training_old': 'old_logps', 'ref': 'ref_logps',
                      'teacher': 'teacher_logps', 'rollout': 'rollout_logps'}
@@ -983,7 +986,7 @@ class GraphUpgrade:
                 elif st == 'model_forward' and slot == 'teacher_logps':
                     edge.update(target_port='teacher')
                     edge.pop('slot', None)
-                elif st in ('model_forward', 'signal_combine'):
+                elif st == 'model_forward':
                     edge['target_port'] = 'lanes'
                 elif st == 'reduce':
                     pass  # reduce 本身保留为待确认项，边随节点一起等待处置

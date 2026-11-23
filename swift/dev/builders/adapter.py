@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, List, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.config import TunerConfig
+    from swift.dev.config import ModelConfig, TunerConfig
     from swift.dev.model import TrainableModel
 
 # tuners that are peft-backed and reachable from dev. Anything else fails fast in apply_tuner
@@ -135,7 +135,23 @@ def apply_tuner(
     adapter_name: str = "default",
     gradient_accumulation_steps: int = 1,
     task_type: Optional[str] = None,
+    model_config: Optional[ModelConfig] = None,
 ) -> None:
+    """Install the tuner's adapter on the model -- one entry for every mode.
+
+    mode='remote' self-dispatches on the model being a client handle (``RemoteModel``): the
+    adapter is named server-side (``add_adapter_to_model``), and a task with a readout head
+    (seq_cls / reranker / decision) gets its head through the SAME adapter channel, so the
+    remote branch also reads ``model_config`` (head sizes / family loader). The local path
+    resolves heads from the in-process module graph instead and never reads ``model_config``.
+    """
+    from .remote import RemoteModel, apply_remote_tuner
+
+    if isinstance(model, RemoteModel):
+        apply_remote_tuner(model, tuner_cfg, gradient_accumulation_steps,
+                           task_type=task_type, model_config=model_config,
+                           adapter_name=adapter_name)
+        return
     adapter_config = _build_adapter_config(tuner_cfg, task_type=task_type)
     model.add_adapter_to_model(
         adapter_name,

@@ -1,0 +1,453 @@
+"""Fast tests for dev CLI self-parsing (argv -> atomic Configs)."""
+from __future__ import annotations
+import dataclasses
+import inspect
+
+import pytest
+
+from swift.cli.main import ROUTE_MAPPING, cli_main, resolve_route
+from swift.dev.cli.export import parse_export_configs
+from swift.dev.cli.sft import parse_sft_configs
+from swift.dev.config import (
+    CheckpointConfig,
+    DatasetConfig,
+    DistributedConfig,
+    LoggingConfig,
+    ModelConfig,
+    QuantizeConfig,
+    RLConfig,
+    TemplateConfig,
+    TrainConfig,
+    TunerConfig,
+    bootstrap_run,
+    process_configs,
+)
+from swift.dev.recipe.utils import _resolve_step_interval
+
+
+def test_defaults_come_from_configs():
+    configs = parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--tuner_type', 'lora'])
+    template, train, checkpoint = configs['template_config'], configs['train_config'], configs['checkpoint_config']
+    logging, tuner, quantize = configs['logging_config'], configs['tuner_config'], configs['quantize_config']
+    assert template.padding_side == TemplateConfig().padding_side == 'right'
+    assert train.warmup_ratio == TrainConfig().warmup_ratio == 0.0
+    assert train.optim == TrainConfig().optim == 'adamw_torch_fused'
+    assert checkpoint.output_dir == CheckpointConfig().output_dir == 'output'
+    assert logging.logging_steps == LoggingConfig().logging_steps == 5
+    assert tuner.lora_rank == TunerConfig().lora_rank
+    assert quantize == QuantizeConfig()
+
+
+def test_explicit_values_land_in_owning_configs():
+    configs = parse_sft_configs([
+        '--model', 'm', '--load_args', 'false', '--dataset', 'd1', 'd2', '--val_dataset', 'v', '--torch_dtype', 'bfloat16',
+        '--padding_side', 'left', '--max_length', '256', '--learning_rate', '0.0001', '--save_steps', '500',
+        '--eval_steps', '100', '--logging_steps', '2', '--cp_comm_type', 'p2p', '--tuner_type', 'lora', '--lora_rank',
+        '16',
+        '--lora_alpha', '64', '--target_modules', 'q_proj',
+    ])
+    model, template, dataset = configs['model_config'], configs['template_config'], configs['dataset_config']
+    train, dist, checkpoint = configs['train_config'], configs['distributed_config'], configs['checkpoint_config']
+    logging, tuner, quantize = configs['logging_config'], configs['tuner_config'], configs['quantize_config']
+    assert isinstance(model, ModelConfig)
+    assert isinstance(template, TemplateConfig)
+    assert isinstance(dataset, DatasetConfig)
+    assert isinstance(train, TrainConfig)
+    assert isinstance(dist, DistributedConfig)
+    assert isinstance(checkpoint, CheckpointConfig)
+    assert isinstance(tuner, TunerConfig)
+    assert model.torch_dtype == 'bfloat16'
+    assert template.padding_side == 'left' and template.max_length == 256
+    assert dataset.dataset == ['d1', 'd2'] and dataset.val_dataset == ['v']
+    assert train.learning_rate == 1e-4 and train.eval_steps == 100.0
+    assert checkpoint.save_steps == 500.0
+    assert logging.logging_steps == 2
+    assert dist.cp_comm_type == 'p2p'
+    assert tuner.lora_rank == 16 and tuner.lora_alpha == 64
+    assert quantize.quant_method is None
+
+
+def test_mapping_annotations_parse_stably_after_other_typing_imports():
+    import swift.rollout.gym_env  # noqa: F401 -- reproduces typing Union cache reordering
+
+    configs = parse_sft_configs([
+        '--model', 'm', '--load_args', 'false', '--dataset', 'd', '--model_kwargs', '{"x": 1}', '--liger_kernel_config',
+        '{"fused_linear_cross_entropy": true}', '--fsdp_config', '{"limit_all_gathers": true}',
+    ])
+    model, train, dist = configs['model_config'], configs['train_config'], configs['distributed_config']
+    process_configs(model, TemplateConfig(), DatasetConfig(), train, dist)
+    assert model.model_kwargs == {'x': 1}
+    assert train.liger_kernel_config == {'fused_linear_cross_entropy': True}
+    assert dist.fsdp_config == {'limit_all_gathers': True}
+
+
+def test_legacy_precision_aliases_map_to_torch_dtype():
+    model = parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--bf16', 'true'])['model_config']
+    assert model.torch_dtype == 'bfloat16'
+    with pytest.raises(ValueError, match='Conflicting values for --torch_dtype'):
+        parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--bf16', 'true', '--fp16', 'true'])
+
+
+def test_full_training_yields_no_tuner_config():
+    configs = parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--tuner_type', 'full'])
+    assert configs['tuner_config'] is None
+    assert configs['quantize_config'].quant_method is None
+
+
+def test_fractional_intervals_survive_parse_for_step_planning():
+    configs = parse_sft_configs(
+        ['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--save_steps', '0.25', '--eval_steps', '0.1'])
+    assert configs['checkpoint_config'].save_steps == 0.25
+    assert configs['train_config'].eval_steps == 0.1
+
+
+def test_unknown_and_unwired_flags_fail_loudly():
+    with pytest.raises(ValueError, match='Unrecognized'):
+        parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--definitely_unknown', 'x'])
+    # ``--optimizer`` is the Megatron-side optimizer (Literal adam/sgd/muon/dist_muon) while ``--optim``
+    # names the transformers one; an out-of-Literal value dies at argparse rather than folding silently.
+    with pytest.raises(SystemExit):
+        parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--optimizer', 'not_an_optimizer'])
+    configs = parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--optimizer', 'muon'])
+    assert configs['train_config'].optimizer == 'muon'
+    assert configs['train_config'].optim == 'adamw_torch_fused'  # the transformers knob is untouched
+    # ``--tuner`` is a Literal (full/lora/trainable_tokens): an unsupported tuner dies at argparse.
+    with pytest.raises(SystemExit):
+        parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--tuner_type', 'vera'])
+
+
+def test_megatron_aliases_work_on_transformers_backend():
+    train = parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--lr', '0.001'])['train_config']
+    assert train.learning_rate == 0.001
+
+
+@pytest.mark.parametrize('argv', [
+    ['--lr', '0.001', '--learning_rate=0.001'],
+    ['--lr=1', '--learning-rate', '1.0'],
+])
+def test_aliases_accept_space_equals_hyphens_and_equal_double_writes(argv):
+    train = parse_sft_configs(['--model=m', '--dataset', 'd', *argv])['train_config']
+    assert train.learning_rate == pytest.approx(float(argv[1] if argv[0] == '--lr' else argv[0].split('=', 1)[1]))
+    assert 'learning_rate' in train._explicit_fields
+
+
+def test_aliases_reject_conflicting_double_writes():
+    with pytest.raises(ValueError, match='Conflicting values for --learning_rate'):
+        parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--lr=0.001', '--learning-rate', '0.002'])
+    with pytest.raises(ValueError, match='Conflicting values for --torch_dtype'):
+        parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--bf16=1', '--torch-dtype', 'float16'])
+
+
+def test_false_precision_alias_does_not_override_canonical_dtype():
+    model = parse_sft_configs(
+        ['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--bf16=0', '--torch_dtype', 'float16'])['model_config']
+    assert model.torch_dtype == 'float16'
+
+
+def test_unconsumed_existing_configs_fail_loudly():
+    logging = parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--report_to', 'wandb'])['logging_config']
+    assert logging.report_to == ['wandb']
+    quantize = parse_sft_configs(
+        ['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--tuner_type', 'lora', '--quant_method', 'bnb', '--quant_bits',
+         '4'])['quantize_config']
+    assert quantize.quant_method == 'bnb' and quantize.quant_bits == 4
+    with pytest.raises(ValueError, match='unsupported by `sft`'):
+        parse_sft_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--top_p', '0.9'])
+
+
+def test_sft_config_field_names_do_not_collide():
+    classes = [
+        ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
+        TunerConfig, QuantizeConfig
+    ]
+    owners = {}
+    for cls in classes:
+        for field in dataclasses.fields(cls):
+            assert field.name not in owners, f'{field.name} belongs to both {owners[field.name]} and {cls.__name__}'
+            owners[field.name] = cls.__name__
+
+
+def test_fractional_intervals_resolve_after_total_steps_are_known():
+    assert _resolve_step_interval(0.25, 10, 'save_steps') == 3
+    assert _resolve_step_interval(500.0, 1000, 'save_steps') == 500
+    assert _resolve_step_interval(None, 10, 'eval_steps') is None
+    with pytest.raises(ValueError, match='integer step interval'):
+        _resolve_step_interval(1.5, 10, 'save_steps')
+
+
+def test_multi_turn_bounds_are_validated():
+    """max_turns lives on RolloutConfig now: the shared bounds check rejects 0 turns and a
+    non-positive trajectory cap, and passes a sane combination."""
+    from swift.dev.config import RolloutConfig
+    from swift.dev.config.validate import validate_multi_turn_config
+
+    with pytest.raises(ValueError, match='max_turns must be >= 1'):
+        validate_multi_turn_config(RolloutConfig(max_turns=0))
+    with pytest.raises(ValueError, match='max_trajectory_tokens must be >= 1'):
+        validate_multi_turn_config(RolloutConfig(max_turns=4, max_trajectory_tokens=0))
+    validate_multi_turn_config(RolloutConfig(max_turns=4, max_trajectory_tokens=8192))
+    validate_multi_turn_config(RolloutConfig())  # max_turns=None -> single-turn, no constraint
+
+
+def test_bootstrap_versions_output_and_abspaths_resume(tmp_path):
+    resume = tmp_path / 'checkpoint-1'
+    resume.mkdir()
+    checkpoint = CheckpointConfig(output_dir=str(tmp_path / 'run'), resume_from_checkpoint=str(resume))
+    model = ModelConfig(model_kwargs={'cli_runtime_test': 'yes'})
+    bootstrap_run(model, checkpoint)
+    assert checkpoint.output_dir.startswith(str((tmp_path / 'run').resolve()))
+    assert checkpoint.resume_from_checkpoint == str(resume.resolve())
+    assert model.model_kwargs == {'cli_runtime_test': 'yes'}
+
+
+def test_dev_route_switch_is_opt_in(monkeypatch):
+    monkeypatch.delenv('USE_SWIFT_V5', raising=False)
+    assert resolve_route('sft', ROUTE_MAPPING) == 'swift.cli.sft'
+    assert resolve_route('export', ROUTE_MAPPING) == 'swift.cli.export'
+
+    monkeypatch.setenv('USE_SWIFT_V5', '1')
+    assert resolve_route('sft', ROUTE_MAPPING) == 'swift.dev.cli.sft'
+    assert resolve_route('export', ROUTE_MAPPING) == 'swift.dev.cli.export'
+    # twinkle unifies the Megatron/Transformers stacks, so v5 has no separate `megatron` command: the
+    # backend is a single flag, and routing the legacy `megatron` command redirects instead of resolving.
+    with pytest.raises(RuntimeError, match='--backend megatron'):
+        resolve_route('sft', {'sft': 'swift.cli._megatron.sft'}, is_megatron=True)
+
+
+def test_dev_torchrun_route_executes_as_module(monkeypatch):
+    captured = {}
+    monkeypatch.setenv('USE_SWIFT_V5', '1')
+    monkeypatch.setattr('sys.argv', ['swift', 'export', '--model', 'm', '--backend', 'megatron'])
+    monkeypatch.setattr('swift.cli.main.get_torchrun_args', lambda: ['--nproc_per_node', '2'])
+
+    class FakeProcess:
+        returncode = 0
+
+        def wait(self):
+            return 0
+
+    def fake_popen(args):
+        captured['args'] = args
+        return FakeProcess()
+
+    monkeypatch.setattr('swift.cli.main.subprocess.Popen', fake_popen)
+    cli_main()
+    # `swift export --backend megatron` is the single distributed Megatron export entry, so the dev
+    # export route relaunches under torchrun as a module when NPROC_PER_NODE/NNODES is set.
+    assert captured['args'][-6:] == [
+        '--module', 'swift.dev.cli.export', '--model', 'm', '--backend', 'megatron'
+    ]
+
+
+def test_export_parses_actions_into_existing_configs():
+    configs = parse_export_configs([
+        '--model', 'm', '--load_args', 'false', '--adapters', 'a', '--merge_lora', 'true', '--quant_method', 'gptq',
+        '--quant_bits', '4', '--quant_n_samples', '12', '--quant_batch_size', '2', '--group_size', '64',
+        '--dataset', 'd', '--output_dir', 'out', '--exist_ok', 'true', '--test_convert_dtype', 'bfloat16',
+    ])
+    assert configs['convert_config'].merge_lora is True
+    assert configs['convert_config'].exist_ok is True
+    assert configs['quantize_config'].quant_method == 'gptq'
+    assert configs['quantize_config'].quant_bits == 4
+    assert configs['quantize_config'].quant_n_samples == 12
+    assert configs['tuner_config'].adapters == ['a']
+    assert configs['checkpoint_config'].output_dir == 'out'
+
+
+def test_all_v5_routes_are_complete(monkeypatch):
+    from swift.cli.main import DEV_ROUTE_MAPPING
+
+    monkeypatch.setenv('USE_SWIFT_V5', '1')
+    # Every dev route resolves to its dev module; the legacy `merge-lora` command is `merge` in v5.
+    for command, module in DEV_ROUTE_MAPPING.items():
+        assert resolve_route(command, ROUTE_MAPPING) == module
+    assert resolve_route('web-ui', ROUTE_MAPPING) == ROUTE_MAPPING['web-ui']
+    # v5 has no separate `megatron` command for any of the unified commands: routing one redirects.
+    for command in ('pt', 'sft', 'rlhf', 'export'):
+        with pytest.raises(RuntimeError, match='--backend megatron'):
+            resolve_route(command, ROUTE_MAPPING, is_megatron=True)
+
+
+def test_all_cli_parsers_accept_minimal_argv(tmp_path):
+    from swift.dev.cli.deploy import parse_deploy_configs
+    from swift.dev.cli.eval import parse_eval_configs
+    from swift.dev.cli.infer import parse_infer_configs
+    from swift.dev.cli.merge import parse_merge_configs
+    from swift.dev.cli.rl import parse_rl_configs
+
+    assert parse_infer_configs(['--model', 'm', '--load_args', 'false'])['model_config'].model == 'm'
+    assert parse_deploy_configs(['--model', 'm', '--load_args', 'false'])['model_config'].model == 'm'
+    assert parse_eval_configs(['--model', 'm', '--load_args', 'false', '--eval_dataset', 'bench'])['eval_config'].eval_dataset == ['bench']
+    assert parse_merge_configs(['--model', 'm', '--load_args', 'false', '--adapters', 'a'])['tuner_config'].adapters == ['a']
+    for rl_type in ('dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm', 'grpo', 'ppo', 'gkd'):
+        configs = parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rlhf_type', rl_type])
+        assert configs['rl_config'].rl_type == rl_type
+
+
+def test_megatron_rlhf_parser_applies_megatron_surface(monkeypatch):
+    from swift.dev.cli.rl import parse_rl_configs
+
+    monkeypatch.setenv('WORLD_SIZE', '4')
+    configs = parse_rl_configs([
+        '--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rlhf_type', 'dpo', '--lr', '0.0002', '--micro_batch_size', '2',
+        '--global_batch_size', '8', '--bf16', 'true', '--attention_backend', 'fused', '--backend', 'megatron',
+    ])
+    assert configs['distributed_config'].backend == 'megatron'
+    assert configs['distributed_config'].nproc_per_node == 4
+    assert configs['train_config'].gradient_accumulation_steps == 1
+    assert configs['model_config'].torch_dtype == 'bfloat16'
+    assert configs['model_config'].attn_impl == 'fused'
+
+
+def test_rl_mode_remote_survives_parse_for_every_family():
+    """--mode remote stays remote for every rl_type: the recipes drive a twinkle-server
+    through twinkle_client with the same loop code, so the mode='ray' overrides below must
+    not silently turn a remote request into a local Ray run (and no sampler_mode default is
+    stamped -- the served sampler owns its own placement)."""
+    from swift.dev.cli.rl import parse_rl_configs
+
+    for rl_type in ('grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'):
+        configs = parse_rl_configs([
+            '--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', rl_type, '--mode', 'remote'])
+        assert configs['distributed_config'].mode == 'remote', rl_type
+        assert configs['rollout_config'].sampler_mode is None, rl_type
+
+
+def test_rl_mode_defaults_to_ray_with_a_disaggregated_sampler():
+    """Without --mode remote the online family forces mode='ray' + the disaggregated sampler
+    default; the offline preference family forces the mode only (it rolls out nothing)."""
+    from swift.dev.cli.rl import parse_rl_configs
+
+    online = parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', 'grpo'])
+    assert online['distributed_config'].mode == 'ray'
+    assert online['rollout_config'].sampler_mode == 'disaggregated'
+    offline = parse_rl_configs(['--model', 'm', '--load_args', 'false', '--dataset', 'd', '--rl_type', 'dpo'])
+    assert offline['distributed_config'].mode == 'ray'
+    assert offline['rollout_config'].sampler_mode is None
+
+
+# --- the CLI <-> recipe call contract (shared positional shape) -----------------------------
+#
+# ``run_rl_configs`` dispatches every online rl_type through ONE call site: eight positionals
+# then a fixed keyword set. That only works while the four online recipes agree on their leading
+# parameter names AND their order. A single recipe losing one parameter shifts every later
+# positional by a place, and the collision surfaces as a TypeError at dispatch -- or, worse, as a
+# config silently landing in the wrong parameter.
+#
+# Both recipes below lost ``template_config`` to a ``# noqa`` placed between the first two
+# parameters, which runs to the end of the line. The file stays valid Python, ``ast.parse`` and
+# import both succeed, and the parameter is simply absent from the AST -- so no structural check
+# can see it. Only pinning the contract and comparing the recipes to each other catches it.
+
+_ONLINE_POSITIONALS = (
+    'model_config', 'template_config', 'dataset_config', 'train_config', 'distributed_config',
+    'checkpoint_config', 'rollout_config', 'rl_config', 'reward_config', 'tuner_config',
+    'generation_config', 'logging_config', 'quantize_config', 'megatron_config', 'moe_config',
+)
+# The offline RLHF family takes no rollout and no generation config (see run_rl_configs' branch).
+_OFFLINE_POSITIONALS = tuple(
+    name for name in _ONLINE_POSITIONALS if name not in ('rollout_config', 'generation_config'))
+# What run_rl_configs actually passes to the online recipes: eight positionals, then these.
+_DISPATCH_POSITIONAL_COUNT = 8
+_DISPATCH_KEYWORDS = ('reward_config', 'tuner_config', 'generation_config', 'logging_config',
+                      'quantize_config', 'megatron_config', 'moe_config', 'output_dir')
+
+
+def _online_recipes():
+    from swift.dev.recipe.distill import run_distill
+    from swift.dev.recipe.grpo import run_grpo
+    from swift.dev.recipe.ppo import run_ppo
+    from swift.dev.recipe.rft import run_rft
+    return {'grpo': run_grpo, 'ppo': run_ppo, 'rft': run_rft,
+            'distill(gkd/opsd/mopd)': run_distill}
+
+
+def _positionals(recipe):
+    return tuple(p.name for p in inspect.signature(recipe).parameters.values()
+                 if p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD)
+
+
+@pytest.mark.parametrize('rl_type', sorted(_online_recipes()))
+def test_every_online_recipe_shares_one_positional_shape(rl_type):
+    """The four online recipes are interchangeable at one call site, so their leading parameters
+    must be identical name-for-name and in the same order."""
+    assert _positionals(_online_recipes()[rl_type]) == _ONLINE_POSITIONALS
+
+
+def test_the_cli_dispatch_binds_against_every_online_recipe():
+    """Replay run_rl_configs' actual call -- eight positionals plus its keyword set -- against each
+    recipe signature. This is the collision the shipped bug produced at runtime."""
+    positional = [object()] * _DISPATCH_POSITIONAL_COUNT
+    keywords = {name: object() for name in _DISPATCH_KEYWORDS}
+    for rl_type, recipe in _online_recipes().items():
+        try:
+            inspect.signature(recipe).bind(*positional, **keywords)
+        except TypeError as exc:
+            raise AssertionError(f'{rl_type}: the CLI dispatch does not bind -- {exc}') from exc
+
+
+@pytest.mark.parametrize('rl_type', sorted(_online_recipes()))
+def test_the_dispatch_tail_is_keyword_only(rl_type):
+    """Everything past the shared shape must stay keyword-only: the CLI passes ``output_dir`` by
+    name, so a recipe that made it positional would take it from the wrong place."""
+    parameters = list(inspect.signature(_online_recipes()[rl_type]).parameters.values())
+    tail = parameters[len(_ONLINE_POSITIONALS):]
+    assert [p.name for p in tail] == ['output_dir', '_save_final']
+    assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in tail)
+
+
+def test_the_offline_family_drops_rollout_and_generation():
+    """The offline branch is a separate contract: same order, minus the two configs it never reads."""
+    from swift.dev.recipe.rlhf import run_dpo
+    assert _positionals(run_dpo) == _OFFLINE_POSITIONALS
+
+
+def test_no_signature_line_carries_a_parameter_after_a_comment():
+    """Repo-wide guard for the defect class itself: a comment inside a ``def`` signature runs to the
+    end of the line, so anything written after it on that line is deleted from the signature while
+    the file stays valid Python.
+
+    The AST cannot report this -- the swallowed parameter is simply not there -- so the parameter
+    list's own source lines are scanned for text after a ``#`` that still looks like an annotated
+    parameter or a default. Only a comment written while the parentheses are still open can swallow
+    anything: a trailing comment after the closing ``)`` is harmless, and so are directive comments
+    (``# noqa: C901``, ``# type: ignore``), which carry no quoted annotation and no assignment.
+    """
+    import ast
+    import re
+    from pathlib import Path
+
+    looks_like_parameter = re.compile(r"""\b\w+\s*:\s*['\["]|(?<![=!<>])\b\w+\s*=\s*[^=]""")
+    offenders = []
+    # parents: [0]=config [1]=component [2]=v5 [3]=tests [4]=repo root; dev's tree is root/swift/dev.
+    root = Path(__file__).resolve().parents[4] / "swift" / "dev"
+    scanned = 0
+    for path in sorted(root.rglob('*.py')):
+        source = path.read_text(encoding='utf-8')
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        scanned += 1
+        lines = source.splitlines()
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            depth = 0
+            # Only a comment written while the parameter list's parentheses are still open can
+            # swallow a parameter, so the depth filter -- not the scanned span -- is what decides.
+            # Prose in the body and a trailing comment after the closing ')' both sit at depth 0.
+            for number in range(node.lineno, node.body[0].lineno):
+                line = lines[number - 1]
+                comment_at = line.find('#')
+                open_part = line if comment_at < 0 else line[:comment_at]
+                # Quoted annotation text can legitimately hold parentheses; drop it before counting.
+                depth += len(re.findall(r'[([{]', re.sub(r"'[^']*'|\"[^\"]*\"", '', open_part)))
+                depth -= len(re.findall(r'[)\]}]', re.sub(r"'[^']*'|\"[^\"]*\"", '', open_part)))
+                if comment_at >= 0 and depth > 0 and looks_like_parameter.search(line[comment_at + 1:]):
+                    offenders.append(f'{path.relative_to(root)}:{number}')
+    # Control: a scan that visits nothing passes vacuously, so the visited count is asserted too.
+    assert scanned > 100, f'the signature scan only saw {scanned} files under {root}'
+    assert not offenders, (
+        'a comment inside these parameter lists is followed by parameter-looking text, which Python '
+        f'swallows along with the comment: {offenders}')

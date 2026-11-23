@@ -139,7 +139,13 @@ def _check_path(path: str) -> Union[str, None]:
 def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     res = path
     if isinstance(path, str):
+        from swift.dev.utils.storage import is_remote_url, to_local
+
         path = path.strip()
+        if is_remote_url(path):
+            # An object-store media file: materialize into the persistent cache, then
+            # read it like any local file below (SafeMediaPath stays in force on it).
+            path = to_local(path)
         if path.startswith("http"):
             timeout = float(os.getenv("SWIFT_TIMEOUT", "20"))
             request_kwargs = {"timeout": timeout} if timeout > 0 else {}

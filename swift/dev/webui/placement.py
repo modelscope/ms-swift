@@ -100,6 +100,12 @@ def sampler_tp(spec: str, cards: int) -> int:
 
 def plan_device_groups(graph: Graph) -> DevicePlan:
     """Plan every GPU component's disjoint card segment, in graph order."""
+    if graph.resource.mode == 'remote':
+        # mode='remote': every model / sampler engine is a served object on the twinkle-server
+        # the resource page names, so no GPU component of this graph owns a local card. The plan
+        # stays the CPU-only runtime the session boots (one local process driving the client
+        # handles) instead of failing the card planning below against an empty allocation.
+        return DevicePlan((), {}, {}, 1)
     slot_count, slot_of_card = _slots(graph)
     gpu_nodes = [node for node in graph.nodes if _declares_gpu(graph, node.id)]
     remote_groups: Dict[str, str] = {}

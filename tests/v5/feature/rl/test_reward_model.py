@@ -1,0 +1,214 @@
+"""S8c — the scalar reward-model row protocol + the LLM-judge text kernels (L1).
+
+``RewardModel.score`` is the seq_cls RM handle: it encodes message rows and forwards them through
+the score head, one float per row. The contract that matters is ``task='seq_cls'`` -- forwarding the
+default 'causal_lm' would gather label logps out of a pooled [B, 1] score (a shape error on
+transformers, and megatron would miss the seq_cls pooling branch entirely). The judge kernels
+(render/parse/query) are the pure-text half of the generative/api judge. Stubs stand in for the
+model/template; no GPU.
+
+Maps to ut_plan S8-43 (+ the judge text kernels behind S8-44's channel).
+"""
+import pytest
+
+
+class _StubTemplate:
+
+    def __init__(self):
+        self.rows = []
+
+    def encode(self, row):
+        self.rows.append(row)
+        return {'input_ids': [len(row['messages'])]}
+
+
+class _StubSeqClsModel:
+    """A frozen scalar RM: forward_only must be routed as seq_cls and emits a [B, 1] score."""
+
+    def __init__(self, outputs=None):
+        self._outputs = outputs
+        self.calls = []
+
+    def forward_only(self, *, inputs, return_logits, task):
+        self.calls.append((return_logits, task))
+        assert return_logits is True
+        assert task == 'seq_cls', f'scalar RM forward_only must be routed as seq_cls, got {task!r}'
+        if self._outputs is not None:
+            return self._outputs
+        import torch
+        return {'logits': torch.tensor([[float(item['input_ids'][0])] for item in inputs])}
+
+
+def test_reward_model_scores_rows_via_seq_cls_head():
+    """S8-43: each message row is deep-copied, encoded, and scored through the seq_cls head -> one
+    float per row (the [B, 1] score flattened); the metric label is the handle's display_name."""
+    from swift.dev.rewards.scorer import RewardModel
+
+    template = _StubTemplate()
+    model = _StubSeqClsModel()
+    rm = RewardModel(model, template, display_name='my_rm')
+    rows = [
+        {'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}]},
+        {'messages': [{'role': 'user', 'content': 'q2'}]},
+    ]
+    scores = rm.score(rows)
+    assert scores == [2.0, 1.0]  # len(messages) per row, read back through the head
+    assert model.calls == [(True, 'seq_cls')]  # routed as seq_cls, logits requested
+    assert template.rows[0] is not rows[0]  # deep-copied before encode, never mutated in place
+    assert rm.display_name == 'my_rm'
+
+
+def test_reward_model_raises_when_forward_returns_no_logits():
+    """S8-43 guard: a forward yielding no logits is a hard error, not a silent zero score."""
+    from swift.dev.rewards.scorer import RewardModel
+
+    rm = RewardModel(_StubSeqClsModel(outputs={}), _StubTemplate())
+    with pytest.raises(RuntimeError, match='returned no logits'):
+        rm.score([{'messages': [{'role': 'user', 'content': 'q'}]}])
+
+
+# ----------------------------------------------------------------------
+# The LLM-judge text kernels (the generative/api judge's pure half)
+# ----------------------------------------------------------------------
+@pytest.mark.parametrize('text, expected', [
+    ('verdict Reward: 0.8 done', 0.8),  # the prompted Reward: convention wins
+    ('Reward: 5', 5.0),  # out of the [0,1] Reward range -> falls back to the first bare number
+    ('the answer scored 42 ok', 42.0),  # no Reward: tag -> first bare number
+    ('got -3.5 here', -3.5),  # a signed decimal
+    ('no digits at all', None),  # nothing numeric -> None (recorded as nan), never a guessed 0
+    ('', None),
+    (None, None),
+])
+def test_parse_judge_score(text, expected):
+    """S8-44 support: a judge's free-form verdict parses to a float, or None when unparseable (a
+    silent 0 would rank an unparseable verdict as a genuinely bad candidate)."""
+    from swift.dev.rewards.scorer import parse_judge_score
+
+    assert parse_judge_score(text) == expected
+
+
+def test_render_conversation_flattens_and_skips_incomplete():
+    """S8-44 support: messages flatten to ``Role: content`` lines; contentless or non-dict entries skip."""
+    from swift.dev.rewards.scorer import render_conversation
+
+    messages = [
+        {'role': 'user', 'content': 'hi'},
+        {'role': 'assistant', 'content': 'yo'},
+        {'role': 'system'},  # no content -> skipped
+        'junk',  # not a dict -> skipped
+    ]
+    assert render_conversation(messages) == 'User: hi\nAssistant: yo'
+    assert render_conversation(None) == ''
+
+
+def test_judge_query_strips_trailing_assistant_and_formats():
+    """S8-44 support: the candidate (trailing assistant turn) is stripped from the rendered prompt
+    and supplied verbatim through {completion}; the conversation alone goes through {prompt}."""
+    from swift.dev.rewards.scorer import judge_query
+
+    messages = [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'cand'}]
+    assert judge_query('P={prompt} C={completion}', messages, 'cand') == 'P=User: q C=cand'
+
+
+# --- defect123: process-RM (token-level) score reduction -----------------------------------------
+# PLAN (case | input | expected | failure it kills):
+#  T1 token-level [B,L,C>1], right-padded rows | last-valid-token softmax positive class per row
+#     | reshape(-1) leaking B*L*C floats / reading the first prompt token's logit as the score.
+#  T2 token-level [B,L,1] | last-valid-token scalar (no softmax) | dropping the last-token readout
+#     for a single-class process head.
+#  T3 token-level, no attention_mask | falls back to the final position | IndexError / wrong row.
+#  T4 pooled [B,1] (sequence RM) | unchanged flatten | regressing the existing scalar-RM path.
+#  T5 twinkle-pooled [B,C>1] (seq_cls postprocess already gathered the last valid token) | per-row
+#     softmax positive class | the real-ray failure: reshape(-1) leaking C class logits per row
+#     ("FunctionWorker returned 2 scores for 1 trajectories", prm_test attempt1/2).
+# Independent oracle: manual per-row last-valid-token extraction computed in the test, not the
+# scorer's own index math. Stubs stand in for model/template (no GPU); the real ray PRM run signs E2E.
+class _StubTokenTemplate:
+
+    def __init__(self, masks):
+        self._masks = masks
+        self.i = 0
+
+    def encode(self, row):
+        m = self._masks[self.i]
+        self.i += 1
+        return {'attention_mask': m}
+
+
+class _StubTokenModel:
+
+    def __init__(self, logits):
+        self._logits = logits
+
+    def forward_only(self, *, inputs, return_logits, task):
+        assert task == 'seq_cls'
+        return {'logits': self._logits}
+
+
+def _prm_rows(n):
+    return [{'messages': [{'role': 'user', 'content': f'q{i}'}]} for i in range(n)]
+
+
+def test_defect123_token_level_multiclass_last_token_softmax():
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    torch.manual_seed(0)
+    logits = torch.randn(3, 7, 2)
+    masks = [[1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 0, 0, 0], [1, 1, 1, 1, 1, 0, 0]]
+    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate(masks))
+    scores = rm.score(_prm_rows(3))
+    oracle = [torch.softmax(logits[i, sum(masks[i]) - 1].float(), dim=-1)[-1].item() for i in range(3)]
+    assert len(scores) == 3  # one score per row, NOT B*L*C
+    assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))
+
+
+def test_defect123_token_level_single_class_last_token():
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    logits = torch.randn(2, 5, 1)
+    masks = [[1, 1, 1, 0, 0], [1, 1, 1, 1, 1]]
+    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate(masks))
+    scores = rm.score(_prm_rows(2))
+    assert scores == [logits[0, 2, 0].item(), logits[1, 4, 0].item()]
+
+
+def test_defect123_token_level_no_mask_falls_back_to_final_position():
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    logits = torch.randn(2, 4, 2)
+
+    class _NoMaskTemplate:
+        def encode(self, row):
+            return {'input_ids': [1, 2, 3, 4]}
+
+    rm = RewardModel(_StubTokenModel(logits), _NoMaskTemplate())
+    scores = rm.score(_prm_rows(2))
+    oracle = [torch.softmax(logits[i, 3].float(), dim=-1)[-1].item() for i in range(2)]
+    assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))
+
+
+def test_defect123_pooled_sequence_rm_path_unchanged():
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    logits = torch.tensor([[0.25], [0.75], [1.5]])
+    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate([[1], [1], [1]]))
+    assert rm.score(_prm_rows(3)) == [0.25, 0.75, 1.5]
+
+
+def test_defect123_twinkle_pooled_multiclass_reduces_to_positive_class():
+    """T5: twinkle's _postprocess_seq_cls pools [B,T,C] -> [B,C] BEFORE score sees it; a C>1 head
+    must still yield ONE score per row (the positive-class softmax probability), not C logits."""
+    import torch
+    from swift.dev.rewards.scorer import RewardModel
+
+    torch.manual_seed(1)
+    logits = torch.randn(3, 2)  # the exact shape the real PRM run delivered for 1-row batches
+    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate([[1], [1], [1]]))
+    scores = rm.score(_prm_rows(3))
+    oracle = torch.softmax(logits.float(), dim=-1)[..., -1].tolist()
+    assert len(scores) == 3  # one per row, NOT 3*2 class logits
+    assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))

@@ -170,6 +170,18 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
     """
     if distributed_config.mode != 'remote':
         return
+    if checkpoint_config is not None:
+        # The server-side checkpoint store is local-disk + twinkle:// URIs (the weight-sync
+        # hand-off); an object-store output would have no consumer in the server's path.
+        from swift.dev.utils.storage import is_remote_url
+
+        for label, path in (('output_dir', checkpoint_config.output_dir),
+                            ('resume_from_checkpoint', checkpoint_config.resume_from_checkpoint)):
+            if path and is_remote_url(path):
+                raise ValueError(
+                    f'--mode remote does not support oss:// / s3:// {label}: server-side '
+                    'checkpoints are local-disk only (weight sync goes through the twinkle:// '
+                    'hand-off). Use mode=local/ray to checkpoint into object storage.')
     if not distributed_config.server_base_url:
         raise ValueError(
             "--mode remote requires --server_base_url (the twinkle-server gateway root; "
@@ -370,16 +382,32 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
     if cfg.sync_ref_model and cfg.rl_type not in ('grpo', 'ppo'):
         raise ValueError('sync_ref_model requires rl_type grpo or ppo (only they have a reference model).')
     # Without a reward channel there is nothing to reinforce: GRPO would fold NaN rows into every
-    # group's advantage, PPO would train on all-zero rewards. legacy fails this loudly too.
-    if cfg.rl_type == 'grpo' and not (reward_config and (reward_config.orm or reward_config.prm)):
+    # group's advantage, PPO would train on all-zero rewards. legacy fails this loudly too. The
+    # sandbox env counts as a channel: its session rewards and the dataset's terminal ``checks``
+    # column ride the rollout's own reward keys (rewards.env / rewards.check) into the same fold.
+    env_channel = bool(rollout_config is not None
+                        and 'sandbox' in (getattr(rollout_config, 'tools', None) or []))
+    if cfg.rl_type == 'grpo' and not env_channel \
+            and not (reward_config and (reward_config.orm or reward_config.prm)):
         raise ValueError('rl_type=grpo needs at least one reward channel: pass --orm (models or rule '
-                         'plugins) or --prm. Without one every group folds NaN into its advantage.')
-    if cfg.rl_type == 'ppo' and not (reward_config and (reward_config.orm or reward_config.prm)):
+                         'plugins) or --prm, or wire the sandbox env (--tools sandbox: the env session '
+                         'rewards plus the dataset\'s terminal checks column). Without one every group '
+                         'folds NaN into its advantage.')
+    if cfg.rl_type == 'ppo' and not env_channel \
+            and not (reward_config and (reward_config.orm or reward_config.prm)):
         raise ValueError('rl_type=ppo needs at least one reward channel: pass --orm (models or rule '
-                         'plugins) or --prm (the process reward fused into the GAE token rewards). '
-                         'Without rewards the GAE anchors are all zero.')
+                         'plugins) or --prm (the process reward fused into the GAE token rewards), or '
+                         'wire the sandbox env (--tools sandbox: the env session rewards plus the '
+                         'dataset\'s terminal checks column). Without rewards the GAE anchors are '
+                         'all zero.')
+    if reward_config is not None and reward_config.env_reward_weight < 0:
+        raise ValueError(
+            f'env_reward_weight must be non-negative (1.0 folds the env-family rewards -- the env '
+            "session reward plus the terminal checks column -- into the reward fold; 0.0 keeps them "
+            f'recorded but out of training), got {reward_config.env_reward_weight}.')
     _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
+    _check_ppo_controls(cfg)
     _check_reference_sync(cfg, train_config, distributed_config)
     _check_chord(cfg)
     _check_router_replay(cfg)
@@ -804,6 +832,17 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
     if infer_config is None:
         return
     from swift.dev.dataset.storage import STORAGE_MAPPING, validate_store_format
+    from swift.dev.utils.storage import is_remote_url
+
+    if is_remote_url(infer_config.result_path):
+        # The incremental writers append + resume against .tmp/.resume/.final beside the real
+        # output; a staging-upload lease cannot express that, so an object-store result_path
+        # would silently create a bogus local `oss:` tree. Refuse until a remote store
+        # writer exists; point at a local path (upload afterwards) instead.
+        raise ValueError(
+            f'--result_path does not support oss:// / s3:// yet: the infer output is appended '
+            'and resumed in place, which object storage cannot host. Write to a local path '
+            'and upload the result afterwards.')
     # A store format is an open registry key, so check the name resolves (and is writable) here -- after
     # --external_plugins is imported -- rather than after the run has generated rows it cannot write.
     validate_store_format(infer_config.store_format, writable=True)
@@ -829,7 +868,7 @@ def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
 # The GRPO-family loss_type values dev accepts (each maps onto a twinkle GRPOLoss subclass). One constant
 # so the GRPO-only gate in _check_grpo_controls and the support check in _check_grpo_loss_type cannot drift.
 _GRPO_LOSS_TYPES = frozenset({
-    'grpo', 'dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real', 'gpg', 'dro', 'dppo_tv',
+    'grpo', 'dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'dis', 'bnpo', 'dr_grpo', 'real', 'gpg', 'dro', 'dppo_tv',
     'dppo_kl', 'geo_mean', 'clip_cov', 'kl_cov'
 })
 
@@ -928,6 +967,23 @@ def _check_grpo_loss_knobs(cfg: 'RLConfig', loss_type: str) -> None:
                          f'{cfg.clip_cov_lb} >= {cfg.clip_cov_ub}.')
     if loss_type == 'kl_cov' and cfg.kl_cov_ratio <= 0:
         raise ValueError(f'loss_type=kl_cov requires kl_cov_ratio > 0, got {cfg.kl_cov_ratio}.')
+    if loss_type == 'dis':
+        # DIS's trust interval reuses the shared clip knobs; the lower offset must stay below 1
+        # (a bound of 1 would reject every token) and the upper offset non-negative.
+        if not 0.0 <= cfg.epsilon < 1.0:
+            raise ValueError(f'loss_type=dis requires epsilon in [0, 1), got {cfg.epsilon}.')
+        if cfg.epsilon_high is not None and cfg.epsilon_high < 0:
+            raise ValueError(f'loss_type=dis requires epsilon_high >= 0, got {cfg.epsilon_high}.')
+
+
+def _check_ppo_controls(cfg: 'RLConfig') -> None:
+    """PPO-only knob: the length-adaptive GAE lambda has no reader on other rl_types."""
+    if cfg.rl_type == 'ppo':
+        if cfg.lam_alpha is not None and cfg.lam_alpha <= 0:
+            raise ValueError(f'lam_alpha must be positive, got {cfg.lam_alpha}.')
+        return
+    if cfg.lam_alpha is not None:
+        raise ValueError('lam_alpha is PPO-only: it shapes the GAE lambda, which no other rl_type runs.')
 
 
 #: The online RL family: every one rolls out from raw prompt messages via prompt_rows_from_dataset,

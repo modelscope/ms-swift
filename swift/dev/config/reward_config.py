@@ -56,6 +56,11 @@ class RewardConfig:
     # PRM/ORM fusion on every response token: mix*process + (1-mix)*orm; 0 = standard GRPO, 1 = pure
     # process. Must be in [0, 1]; only read when a --prm channel is active for rl_type=grpo.
     prm_orm_mix: float = 0.5
+    # Weight of the env-family rewards -- the episode's env session reward (``rewards.env``) plus
+    # the terminal ``checks`` the dataset declares (``rewards.check``, run inside that session: a
+    # compile, a run, a file assertion) -- in the reward fold. 1.0 (default) adds them to the ORM
+    # fold; 0.0 keeps them recorded in the metrics but out of training. Non-negative.
+    env_reward_weight: float = 1.0
     # str.format judge prompt (prompt=/completion=); generative/api judges only, shared by RL and
     # synthesis so a judge renders verdicts identically wherever it scores.
     judge_template: Optional[str] = None

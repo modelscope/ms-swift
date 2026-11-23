@@ -87,7 +87,7 @@ class DistillWorker:
         The features form one update, so one whole-batch call -- the dispatch splits it per rank --
         is the whole story.
         """
-        from twinkle.signals import response_token_scores
+        from swift.dev.utils.scoring import response_token_scores
 
         frame = scorer.forward_only(
             inputs=features,

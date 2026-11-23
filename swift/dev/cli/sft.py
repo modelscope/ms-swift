@@ -88,18 +88,14 @@ def sft_main(argv: Optional[List[str]] = None) -> List[dict]:
     }
     if task_type not in recipes:
         raise ValueError(f'Unsupported SFT task_type: {task_type!r}.')
-    if is_megatron and task_type not in ("causal_lm", "decision"):
-        raise ValueError(
-            f"--backend megatron supports only causal_lm / decision SFT, got task_type={task_type!r}. "
-            "Drop --backend to train seq_cls/embedding/reranker on the transformers backend. "
-            "(decision: task_head families run natively; the task_forward families are rejected "
-            "by their loader at build time.)"
-        )
-    # Only run_sft/run_decision accept the Megatron Configs; the other task types are HF-only.
+    # Every SFT recipe accepts the Megatron Configs: the head is built worker-side (mcore-bridge
+    # for seq_cls/embedding/reranker, the decision family loader for decision), so the backend
+    # choice is orthogonal to the task family (defect124: the old causal_lm/decision-only guard
+    # rejected three families the loader already supports).
     megatron_kwargs = ({
         'megatron_config': configs['megatron_config'],
         'moe_config': configs['moe_config']
-    } if is_megatron and task_type in ('causal_lm', 'decision') else {})
+    } if is_megatron else {})
     return recipes[task_type](
         model_config,
         configs['template_config'],
