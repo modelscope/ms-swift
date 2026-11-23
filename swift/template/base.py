@@ -159,17 +159,21 @@ class Template(ProcessorMixin):
         if processor is not None:
             self.init_processor(processor)
 
+    def _get_chat_template_arg(self, name, inputs=None, alias=None):
+        """Return the first explicit override from request kwargs, then template kwargs."""
+        sources = (None if inputs is None else inputs.chat_template_kwargs, self.chat_template_kwargs)
+        for kwargs in sources:
+            if kwargs is None:
+                continue
+            value = kwargs.get(name)
+            if value is None and alias is not None:
+                value = kwargs.get(alias)
+            if value is not None:
+                return value
+        return None
+
     def _get_enable_thinking(self, inputs=None):
-
-        def from_kwargs(kwargs):
-            value = kwargs.get('enable_thinking')
-            if value is None:
-                value = kwargs.get(self.jinja_enable_thinking_key)
-            return value
-
-        enable_thinking = None if inputs is None else from_kwargs(inputs.chat_template_kwargs)
-        if enable_thinking is None:
-            enable_thinking = from_kwargs(self.chat_template_kwargs)
+        enable_thinking = self._get_chat_template_arg('enable_thinking', inputs, self.jinja_enable_thinking_key)
         if enable_thinking is None:
             enable_thinking = self.enable_thinking
         return self._normalize_enable_thinking(enable_thinking)
@@ -186,16 +190,15 @@ class Template(ProcessorMixin):
         return True
 
     def _get_preserve_thinking(self, inputs=None):
-        preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
-        if preserve_thinking is None:
-            preserve_thinking = self.chat_template_kwargs.get('preserve_thinking')
+        preserve_thinking = self._get_chat_template_arg('preserve_thinking', inputs)
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
         if preserve_thinking is None:
             preserve_thinking = self.template_meta.preserve_thinking
         if preserve_thinking is None:
             enable_thinking = self._get_enable_thinking(inputs)
-            preserve_thinking = (not (self.template_meta.is_thinking or enable_thinking)
+            thinking_template = self.template_meta.is_thinking or enable_thinking
+            preserve_thinking = (not thinking_template
                                  or (self.is_training and self.loss_scale.base_strategy != 'last_round'))
         return preserve_thinking
 
@@ -1355,11 +1358,10 @@ class Template(ProcessorMixin):
 
     def _remove_history_thinking(self, inputs, keep_tool_call_history: bool = False) -> None:
         messages = inputs.messages
-        # Delete the previous 'think' entries from the messages.
-        last_user_round = self._get_current_round_start(messages)
+        current_round_start = self._get_current_round_start(messages)
         for i, message in enumerate(messages):
-            # Delete the content before '</think>' in all assistant turns except the last round.
-            if message['role'] == 'assistant' and i < last_user_round:
+            # Assistant turns before the current round keep only their reasoning suffix.
+            if message['role'] == 'assistant' and i < current_round_start:
                 if keep_tool_call_history:
                     next_role = messages[i + 1]['role'] if i + 1 < len(messages) else None
                     if next_role == 'tool':

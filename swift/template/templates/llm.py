@@ -425,9 +425,7 @@ class HyV3Template(HyV3PreviewTemplate):
     HYTK = ':opensource'
 
     def _get_preserve_thinking(self, inputs=None):
-        explicit = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
-        if explicit is None:
-            explicit = self.chat_template_kwargs.get('preserve_thinking')
+        explicit = self._get_chat_template_arg('preserve_thinking', inputs)
         if (explicit is None and self.preserve_thinking is None and self.template_meta.preserve_thinking is None
                 and inputs is not None and getattr(inputs, 'tools', None)):
             return True

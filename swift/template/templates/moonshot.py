@@ -305,14 +305,11 @@ class KimiK3Template(Template):
         return self.template_meta.history_thinking_prefix + content
 
     def _get_preserve_thinking(self, inputs=None):
-        preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
-        if preserve_thinking is None:
-            preserve_thinking = self.chat_template_kwargs.get('preserve_thinking')
+        preserve_thinking = self._get_chat_template_arg('preserve_thinking', inputs)
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
         if preserve_thinking is None:
-            # K3 was trained in preserved-thinking-history mode: keep historical
-            # reasoning by default (pass `--preserve_thinking false` to drop it).
+            # K3 was trained in preserved-thinking-history mode; pass `--preserve_thinking false` to drop it.
             preserve_thinking = True
         return preserve_thinking
 
