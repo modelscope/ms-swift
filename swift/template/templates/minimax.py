@@ -122,6 +122,11 @@ class MinimaxVLTemplate(Template):
 register_template(MinimaxTemplateMeta(LLMTemplateType.minimax_vl, template_cls=MinimaxVLTemplate))
 
 
+class MinimaxM2Template(Template):
+
+    _normalize_enable_thinking = Template._force_thinking
+
+
 @dataclass
 class MinimaxM2TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: [']~!b[]~b]system\n{{SYSTEM}}[e~[\n'])
@@ -129,8 +134,10 @@ class MinimaxM2TemplateMeta(TemplateMeta):
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['[e~[\n'])
     suffix: Prompt = field(default_factory=lambda: ['[e~[\n'])
     agent_template: Optional[str] = 'minimax_m2'
+    template_cls: type = MinimaxM2Template
     is_thinking: bool = True
     thinking_prefix: str = '<think>\n'
+    default_enable_thinking: Optional[bool] = True
 
 
 register_template(
@@ -299,5 +306,4 @@ class MinimaxM3VLTemplateMeta(TemplateMeta):
 
 
 register_template(
-    MinimaxM3VLTemplateMeta(
-        MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate, preserve_thinking_policy='always'))
+    MinimaxM3VLTemplateMeta(MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate, preserve_thinking=True))

@@ -721,11 +721,27 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
-register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_thinking=True, thinking_prefix='<think>\n'))
+
+class DeepseekR1Template(Template):
+
+    _normalize_enable_thinking = Template._force_thinking
+
+
+register_template(
+    DeepseekV2_5TemplateMeta(
+        LLMTemplateType.deepseek_r1,
+        template_cls=DeepseekR1Template,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        default_enable_thinking=True))
 
 
 class DeepseekV3_1Template(Template):
     jinja_enable_thinking_key = 'thinking'
+
+    def _is_add_non_thinking_round(self, messages, i, start_idx):
+        return (super()._is_add_non_thinking_round(messages, i, start_idx) and i > 0
+                and (messages[i - 1]['role'] == 'user' or messages[i - 1].get('_tool_user_followup')))
 
     def _remove_history_thinking(self, inputs) -> None:
         messages = inputs.messages
@@ -755,7 +771,6 @@ register_template(
         template_cls=DeepseekV3_1Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
-        non_thinking_prefix_policy='after_user',
         history_thinking_prefix='</think>'))
 
 # Reasoning-effort prefixes, prepended at the very beginning of the conversation
@@ -783,6 +798,12 @@ class DeepseekV4Template(DeepseekV3_1Template):
     # V4-Flash / V4-Pro (preview) ship two thinking levels; `high` adds no prefix.
     reasoning_effort_prompts = {'high': '', 'max': REASONING_EFFORT_ABSOLUTE_MAX}
     default_reasoning_effort = 'high'
+
+    _is_add_non_thinking_round = Template._is_add_non_thinking_round
+
+    def _remove_thinking_content(self, content, thinking_suffix='</think>'):
+        _, closed, answer = content.rpartition(thinking_suffix)
+        return self.template_meta.history_thinking_prefix + (answer if closed else answer.strip())
 
     def init_env_args(self):
         super().init_env_args()
@@ -843,13 +864,17 @@ register_template(
         template_cls=DeepseekV4Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
-        strip_history_thinking=False,
         default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 
 
 class DeepseekV41Template(DeepseekV3_1Template):
     """DeepSeek-V4.1 prompt protocol and official ViT patch preprocessing."""
+
+    # Unlike V3.1 (`thinking`), the V4.1 jinja switches on `enable_thinking`.
+    jinja_enable_thinking_key = 'enable_thinking'
+    _is_add_non_thinking_round = Template._is_add_non_thinking_round
+    _remove_thinking_content = DeepseekV4Template._remove_thinking_content
 
     IMAGE_PLACEHOLDER = '<｜deepseek_image｜>'
     TEXT = -1
@@ -911,12 +936,7 @@ class DeepseekV41Template(DeepseekV3_1Template):
                 else:
                     message['content'] = prefix + first
 
-    def _remove_history_thinking(self, inputs) -> None:
-        # The official V4 encoder drops reasoning before the last user turn but keeps the
-        # final assistant turn; with tools it keeps every turn.
-        if inputs.tools:
-            return
-        Template._remove_history_thinking(self, inputs, keep_tool_call_history=True)
+    _remove_history_thinking = DeepseekV4Template._remove_history_thinking
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         super()._swift_prepare_inputs(inputs)
@@ -1060,7 +1080,6 @@ register_template(
         template_cls=DeepseekV41Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
-        strip_history_thinking=False,
         default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 
@@ -1085,7 +1104,6 @@ register_template(
         template_cls=DeepseekV4FlashTemplate,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
-        strip_history_thinking=False,
         default_enable_thinking=True,
         history_thinking_prefix='</think>'))
 

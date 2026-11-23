@@ -14,7 +14,7 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, findall
+from ..utils import Context, Prompt, findall, get_last_user_round
 from ..vision_utils import load_audio, load_video_minicpmv_mplug_owl3, local_video_path
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, Qwen3MixedTemplateMeta, QwenTemplateMeta
@@ -267,6 +267,10 @@ register_template(Qwen2_5TemplateMeta(
 
 class MiniCPMV4_5Template(MiniCPMV2_6Template):
 
+    def _non_thinking_prefix_start(self, messages):
+        last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
+        return max(get_last_user_round(messages), last_assistant)
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
         images = inputs.images
@@ -336,8 +340,8 @@ register_template(
         template_cls=MiniCPMV4_5Template,
         is_thinking=True,
         thinking_prefix='<think>\n',
-        non_thinking_prefix_policy='last_response',
-        enable_thinking_policy='auto',
+        default_enable_thinking=None,
+        # The official jinja emits the empty block for the final answer only.
     ))
 
 
@@ -651,7 +655,6 @@ register_template(
         MLLMTemplateType.minicpmo4_5,
         template_cls=MiniCPMO4_5Template,
         is_thinking=True,
-        non_thinking_prefix_policy='last_response',
         default_enable_thinking=True,
     ))
 
@@ -660,6 +663,9 @@ class MiniCPMV4_6Template(Template):
     support_padding_free = True
     default_downsample_mode = '16x'
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
+
+    def _non_thinking_prefix_start(self, messages):
+        return self._get_last_user_index(messages)
 
     def init_env_args(self):
         super().init_env_args()
@@ -766,6 +772,8 @@ register_template(
 class MiniCPMV4_7Template(MiniCPMV4_6Template):
     support_padding_free = False
 
+    _non_thinking_prefix_start = Template._non_thinking_prefix_start
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         encoded['mm_token_type_ids'] = torch.tensor(self.processor.create_mm_token_type_ids([encoded['input_ids']])[0])
@@ -801,13 +809,27 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n\n',
     ))
 
+
+class MiniCPM5Template(Template):
+
+    def _add_non_thinking_prefix(self, inputs) -> None:
+        pass
+
+
+class MiniCPM5_2BTemplate(Template):
+
+    def _non_thinking_prefix_start(self, messages):
+        return -1
+
+
 register_template(
     ChatmlTemplateMeta(
         LLMTemplateType.minicpm5,
+        template_cls=MiniCPM5Template,
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
-        enable_thinking_policy='auto',
+        default_enable_thinking=None,
         agent_template='minicpm5',
     ))
 
@@ -816,11 +838,11 @@ register_template(
 register_template(
     ChatmlTemplateMeta(
         LLMTemplateType.minicpm5_2b,
+        template_cls=MiniCPM5_2BTemplate,
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
-        enable_thinking_policy='auto',
+        default_enable_thinking=None,
         preserve_thinking=True,
-        preserve_thinking_policy='always',
         agent_template='minicpm5',
     ))

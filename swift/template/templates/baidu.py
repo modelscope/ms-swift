@@ -17,7 +17,8 @@ class ERNIETemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['<|begin_of_sentence|>'])
     prompt: Prompt = field(default_factory=lambda: ['User: {{QUERY}}\nAssistant: '])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|end_of_sentence|>'])
-    suffix: Prompt = field(default_factory=lambda: ['</s>'])
+    # The official jinja ends every message (including the last answer) with this token, not `</s>`.
+    suffix: Prompt = field(default_factory=lambda: ['<|end_of_sentence|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|begin_of_sentence|>{{SYSTEM}}\n'])
 
 
@@ -25,6 +26,8 @@ register_template(ERNIETemplateMeta(LLMTemplateType.ernie))
 
 
 class ErnieThinkingTemplate(Template):
+
+    _normalize_enable_thinking = Template._force_thinking
 
     def _swift_prepare_inputs(self, inputs) -> None:
         super()._swift_prepare_inputs(inputs)
@@ -70,7 +73,8 @@ register_template(
         LLMTemplateType.ernie_thinking,
         template_cls=ErnieThinkingTemplate,
         is_thinking=True,
-        thinking_prefix='<think>\n'))
+        thinking_prefix='<think>\n',
+        default_enable_thinking=True))
 
 
 class PaddleOCRTemplate(Template):
@@ -182,6 +186,9 @@ register_template(ERNIETemplateMeta(MLLMTemplateType.paddle_ocr, template_cls=Pa
 class ERNIE_VLTemplate(Template):
     placeholder_tokens = ['<|IMAGE_PLACEHOLDER|>']
 
+    def _add_non_thinking_prefix(self, inputs) -> None:
+        pass
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
@@ -252,7 +259,19 @@ class ERNIE_VLTemplate(Template):
 
 register_template(
     ERNIETemplateMeta(
-        MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate, is_thinking=True, thinking_prefix='<think>'))
+        MLLMTemplateType.ernie_vl,
+        template_cls=ERNIE_VLTemplate,
+        is_thinking=True,
+        thinking_prefix='<think>',
+        # The official jinja only emits the empty think block at the generation prompt.
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        default_enable_thinking=True))
+
+
+class ERNIE_VLThinkingTemplate(ERNIE_VLTemplate):
+
+    _normalize_enable_thinking = Template._force_thinking
+
 
 ERNIE_VL_SYSTEM = ('You are a multimodal AI assistant called ERNIE developed by Baidu based on the PaddlePaddle '
                    'framework.')
@@ -260,9 +279,10 @@ ERNIE_VL_SYSTEM = ('You are a multimodal AI assistant called ERNIE developed by 
 register_template(
     ERNIETemplateMeta(
         MLLMTemplateType.ernie_vl_thinking,
-        template_cls=ERNIE_VLTemplate,
+        template_cls=ERNIE_VLThinkingTemplate,
         is_thinking=True,
         thinking_prefix='\n<think>\n',
+        default_enable_thinking=True,
         default_system=ERNIE_VL_SYSTEM))
 
 

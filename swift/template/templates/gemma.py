@@ -277,6 +277,10 @@ class Gemma4Template(Template):
     def _add_non_thinking_prefix(self, inputs: StdTemplateInputs, thinking_prefix: str = '<|channel>thought'):
         return super()._add_non_thinking_prefix(inputs, thinking_prefix=thinking_prefix)
 
+    def _is_add_non_thinking_round(self, messages, i, start_idx):
+        return (super()._is_add_non_thinking_round(messages, i, start_idx) and i > 0
+                and (messages[i - 1]['role'] == 'user' or messages[i - 1].get('_tool_user_followup')))
+
     def _remove_thinking_content(self, content: str, thinking_suffix: str = '<channel|>') -> str:
         return super()._remove_thinking_content(content, thinking_suffix=thinking_suffix)
 
@@ -374,17 +378,12 @@ class Gemma4TemplateMeta(TemplateMeta):
 
 
 register_template(
-    Gemma4TemplateMeta(
-        MLLMTemplateType.gemma4_nothinking,
-        template_cls=Gemma4Template,
-        non_thinking_prefix_policy='after_user',
-        agent_template='gemma4'))
+    Gemma4TemplateMeta(MLLMTemplateType.gemma4_nothinking, template_cls=Gemma4Template, agent_template='gemma4'))
 
 register_template(
     Gemma4TemplateMeta(
         MLLMTemplateType.gemma4,
         template_cls=Gemma4Template,
-        non_thinking_prefix_policy='after_user',
         agent_template='gemma4',
         is_thinking=True,
         non_thinking_prefix='<|channel>thought\n<channel|>'))
@@ -461,5 +460,4 @@ register_template(
         template_cls=DiffusionGemmaTemplate,
         agent_template='gemma4',
         is_thinking=True,
-        non_thinking_prefix='<|channel>thought\n<channel|>',
-        non_thinking_prefix_policy='after_user'))
+        non_thinking_prefix='<|channel>thought\n<channel|>'))

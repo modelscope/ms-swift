@@ -3,7 +3,7 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
 from transformers import PreTrainedTokenizerBase
-from typing import List, Literal, Optional, Type, Union
+from typing import List, Optional, Type, Union
 
 from .base import Template
 from .utils import Prompt, Word
@@ -44,33 +44,12 @@ class TemplateMeta:
     stop_words: List[Word] = field(default_factory=list)
     agent_template: Optional[str] = None
     # thinking
-    is_thinking: bool = False  # Automatically remove think content
+    is_thinking: bool = False
     thinking_prefix: str = ''
-    non_thinking_prefix: str = ''  # Automatically add non_thinking_prefix for hybrid thinking models
-    # Where to insert the empty-think prefix when enable_thinking is False.
-    # 'all': every assistant turn.
-    # 'last_response': only the final assistant message.
-    # 'after_user': only an assistant immediately following a user (or _tool_user_followup);
-    #               NOT every assistant that appears after any user message.
-    non_thinking_prefix_policy: Literal['all', 'last_response', 'after_user'] = 'all'
-    # Value used when the caller does not specify enable_thinking.
-    default_enable_thinking: Optional[bool] = None
-    # 'default': resolve default_enable_thinking / is_thinking fallback to a concrete bool.
-    # 'auto': keep enable_thinking unset; add neither thinking_prefix nor non_thinking_prefix,
-    #         letting the model decide (e.g. MiniCPM5).
-    enable_thinking_policy: Literal['default', 'auto'] = 'default'
-    preserve_thinking: Optional[bool] = None  # Whether the model itself keeps historical thinking content.
-    # Model-level handling of historical thinking:
-    # 'default': no model override. For thinking templates, inference and last_round training
-    #            strip history before the current round; normal training preserves it;
-    #            non-thinking templates are a no-op.
-    # 'always': always keep history.
-    # 'never_all': strip all history at inference; keep only the final assistant in training.
-    preserve_thinking_policy: Literal['default', 'always', 'never_all'] = 'default'
-    # Whether whitespace after a removed historical ``</think>`` is stripped.
-    strip_history_thinking: bool = True
-    # During encoding, historical thinking content will be removed.
-    # This parameter represents the prefix for the historical part.
+    non_thinking_prefix: str = ''
+    default_enable_thinking: Optional[bool] = False  # None leaves generation prefixes unset.
+    preserve_thinking: Optional[bool] = None  # None uses training/inference defaults.
+    # Replacement prefix after removing historical reasoning.
     history_thinking_prefix: str = ''
 
     def to_generate_template_meta(self) -> 'TemplateMeta':

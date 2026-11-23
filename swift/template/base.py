@@ -124,15 +124,12 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
-        policy = template_meta.enable_thinking_policy
-        if enable_thinking is None and policy != 'auto':
-            enable_thinking = template_meta.default_enable_thinking
-            if enable_thinking is None:
-                enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
         self.response_prefix = response_prefix
         self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
-        self.enable_thinking = enable_thinking
+        if enable_thinking is None:
+            enable_thinking = template_meta.default_enable_thinking
+        self.enable_thinking = self._normalize_enable_thinking(enable_thinking)
         self.preserve_thinking = preserve_thinking
         self.add_non_thinking_prefix = add_non_thinking_prefix
         self.chat_template_kwargs = {}
@@ -163,30 +160,43 @@ class Template(ProcessorMixin):
             self.init_processor(processor)
 
     def _get_enable_thinking(self, inputs=None):
-        enable_thinking = None if inputs is None else inputs.chat_template_kwargs.get('enable_thinking')
+
+        def from_kwargs(kwargs):
+            value = kwargs.get('enable_thinking')
+            if value is None:
+                value = kwargs.get(self.jinja_enable_thinking_key)
+            return value
+
+        enable_thinking = None if inputs is None else from_kwargs(inputs.chat_template_kwargs)
+        if enable_thinking is None:
+            enable_thinking = from_kwargs(self.chat_template_kwargs)
         if enable_thinking is None:
             enable_thinking = self.enable_thinking
+        return self._normalize_enable_thinking(enable_thinking)
+
+    def _normalize_enable_thinking(self, enable_thinking):
         return enable_thinking
+
+    def _force_thinking(self, enable_thinking):
+        if not self.use_chat_template:
+            return enable_thinking
+        if enable_thinking is False:
+            logger.warning_once(f'{self.template_meta.template_type} only supports thinking mode; '
+                                'ignoring enable_thinking=False.')
+        return True
 
     def _get_preserve_thinking(self, inputs=None):
         preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
         if preserve_thinking is None:
-            preserve_thinking = self.preserve_thinking
-        if preserve_thinking is None and self.template_meta.preserve_thinking_policy == 'always':
-            preserve_thinking = True
+            preserve_thinking = self.chat_template_kwargs.get('preserve_thinking')
         if preserve_thinking is None:
-            # Models that keep historical thinking themselves always preserve it, unless the user
-            # explicitly opts out above.
+            preserve_thinking = self.preserve_thinking
+        if preserve_thinking is None:
             preserve_thinking = self.template_meta.preserve_thinking
         if preserve_thinking is None:
             enable_thinking = self._get_enable_thinking(inputs)
-            if self.template_meta.is_thinking or enable_thinking:
-                if self.is_training and self.loss_scale.base_strategy != 'last_round':
-                    preserve_thinking = True
-                else:
-                    preserve_thinking = False
-            else:
-                preserve_thinking = True
+            preserve_thinking = (not (self.template_meta.is_thinking or enable_thinking)
+                                 or (self.is_training and self.loss_scale.base_strategy != 'last_round'))
         return preserve_thinking
 
     def _get_response_prefix(self, inputs=None):
@@ -1276,6 +1286,8 @@ class Template(ProcessorMixin):
         kwargs = {}
         if inputs.tools:
             kwargs['tools'] = inputs.tools
+        kwargs.update(self.chat_template_kwargs)
+        kwargs.update(inputs.chat_template_kwargs)
         enable_thinking = self._get_enable_thinking(inputs)
         if enable_thinking is not None and (self.template_meta.is_thinking or enable_thinking):
             kwargs[self.jinja_enable_thinking_key] = enable_thinking
@@ -1284,8 +1296,6 @@ class Template(ProcessorMixin):
         if self.template_meta.is_thinking and (enable_thinking is not None or explicit_preserve
                                                or self.preserve_thinking is not None):
             kwargs['preserve_thinking'] = preserve_thinking
-        kwargs.update(self.chat_template_kwargs)
-        kwargs.update(inputs.chat_template_kwargs)
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0
@@ -1303,70 +1313,43 @@ class Template(ProcessorMixin):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
-    def _get_current_round_start(self, messages) -> int:
-        """Boundary for history thinking: assistants before it lose their thinking."""
-        if self.template_meta.preserve_thinking_policy == 'never_all' and not self.is_training:
-            return len(messages)
+    @staticmethod
+    def _get_last_user_index(messages) -> int:
         for i in range(len(messages) - 1, -1, -1):
             message = messages[i]
             if message['role'] == 'user' or (message['role'] == 'tool' and message.get('_tool_user_followup')):
                 return i
         return -1
 
+    def _get_current_round_start(self, messages) -> int:
+        """Assistant messages before this boundary belong to history."""
+        return self._get_last_user_index(messages)
+
     def _non_thinking_prefix_start(self, messages) -> int:
-        """Start of the round used when inserting an empty-think prefix."""
-        for i in range(len(messages) - 1, -1, -1):
-            message = messages[i]
-            if message['role'] == 'user' or (message['role'] == 'tool' and message.get('_tool_user_followup')):
-                return i
+        if not self.is_training or self.loss_scale.base_strategy == 'last_round':
+            return self._get_last_user_index(messages)
         return -1
 
     def _is_add_non_thinking_round(self, messages, i: int, start_idx: int):
-        message = messages[i]
-        if not (i >= start_idx and message['role'] == 'assistant'):
-            return False
-        if self.template_meta.non_thinking_prefix_policy == 'after_user' and not (
-                i > 0 and (messages[i - 1]['role'] == 'user' or messages[i - 1].get('_tool_user_followup'))):
-            return False
-        return True
+        return i >= start_idx and messages[i]['role'] == 'assistant'
 
     def _add_non_thinking_prefix(self, inputs, thinking_prefix='<think>') -> None:
         messages = inputs.messages
         non_thinking_prefix = self.template_meta.non_thinking_prefix
         if non_thinking_prefix:
-            # Determine the starting index for processing messages
-            # During inference or when using 'last_round' strategy, only process the last round
-            # Otherwise, process all messages (start_idx = -1 means start from the beginning)
-            if ((not self.is_training or self.loss_scale.base_strategy == 'last_round')
-                    and not self.template_meta.preserve_thinking):
-                if (self.template_meta.non_thinking_prefix_policy == 'last_response'
-                        or self._get_preserve_thinking(inputs)):
-                    start_idx = get_last_user_round(messages)
-                else:
-                    start_idx = self._non_thinking_prefix_start(messages)
-            else:
-                start_idx = -1
-            last_assistant_idx = next(
-                (i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
+            prefixes = (thinking_prefix, non_thinking_prefix)
+            start_idx = self._non_thinking_prefix_start(messages)
             for i, message in enumerate(messages):
                 if not self._is_add_non_thinking_round(messages, i, start_idx):
                     continue
-                if (self.template_meta.non_thinking_prefix_policy == 'last_response' and i != last_assistant_idx):
-                    continue
                 content = message['content']
-                # After merge, content may be a list; only process the first element.
-                if isinstance(content, list):
-                    _add_prefix = content and isinstance(content[0], str) and not content[0].startswith(
-                        (thinking_prefix, non_thinking_prefix))
-                    if _add_prefix:
-                        content[0] = non_thinking_prefix + content[0]
-                elif isinstance(content, str):
-                    if not content.startswith((thinking_prefix, non_thinking_prefix)):
-                        message['content'] = non_thinking_prefix + content
+                # Only the first merged fragment owns the reasoning prefix.
+                parts = content if isinstance(content, list) else [content]
+                if parts and isinstance(parts[0], str) and not parts[0].startswith(prefixes):
+                    parts[0] = non_thinking_prefix + parts[0]
+                    message['content'] = parts if isinstance(content, list) else parts[0]
 
     def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
-        if thinking_suffix in content and not self.template_meta.strip_history_thinking:
-            return self.template_meta.history_thinking_prefix + content.split(thinking_suffix)[-1]
         content = content.split(thinking_suffix)[-1].strip()
         return self.template_meta.history_thinking_prefix + content
 
@@ -1467,7 +1450,7 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         if self.use_chat_template:
-            if self.add_non_thinking_prefix and self._get_enable_thinking(inputs) is not None:
+            if self.add_non_thinking_prefix:
                 self._add_non_thinking_prefix(inputs)
             preserve_thinking = self._get_preserve_thinking(inputs)
             if not preserve_thinking:

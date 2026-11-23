@@ -202,10 +202,9 @@ class Xing4_0Template(Template):
     """ref: https://modelscope.cn/models/XingChen-AGI/Xing4.0-29B-A4B (chat_template.jinja)"""
 
     def __init__(self, *args, **kwargs):
-        # The jinja template turns thinking on unless `enable_thinking` is explicitly false, while the
-        # base class derives `is_thinking and not non_thinking_prefix` (i.e. False) for hybrid models.
-        if kwargs.get('enable_thinking') is None:
-            kwargs['enable_thinking'] = True
+        if not kwargs.get('use_chat_template', True) and kwargs.get('enable_thinking') is None:
+            meta = kwargs.get('template_meta') if 'template_meta' in kwargs else args[1]
+            kwargs['enable_thinking'] = meta.default_enable_thinking
         super().__init__(*args, **kwargs)
 
 
@@ -220,6 +219,7 @@ register_template(
         template_cls=Xing4_0Template,
         agent_template='xing4_0',
         is_thinking=True,
+        default_enable_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>',
@@ -426,8 +426,10 @@ class HyV3Template(HyV3PreviewTemplate):
 
     def _get_preserve_thinking(self, inputs=None):
         explicit = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
-        if explicit is None and self.preserve_thinking is None and inputs is not None and getattr(
-                inputs, 'tools', None):
+        if explicit is None:
+            explicit = self.chat_template_kwargs.get('preserve_thinking')
+        if (explicit is None and self.preserve_thinking is None and self.template_meta.preserve_thinking is None
+                and inputs is not None and getattr(inputs, 'tools', None)):
             return True
         return super()._get_preserve_thinking(inputs)
 
@@ -534,12 +536,19 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         agent_template='ling3',
-        preserve_thinking_policy='always',
+        preserve_thinking=True,
     ))
+
+
+class RingThinkingTemplate(Template):
+
+    _normalize_enable_thinking = Template._force_thinking
+
 
 register_template(
     TemplateMeta(
         LLMTemplateType.ring2,
+        template_cls=RingThinkingTemplate,
         prefix=[],
         system_prefix=['<role>SYSTEM</role>{{SYSTEM}}'],
         prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
@@ -547,17 +556,20 @@ register_template(
         suffix=['<|endoftext|>'],
         is_thinking=True,
         thinking_prefix='<think>\n',
+        default_enable_thinking=True,
     ))
 
 register_template(
     TemplateMeta(
         LLMTemplateType.ring2_5,
+        template_cls=RingThinkingTemplate,
         prefix=[],
         system_prefix=['<role>SYSTEM</role>\n{{SYSTEM}}\n\n'],
         prompt=['<role>HUMAN</role>\n{{QUERY}}<|role_end|>\n\n<role>ASSISTANT</role>\n'],
         chat_sep=['<|role_end|>\n\n'],
         suffix=['<|role_end|>\n\n'],
         is_thinking=True,
+        default_enable_thinking=True,
     ))
 
 register_template(
@@ -643,6 +655,8 @@ register_template(
 
 class Olmo3Template(Template):
 
+    _normalize_enable_thinking = Template._force_thinking
+
     # Packed/padding-free paths do not preserve Olmo3's separate
     # sliding-window and full-attention masks.
     support_padding_free = False
@@ -679,11 +693,21 @@ register_template(
         is_thinking=True,
         thinking_prefix='<think>',
         preserve_thinking=True,
+        default_enable_thinking=True,
     ))
+
+
+class NemotronHTemplate(Template):
+
+    def _remove_thinking_content(self, content, thinking_suffix='</think>'):
+        _, closed, answer = content.rpartition(thinking_suffix)
+        return self.template_meta.history_thinking_prefix + (answer if closed else answer.strip())
+
 
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.nemotron_h,
+        template_cls=NemotronHTemplate,
         default_system=None,
         is_thinking=True,
         thinking_prefix='<think>\n',
@@ -692,7 +716,6 @@ register_template(
         # Official jinja truncates historical thinking by default (truncate_history_thinking=True).
         preserve_thinking=False,
         default_enable_thinking=True,
-        strip_history_thinking=False,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))
