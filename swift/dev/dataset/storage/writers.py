@@ -72,7 +72,12 @@ class _CheckpointPaths:
         """Returns ``(last_finished_batch_index, open_mode)``; -1 means start from the first batch.
 
         Resuming copies the snapshot back over ``tmp`` first: ``tmp`` may hold a half-written batch
-        from the crash, and appending to that would emit a truncated row.
+        from the crash, and appending to that would emit a truncated row. The snapshot is then
+        reconciled with the state record: a crash between the snapshot copy and the state write
+        leaves the snapshot holding rows the state never accounted for, and re-emitting those
+        groups onto the snapshot would duplicate them. The state's ``byte_offset`` marks the
+        trusted prefix; anything past it is dropped. An absent/corrupt/offset-less state is
+        untrusted -- the whole run is re-driven into an empty tmp (no loss, no duplication).
         """
         if not resume:
             for path in (self.tmp, self.resume, self.state):
@@ -82,19 +87,41 @@ class _CheckpointPaths:
 
         if os.path.exists(self.resume):
             shutil.copyfile(self.resume, self.tmp)
-        last = -1
+        last, offset = -1, None
         if os.path.exists(self.state):
-            with open(self.state, 'r', encoding='utf-8') as f:
-                last = json.load(f).get('batch_index', -1)
+            try:
+                with open(self.state, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+                last = state.get('batch_index', -1)
+                offset = state.get('byte_offset')
+            except ValueError:
+                last, offset = -1, None
+        size = os.path.getsize(self.tmp) if os.path.exists(self.tmp) else 0
+        if not isinstance(offset, int) or offset < 0:
+            last = -1
+            if os.path.exists(self.tmp):
+                with open(self.tmp, 'w', encoding='utf-8'):
+                    pass
+        elif offset > size:
+            raise ValueError(
+                f'sampling_state.json records byte_offset={offset} but the snapshot holds only {size} '
+                'bytes: the state is ahead of the saved rows, so resuming would skip groups whose '
+                'rows were never saved. Remove the checkpoint files to start over.')
+        else:
+            with open(self.tmp, 'r+', encoding='utf-8') as f:
+                f.truncate(offset)
+        if last >= 0:
             logger.info(f'run_infer: resuming after batch index {last}')
         return last, 'a'
 
-    def checkpoint(self, batch_index: int) -> None:
+    def checkpoint(self, batch_index: int, byte_offset: int) -> None:
         """Snapshot, then record. In this order: a snapshot without a state file re-does one batch,
-        whereas a state file without its snapshot would skip a batch whose rows were never saved."""
+        whereas a state file without its snapshot would skip a batch whose rows were never saved.
+        ``byte_offset`` is the tmp position the record accounts for, so resume can drop any rows a
+        crash left in the snapshot beyond the record."""
         shutil.copyfile(self.tmp, self.resume)
         with open(self.state, 'w', encoding='utf-8') as f:
-            json.dump({'batch_index': batch_index}, f)
+            json.dump({'batch_index': batch_index, 'byte_offset': byte_offset}, f)
 
     def finalize(self) -> None:
         """Publish the snapshot as the output file, keeping any previous one under a timestamp."""
@@ -165,7 +192,7 @@ class StoreWriter:
 
     def checkpoint(self, index: int) -> None:
         if self._kind == 'checkpoint':
-            self._paths.checkpoint(index)
+            self._paths.checkpoint(index, self._f.tell())
 
     def finish(self, results: List[Dict[str, Any]]) -> None:
         if self._kind == 'checkpoint':

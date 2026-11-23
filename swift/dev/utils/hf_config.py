@@ -280,3 +280,68 @@ class HfConfigFactory:
         elif quant_method is not None:
             res['quant_method'] = quant_method
         return res or None
+
+
+_REMOTE_CODE_REDUCE_MARKER = '_swift_remote_code_reduce'
+
+
+def _rebuild_remote_code_config(model_dir: str, revision: Optional[str], config_dict: Dict[str, Any]):
+    """Pickle-time reduction target: runs in the RECEIVING process (e.g. a ray actor), reloading the
+    checkpoint's own remote code there and re-applying the driver-side attribute mutations captured
+    at pickle time."""
+    from transformers import AutoConfig
+
+    config = AutoConfig.from_pretrained(model_dir, revision=revision, trust_remote_code=True)
+    for key, value in config_dict.items():
+        setattr(config, key, value)
+    return make_remote_code_config_picklable(config, model_dir, revision=revision)
+
+
+def make_remote_code_config_picklable(config: PretrainedConfig,
+                                      model_dir: str,
+                                      *,
+                                      revision: Optional[str] = None) -> PretrainedConfig:
+    """Make a ``trust_remote_code`` config survive a cross-process pickle boundary (defect122).
+
+    Such configs are instances of ``transformers_modules.*`` classes that exist only in the process
+    that loaded the checkpoint. Ray serializes actor creation args in the driver and deserializes
+    them in a fresh worker where that module was never imported, so the default class-by-reference
+    pickle dies with ``ModuleNotFoundError: No module named 'transformers_modules'``. Install a
+    class-level ``__reduce__`` that rebuilds the config from the checkpoint inside the receiving
+    process instead; the reduction function lives in this module, importable on both sides. A
+    matching ``__deepcopy__`` keeps in-process copies (e.g. the template's model_factory) off the
+    disk round-trip. Native config classes pass through untouched.
+    """
+    cls = type(config)
+    if not cls.__module__.startswith('transformers_modules'):
+        return config
+    config._swift_remote_code_dir = model_dir
+    config._swift_remote_code_revision = revision
+    if getattr(cls, _REMOTE_CODE_REDUCE_MARKER, False):
+        return config
+
+    def __reduce__(self):
+        source = getattr(self, '_swift_remote_code_dir', None) or self._name_or_path
+        state = {k: v for k, v in self.to_dict().items() if not k.startswith('_swift_remote_code_')}
+        return (_rebuild_remote_code_config,
+                (source, getattr(self, '_swift_remote_code_revision', None), state))
+
+    def __deepcopy__(self, memo):
+        import copy
+        new = cls.__new__(cls)
+        memo[id(self)] = new
+        for key, value in self.__dict__.items():
+            setattr(new, key, copy.deepcopy(value, memo))
+        return new
+
+    def to_dict(self):
+        # The reduction bookkeeping is transport metadata, not config state: keep it out of the
+        # serialized dict (it travels as reduce args) so actor-side configs stay attribute-clean.
+        return {k: v for k, v in orig_to_dict(self).items() if not k.startswith('_swift_remote_code_')}
+
+    orig_to_dict = cls.to_dict
+    cls.__reduce__ = __reduce__
+    cls.__deepcopy__ = __deepcopy__
+    cls.to_dict = to_dict
+    setattr(cls, _REMOTE_CODE_REDUCE_MARKER, True)
+    return config

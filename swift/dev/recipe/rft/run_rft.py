@@ -12,6 +12,7 @@ from swift.dev.recipe.rft.assembly import build_rft_driver, initialize_rft_clust
 from swift.dev.recipe.utils import (
     StepState,
     build_save_knobs,
+    close_driver_preserving_error,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -202,9 +203,13 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
     if not path or checkpoint_config.resume_only_model:
         return rft_state.next_round
     trainer_state_path = os.path.join(path, 'trainer_state.json')
-    if not os.path.isfile(trainer_state_path):
+    from swift.dev.utils.storage import Storage
+
+    # Probed and read on the checkpoint's own medium (local: the file itself).
+    storage = Storage.from_url(path)
+    if not storage.exists(trainer_state_path):
         return rft_state.next_round
-    with open(trainer_state_path) as f:
+    with open(storage.download_file(trainer_state_path)) as f:
         component_states = json.load(f).get('component_states', {})
     if 'rft' in component_states:
         rft_state.load_state(component_states['rft'])
@@ -242,7 +247,7 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
             if len(trajs) % (window * num_samples) == 0:
                 logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')
     finally:
-        driver.close()
+        close_driver_preserving_error(driver)
         if cluster.colocate:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
@@ -282,12 +287,17 @@ def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, sa
             state, update, lengths[start:end],
             micro_batch_kwargs={'micro_batch_size': micro_batch_size})
         state.micro_step += (end - start) // train_batch_size
+        # Mirror the SFT per-step callback dispatch (defect121): fan on_step_begin / on_pre_optimizer_step /
+        # on_optimizer_step, not only on_step_end via step_tail.
+        state.handler.on_step_begin()
         cluster.model.forward_backward(
             inputs=copy_inputs(update),
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
         )
+        state.handler.on_pre_optimizer_step()
         cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
         state.record(extra_metrics=balance_metrics)
         # The periodic save is DEFERRED to the round boundary (the round component
         # commits with it, keeping every checkpoint round-atomic); snapshot the

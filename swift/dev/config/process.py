@@ -206,17 +206,23 @@ def bootstrap_run(
 def _prepare_output_dir(checkpoint_config: 'CheckpointConfig', *, add_version: Optional[bool],
                         create_output_dir: bool) -> None:
     from swift.dev.utils import add_version_to_work_dir
+    from swift.dev.utils.storage import Storage, is_remote_url
 
-    checkpoint_config.output_dir = os.path.abspath(os.path.expanduser(checkpoint_config.output_dir))
+    # An oss:// / s3:// path is a URL, not a local path: never abspath'd (that would glue the
+    # cwd onto it) nor makedirs'd (the store's prefixes appear on upload).
+    if not is_remote_url(checkpoint_config.output_dir):
+        checkpoint_config.output_dir = os.path.abspath(os.path.expanduser(checkpoint_config.output_dir))
     use_version = checkpoint_config.add_version if add_version is None else add_version
     if use_version:
         checkpoint_config.output_dir = add_version_to_work_dir(checkpoint_config.output_dir)
-    if create_output_dir:
+    if create_output_dir and not is_remote_url(checkpoint_config.output_dir):
         os.makedirs(checkpoint_config.output_dir, exist_ok=True)
 
     if checkpoint_config.resume_from_checkpoint:
-        resume = os.path.abspath(os.path.expanduser(checkpoint_config.resume_from_checkpoint))
-        if not os.path.exists(resume):
+        resume = checkpoint_config.resume_from_checkpoint
+        if not is_remote_url(resume):
+            resume = os.path.abspath(os.path.expanduser(resume))
+        if not Storage.from_url(resume).exists(resume):
             raise ValueError(f'resume_from_checkpoint does not exist: {resume}')
         checkpoint_config.resume_from_checkpoint = resume
 

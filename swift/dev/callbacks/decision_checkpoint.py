@@ -53,8 +53,13 @@ class DecisionCheckpointCallback(TrainCallback):
         save_weights = self._save_weights
         if save_weights is None:
             save_weights = _is_adapter_model(self._model)
+        # write_dir yields the real dir locally; an oss:// / s3:// checkpoint_dir
+        # stages, uploads and drops the staging copy.
+        from swift.dev.utils.storage import write_dir
+
         try:
-            head.save_pretrained(checkpoint_dir, save_weights=save_weights)
+            with write_dir(checkpoint_dir) as local:
+                head.save_pretrained(local, save_weights=save_weights)
         except Exception as e:  # noqa: BLE001 -- a failed sidecar must not kill the main save
             logger.warning(f"decision_checkpoint: failed to save scoring_head to {checkpoint_dir} ({e}).")
             return

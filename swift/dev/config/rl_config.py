@@ -49,6 +49,10 @@ class RLConfig:
     cliprange_value: float = 0.2
     gamma: float = 1.0
     lam: float = 0.95
+    # Length-adaptive GAE lambda (SAO): lambda_i = 1 - 1/(lam_alpha * response_len_i), clamped to
+    # [0, 1]; None keeps the fixed lam. Long responses lean toward lambda=1 (low bias), short ones
+    # toward 0 (low variance).
+    lam_alpha: Optional[float] = None
 
     # === GRPO ===
     num_generations: int = 8
@@ -81,6 +85,9 @@ class RLConfig:
     clip_cov_ub: float = 5.0
     kl_cov_ratio: float = 0.0002  # KL-Cov fraction of valid tokens with the extra KL penalty
     ppo_kl_coef: float = 1.0
+    # DIS (loss_type='dis'): stop-gradient through the IS weight; the trust interval reuses
+    # epsilon / epsilon_high (unset epsilon_high keeps DIS's wide 5.0 upper bound).
+    dis_detach_importance_weight: bool = True
 
     # === CHORD auxiliary SFT ===
     chord_sft_dataset: List[str] = field(default_factory=list)

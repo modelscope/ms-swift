@@ -467,6 +467,10 @@ def resolve_model_info(
             config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True, revision=revision)
         except Exception:  # noqa: BLE001 -- a remote-code config that only ships a dict still matches
             config = PretrainedConfig.get_config_dict(model_dir, revision=revision)[0]
+    if isinstance(config, PretrainedConfig):
+        from swift.dev.utils.hf_config import make_remote_code_config_picklable
+
+        config = make_remote_code_config_picklable(config, model_dir, revision=revision)
 
     if loader_cls is None and model_type is None:
         # No family matched the name. The checkpoint's own args.json comes before the (ambiguous)
@@ -705,18 +709,23 @@ class ModelLoader:
             )
 
     def build_config(self, model_dir: str, **kwargs) -> PretrainedConfig:
+        from swift.dev.utils.hf_config import make_remote_code_config_picklable
+
         self._apply_trust_remote_code(kwargs)
         if self.config_cls:
-            return _import_cls(self.config_cls).from_pretrained(model_dir, **kwargs)
-        from swift.dev.utils import HfConfigFactory
+            config = _import_cls(self.config_cls).from_pretrained(model_dir, **kwargs)
+        else:
+            from swift.dev.utils import HfConfigFactory
 
-        config = HfConfigFactory.load_hf_config(
-            model_dir,
-            trust_remote_code=kwargs.get('trust_remote_code', False),
-            revision=kwargs.get('revision'))
-        if config is not None:
-            return config
-        return AutoConfig.from_pretrained(model_dir, **kwargs)
+            config = HfConfigFactory.load_hf_config(
+                model_dir,
+                trust_remote_code=kwargs.get('trust_remote_code', False),
+                revision=kwargs.get('revision'))
+            if config is None:
+                config = AutoConfig.from_pretrained(model_dir, **kwargs)
+        # Remote-code configs must rebuild inside the receiving ray actor, not pickle the
+        # driver-only transformers_modules class by reference (defect122).
+        return make_remote_code_config_picklable(config, model_dir, revision=kwargs.get('revision'))
 
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
         self._apply_trust_remote_code(kwargs)

@@ -33,6 +33,13 @@ def parse_eval_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     result = dict(zip(names, configs))
     result['tuner_config'] = select_tuner(result['tuner_config'])
     eval_config = result['eval_config']
+    from swift.dev.utils.storage import is_remote_url
+
+    for flag in ('eval_output_dir', 'result_jsonl'):
+        if is_remote_url(getattr(eval_config, flag)):
+            # EvalScope writes its reports in place through local file APIs.
+            raise ValueError(f'--{flag} does not support oss:// / s3://: write to a local path and '
+                             'upload the result afterwards.')
     eval_config.eval_output_dir = os.path.abspath(os.path.expanduser(eval_config.eval_output_dir))
     if eval_config.result_jsonl:
         eval_config.result_jsonl = os.path.abspath(os.path.expanduser(eval_config.result_jsonl))

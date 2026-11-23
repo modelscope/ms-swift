@@ -16,6 +16,7 @@ from swift.dev.recipe.utils import (
     RolloutStepState,
     _log_line,
     build_save_knobs,
+    close_driver_preserving_error,
     collect,
     effective_colocate,
     initialize_rl_devices,
@@ -31,6 +32,7 @@ from swift.dev.recipe.utils import (
     stream_batch_size,
 )
 from swift.dev.utils.logger import get_logger
+from swift.dev.utils.storage import local_run_dir
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -251,6 +253,9 @@ def _train_mini_batches(
                                  micro_batch_size=train_batch_size // dp_size)
         kwargs.update(batching_kwargs or {})
         micro_batches = (hi - lo) // train_batch_size  # Nominal count; DBS schedules physical batches internally.
+        # Mirror the SFT per-step callback dispatch (supervised.update_step): the RL loops used to fan only
+        # on_step_end (step_tail), silently skipping on_step_begin / on_pre_optimizer_step / on_optimizer_step.
+        state.handler.on_step_begin()
         if chord_fn is not None:
             _chord_forward_backward(
                 model, rl_config, kwargs, chord_fn, step=state.global_step, num_micro_batches=micro_batches
@@ -259,7 +264,9 @@ def _train_mini_batches(
             model.forward_backward(**kwargs)
         # forward_backward and clip_grad_and_step are both declared sync=True on the model, so a
         # worker-side failure fails THIS step at the call site.
+        state.handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
         state.micro_step += micro_batches
         state.record(extra_metrics=balance_metrics)
         state.record_rollout_training(indices)
@@ -372,7 +379,8 @@ def _train_loop(
                 if completion_log is not None:
                     rows = completion_log(
                         trajs, step=state.global_step + 1,
-                        path=os.path.join(output_dir, 'completions.jsonl') if rl_config.log_completions else None,
+                        path=(os.path.join(local_run_dir(output_dir), 'completions.jsonl')
+                              if rl_config.log_completions else None),
                         scores=batch_facts.get('scores'))
                     if state.tracker.logs_prompts:
                         state.tracker.log_prompts(rows, state.global_step + 1)
@@ -501,7 +509,7 @@ def _train_loop(
             state.begin_rollout_iteration()
     finally:
         # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
-        driver.close()
+        close_driver_preserving_error(driver)
         if lent:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()

@@ -210,10 +210,10 @@ class InputProcessor(TwinkleInputProcessor):
             result = self._external_collate_fn(inputs)
             return [result] if isinstance(result, dict) else result
         media = [row.pop(_MEDIA_SLOT, None) or {} for row in inputs]
+        groups = self._collate_micro_batch_groups(inputs, micro_batch_size, kwargs)
         outputs = super().collate_fn(
             inputs, micro_batch_size=micro_batch_size, variable_seq_lengths=variable_seq_lengths, **kwargs
         )
-        groups = self._micro_batch_groups(len(inputs), micro_batch_size)
         if len(groups) != len(outputs):
             raise RuntimeError(
                 f"collate produced {len(outputs)} micro-batches for {len(groups)} media groups; the "
@@ -245,6 +245,49 @@ class InputProcessor(TwinkleInputProcessor):
         if micro_batch_size is None:
             return [list(range(n))]
         return [list(range(i, min(i + micro_batch_size, n))) for i in range(0, n, micro_batch_size)]
+
+    def _collate_micro_batch_groups(self, inputs: List[InputFeature], micro_batch_size: Optional[int],
+                                    kwargs: Dict[str, Any]) -> List[List[int]]:
+        """Row-index groups mirroring twinkle's collate split, with the embedding group-intact override.
+
+        Contrastive groups (anchor+positive+negatives) must stay inside one micro-batch: for embedding
+        ``micro_batch_size`` counts GROUPS, not the flat sequences ``prepare_inputs`` produced. Splitting
+        mid-group orphans anchors/negatives, and InfoNCE's ``nonzero(labels)`` parse then builds ragged
+        groups that index past the doc bank (defect124). Ride twinkle's generic ``micro_batch_plan`` seam
+        so each group-intact micro-batch collates independently.
+        """
+        if self._task_type in self._EMBEDDING_TASK_TYPES and micro_batch_size is not None:
+            groups = self._embedding_micro_batch_plan(inputs, micro_batch_size)
+            kwargs['micro_batch_plan'] = groups
+            return groups
+        return self._micro_batch_groups(len(inputs), micro_batch_size)
+
+    def _embedding_micro_batch_plan(self, inputs: List[InputFeature], micro_batch_size: int) -> List[List[int]]:
+        """Group-intact micro-batch plan: ``micro_batch_size`` counts anchor-led contrastive groups.
+
+        Each flat row carries the scalar anchor mask (1.0 on the anchor, 0.0 on positive/negatives);
+        an anchor starts a group that runs until the next anchor. Whole groups are packed into
+        micro-batches so InfoNCE never sees a torn group.
+        """
+        starts = [i for i, row in enumerate(inputs) if self._is_anchor_label(row.get("labels"))]
+        if not starts:
+            return self._micro_batch_groups(len(inputs), micro_batch_size)
+        if starts[0] != 0:
+            starts = [0] + starts
+        bounds = starts + [len(inputs)]
+        groups = [list(range(bounds[k], bounds[k + 1])) for k in range(len(starts))]
+        return [sum(groups[i:i + micro_batch_size], []) for i in range(0, len(groups), micro_batch_size)]
+
+    @staticmethod
+    def _is_anchor_label(label: Any) -> bool:
+        if label is None:
+            return False
+        if torch.is_tensor(label):
+            label = label.view(-1)
+            return label.numel() > 0 and float(label[0]) == 1.0
+        if isinstance(label, (list, tuple)):
+            return len(label) > 0 and float(label[0]) == 1.0
+        return float(label) == 1.0
 
     def to_transformers_dict(self, inputs: List[InputFeature], **kwargs) -> List[InputFeature]:
         """twinkle's text whitelist plus extra sequence fields and the family's media payload."""

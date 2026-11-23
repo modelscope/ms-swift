@@ -35,7 +35,13 @@ def seed_everything(seed: Optional[int] = None, full_determinism: bool = False) 
 
 
 def _next_output_version(work_dir: str) -> int:
-    if os.path.isdir(work_dir):
+    from swift.dev.utils.storage import Storage, is_remote_url
+
+    if is_remote_url(work_dir):
+        # An oss:// / s3:// output dir versions against the store's own listing.
+        storage = Storage.from_url(work_dir)
+        fnames = [entry.name for entry in storage.iterdir(work_dir)] if storage.is_dir(work_dir) else []
+    elif os.path.isdir(work_dir):
         fnames = os.listdir(work_dir)
     else:
         fnames = []

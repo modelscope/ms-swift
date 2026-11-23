@@ -12,9 +12,10 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 
+from swift.dev.components.base import RecipeComponent
+from swift.dev.recipe.utils import close_driver_preserving_error
 from swift.dev.utils.logger import get_logger
 from swift.dev.utils.scoring import collect
-from swift.dev.components.base import RecipeComponent
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -429,7 +430,7 @@ class InferComponent(RecipeComponent):
                     emit_group(group[0][_ROW_INDEX], group)
                     next_ordinal += 1
         finally:
-            driver.close()
+            close_driver_preserving_error(driver)
         # A group the driver dropped (an episode failed) never arrived; it counts as consumed, so
         # the groups behind it are emitted now, in order.
         for ordinal in range(next_ordinal, max(done, default=next_ordinal - 1) + 1):

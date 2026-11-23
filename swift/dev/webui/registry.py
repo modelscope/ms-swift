@@ -11,7 +11,7 @@ ADVANTAGE_OPTIONS = ('grpo', 'grpo_passk', 'gae', 'rloo', 'remax', 'gpg', 'opo',
 # ``kind`` constructs straight out of that registry (the PPO preset ships kind='ppo'), so this
 # list is its webui-facing mirror, NOT the dev recipe's own loss mapping.
 LOSS_OPTIONS = ('cross_entropy', 'channel', 'mse', 'chunked_cross_entropy', 'grpo', 'ppo',
-                'ppo_value', 'gspo', 'sapo', 'cispo', 'bnpo', 'dr_grpo', 'real', 'gpg',
+                'ppo_value', 'gspo', 'sapo', 'cispo', 'dis', 'bnpo', 'dr_grpo', 'real', 'gpg',
                 'gkd', 'opsd', 'mopd', 'kl_cov', 'clip_cov', 'geo_mean', 'dpo', 'kto',
                 'cpo', 'orpo', 'simpo', 'dro', 'dppo_kl', 'dppo_tv', 'infonce',
                 'online_contrastive', 'cosine_similarity')

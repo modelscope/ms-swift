@@ -1,0 +1,252 @@
+"""RL iteration accounting: actual batches, physical resources, durable records."""
+
+import importlib
+from types import SimpleNamespace as NS
+
+import json
+import pytest
+
+from swift.dev.recipe import utils as batch_metrics
+from swift.dev.recipe.utils import RunTracker
+from tests.v5.component.recipe.test_iteration_metrics import iteration_rows, perf_clock
+
+
+
+def attach_rollout_metrics(state):
+    """Bind RolloutStepState's statistics methods onto a SimpleNamespace test state."""
+    from swift.dev.recipe.utils import RolloutStepState
+
+    for name in ('setup_rollout_metrics', 'begin_rollout_iteration', 'observe_rollout_batch',
+                 'record_rollout_training', 'rollout_memory_metrics', 'fold_iteration_metrics',
+                 'finish_rollout_metrics'):
+        setattr(state, name, getattr(RolloutStepState, name).__get__(state))
+    state._metric_context = {}
+    state._run_metric = None
+    state._completed_batches = state._batch_wall_ns = 0
+    state._rollout_groups = state._trained_samples = 0
+    state._stream_previous = {}
+    state._iteration_started_ns = None
+    state._iteration_facts = None
+    state._memory_rows = None
+
+
+def _noop_handler():
+    """The RL loop dispatches per-step callbacks (mirroring supervised.update_step); these
+    accounting tests only care about the numeric records, so the callbacks are no-ops."""
+    return NS(on_step_begin=lambda: None, on_pre_optimizer_step=lambda: None, on_optimizer_step=lambda: None)
+
+
+def sample(prompt=3, response=2, *, tool=0):
+    ids = list(range(prompt + response + tool))
+    labels = [-100] * prompt + ids[prompt : prompt + response] + [-100] * tool
+    return NS(encoded={"input_ids": ids, "labels": labels[1:] + labels[:1]}, truncated=False)
+
+
+def test_raw_training_metrics_survive_without_reporters_and_resume(tmp_path):
+    for _ in range(2):
+        tracker = RunTracker(None, str(tmp_path))
+        tracker.log({"loss": float("nan"), "train/reward": 2.0}, 1)
+        assert (tmp_path / "metrics_raw.jsonl").exists()
+        tracker.close()
+    rows = [json.loads(line) for line in (tmp_path / "metrics_raw.jsonl").read_text().splitlines()]
+    assert len(rows) == 2 and rows[0]["run_id"] != rows[1]["run_id"]
+    assert rows[0]["attributes"]["non_numeric_values"]["loss"] is None
+    assert rows[0]["values"]["train/reward"] == 2.0
+
+
+def test_raw_optimizer_stream_does_not_replace_webui_records(tmp_path, monkeypatch):
+    from swift.dev.recipe import utils
+
+    monkeypatch.setattr(utils, "is_main_process", lambda: True)
+    tracker = RunTracker(None, str(tmp_path))
+    try:
+        tracker.log({"loss": 0.5}, 1)
+        utils.StepState._write_metrics_jsonl(NS(_output_dir=str(tmp_path)), {"step": 1, "loss": 0.5})
+    finally:
+        tracker.close()
+    assert json.loads((tmp_path / "metrics.jsonl").read_text()) == {"step": 1, "loss": 0.5}
+    assert json.loads((tmp_path / "metrics_raw.jsonl").read_text())["values"] == {"loss": 0.5}
+
+
+def test_raw_training_record_uses_native_normalization_and_preserves_observations(tmp_path):
+    tracker = RunTracker(None, str(tmp_path))
+    try:
+        tracker.log({
+            'loss': float('nan'), 'count': 19, 'scalar': 'tensor(2.5)', 'accuracy': '85.0%',
+            'note': 'pending%', 'details': [1, 2],
+        }, 3)
+    finally:
+        tracker.close()
+    row = json.loads((tmp_path / 'metrics_raw.jsonl').read_text())
+    assert row['optimizer_step'] == 3
+    assert row['values'] == {'count': 19, 'scalar': 2.5, 'accuracy': 85.0}
+    assert row['attributes']['non_numeric_values'] == {'loss': None, 'note': 'pending%', 'details': [1, 2]}
+
+
+def test_actor_memory_sample_precedes_periodic_checkpoint(tmp_path, monkeypatch):
+    mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
+    events = []
+    peak = [2]
+
+    def memory(**kwargs):
+        assert kwargs == {"synchronize": True}
+        events.append("memory")
+        return [{"max_memory_allocated_bytes": peak[0] * 1024**3}]
+
+    model = NS(
+        forward_backward=lambda **kw: None,
+        clip_grad_and_step=lambda **kw: None,
+        memory_stats=memory,
+        device_mesh=NS(data_world_size=1),
+    )
+    state = NS(
+        handler=_noop_handler(),
+        model=model,
+        ga=1,
+        micro_step=0,
+        global_step=0,
+        max_grad_norm=1,
+        is_grad_sync_boundary=lambda: True,
+        reached_max=lambda: False,
+        should_stop=lambda: False,
+    )
+
+    def record(extra_metrics=None):
+        state.global_step += 1
+
+    def tail(**kw):
+        peak[0] = 9
+        events.append("checkpoint")
+
+    state.record = record
+    state.step_tail = tail
+    state.tracker = RunTracker(None, str(tmp_path))
+    attach_rollout_metrics(state)
+    state.setup_rollout_metrics([("trainer", [0])])
+    state.begin_rollout_iteration()
+    state.observe_rollout_batch({'prompt_lengths': [3], 'response_lengths': [2]})
+    monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
+    mod._train_mini_batches(
+        state,
+        NS(num_iterations=1),
+        [sample()],
+        [5],
+        train_batch_size=1,
+        temperature=1,
+    )
+    result = state.rollout_memory_metrics()
+    assert result["perf/max_memory_allocated_gb"] == 2
+    assert events == ["memory", "checkpoint"]  # no post-checkpoint resampling
+    state.tracker.close()
+
+
+def test_dropped_optimizer_tail_does_not_count_as_trained(tmp_path, monkeypatch):
+    mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
+    peak = [0]
+    snapshots = []
+
+    def forward(**kw):
+        peak[0] += 1
+
+    def memory(**kwargs):
+        assert kwargs == {"synchronize": True}
+        snapshots.append(peak[0])
+        return [{"max_memory_allocated_bytes": peak[0] * 1024**3}]
+
+    model = NS(
+        forward_backward=forward,
+        clip_grad_and_step=lambda **kw: None,
+        memory_stats=memory,
+        device_mesh=NS(data_world_size=1),
+    )
+    state = NS(
+        handler=_noop_handler(),
+        model=model,
+        ga=2,
+        micro_step=0,
+        global_step=0,
+        max_grad_norm=1,
+        is_grad_sync_boundary=lambda: state.micro_step % 2 == 0,
+        reached_max=lambda: False,
+        should_stop=lambda: False,
+        step_tail=lambda **kw: None,
+    )
+
+    def record(extra_metrics=None):
+        state.global_step += 1
+
+    state.record = record
+    state.tracker = RunTracker(None, str(tmp_path))
+    attach_rollout_metrics(state)
+    state.setup_rollout_metrics([("trainer", [0])])
+    state.begin_rollout_iteration()
+    state.observe_rollout_batch({'prompt_lengths': [3] * 3, 'response_lengths': [2] * 3})
+    monkeypatch.setattr(mod, "_forward_kwargs", lambda *a, **kw: {})
+    mod._train_mini_batches(
+        state,
+        NS(num_iterations=1),
+        [sample()] * 3,
+        [5] * 3,
+        train_batch_size=1,
+        temperature=1,
+    )
+    assert state.rollout_memory_metrics()["perf/max_memory_allocated_gb"] == 1
+    assert snapshots == [1]
+    assert state._iteration_facts["sample_visits"] == 2
+    assert state._iteration_facts["trained_indices"] == {0, 1}
+    state.tracker.close()
+
+
+def test_fresh_grpo_horizon_counts_first_complete_accumulation_window():
+    from swift.dev.recipe.utils import rollout_step_budget
+
+    assert (
+        rollout_step_budget(
+            num_prompts=40,
+            num_generations=8,
+            train_batch_size=8,
+            gradient_accumulation_steps=8,
+            num_train_epochs=1,
+            generation_batch_size=8,
+        )
+        == 5
+    )
+
+
+def test_failed_optimizer_never_records_a_successful_update(tmp_path, monkeypatch):
+    mod = importlib.import_module("swift.dev.recipe.grpo.run_grpo")
+
+    def failed_step(**kwargs):
+        # clip_grad_and_step is declared sync=True on both model backends, so a worker
+        # failure surfaces AT the call site -- the recipe no longer wraps it in collect().
+        raise RuntimeError("optimizer failed")
+
+    model = NS(
+        device_mesh=NS(data_world_size=1),
+        forward_backward=lambda **kwargs: None,
+        clip_grad_and_step=failed_step,
+    )
+    state = NS(
+        handler=_noop_handler(),
+        model=model,
+        ga=1,
+        global_step=0,
+        micro_step=0,
+        max_grad_norm=1,
+        reached_max=lambda: False,
+        should_stop=lambda: False,
+        record=lambda: pytest.fail("failed optimizer must not advance the step"),
+    )
+    monkeypatch.setattr(mod, "_forward_kwargs", lambda *args, **kwargs: {})
+    with pytest.raises(RuntimeError, match="optimizer failed"):
+        mod._train_mini_batches(
+            state,
+            NS(num_iterations=1),
+            [sample()],
+            [5],
+            train_batch_size=1,
+            temperature=1,
+        )
+    assert state.global_step == state.micro_step == 0
+
+
