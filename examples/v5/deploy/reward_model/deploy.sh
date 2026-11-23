@@ -19,7 +19,7 @@
 #     checkpoint that needs no remote code would deploy fine.
 #
 # The classify client path itself is verified end-to-end by examples/v5/deploy/reranker/client.py (same sampler
-# /twinkle/encode route, same routing headers, correct scores from a real trained checkpoint); this example
+# /twinkle/encode route, same request headers, correct scores from a real trained checkpoint); this example
 # differs only in the causal-backbone runner flag and in sending a full conversation instead of a pair.
 #
 # Run the matching client with:  python examples/v5/deploy/reward_model/client.py

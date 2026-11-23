@@ -7,10 +7,13 @@ client talks to the sampler's own ``/twinkle/encode`` route directly:
 
     {route_prefix}/sampler/{served_model_name}/twinkle/encode
 
-That route runs behind Ray Serve's multiplexed sticky routing, which the gateway normally satisfies by
-injecting routing headers. Hitting the sampler directly, the client must supply them itself;
-``twinkle_client.http.headers.build_routing_headers(sticky_key, auth)`` builds exactly that set (the sticky
-key is the served model name, the auth is the deployment's ``--api_key``).
+Routing is by URL: each served model has its own single-copy sampler mounted at
+``{route_prefix}/sampler/{served_model_name}`` (the old Ray Serve multiplexed sticky routing is gone).
+Hitting the sampler directly, the client only supplies the identity/auth headers the gateway would
+otherwise inject: ``twinkle.protocol.headers.build_request_headers(request_id, 'Bearer ' + api_key)``
+sets ``x-request-id`` (required by the server's auth middleware) and
+``Authorization``/``Twinkle-Authorization`` (the deployment's ``--api_key``). The reply is a TaskEnvelope;
+a completed task carries the per-pair scores under ``result['data']``.
 
 The pair is packed into a single user message because the server runs with ``--use_chat_template false``:
 twinkle then tokenizes the message's raw text, and for the XLM-RoBERTa-based bge-reranker the embedded
@@ -22,18 +25,17 @@ it reads as a 0..1 relevance probability). Run the server first, then:
     python examples/v5/deploy/reranker/client.py
 """
 from __future__ import annotations
-
 import os
 import time
+import uuid
 
 import httpx
-
-from twinkle_client.http.headers import build_routing_headers
+from twinkle.protocol.headers import build_request_headers
 
 # The gateway root INCLUDING its --route_prefix; the sampler hangs off it at /sampler/{MODEL}.
 BASE_URL = os.environ.get('TWINKLE_SERVER_URL', 'http://127.0.0.1:8000/api/v1')
 API_KEY = os.environ.get('TWINKLE_SERVER_TOKEN', 'EMPTY')
-# Must equal the deployment's --served_model_name; also the sticky routing key.
+# Must equal the deployment's --served_model_name; it names the sampler mount and the adapter_name.
 MODEL = os.environ.get('TWINKLE_MODEL', 'reranker')
 
 # bge-reranker is an XLM-RoBERTa cross-encoder: </s> is its segment separator, so q + SEP + SEP + p inside a
@@ -48,7 +50,7 @@ PAIRS = [
 
 def encode_classify(pairs: list[tuple[str, str]]) -> list[float]:
     url = f'{BASE_URL}/sampler/{MODEL}/twinkle/encode'
-    headers = build_routing_headers(MODEL, API_KEY)
+    headers = build_request_headers(uuid.uuid4().hex, f'Bearer {API_KEY}')
     body = {
         'inputs': [{'messages': [{'role': 'user', 'content': f'{q}{PAIR_SEPARATOR}{p}'}]} for q, p in pairs],
         'pooling_params': {'task': 'classify'},
@@ -60,8 +62,9 @@ def encode_classify(pairs: list[tuple[str, str]]) -> list[float]:
     for _ in range(120):
         try:
             resp = httpx.post(url, json=body, headers=headers, timeout=120.0)
-            if resp.status_code == 200:
-                data = resp.json()['data']
+            envelope = resp.json() if resp.status_code == 200 else {}
+            if envelope.get('status') == 'completed':
+                data = envelope['result']['data']
                 return [float(row[0] if isinstance(row, list) else row) for row in data]
             last_err = f'HTTP {resp.status_code}: {resp.text[:300]}'
         except Exception as exc:  # noqa: BLE001 - connection refused while the replica warms up

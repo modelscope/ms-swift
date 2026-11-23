@@ -9,10 +9,11 @@
 # THE CLIENT PATH DIFFERS FROM EMBEDDING. The gateway's OpenAI surface only exposes /embeddings, and that
 # route hardcodes the pooling task to 'embed' (twinkle/server/gateway/openai_bridge.py). There is NO OpenAI
 # endpoint for classify, so a reranker/seq_cls/reward client cannot use the OpenAI SDK. Instead it calls the
-# sampler's own /twinkle/encode route directly with pooling_params {'task': 'classify'}. That route sits
-# behind Ray Serve's multiplexed sticky routing, so the request must carry the routing headers the gateway
-# would otherwise inject -- twinkle_client.http.headers.build_routing_headers(served_name, api_key) builds
-# them (serve_multiplexed_model_id = the served model name). See client.py.
+# sampler's own /twinkle/encode route directly with pooling_params {'task': 'classify'}. Each served model
+# gets its own single-copy sampler mounted at {route_prefix}/sampler/{served_model_name} (the old Ray Serve
+# multiplexed sticky routing is gone), so the request only needs the identity/auth headers the gateway
+# would otherwise inject -- twinkle.protocol.headers.build_request_headers(request_id, 'Bearer ' + api_key)
+# builds them (x-request-id + Authorization/Twinkle-Authorization). See client.py.
 #
 # --use_chat_template false: a cross-encoder has no chat template. With the chat template off, twinkle's
 # template tokenizes a single user message's raw text, so the client packs the pair into one message using

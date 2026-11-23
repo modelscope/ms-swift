@@ -30,7 +30,7 @@ Notes that apply across the tree:
   is on, so the engine crashes at startup otherwise.
 - **classify has no OpenAI endpoint.** The gateway's `/embeddings` hardcodes `task='embed'`, so a reranker /
   seq_cls / reward model is called by hitting the sampler directly at `{route_prefix}/sampler/{name}/twinkle/encode`
-  with `pooling_params={'task': 'classify'}` and multiplex routing headers (see those `client.py`s). The
+  with `pooling_params={'task': 'classify'}` and the request identity/auth headers (see those `client.py`s). The
   sampler replica loads weights lazily, so a client must retry until it answers.
 - Generation knobs (temperature / top_p / max_new_tokens …) are **per request**, not deploy flags — the
   gateway applies each request's own sampling params, so a server-side default is silently ignored.

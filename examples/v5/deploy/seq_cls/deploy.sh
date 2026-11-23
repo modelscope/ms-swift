@@ -9,7 +9,7 @@
 # `swift sft --task_type seq_cls` output checkpoint and set --num_labels to match it.
 #
 # The classify client path itself IS verified end-to-end: examples/v5/deploy/reranker/client.py drives the same
-# sampler /twinkle/encode route with the same routing headers and gets correct, well-separated scores out of
+# sampler /twinkle/encode route with the same request headers and gets correct, well-separated scores out of
 # a real trained checkpoint (bge-reranker-base). This script differs only in --task_type seq_cls, --num_labels
 # and the single-text client input.
 #
@@ -18,8 +18,9 @@
 #     checkpoint is auto-detected by vLLM as a pooling model (no extra engine flag). A causal backbone reused
 #     as a classifier instead needs `--vllm_engine_kwargs '{"runner":"pooling"}'`.
 #   * classify has NO OpenAI gateway endpoint (the gateway's /embeddings hardcodes task='embed'), so the
-#     client calls {route_prefix}/sampler/{served_model_name}/twinkle/encode directly with the Ray Serve
-#     routing headers from twinkle_client.http.headers.build_routing_headers(served_name, api_key).
+#     client calls {route_prefix}/sampler/{served_model_name}/twinkle/encode directly (each served model
+#     gets its own single-copy sampler mount; no more Ray Serve multiplexed sticky routing) with the
+#     identity/auth headers from twinkle.protocol.headers.build_request_headers(request_id, 'Bearer ' + api_key).
 #   * --use_chat_template false makes twinkle tokenize a single user message's raw text, which is what a
 #     plain classifier wants; leave it default for a model that ships its own classification chat template.
 #   * --vllm_enable_prefix_caching false is REQUIRED for any pooling deploy: dev defaults it to true, but
