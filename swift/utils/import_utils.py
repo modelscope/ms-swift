@@ -5,7 +5,7 @@ import importlib.util
 import os
 from itertools import chain
 from types import ModuleType
-from typing import Any
+from typing import Any, Optional
 
 
 def is_vllm_available():
@@ -63,6 +63,31 @@ def is_wandb_available() -> bool:
 
 def is_trl_available() -> bool:
     return importlib.util.find_spec('trl') is not None
+
+
+def get_peft_version_warning() -> Optional[str]:
+    """Return why peft is below transformers' required version, or None.
+
+    transformers keeps the requirement in code (`MIN_PEFT_VERSION`), not in its package metadata,
+    so `pip install -U transformers` never upgrades peft.
+    """
+    import peft
+    import transformers
+    from packaging import version
+
+    if (version.parse(transformers.__version__) >= version.parse('5.24')
+            and version.parse(peft.__version__) < version.parse('0.22')):
+        return (f'transformers {transformers.__version__} requires peft>=0.22.0, but peft '
+                f'{peft.__version__} is installed. Some adapter paths may fail; run '
+                f'`pip install -U "peft>=0.22,<0.23"`.')
+    return None
+
+
+def check_peft_version() -> None:
+    message = get_peft_version_warning()
+    if message is not None:
+        from .logger import get_logger
+        get_logger().warning_once(message)
 
 
 def patch_trl_package_check() -> None:

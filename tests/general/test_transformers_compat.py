@@ -272,5 +272,24 @@ class TestCacheAlias(unittest.TestCase):
                 self.assertEqual(captured['past_key_values'], 'CACHE')
 
 
+class TestNemotronOmniCacheAlias(unittest.TestCase):
+
+    def test_cache_maps_to_past_key_values(self):
+        from swift.model.models.nvidia import _nemotron_omni_forward
+
+        captured = {}
+
+        class FakeModel:
+
+            def _nemotron_omni_original_forward(self, **kwargs):
+                captured.update(kwargs)
+                return 'origin-ok'
+
+        out = _nemotron_omni_forward(FakeModel(), input_ids=torch.tensor([[1]]), cache='CACHE', use_cache=True)
+        self.assertEqual(out, 'origin-ok')
+        self.assertEqual(captured['past_key_values'], 'CACHE')
+        self.assertNotIn('cache', captured)
+
+
 if __name__ == '__main__':
     unittest.main()

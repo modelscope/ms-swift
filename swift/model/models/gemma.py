@@ -17,6 +17,7 @@ from ..patcher import patch_output_to_input_device
 from ..register import ModelLoader, SentenceTransformersLoader, register_model
 
 transformers_5_9 = version.parse(transformers.__version__) >= version.parse('5.9')
+transformers_5_24 = version.parse(transformers.__version__) >= version.parse('5.24')
 
 
 class PaligemmaVisionLoader(ModelLoader):
@@ -293,6 +294,7 @@ def _patch_gemma4_forward(model, processor, is_gemma4_unified: bool = False):
         input_features_mask: torch.Tensor | None = None,
         position_ids: torch.LongTensor | None = None,
         past_key_values=None,
+        cache=None,
         mm_token_type_ids: torch.LongTensor | None = None,
         inputs_embeds: torch.FloatTensor | None = None,
         use_cache: bool | None = None,
@@ -313,6 +315,10 @@ def _patch_gemma4_forward(model, processor, is_gemma4_unified: bool = False):
         """
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError('You must specify exactly one of input_ids or inputs_embeds')
+
+        # transformers>=5.24 renames `past_key_values` to `cache`.
+        if past_key_values is None:
+            past_key_values = cache
 
         image_mask, video_mask, audio_mask = self.get_placeholder_mask(input_ids, inputs_embeds)
         multimodal_mask = image_mask | video_mask | audio_mask
@@ -430,9 +436,10 @@ def _patch_gemma4_forward(model, processor, is_gemma4_unified: bool = False):
                     'config': self.config,
                     'inputs_embeds': inputs_embeds,
                     'attention_mask': attention_mask,
-                    'past_key_values': past_key_values,
                     'position_ids': position_ids,
                 }
+                # transformers>=5.24 renames the masking `past_key_values` argument to `cache`.
+                mask_kwargs['cache' if transformers_5_24 else 'past_key_values'] = past_key_values
                 if bi_vision_attn:
                     from transformers.models.gemma4.modeling_gemma4 import get_block_sequence_ids_for_mask
                     block_sequence_ids = torch.full([*inputs_embeds.size()[:-1]], -1, device=inputs_embeds.device)
@@ -457,14 +464,23 @@ def _patch_gemma4_forward(model, processor, is_gemma4_unified: bool = False):
             **kwargs,
         )
 
-        return Gemma4ModelOutputWithPast(
+        # transformers>=5.24 renames the cache and multimodal output fields.
+        output_kwargs = dict(
             last_hidden_state=outputs.last_hidden_state,
-            past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
-            image_hidden_states=image_features if pixel_values is not None else None,
-            audio_hidden_states=audio_features if input_features is not None else None,
         )
+        if 'cache' in Gemma4ModelOutputWithPast.__dataclass_fields__:
+            output_kwargs.update(
+                cache=outputs.cache,
+                image_outputs=image_features if pixel_values is not None else None,
+                audio_outputs=audio_features if input_features is not None else None)
+        else:
+            output_kwargs.update(
+                past_key_values=outputs.past_key_values,
+                image_hidden_states=image_features if pixel_values is not None else None,
+                audio_hidden_states=audio_features if input_features is not None else None)
+        return Gemma4ModelOutputWithPast(**output_kwargs)
 
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)

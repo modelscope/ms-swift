@@ -167,7 +167,7 @@ def patch_ling3_packing(model):
             use_cache = call.get('use_cache')
             if use_cache is None:
                 use_cache = module.config.use_cache
-            if call.get('past_key_values') is not None or use_cache:
+            if call.get('past_key_values') is not None or call.get('cache') is not None or use_cache:
                 raise ValueError('Ling3 packing requires use_cache=False and no past_key_values')
         record = _PackingRecord(call.get('position_ids'), inputs, params, mask) if params else None
         return args, dict(kwargs, _swift_ling3_packing_record=(owner, record))
