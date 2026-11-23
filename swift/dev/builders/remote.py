@@ -339,10 +339,10 @@ class RemoteWeightSync:
             if tracked:
                 with self._snapshot_lock:
                     self._snapshots[uri] -= 1
-                    reclaim = self._closed
+                    reclaim = self._snapshots[uri] == 0 and (self._closed or uri != self.sampler.adapter_path)
                 if reclaim:
                     with self._publish_lock:
-                        self._reclaim_snapshots()
+                        self._reclaim_snapshots(keep=None if self._closed else self.sampler.adapter_path)
 
     def _note_unknown_sample(self, uri, request_id) -> None:
         with self._snapshot_lock:
@@ -362,16 +362,23 @@ class RemoteWeightSync:
         perf = os.environ.get('TWINKLE_PERF') == '1'
         start = time.perf_counter() if perf else None
         name = f'remote-sampler-weights-{uuid4().hex}' if self._versioned else 'remote-sampler-weights'
-        options = {}
-        if self._versioned:
-            options['on_outcome_unknown'] = lambda request_id: self._pending_saves.__setitem__(name, request_id)
-        response = self.model.save(name, save_optimizer=False, is_sampler=True, **options)
+        save_tracked = getattr(self.model, 'save_tracked', None) if self._versioned else None
+        if save_tracked is not None:
+            response = save_tracked(
+                name,
+                save_optimizer=False,
+                is_sampler=True,
+                on_outcome_unknown=lambda request_id: self._pending_saves.__setitem__(name, request_id),
+            )
+        else:
+            response = self.model.save(name, save_optimizer=False, is_sampler=True)
         if perf:
             logger.info(f'[remote][perf] weight-sync save round-trip {time.perf_counter() - start:.3f}s '
                         f'version={self._version + 1}')
         uri = getattr(response, 'twinkle_path', None)
         if not uri:
             raise ValueError('the remote weight sync got no twinkle:// path back from model.save().')
+        self._pending_saves.pop(name, None)
         with self._snapshot_lock:
             if hasattr(self.sampler, 'adapter_path'):
                 self.sampler.adapter_path = uri
@@ -444,7 +451,8 @@ class RemoteWeightSync:
         for uri, request_ids in unknown_samples:
             for request_id in request_ids:
                 task = self._retrieve_task(request_id)
-                if task is not None and task.status in TERMINAL_STATUSES:
+                if task is not None and task.status in TERMINAL_STATUSES and (
+                        task.status == 'completed' or getattr(task, 'execution_finished', None) is True):
                     with self._snapshot_lock:
                         self._unconfirmed[uri].discard(request_id)
                         if not self._unconfirmed[uri]:
@@ -453,15 +461,25 @@ class RemoteWeightSync:
     def version(self) -> int:
         return self._version
 
-    def close(self) -> None:
-        if self._versioned:
+    def close(self, *, reconcile_timeout: float = 30.0) -> None:
+        import time
+
+        if not self._versioned:
+            return
+        deadline = time.monotonic() + reconcile_timeout
+        while True:
             with self._publish_lock:
                 with self._snapshot_lock:
                     self._closed = True
                 self._reclaim_snapshots()
-                if self._pending_saves or self._unconfirmed:
+                if not self._pending_saves and not self._unconfirmed:
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
                     logger.warning('Keeping remote sampler snapshots with unresolved server tasks: saves=%s, samples=%s',
                                    self._pending_saves, self._unconfirmed)
+                    return
+            time.sleep(min(0.25, remaining))
 
 
 def configure_remote_metric(model: Any, task_type: Optional[str] = None) -> None:
