@@ -533,11 +533,14 @@ def build_model(
     """
     if distributed_config.mode == 'remote':
         from .remote import build_remote_model
+        from swift.dev.config.validate import _changed_fields
 
         for name, value in (('quantize_config', quantize_config),
                             ('megatron_config', megatron_config),
                             ('moe_config', moe_config)):
-            if value is not None:
+            # The CLI always hands down default-empty Config objects; only EXPLICITLY set knobs
+            # would silently die server-side, so refuse those -- a default-empty config carries none.
+            if value is not None and _changed_fields(value):
                 raise ValueError(
                     f'--mode remote ignores {name}: the served engine (quantization, the '
                     'megatron/moe layout) is configured server-side by its deployment, not by '
