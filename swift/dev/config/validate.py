@@ -1095,6 +1095,10 @@ def _check_router_replay(cfg: 'RLConfig') -> None:
         raise ValueError(f'router_replay_mode={mode!r} is GRPO-only: R2/R3 routing replay is driven by '
                          'the GRPO assembler, and the other recipes build their own forward_backward kwargs '
                          'without it. Use rl_type=grpo, or router_replay_mode=disabled.')
+    if cfg.chord_sft_dataset:
+        raise ValueError(f'router_replay_mode={mode!r} is incompatible with CHORD (--chord_sft_dataset): '
+                         'CHORD auxiliary SFT rows carry no expert routing and cannot share the replay '
+                         'forward. Use router_replay_mode=disabled with CHORD, or drop --chord_sft_dataset.')
 
 
 def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'] = None) -> None:
