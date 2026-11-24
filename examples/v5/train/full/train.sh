@@ -4,7 +4,7 @@
 # TunerConfig -- no adapter is built and every weight trains (swift/dev/cli/parser.py:select_tuner). This
 # is the only difference from examples/v5/train/lora/train.sh: drop the LoRA knobs, train the whole model.
 # Full-parameter needs a SMALLER learning rate than LoRA (1e-5 here vs 1e-4 for the adapter), otherwise the
-# pretrained weights are perturbed too hard. The 0.5B model keeps the example light; a real full run usually
+# pretrained weights are perturbed too hard. The 4B model keeps the example light; a real full run usually
 # spans several GPUs (see examples/v5/train/multi-gpu and, for a sharded optimizer, --backend megatron).
 #
 # DATASET CHOICE = VISIBLE CONVERGENCE. `swift/self-cognition` is new knowledge the model must fit, so the
@@ -12,7 +12,8 @@
 # alpaca. Keep --num_train_epochs 3 so the descent completes.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --dataset 'swift/self-cognition#600' \

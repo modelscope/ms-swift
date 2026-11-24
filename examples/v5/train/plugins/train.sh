@@ -11,7 +11,8 @@
 # An eval is configured (eval_strategy/eval_steps + a val split) so the callback's on_evaluate fires.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --external_plugins examples/v5/train/plugins/my_plugin.py \

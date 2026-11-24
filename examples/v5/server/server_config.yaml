@@ -17,10 +17,10 @@
 #                  can be sampled over HTTP without leaving the server.
 #   4. processor - CPU workers that tokenize/encode datasets.
 #
-# Model choice: Qwen2.5-0.5B-Instruct keeps this smokeable on 2 GPUs (1 for the model app,
-# 1 for the sampler). Swap model_id + supported_models + the two route_prefixes together to
-# serve a larger family (e.g. ms://Qwen/Qwen3.5-4B, which also has a dedicated
-# Qwen3_5Template on the client side).
+# Model choice: Qwen3.5-4B (multimodal family, text-only here) with LoRA keeps this smokeable
+# on 2 GPUs (1 for the model app, 1 for the sampler). Swap model_id + supported_models + the two
+# route_prefixes together to serve another family; the client's TWINKLE_TEMPLATE must match
+# (Qwen3.5 uses the dedicated Qwen3_5Template).
 
 proxy_location: EveryNode
 
@@ -49,7 +49,7 @@ applications:
       server_config:
         per_token_model_limit: 3
       supported_models:
-        - Qwen/Qwen2.5-0.5B-Instruct
+        - Qwen/Qwen3.5-4B
     deployments:
       - name: TinkerCompatServer
         max_ongoing_requests: 50
@@ -66,12 +66,12 @@ applications:
   # 2. Trainable model, built through swift's family loader. Single GPU (dp_size 1) is
   #    enough for a 0.5B checkpoint; raise device_group.ranks + device_mesh.fsdp_size
   #    together to shard a larger model.
-  - name: models-Qwen2.5-0.5B-Instruct
-    route_prefix: /api/v1/model/Qwen/Qwen2.5-0.5B-Instruct
+  - name: models-Qwen3.5-4B
+    route_prefix: /api/v1/model/Qwen/Qwen3.5-4B
     import_path: model
     args:
       backend: transformers
-      model_id: "ms://Qwen/Qwen2.5-0.5B-Instruct"
+      model_id: "ms://Qwen/Qwen3.5-4B"
       # The swift family-loader factory: `module:callable`, imported inside the actor and
       # called with model_id. Remove this line to fall back to twinkle's generic AutoModel
       # path (which loses swift's per-family config/quant corrections).
@@ -115,11 +115,11 @@ applications:
 
   # 3. Sampler service - vLLM engine for generation. enable_lora lets a trained adapter be
   #    sampled by URI (see client.py's sampler.sample(adapter_uri=...)).
-  - name: sampler-Qwen2.5-0.5B-Instruct
-    route_prefix: /api/v1/sampler/Qwen/Qwen2.5-0.5B-Instruct
+  - name: sampler-Qwen3.5-4B
+    route_prefix: /api/v1/sampler/Qwen/Qwen3.5-4B
     import_path: sampler
     args:
-      model_id: "ms://Qwen/Qwen2.5-0.5B-Instruct"
+      model_id: "ms://Qwen/Qwen3.5-4B"
       nproc_per_node: 1
       sampler_type: vllm
       engine_args:

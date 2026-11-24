@@ -1,6 +1,6 @@
 # v5 base -> chat: turn a BASE (pretrained, non-instruct) model into a chat model with full-parameter SFT.
 #
-# Qwen/Qwen2.5-0.5B is the raw pretrained base -- it continues text but does not follow the turn-taking chat
+# Qwen/Qwen3.5-4B-Base is the raw pretrained base -- it continues text but does not follow the turn-taking chat
 # format. This example fine-tunes it on conversational data WITH a chat template applied, so it learns the
 # system/user/assistant structure and to emit an end-of-turn. The mechanics that make it "base to chat":
 #   --model points at the BASE checkpoint (not -Instruct),
@@ -14,7 +14,8 @@
 # instruction corpus (e.g. an alpaca-style set) so the model learns general following, not one persona.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B \
+    --model Qwen/Qwen3.5-4B-Base \
+    --attn_impl flash_attention_2 \
     --task_type causal_lm \
     --use_chat_template true \
     --torch_dtype bfloat16 \

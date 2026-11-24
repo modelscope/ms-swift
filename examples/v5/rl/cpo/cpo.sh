@@ -41,11 +41,11 @@
 # to 16 to hold the effective batch.
 #
 # This is a real training scaffold, not a 2-step demo. For a fast smoke run, shrink everything at once: a
-# smaller policy (Qwen/Qwen2.5-0.5B-Instruct), a tiny slice (`#512`), and cap `--max_steps 60`.
+# smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#512`), and cap `--max_steps 60`.
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type cpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
     --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#10000' \
     --tuner lora \
     --lora_rank 8 \

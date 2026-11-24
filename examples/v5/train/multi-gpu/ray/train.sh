@@ -15,7 +15,7 @@
 # for multi-GPU long-sequence training); `--attn_impl eager` is the fallback where flash-attn is absent.
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --attn_impl flash_attention_2 \

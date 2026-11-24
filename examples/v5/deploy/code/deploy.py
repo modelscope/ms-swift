@@ -14,7 +14,7 @@ def build_configs():
     ``api_key`` gates every request with a Bearer token; leaving it None serves unauthenticated, which is
     only safe on a port unreachable from outside the host.
     """
-    model_config = ModelConfig(model='Qwen/Qwen2.5-0.5B-Instruct', torch_dtype='bfloat16')
+    model_config = ModelConfig(attn_impl='flash_attention_2', model='Qwen/Qwen3.5-4B', torch_dtype='bfloat16')
     # An empty TemplateConfig lets the template be resolved from the model; set ``template=`` to pin one.
     template_config = TemplateConfig()
     deploy_config = DeployConfig(

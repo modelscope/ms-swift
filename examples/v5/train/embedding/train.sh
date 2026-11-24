@@ -15,7 +15,7 @@
 # genuinely-similar ones (score >= 0.75) the `positive` subset keeps, so each anchor's partner is a TRUE
 # positive. InfoNCE needs no explicit negatives: it contrasts each anchor against the OTHER rows of the batch
 # (in-batch negatives, all-gathered across ranks). Reference it by the REGISTERED name (`stsb:positive`), not
-# the raw `sentence-transformers/stsb` id, so the InfoNCE preprocessor emits `positive_messages`. The 0.5B LM
+# the raw `sentence-transformers/stsb` id, so the InfoNCE preprocessor emits `positive_messages`. The 4B LM
 # keeps the example light; for a production embedder use a dedicated checkpoint (e.g. Qwen/Qwen3-Embedding-0.6B).
 #
 # ATTENTION BACKEND IS LOAD-BEARING -- keep `--attn_impl flash_attention_2`. Left unset, attn_impl=None and
@@ -34,7 +34,7 @@
 # OFFLINE fallback (no hub): the bundled `examples/v5/train/data/embedding.jsonl`.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
     --task_type embedding \
     --loss infonce \
     --attn_impl flash_attention_2 \

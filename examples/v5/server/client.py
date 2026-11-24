@@ -25,13 +25,13 @@ logger = get_logger()
 
 # Public model name served by this pair; must match server_config.yaml's supported_models
 # and the model/sampler route tails.
-base_model = os.environ.get('TWINKLE_MODEL_ID', 'Qwen/Qwen2.5-0.5B-Instruct')
+base_model = os.environ.get('TWINKLE_MODEL_ID', 'Qwen/Qwen3.5-4B')
 base_url = os.environ.get('TWINKLE_SERVER_URL', 'http://localhost:8000')
 api_key = os.environ.get('TWINKLE_SERVER_TOKEN', 'EMPTY_TOKEN')
 
-# Qwen2.5 has no dedicated twinkle template class (only Qwen3.5 / DeepSeek-V4 do), so use
-# the base 'Template', which renders through the checkpoint's own jinja chat_template.
-template_cls = os.environ.get('TWINKLE_TEMPLATE', 'Template')
+# Qwen3.5 has a dedicated twinkle template class (Qwen3_5Template); the base 'Template' would
+# render through the checkpoint's own jinja chat_template instead.
+template_cls = os.environ.get('TWINKLE_TEMPLATE', 'Qwen3_5Template')
 
 # Multi-LoRA: several named adapters co-resident on one base model. Comma-separated; the
 # smoke shrinks this to a single name and a couple of steps.

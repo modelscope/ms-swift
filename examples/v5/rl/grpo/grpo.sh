@@ -54,11 +54,12 @@
 #
 # This is a real training scaffold (a full pass over a 5000-row slice, --num_train_epochs 1), not a 2-step
 # demo, so it downloads a 7B policy and runs a while. For a fast smoke run, shrink everything at once:
-# a smaller policy (Qwen/Qwen2.5-1.5B-Instruct), a tiny slice (`#64`), and cap `--max_steps 4`.
+# a smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#64`), and cap `--max_steps 4`.
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
     --system "You are a helpful math assistant. Solve the problem step by step and put your final answer within \boxed{}." \
     --tuner lora \

@@ -12,17 +12,18 @@
 # QK-Clip, a from-scratch-pretraining brake (Kimi K2) that rescales the Q/K WEIGHTS by sqrt(tau / peak
 # attention logit) on every step whose peak exceeds `--qk_clip_tau`. dev defaults `--qk_clip_enabled false`
 # so `--optim muon` is plain Muon. Do NOT flip it on for a pretrained model without raising tau: an
-# instruct Qwen2.5 already runs attention logits ~1e3, so the default-scale ceiling trips EVERY step and
+# instruct Qwen models already run attention logits ~1e3 (measured on Qwen2.5), so the default-scale ceiling trips EVERY step and
 # geometrically collapses Q/K (measured: weight norm 60 -> 0.001 in 6 steps, loss 1.8 -> 8, and it does so
 # at lr 1e-5 exactly as at 1e-4 because the rescale never multiplies by lr). Opt in only for from-scratch
 # runs, e.g. `--qk_clip_enabled true --qk_clip_tau 10000` (tau above the model's natural logit scale).
 #
 # DATASET CHOICE = VISIBLE CONVERGENCE. `swift/self-cognition` (not alpaca-gpt4): an already-instruct
-# Qwen2.5-0.5B plateaus at ~1.6 loss on alpaca (no headroom), so the run looks flat; self-cognition is new
+# instruct model plateaus on alpaca (no headroom; measured ~1.6 on the former Qwen2.5-0.5B), so the run looks flat; self-cognition is new
 # knowledge it must fit, so the loss falls clearly. Keep --num_train_epochs 3 so the descent completes.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --dataset 'swift/self-cognition#600' \

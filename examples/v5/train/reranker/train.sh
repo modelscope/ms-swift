@@ -14,7 +14,8 @@
 # (no hub): the bundled `examples/v5/train/data/reranker.jsonl`.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type reranker \
     --loss pointwise_reranker \
     --torch_dtype bfloat16 \

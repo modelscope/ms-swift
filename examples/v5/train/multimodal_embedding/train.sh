@@ -12,12 +12,13 @@
 # The template/model_type are resolved from the checkpoint, so no explicit --template is needed.
 # MAX_PIXELS caps the per-image token budget the vision tower produces. Embedding has no classification
 # head, so LoRA trains cleanly here. For a real run point --dataset at a multimodal retrieval set and
-# use a dedicated multimodal embedding checkpoint (e.g. Qwen/Qwen3-VL-Embedding); the 3B VL model below
-# is the smallest real Qwen2.5-VL and keeps the example self-contained.
+# use a dedicated multimodal embedding checkpoint (e.g. Qwen/Qwen3-VL-Embedding); the 4B model below
+# is the multimodal Qwen3.5 family and keeps the example self-contained.
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/Qwen2.5-VL-3B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type embedding \
     --loss infonce \
     --torch_dtype bfloat16 \

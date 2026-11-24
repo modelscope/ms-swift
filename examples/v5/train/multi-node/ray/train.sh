@@ -38,7 +38,7 @@ RAY_ADDRESS=${RAY_ADDRESS:-auto} \
 NPROC_TOTAL=${NPROC_TOTAL:-4} \
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3} \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --attn_impl flash_attention_2 \

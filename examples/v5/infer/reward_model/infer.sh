@@ -23,7 +23,8 @@
 # variant, identical flags). Shrink only bounded dims for a fast smoke; keep --task_type/--num_labels.
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type seq_cls \
     --num_labels 1 \
     --sampler transformers \

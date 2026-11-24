@@ -21,7 +21,8 @@
 # rather than cutting it: truncating mid-transcript would sever the Action/Observation spans react weights.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --dataset 'iic/ms_agent#2000' \

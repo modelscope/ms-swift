@@ -44,13 +44,14 @@
 # CUDA_VISIBLE_DEVICES and --vllm_gpu_memory_utilization to the cards/memory you actually have.
 #
 # This is a real training scaffold (a full pass over a 5000-row slice). For a fast smoke run shrink the bounded
-# dimensions only: a smaller policy (Qwen/Qwen2.5-0.5B-Instruct), a tiny slice (`#64`), --max_steps 4, a short
+# dimensions only: a smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#64`), --max_steps 4, a short
 # --max_completion_length, and --sandbox_num_envs 1. Keep --max_turns and --tools sandbox -- they are what make
 # the rollout agentic; dropping them collapses it back to the single-turn ../grpo/grpo.sh.
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
     --system "You are a helpful math assistant. You may run Python in a sandbox to verify computations. Put your final answer within \boxed{}." \
     --tuner lora \

@@ -13,10 +13,11 @@
 # over many GPUs (see examples/v5/train/multi-gpu, or --backend megatron for a sharded optimizer).
 #
 # `--tuner full` trains every weight (a None TunerConfig). Continued pretraining uses a small learning rate
-# so the pretrained distribution is not wrecked; 2e-5 is a reasonable single-node value for a 0.5B model.
+# so the pretrained distribution is not wrecked; 2e-5 is a reasonable single-node value for a 4B model.
 CUDA_VISIBLE_DEVICES=0 \
 swift pt \
-    --model Qwen/Qwen2.5-0.5B \
+    --model Qwen/Qwen3.5-4B-Base \
+    --attn_impl flash_attention_2 \
     --torch_dtype bfloat16 \
     --dataset examples/v5/train/data/pretrain.jsonl \
     --tuner full \

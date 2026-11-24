@@ -11,9 +11,10 @@
 # Needs bitsandbytes installed. Single GPU is enough for a model this size.
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --model Qwen/Qwen2.5-1.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --quant_method bnb \
     --quant_bits 4 \
     --bnb_4bit_quant_type nf4 \
     --bnb_4bit_use_double_quant true \
-    --output_dir Qwen2.5-1.5B-Instruct-BNB-NF4
+    --output_dir Qwen3.5-4B-BNB-NF4

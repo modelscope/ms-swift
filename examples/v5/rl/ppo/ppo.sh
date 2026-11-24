@@ -68,14 +68,15 @@
 # reward). Adjust CUDA_VISIBLE_DEVICES and --vllm_gpu_memory_utilization to the cards/memory you actually have.
 #
 # This is a real training scaffold, not a 2-step demo. For a fast smoke run, shrink everything at once: a
-# smaller policy AND reward model (Qwen/Qwen2.5-0.5B-Instruct for both), a tiny slice (`#256`),
+# smaller policy AND reward model (Qwen/Qwen3.5-4B for both), a tiny slice (`#256`),
 # --nproc_per_node 1 (then 2 cards: 1 trainer + 1 reward), --num_generations 2, and cap `--max_steps 4`.
 CUDA_VISIBLE_DEVICES=1,3,5 \
 swift rl \
     --rlhf_type ppo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' \
-    --orm Qwen/Qwen2.5-7B-Instruct \
+    --orm Qwen/Qwen3.5-4B \
     --tuner lora \
     --lora_rank 8 \
     --lora_alpha 32 \

@@ -12,7 +12,8 @@
 # thing it CANNOT do: change the CLI version. resolve_route() decides v4-vs-v5 BEFORE parse_yaml_args runs,
 # so putting the version switch under ENV here is too late -- v5 is the default; train.sh sets
 # CUDA_VISIBLE_DEVICES in the shell, and this file stays pure config.
-model: Qwen/Qwen2.5-0.5B-Instruct
+model: Qwen/Qwen3.5-4B
+attn_impl: flash_attention_2
 task_type: causal_lm
 torch_dtype: bfloat16
 dataset:

@@ -15,7 +15,7 @@
 # On a Hopper box with flash-attn 3 installed, run it as-is and expect the same convergence, faster.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --dataset 'swift/self-cognition#600' \

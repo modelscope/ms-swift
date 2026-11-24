@@ -19,13 +19,14 @@
 # the model's normalized-1000 coordinate space. MAX_PIXELS caps the image resolution fed to the vision tower
 # (lower = faster, coarser boxes).
 #
-# Real inference scaffold, smoke-verified end to end (Qwen2.5-VL-3B-Instruct on vLLM: the animal.png row
+# Real inference scaffold, smoke-verified end to end on the former Qwen2.5-VL-3B (now Qwen3.5-4B): the animal.png row
 # returned 4 distinct animal boxes, cat.png returned 1). For a fast smoke shrink only bounded dims
 # (--vllm_gpu_memory_utilization, MAX_PIXELS, --max_new_tokens, dataset slice); keep --sampler vllm.
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift infer \
-    --model Qwen/Qwen2.5-VL-3B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --sampler vllm \
     --vllm_gpu_memory_utilization 0.9 \
     --dataset examples/v5/infer/data/grounding.jsonl \

@@ -17,7 +17,8 @@
 # --- stage 1: build the cache ---------------------------------------------------------------------
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --dataset 'swift/self-cognition#2000' \
     --split_dataset_ratio 0.02 \
     --to_cached_dataset true \
@@ -28,7 +29,7 @@ swift export \
 # --- stage 2: train from the cache ----------------------------------------------------------------
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --cached_dataset ./self_cognition_cached/train \

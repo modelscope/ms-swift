@@ -22,9 +22,9 @@
 # validator rejects.
 #
 # Teacher selection (every teacher scores the PRIVILEGED view with forward_only; there is no HTTP server):
-#   * SEPARATE FROZEN TEACHER (used here): --teacher_model is a DISTINCT, stronger model (a 7B teacher into a
-#     1.5B student). It is built as a frozen Ray actor on its OWN 'teacher' DeviceGroup, so it needs +1 GPU
-#     beyond the trainer/sampler cards. It MUST share the student's tokenizer (both Qwen2.5 here), since it
+#   * SEPARATE FROZEN TEACHER (used here): --teacher_model is a DISTINCT, stronger model (a 4B teacher into a
+#     4B student). It is built as a frozen Ray actor on its OWN 'teacher' DeviceGroup, so it needs +1 GPU
+#     beyond the trainer/sampler cards. It MUST share the student's tokenizer (both Qwen3.5 here), since it
 #     re-scores the student's own response token ids.
 #   * DISABLE-ADAPTER self-teacher: set --teacher_model == --model with a LoRA student -> the teacher is the
 #     student's own FROZEN BASE (adapter disabled) on the privileged view. A stable target, the paper-following
@@ -61,15 +61,16 @@
 # (disable-adapter / dynamic) drops the third card.
 #
 # This is a real training scaffold (a full pass over a 5000-row slice, --num_train_epochs 1), not a 2-step
-# demo, so it downloads a 7B teacher and a 1.5B student and runs a while. For a fast smoke run, shrink
+# demo, so it downloads a 4B teacher and a 4B student and runs a while. For a fast smoke run, shrink
 # everything at once: a tiny student with a tiny separate teacher of the SAME tokenizer family
-# (--model Qwen/Qwen2.5-0.5B-Instruct --teacher_model Qwen/Qwen2.5-0.5B), a tiny slice (`opsd_numina#16`, or
+# (--model Qwen/Qwen3.5-0.8B --teacher_model Qwen/Qwen3.5-2B), a tiny slice (`opsd_numina#16`, or
 # the offline `opsd_synthetic`), and cap `--max_steps 4`.
 CUDA_VISIBLE_DEVICES=1,3,4 \
 swift rl \
     --rlhf_type opsd \
-    --model Qwen/Qwen2.5-1.5B-Instruct \
-    --teacher_model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --teacher_model Qwen/Qwen3.5-4B \
     --external_plugins examples/v5/rl/opsd/opsd_plugin.py \
     --dataset 'opsd_numina#5000' \
     --tuner lora \

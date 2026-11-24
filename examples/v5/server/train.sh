@@ -7,7 +7,7 @@
 # Env overrides (all optional):
 #   TWINKLE_SERVER_URL   gateway root          (default http://localhost:8000)
 #   TWINKLE_SERVER_TOKEN api key               (default EMPTY_TOKEN)
-#   TWINKLE_MODEL_ID     public model name     (default Qwen/Qwen2.5-0.5B-Instruct)
+#   TWINKLE_MODEL_ID     public model name     (default Qwen/Qwen3.5-4B)
 #   TWINKLE_ADAPTER_NAMES comma-separated LoRA names to train (default assistant,coder)
 #   TWINKLE_MAX_STEPS    optimizer steps per adapter (default 6)
 #   TWINKLE_DATA_SLICE   self-cognition rows   (default 200)
@@ -21,7 +21,7 @@ export TWINKLE_TRUST_REMOTE_CODE=1
 # top-level `twinkle/` package directory cannot shadow the installed one.
 export TWINKLE_SERVER_URL=${TWINKLE_SERVER_URL:-http://localhost:8000}
 export TWINKLE_SERVER_TOKEN=${TWINKLE_SERVER_TOKEN:-EMPTY_TOKEN}
-export TWINKLE_MODEL_ID=${TWINKLE_MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}
+export TWINKLE_MODEL_ID=${TWINKLE_MODEL_ID:-Qwen/Qwen3.5-4B}
 
 # Wait for the gateway to accept connections before firing client calls.
 python - <<'PY'

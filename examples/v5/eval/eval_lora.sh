@@ -10,7 +10,8 @@
 # true`) and point --model at the merged checkpoint without --adapters.
 CUDA_VISIBLE_DEVICES=0 \
 swift eval \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --adapters output/vx-xxx/checkpoint-xxx \
     --sampler vllm \
     --eval_dataset gsm8k \

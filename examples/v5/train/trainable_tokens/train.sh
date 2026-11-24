@@ -4,7 +4,7 @@
 # listed in `--trainable_token_indices` (int token ids) and trains nothing else. It is the standard way to
 # learn embeddings for NEWLY ADDED special tokens: pass --new_special_tokens to extend the vocabulary
 # (dev resizes the embedding), then list the new ids -- they start at the pre-extension tokenizer length
-# (for Qwen2.5-0.5B-Instruct that is 151665, so the first added token is 151665, the next 151666, ...).
+# (for Qwen3.5-4B that is 248077, so the first added token is 248077, the next 248078, ...).
 # --tuner trainable_tokens REQUIRES --trainable_token_indices (dev raises without it).
 #
 # Trainable tokens also ride alongside LoRA: `--tuner lora --trainable_token_indices ...` adapts the model
@@ -13,17 +13,18 @@
 # stay frozen and only the new-token embeddings should move.
 #
 # This runnable demo points the indices at a handful of frequent EXISTING token ids of
-# Qwen2.5-0.5B-Instruct (you=9330, are=546, the=1782, assistant=77091, What=3838, I=40, a=64, to=983) so
+# Qwen3.5-4B (you=9053, are=532, the=1719, assistant=74455, What=3710, I=40, a=64, to=951) so
 # gradients flow and the loss moves without needing a dataset that contains brand-new tokens; swap in your
 # own new-special-token ids for the real workflow.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --dataset 'swift/self-cognition#600' \
     --tuner trainable_tokens \
-    --trainable_token_indices 9330 546 1782 77091 3838 40 64 983 \
+    --trainable_token_indices 9053 532 1719 74455 3710 40 64 951 \
     --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 8 \

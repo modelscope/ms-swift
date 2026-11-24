@@ -23,7 +23,8 @@
 # select the engine and the head.
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --sampler transformers \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
     --max_batch_size 8 \

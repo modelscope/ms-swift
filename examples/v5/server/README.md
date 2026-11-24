@@ -10,7 +10,7 @@ adapters (`assistant`, `coder`) were trained against one resident base and each 
 
 | file | role |
 | --- | --- |
-| `server_config.yaml` | the deployment: gateway + model + sampler + processor apps, `Qwen2.5-0.5B-Instruct`, `max_loras: 4` |
+| `server_config.yaml` | the deployment: gateway + model + sampler + processor apps, `Qwen3.5-4B`, `max_loras: 4` |
 | `serve.sh` | `ray start --head` (idempotent) → `twinkle-server check-config` → `twinkle-server launch`; blocks in the foreground |
 | `train.sh` | waits for the gateway, then runs `client.py` from a neutral cwd |
 | `client.py` | the client half: attach several named LoRA adapters → train each → save → sample base + each adapter |
@@ -29,8 +29,8 @@ bash examples/v5/server/train.sh
 
 Env overrides (all optional, read by `train.sh`/`client.py`): `TWINKLE_SERVER_URL` (default
 `http://localhost:8000`), `TWINKLE_SERVER_TOKEN` (`EMPTY_TOKEN`), `TWINKLE_MODEL_ID`
-(`Qwen/Qwen2.5-0.5B-Instruct`), `TWINKLE_ADAPTER_NAMES` (`assistant,coder`), `TWINKLE_MAX_STEPS` (`6`),
-`TWINKLE_DATA_SLICE` (`200`), `TWINKLE_TEMPLATE` (`Template`).
+(`Qwen/Qwen3.5-4B`), `TWINKLE_ADAPTER_NAMES` (`assistant,coder`), `TWINKLE_MAX_STEPS` (`6`),
+`TWINKLE_DATA_SLICE` (`200`), `TWINKLE_TEMPLATE` (`Qwen3_5Template`).
 
 ## Load-bearing details (why the scripts look the way they do)
 
@@ -51,8 +51,8 @@ Env overrides (all optional, read by `train.sh`/`client.py`): `TWINKLE_SERVER_UR
   snapshot so it works on an offline, modelscope-cached box (`AutoTokenizer.from_pretrained('Qwen/...')`
   would otherwise hit HF hub and fail).
 - **Template namespace is only three classes.** twinkle ships `Template`, `Qwen3_5Template` and
-  `DeepseekV4Template`. Any other family — including `Qwen2.5` here — uses the base `Template`, which
-  renders through the checkpoint's own jinja `chat_template`.
+  `DeepseekV4Template`. `Qwen3.5` here uses the dedicated `Qwen3_5Template`; any other family uses the
+  base `Template`, which renders through the checkpoint's own jinja `chat_template`.
 - **The sampler is vLLM with LoRA enabled** (`enable_lora: true`); `sample(..., adapter_uri=twinkle_path)`
   selects a trained adapter, `adapter_uri=None` samples the base.
 

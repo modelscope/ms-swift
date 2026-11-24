@@ -17,7 +17,8 @@
 # --eval_output_dir is where EvalScope writes reports; --result_jsonl appends one summary row per run.
 CUDA_VISIBLE_DEVICES=0 \
 swift eval \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --sampler vllm \
     --eval_dataset gsm8k \
     --eval_limit 10 \

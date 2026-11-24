@@ -24,9 +24,9 @@
 #
 # Teacher selection (every teacher scores with forward_only; there is NO HTTP server -- server teachers were
 # removed, all-Ray premise):
-#   * SEPARATE FROZEN TEACHER (used here): --teacher_model is a DISTINCT, stronger model (a 7B teacher into a
-#     1.5B student). It is built as a frozen Ray actor on its OWN 'teacher' DeviceGroup, so it needs +1 GPU
-#     beyond the trainer/sampler cards. It MUST share the student's tokenizer (both Qwen2.5 here), since it
+#   * SEPARATE FROZEN TEACHER (used here): --teacher_model is a DISTINCT, stronger model (a 4B teacher into a
+#     4B student). It is built as a frozen Ray actor on its OWN 'teacher' DeviceGroup, so it needs +1 GPU
+#     beyond the trainer/sampler cards. It MUST share the student's tokenizer (both Qwen3.5 here), since it
 #     re-scores the student's own response token ids. A distinct checkpoint also matters for a visible signal:
 #     a self-teacher scores near-identical logits at init, so the divergence -- and the gradient -- starts ~0.
 #   * DISABLE-ADAPTER self-teacher: set --teacher_model == --model with a LoRA student -> the teacher becomes
@@ -83,17 +83,18 @@
 # the third card.
 #
 # This is a real training scaffold (a full pass over a 5000-row slice, --num_train_epochs 1), not a 2-step demo,
-# so it downloads a 7B teacher and a 1.5B student and runs a while. For a fast smoke run, shrink everything at
+# so it downloads a 4B teacher and a 4B student and runs a while. For a fast smoke run, shrink everything at
 # once: a tiny student with a tiny DISTINCT teacher of the SAME tokenizer family (--model
-# Qwen/Qwen2.5-0.5B-Instruct --teacher_model Qwen/Qwen2.5-0.5B), a tiny slice
+# Qwen/Qwen3.5-0.8B --teacher_model Qwen/Qwen3.5-2B), a tiny slice
 # (`AI-ModelScope/alpaca-gpt4-data-zh#256`), --nproc_per_node 1, and cap `--max_steps 4` (with --lmbda 0.5 and
 # the default seed the first four rounds hit BOTH an off-policy and on-policy round, so the smoke exercises the
 # dataset-completion path AND the vLLM rollout + teacher-scoring path).
 CUDA_VISIBLE_DEVICES=1,3,4 \
 swift rl \
     --rlhf_type gkd \
-    --model Qwen/Qwen2.5-1.5B-Instruct \
-    --teacher_model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --teacher_model Qwen/Qwen3.5-4B \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
     --tuner lora \
     --lora_rank 8 \

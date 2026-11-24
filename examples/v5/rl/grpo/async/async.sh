@@ -52,14 +52,15 @@
 # CUDA_VISIBLE_DEVICES, --nproc_per_node and --vllm_tensor_parallel_size to the cards you actually have.
 #
 # This is a real training scaffold (a full pass over a 5000-row slice). For a fast smoke run shrink the
-# bounded dimensions only: a smaller policy (Qwen/Qwen2.5-0.5B-Instruct), a tiny slice (`#64`),
+# bounded dimensions only: a smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#64`),
 # --nproc_per_node 1 (then 2 cards total: 1 trainer + 1 sampler), and --max_steps 4. Keep --async_mode,
 # --vllm_mode disaggregated and --rollout_importance_sampling_mode -- they are the legality-defining flags;
 # dropping them would silently turn this back into the synchronous ../grpo.sh and prove nothing about async.
 CUDA_VISIBLE_DEVICES=1,3,5 \
 swift rl \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
     --system "You are a helpful math assistant. Solve the problem step by step and put your final answer within \boxed{}." \
     --tuner lora \

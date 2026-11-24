@@ -49,11 +49,12 @@
 # CUDA_VISIBLE_DEVICES and --vllm_gpu_memory_utilization to the cards/memory you actually have.
 #
 # This is a real training scaffold, not a 2-step demo. For a fast smoke run, shrink everything at once: a
-# smaller policy (Qwen/Qwen2.5-1.5B-Instruct), a tiny slice (`#64`), --rft_iterations 1, and cap --max_steps 4.
+# smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#64`), --rft_iterations 1, and cap --max_steps 4.
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type rft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --dataset 'AI-MO/NuminaMath-TIR#2000' \
     --system "You are a helpful math assistant. Solve the problem step by step and put your final answer within \boxed{}." \
     --tuner lora \

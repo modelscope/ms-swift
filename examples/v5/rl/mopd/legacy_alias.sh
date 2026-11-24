@@ -17,8 +17,9 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift rl \
     --rlhf_type mopd \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
-    --teacher_model Qwen/Qwen2.5-0.5B-Instruct Qwen/Qwen2.5-0.5B \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --teacher_model Qwen/Qwen3.5-4B Qwen/Qwen3.5-0.8B \
     --teacher_weights 0.6 0.4 \
     --dataset examples/v5/rl/data/legacy_query.jsonl \
     --tuner lora \

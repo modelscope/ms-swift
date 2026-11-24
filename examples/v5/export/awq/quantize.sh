@@ -11,7 +11,8 @@
 # CUDA_VISIBLE_DEVICES='' as below. Requires autoawq installed.
 CUDA_VISIBLE_DEVICES='' \
 swift export \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
     --quant_n_samples 256 \
@@ -19,4 +20,4 @@ swift export \
     --max_length 2048 \
     --quant_method awq \
     --quant_bits 4 \
-    --output_dir Qwen2.5-7B-Instruct-AWQ
+    --output_dir Qwen3.5-4B-AWQ

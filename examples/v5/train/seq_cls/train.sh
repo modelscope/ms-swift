@@ -14,7 +14,8 @@
 # {messages, label} shape).
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type seq_cls \
     --num_labels 2 \
     --problem_type single_label_classification \

@@ -11,10 +11,11 @@
 # an rlhf cache needs rows with `rejected_response`, a kto cache needs a `label`. A cache built for one
 # mode is wrong for the others. (build_template defaults the mode to 'train'; this step overrides it.)
 swift export \
-    --model Qwen/Qwen2.5-1.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
     --dataset_num_proc 64 \
     --split_dataset_ratio 0.01 \
     --to_cached_dataset true \
     --template_mode train \
-    --output_dir ./qwen2_5_cached_dataset
+    --output_dir ./qwen3_5_cached_dataset

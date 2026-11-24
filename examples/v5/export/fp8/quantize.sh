@@ -10,6 +10,7 @@
 # examples/v4/megatron/fp8/quant.sh. Needs compressed-tensors installed.
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
-    --model Qwen/Qwen2.5-3B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --quant_method fp8 \
-    --output_dir Qwen2.5-3B-Instruct-FP8
+    --output_dir Qwen3.5-4B-FP8

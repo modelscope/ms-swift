@@ -11,7 +11,8 @@
 # and `--eval_sampler_backend vllm` to use one. dict-valued Config fields are passed as JSON strings.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \

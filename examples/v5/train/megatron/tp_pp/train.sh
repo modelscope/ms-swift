@@ -5,10 +5,10 @@
 # Megatron mesh is built from the parallel-size flags. Megatron uses its own batch knobs
 # (--micro_batch_size / --global_batch_size) rather than per_device_train_batch_size, and
 # --sequence_parallel here is Megatron's TP-region sequence parallelism (distinct from the transformers
-# Ulysses --sequence_parallel_size). The 0.5B model keeps the example light and locally smoke-testable.
+# Ulysses --sequence_parallel_size). The 4B model keeps the example light and locally smoke-testable.
 #
 # DATASET CHOICE = VISIBLE CONVERGENCE. `swift/self-cognition` (not alpaca-gpt4): an already-instruct
-# Qwen2.5-0.5B plateaus at ~1.6 loss on alpaca (no headroom), so the run looks flat; self-cognition is new
+# instruct model plateaus on alpaca (no headroom; measured ~1.6 on the former Qwen2.5-0.5B), so the run looks flat; self-cognition is new
 # knowledge it must fit, so the loss falls clearly (measured 2.6 -> 0.28 on the transformers path). Keep
 # --num_train_epochs 3 so the descent completes.
 #
@@ -26,7 +26,7 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
     --backend megatron \
-    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --model Qwen/Qwen3.5-4B \
     --dataset 'swift/self-cognition#600' \
     --tuner lora \
     --lora_rank 8 \
