@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from swift.arguments import SftArguments
-from tests.fsdpturbo import test_arguments as argument_tests
+from . import test_arguments as argument_tests
 
 
 @pytest.mark.parametrize('weight_decay', [0.0, 0.2])
