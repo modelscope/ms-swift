@@ -413,5 +413,6 @@ register_template(
         template_cls=Step3VLTemplate,
         default_system=None,
         is_thinking=True,
+        force_thinking=True,
         thinking_prefix='<think>\n',
     ))

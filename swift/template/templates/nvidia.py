@@ -23,6 +23,11 @@ class NemoSpeechLMTemplate(Template):
     placeholder_tokens = ['<|audio|>']
     support_padding_free = False
 
+    def _remove_thinking_content(self, content, thinking_suffix='</think>'):
+        # Keep the whitespace after removed reasoning to match the official template.
+        _, closed, answer = content.rpartition(thinking_suffix)
+        return self.template_meta.history_thinking_prefix + (answer if closed else answer.strip())
+
     def replace_tag(self, media_type, index, inputs):
         if media_type != 'audio':
             raise ValueError(f'Nemotron Transcribe does not support {media_type}.')
@@ -98,6 +103,7 @@ class NemotronHOmniTemplate(Template):
     image_patch = -202
     video_patch = -203
     placeholder_tokens = ['<image>']
+    _remove_thinking_content = NemoSpeechLMTemplate._remove_thinking_content
 
     def __init__(self, *args, enable_thinking=True, **kwargs):
         super().__init__(*args, enable_thinking=True if enable_thinking is None else enable_thinking, **kwargs)
@@ -284,6 +290,8 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        preserve_thinking=False,
+        default_enable_thinking=True,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))
@@ -297,6 +305,8 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        preserve_thinking=False,
+        default_enable_thinking=True,
         stop_words=['<|im_end|>'],
         agent_template='nemotron3_5',
     ))

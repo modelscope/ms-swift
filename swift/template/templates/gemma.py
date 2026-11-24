@@ -254,7 +254,6 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 
 class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
-    non_thinking_prefix_only_after_user = True
     # packing / padding_free: text-only data (checked in `packing_row`). Packed media inputs would need the
     # bidirectional vision mask, which the packed (THD) attention path does not build.
     support_padding_free = True
@@ -282,6 +281,10 @@ class Gemma4Template(Template):
 
     def _add_non_thinking_prefix(self, inputs: StdTemplateInputs, thinking_prefix: str = '<|channel>thought'):
         return super()._add_non_thinking_prefix(inputs, thinking_prefix=thinking_prefix)
+
+    def _is_add_non_thinking_round(self, messages, i, start_idx):
+        return (super()._is_add_non_thinking_round(messages, i, start_idx) and i > 0
+                and (messages[i - 1]['role'] == 'user' or messages[i - 1].get('_tool_user_followup')))
 
     def _remove_thinking_content(self, content: str, thinking_suffix: str = '<channel|>') -> str:
         return super()._remove_thinking_content(content, thinking_suffix=thinking_suffix)

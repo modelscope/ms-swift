@@ -23,7 +23,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import Context, Word, findall
+from ..utils import Context, Word, findall, get_last_user_round
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
@@ -57,7 +57,8 @@ register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
 register_template(
-    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, is_thinking=True, thinking_prefix='<think>\n'))
+    QwenTemplateMeta(
+        LLMTemplateType.qwq, default_system=None, is_thinking=True, force_thinking=True, thinking_prefix='<think>\n'))
 
 
 @dataclass
@@ -66,7 +67,17 @@ class Qwen3MixedTemplateMeta(QwenTemplateMeta):
     non_thinking_prefix: str = '<think>\n\n</think>\n\n'
 
 
-register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, is_thinking=True))
+class Qwen3Template(Template):
+
+    def _non_thinking_prefix_start(self, messages):
+        # Only the final assistant gets the empty block; a trailing user disables it.
+        last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
+        return max(get_last_user_round(messages), last_assistant)
+
+
+register_template(
+    Qwen3MixedTemplateMeta(
+        LLMTemplateType.qwen3, template_cls=Qwen3Template, is_thinking=True, default_enable_thinking=True))
 
 QWEN3_GUARD_TEMPLATE = (
     '<|im_start|>user\n'
@@ -93,7 +104,11 @@ register_template(Qwen3MixedTemplateMeta(
 
 register_template(
     QwenTemplateMeta(
-        LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True, thinking_prefix='<think>\n'))
+        LLMTemplateType.qwen3_thinking,
+        default_system=None,
+        is_thinking=True,
+        force_thinking=True,
+        thinking_prefix='<think>\n'))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
 
@@ -744,6 +759,7 @@ register_template(
         default_system=None,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
+        default_enable_thinking=True,
         agent_template='qwen3_5',
         is_thinking=True))
 
@@ -756,6 +772,7 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n\n',
         agent_template='qwen3_5',
         preserve_thinking=True,
+        default_enable_thinking=True,
         is_thinking=True))
 
 register_template(
@@ -1741,6 +1758,9 @@ class Ovis2_5Template(Template):
     skip_prompt = False
     support_padding_free = True
 
+    def _add_non_thinking_prefix(self, inputs) -> None:
+        pass
+
     def init_env_args(self) -> None:
         super().init_env_args()
         self.min_pixels = get_env_args('min_pixels', int, 448 * 448)
@@ -1846,7 +1866,9 @@ register_template(
         template_cls=Ovis2_5Template,
         default_system=None,
         is_thinking=True,
-    ))
+        # The official jinja only emits the empty think block at the generation prompt.
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        default_enable_thinking=True))
 
 
 @dataclass
