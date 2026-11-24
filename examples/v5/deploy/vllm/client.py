@@ -10,6 +10,7 @@ text, so you actually watch a conversation come back.
 Run the server first (``bash examples/v5/deploy/vllm/deploy.sh``), then:
     python examples/v5/deploy/vllm/client.py
 """
+# MEASURED: client verified against server (2026-11-24)
 from __future__ import annotations
 
 import os

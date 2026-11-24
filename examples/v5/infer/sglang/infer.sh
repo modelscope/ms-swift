@@ -17,6 +17,7 @@
 # SGLang serves pooling tasks too: an embedding / seq_cls / reranker model runs through the engine's encode
 # path -- but a decoder-only reranker (generative_reranker) must NOT be launched with SGLang's embedding
 # flag; it scores via the yes/no generation path instead (see ../reranker/).
+# MEASURED: not run — sglang not installed (2026-11-24)
 CUDA_VISIBLE_DEVICES=0,1 \
 swift infer \
     --model Qwen/Qwen3-8B \

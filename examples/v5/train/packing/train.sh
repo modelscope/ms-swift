@@ -15,6 +15,7 @@
 # --packing_length caps each packed row (keep it <= --max_length). --packing_strategy binpack fills rows
 # greedily (fewest rows); 'sequential' concatenates in dataset order. self-cognition rows are short, so
 # packing shows its value clearly: ~2000 tiny samples collapse into a few hundred dense rows.
+# MEASURED: peak VRAM ~19 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

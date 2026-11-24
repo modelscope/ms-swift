@@ -22,6 +22,7 @@ Contract (see ``swift.dev.utils.plugin.ToolPlugin`` and ``twinkle_agentic.tools.
     model) and ``tool_info() -> {'type': 'function', 'function': {name, description, parameters}}``
     (the OpenAI-shaped schema advertised in the prompt). ``ToolManager`` indexes tools by that name.
 """
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, batch smoke, 1 card(s), 2026-11-24)
 from __future__ import annotations
 import ast
 import operator

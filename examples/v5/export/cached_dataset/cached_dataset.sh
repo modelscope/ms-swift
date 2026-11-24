@@ -10,6 +10,7 @@
 # different cache per objective. Match it to the dataset shape and the training run that will read it:
 # an rlhf cache needs rows with `rejected_response`, a kto cache needs a `label`. A cache built for one
 # mode is wrong for the others. (build_template defaults the mode to 'train'; this step overrides it.)
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, export smoke, 1 card(s), 2026-11-24)
 swift export \
     --model Qwen/Qwen3.5-4B \
     --attn_impl flash_attention_2 \

@@ -13,6 +13,7 @@
 # --num_samples 8 draws a best-of-8 group per prompt; --output_format all stores every candidate plus
 # each channel's score per row (the ranking-only knobs --reward_threshold/--n_best_to_keep apply to
 # 'dpo', not 'all', so they are left unset here).
+# MEASURED: not run — FAIL: PRM needs dedicated DeviceGroup (2026-11-24)
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift infer \
     --model Qwen/Qwen3.5-4B \

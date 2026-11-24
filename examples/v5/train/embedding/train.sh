@@ -32,6 +32,7 @@
 # which makes the contrastive task trivially separable and starves the objective. Keep the batch >= 8 and
 # --learning_rate at 5e-5 (both the reference values).
 # OFFLINE fallback (no hub): the bundled `examples/v5/train/data/embedding.jsonl`.
+# MEASURED: peak VRAM ~3 GiB/card (embeddinggemma-300m, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

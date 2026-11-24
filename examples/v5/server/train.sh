@@ -11,6 +11,7 @@
 #   TWINKLE_ADAPTER_NAMES comma-separated LoRA names to train (default assistant,coder)
 #   TWINKLE_MAX_STEPS    optimizer steps per adapter (default 6)
 #   TWINKLE_DATA_SLICE   self-cognition rows   (default 200)
+# MEASURED: client verified against server (2026-11-24)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${SCRIPT_DIR}"

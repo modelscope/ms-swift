@@ -9,6 +9,7 @@
 # REFERENCE-ONLY: not smoke-run here. DeepSeek-V4-Flash is a multi-hundred-GB MoE; serving it needs a
 # multi-GPU (typically multi-node) vLLM deployment with a large --vllm_tensor_parallel_size and enough
 # aggregate VRAM. The flag shape mirrors the smoke-verified ../../../infer/vllm/infer.sh.
+# MEASURED: not run — weights not cached (12MB stub) (2026-11-24)
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift infer \
     --model deepseek-ai/DeepSeek-V4-Flash \

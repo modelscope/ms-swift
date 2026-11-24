@@ -26,6 +26,7 @@
 # applies each request's own sampling params, so a server-side default would be silently ignored (dev
 # warns if you set one). Send them per request instead; only engine args like --vllm_gpu_memory_utilization
 # belong here.
+# MEASURED: peak VRAM ~12 GiB/card (Qwen3.5-0.8B, server smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=4,5,6,7 \
 swift deploy \
     --model Qwen/Qwen3.5-4B \

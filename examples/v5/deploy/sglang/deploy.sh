@@ -22,6 +22,7 @@
 # here.
 #
 # Run the matching client with:  python examples/v5/deploy/sglang/client.py
+# MEASURED: not run — sglang not installed (2026-11-24)
 CUDA_VISIBLE_DEVICES=0,1 \
 swift deploy \
     --model Qwen/Qwen3-8B \

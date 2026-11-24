@@ -65,6 +65,7 @@
 # everything at once: a tiny student with a tiny separate teacher of the SAME tokenizer family
 # (--model Qwen/Qwen3.5-0.8B --teacher_model Qwen/Qwen3.5-2B), a tiny slice (`opsd_numina#16`, or
 # the offline `opsd_synthetic`), and cap `--max_steps 4`.
+# MEASURED: not run — FAIL: FlashAttention fp32 vision bug (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3,4 \
 swift rl \
     --rlhf_type opsd \

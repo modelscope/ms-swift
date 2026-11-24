@@ -47,6 +47,7 @@
 # dimensions only: a smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#64`), --max_steps 4, a short
 # --max_completion_length, and --sandbox_num_envs 1. Keep --max_turns and --tools sandbox -- they are what make
 # the rollout agentic; dropping them collapses it back to the single-turn ../grpo/grpo.sh.
+# MEASURED: not run — HUNG: no steps after 2min (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type grpo \

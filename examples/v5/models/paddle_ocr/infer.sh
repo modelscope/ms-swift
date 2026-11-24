@@ -12,6 +12,7 @@
 #
 # REFERENCE-ONLY: model_type verified against the loader registry; not smoke-run here (see train.sh).
 # Requires transformers>=5.0. vLLM engine flag reference: ../../../infer/vllm/infer.sh.
+# MEASURED: not run — FAIL: vLLM spatial_merge_size AttributeError (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model PaddlePaddle/PaddleOCR-VL-1.6 \

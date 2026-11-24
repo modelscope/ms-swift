@@ -42,6 +42,7 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
     write_ckpt_args_json,
 )
+# MEASURED: not run — FAIL: plugin module not found in ray worker (2026-11-24)
 
 
 def build_configs() -> dict:

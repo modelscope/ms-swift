@@ -5,6 +5,7 @@
 # FastAPI. --task_type embedding selects the embedding (pooling) forward: the server exposes the
 # OpenAI /embeddings surface; vLLM auto-detects the pooling runner from the checkpoint. The 300M
 # model keeps the example light; swap in a larger embedding model for a real deployment.
+# MEASURED: not run — FAIL: _roll_labels shift + 404 sampler routing (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
     --model google/embeddinggemma-300m \

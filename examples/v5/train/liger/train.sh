@@ -4,6 +4,7 @@
 # place via twinkle.kernel.kernelize. Adding `fused_linear_cross_entropy` to `--liger_kernel_config`
 # (a JSON object) additionally fuses the lm_head GEMM into the loss, so the forward never materialises
 # the full-vocab logits -- a large memory win. dict-valued Config fields are passed as a JSON string.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

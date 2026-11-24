@@ -12,6 +12,7 @@
 # DATASET: self-cognition is used here only because it is small and cached, so the smoke is fast; it teaches
 # the chat FORMAT plus a narrow identity. For a real base->chat conversion point --dataset at a broad
 # instruction corpus (e.g. an alpaca-style set) so the model learns general following, not one persona.
+# MEASURED: peak VRAM ~9 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B-Base \

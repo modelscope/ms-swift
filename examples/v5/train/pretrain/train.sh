@@ -14,6 +14,7 @@
 #
 # `--tuner full` trains every weight (a None TunerConfig). Continued pretraining uses a small learning rate
 # so the pretrained distribution is not wrecked; 2e-5 is a reasonable single-node value for a 4B model.
+# MEASURED: peak VRAM ~9 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift pt \
     --model Qwen/Qwen3.5-4B-Base \

@@ -14,6 +14,7 @@
 # ModelScope/HF first) and is not cached on this box; the family also `requires` transformers>=5.10.1 for
 # the unified variant. model_type is verified against swift/dev/model/loader/gemma.py; the multimodal LoRA
 # flag set mirrors the smoke-verified examples/v5/train/multi-modal/train.sh.
+# MEASURED: not run — model not cached (2026-11-24)
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \

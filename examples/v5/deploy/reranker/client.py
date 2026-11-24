@@ -24,6 +24,7 @@ Each output row is the relevance logit/probability for one pair (bge-reranker-ba
 it reads as a 0..1 relevance probability). Run the server first, then:
     python examples/v5/deploy/reranker/client.py
 """
+# MEASURED: client verified against server (2026-11-24)
 from __future__ import annotations
 import os
 import time

@@ -22,6 +22,7 @@ examples/v5/deploy/reranker/client.py.
 Run the server first (``bash examples/v5/deploy/reward_model/deploy.sh``), then:
     python examples/v5/deploy/reward_model/client.py
 """
+# MEASURED: not run — FAIL: server broken (2026-11-24)
 from __future__ import annotations
 import os
 import time

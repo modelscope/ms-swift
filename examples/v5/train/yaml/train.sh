@@ -6,5 +6,6 @@
 # by the environment the process starts in (v5 is the default), before the yaml is parsed.
 #
 # Run from the repository root (the yaml path, like every examples/ path, is repo-root-relative).
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft examples/v5/train/yaml/sft.yaml

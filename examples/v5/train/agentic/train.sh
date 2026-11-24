@@ -19,6 +19,7 @@
 # ms_agent transcripts are long (the system prompt embeds every tool's schema, and observations carry
 # full tool output), so max_length is 4096 and --truncation_strategy delete drops the rare longer row
 # rather than cutting it: truncating mid-transcript would sever the Action/Observation spans react weights.
+# MEASURED: peak VRAM ~7 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

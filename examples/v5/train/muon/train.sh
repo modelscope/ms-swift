@@ -20,6 +20,7 @@
 # DATASET CHOICE = VISIBLE CONVERGENCE. `swift/self-cognition` (not alpaca-gpt4): an already-instruct
 # instruct model plateaus on alpaca (no headroom; measured ~1.6 on the former Qwen2.5-0.5B), so the run looks flat; self-cognition is new
 # knowledge it must fit, so the loss falls clearly. Keep --num_train_epochs 3 so the descent completes.
+# MEASURED: peak VRAM ~8 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

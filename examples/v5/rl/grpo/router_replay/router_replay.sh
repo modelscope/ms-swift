@@ -52,6 +52,7 @@
 # (`#64`), --max_steps 4, a short --max_completion_length, and fewer --nproc_per_node. Keep
 # --router_replay_mode and the attention-only --target_modules -- they are the legality-defining flags; the
 # MoE model itself CANNOT be shrunk (the expert routing IS the feature), so this example needs a real MoE.
+# MEASURED: not run — FAIL: vLLM sampler OOM (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,2,3,4 \
 swift rl \
     --rlhf_type grpo \

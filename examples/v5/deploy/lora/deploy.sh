@@ -12,6 +12,7 @@
 # OpenAI SDK. route_prefix is /api/v1 (not /v1) so the token-in-token-out twinkle_client resolves too.
 #
 # Run the matching client with:  python examples/v5/deploy/lora/client.py
+# MEASURED: peak VRAM ~5 GiB/card (Qwen3.5-0.8B merged, server smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
     --adapters swift/test_lora \

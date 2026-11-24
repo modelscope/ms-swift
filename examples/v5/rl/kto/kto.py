@@ -48,6 +48,7 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
     write_ckpt_args_json,
 )
+# MEASURED: not run — FAIL: TypeError len() of 0-d tensor in _project_collected (2026-11-24)
 
 
 def build_configs() -> dict:

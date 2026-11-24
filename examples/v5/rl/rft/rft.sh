@@ -50,6 +50,7 @@
 #
 # This is a real training scaffold, not a 2-step demo. For a fast smoke run, shrink everything at once: a
 # smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#64`), --rft_iterations 1, and cap --max_steps 4.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 2-step smoke, 2 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type rft \

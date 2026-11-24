@@ -7,6 +7,7 @@
 #
 # REFERENCE-ONLY: not smoke-run here. openai-mirror/gpt-oss-20b is not cached on this box (~42GB). The
 # flag shape mirrors the smoke-verified ../../../infer/vllm/infer.sh.
+# MEASURED: not run — kernels not installed (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model openai-mirror/gpt-oss-20b \

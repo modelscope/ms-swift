@@ -14,6 +14,7 @@
 # Launch under torchrun: NPROC_PER_NODE drives the world size.
 
 # safetensors -> torch_dist
+# MEASURED: peak VRAM ~30 GiB/card (Qwen3-30B-A3B, convert smoke, 4 card(s), 2026-11-24)
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift export \

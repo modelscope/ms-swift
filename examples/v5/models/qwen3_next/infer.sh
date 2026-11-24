@@ -7,6 +7,7 @@
 #
 # REFERENCE-ONLY: not smoke-run here. Qwen3-Next-80B-A3B (80B total weights) needs multi-GPU VRAM even
 # with 3B active; a single box cannot hold it in bf16. The flag shape mirrors ../../../infer/vllm/infer.sh.
+# MEASURED: not run — model not cached (2026-11-24)
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift infer \
     --model Qwen/Qwen3-Next-80B-A3B-Instruct \

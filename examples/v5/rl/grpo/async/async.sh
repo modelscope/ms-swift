@@ -56,6 +56,7 @@
 # --nproc_per_node 1 (then 2 cards total: 1 trainer + 1 sampler), and --max_steps 4. Keep --async_mode,
 # --vllm_mode disaggregated and --rollout_importance_sampling_mode -- they are the legality-defining flags;
 # dropping them would silently turn this back into the synchronous ../grpo.sh and prove nothing about async.
+# MEASURED: not run — FAIL: needs 3 cards (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3,5 \
 swift rl \
     --rlhf_type grpo \

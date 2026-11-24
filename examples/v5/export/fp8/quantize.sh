@@ -8,6 +8,7 @@
 # Due to the structural changes made to the MoE architecture in transformers>=5.0, if you need FP8 on a
 # MoE model, use `swift export --backend megatron` instead (compatible with vLLM inference). See
 # examples/v4/megatron/fp8/quant.sh. Needs compressed-tensors installed.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, export smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen3.5-4B \

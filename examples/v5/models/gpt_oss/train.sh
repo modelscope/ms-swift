@@ -13,6 +13,7 @@
 # REFERENCE-ONLY: not smoke-run here. openai-mirror/gpt-oss-20b is not cached on this box (a ~42GB
 # download). model_type is verified against swift/dev/model/loader/llm.py; the MoE LoRA flag set mirrors
 # the smoke-verified examples/v5/train/lora/train.sh plus the router aux-loss knob.
+# MEASURED: not run — kernels not installed (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model openai-mirror/gpt-oss-20b \

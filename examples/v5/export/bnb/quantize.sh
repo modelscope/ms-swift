@@ -9,6 +9,7 @@
 # --quant_bits is required for every method except fp8. --safe_serialization / --max_shard_size are the
 # CheckpointConfig save knobs and DO apply here (e.g. --max_shard_size 200MB shards the weights).
 # Needs bitsandbytes installed. Single GPU is enough for a model this size.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, export smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen3.5-4B \

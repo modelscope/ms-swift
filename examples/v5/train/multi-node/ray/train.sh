@@ -34,6 +34,7 @@
 # SDPA path picks a cuDNN attention kernel whose bf16 backward returns NaN on longer rows -- clean
 # through ~step 25, then grad_norm goes non-finite and loss becomes nan. FA2 avoids it (and is standard
 # for multi-node long-sequence training); `--attn_impl eager` is the fallback where flash-attn is absent.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 2 card(s), 2026-11-24)
 RAY_ADDRESS=${RAY_ADDRESS:-auto} \
 NPROC_TOTAL=${NPROC_TOTAL:-4} \
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3} \

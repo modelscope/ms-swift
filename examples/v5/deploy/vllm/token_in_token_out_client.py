@@ -18,6 +18,7 @@ The multi-turn conversation and the training step stay here in the client; the s
 request. The template is already pinned server-side from ``TemplateConfig``, so the client does NOT call
 ``set_template``.
 """
+# MEASURED: client verified against server (2026-11-24)
 from __future__ import annotations
 
 import asyncio

@@ -14,6 +14,7 @@
 # head, so LoRA trains cleanly here. For a real run point --dataset at a multimodal retrieval set and
 # use a dedicated multimodal embedding checkpoint (e.g. Qwen/Qwen3-VL-Embedding); the 4B model below
 # is the multimodal Qwen3.5 family and keeps the example self-contained.
+# MEASURED: peak VRAM ~12 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \

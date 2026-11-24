@@ -40,6 +40,7 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
     write_ckpt_args_json,
 )
+# MEASURED: peak VRAM ~3 GiB/card (embeddinggemma-300m, 4-step smoke, 1 card(s), 2026-11-24)
 
 
 def build_configs() -> dict:

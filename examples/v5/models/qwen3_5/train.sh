@@ -16,6 +16,7 @@
 # slice #2000 -> #16, --max_steps 3, --logging_steps 1, single GPU); swift resolved model_type qwen3_5
 # (agent_template qwen3_5), the vision tower loaded frozen under flash_attention_2, and the loss fell
 # 2.69 -> 2.16 -> 0.89 over the 3 steps (eval_loss 0.55) -- a real multimodal SFT descent.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \

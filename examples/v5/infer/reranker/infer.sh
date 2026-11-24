@@ -22,6 +22,7 @@
 #
 # Real inference scaffold, smoke-verified end to end. For a fast smoke keep --task_type/--sampler and shrink
 # only the bounded dims (dataset slice, --max_batch_size, a smaller reranker variant).
+# MEASURED: peak VRAM ~2 GiB/card (bge-reranker-base, batch smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model BAAI/bge-reranker-base \

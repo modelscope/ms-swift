@@ -3,6 +3,7 @@ from twinkle.server import launch_server  # noqa: E402
 
 from swift.dev.config import DeployConfig, DistributedConfig, ModelConfig, TemplateConfig  # noqa: E402
 from swift.dev.recipe.infer.run_deploy import build_server_config  # noqa: E402
+# MEASURED: peak VRAM ~12 GiB/card (Qwen3.5-0.8B, server smoke, 1 card(s), 2026-11-24)
 
 
 def build_configs():

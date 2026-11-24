@@ -20,6 +20,7 @@
 #
 # A single card is enough here: both rewards are pure FUNCTIONS (no GPU-resident reward model), so no
 # dedicated DeviceGroup and no --mode ray are needed. Swap `--sampler` back to `vllm` for throughput.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, batch smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model Qwen/Qwen2.5-0.5B-Instruct \

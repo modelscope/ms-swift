@@ -12,6 +12,7 @@
 # ones), exactly the pointwise_reranker layout. Reference it by the REGISTERED name (`scidocs-reranking`), NOT
 # the raw `MTEB/scidocs-reranking` id, so the reranking preprocessor emits those two columns. OFFLINE fallback
 # (no hub): the bundled `examples/v5/train/data/reranker.jsonl`.
+# MEASURED: peak VRAM ~7 GiB/card (bge-reranker-base, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

@@ -29,6 +29,7 @@
 # runs one forward and reuses no KV across steps, so prefix caching buys nothing here anyway.
 #
 # Run the matching client with:  python examples/v5/deploy/reranker/client.py
+# MEASURED: peak VRAM ~2 GiB/card (bge-reranker-base, server smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
     --model BAAI/bge-reranker-base \

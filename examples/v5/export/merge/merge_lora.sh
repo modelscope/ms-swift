@@ -10,6 +10,7 @@
 # (huggingface/peft#2321), and dev reads no load-time quantization off this path, so no explicit clearing
 # is needed. The output defaults to `{adapter}-merged`; --output_dir overrides it and an existing directory
 # is left untouched unless --replace_if_exists. --safe_serialization / --max_shard_size control the write.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, export smoke, 1 card(s), 2026-11-24)
 swift merge \
     --adapters output/vx-xxx/checkpoint-xxx \
     --replace_if_exists false

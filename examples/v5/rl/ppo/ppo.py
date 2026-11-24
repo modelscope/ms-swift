@@ -72,6 +72,7 @@ from swift.dev.recipe.utils import (
     stream_batch_size,
 )
 from twinkle.metric import CompletionRewardMetric
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 2-step smoke, 2 card(s), 2026-11-24)
 
 
 def build_configs() -> dict:

@@ -9,6 +9,7 @@
 # length, --group_size weights per scale. Device placement is the runtime's business (--device_map is
 # retired); to keep a large model off the GPU during the (slow) calibration pass, run with
 # CUDA_VISIBLE_DEVICES='' as below. Requires autoawq installed.
+# MEASURED: not run — autoawq not installed (2026-11-24)
 CUDA_VISIBLE_DEVICES='' \
 swift export \
     --model Qwen/Qwen3.5-4B \

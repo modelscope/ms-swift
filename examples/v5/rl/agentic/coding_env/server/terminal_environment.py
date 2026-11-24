@@ -9,6 +9,7 @@ combined output, truncated to keep one verbose command from eating the episode's
 context. The episode never ends from the environment side (``done=False``): turn
 count is the rollout's ``max_turns`` knob.
 """
+# MEASURED: not run — coding_env module not installed (2026-11-24)
 import os
 import shlex
 import subprocess

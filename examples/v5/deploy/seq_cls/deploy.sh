@@ -28,6 +28,7 @@
 #     groups" on a single-group pooling model and the engine dies at startup.
 #
 # Run the matching client with:  python examples/v5/deploy/seq_cls/client.py
+# MEASURED: not run — FAIL: text input type error in encode (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
     --model /path/to/your/seq_cls-checkpoint \

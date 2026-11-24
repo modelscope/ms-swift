@@ -7,6 +7,7 @@
 # selects that family and --template custom_im its chat format. This is the v5 replacement for legacy's
 # custom register_model/register_template scripts: the file is imported through the same
 # --external_plugins entry point as every other plugin (no separate custom_register_path flag any more).
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --external_plugins examples/v5/train/custom/model_template/model.py \

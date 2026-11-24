@@ -15,6 +15,7 @@
 # --attn_impl flash_attention_2 is required: only the varlen flash kernel consumes the packed position_ids and
 # enforces the block-diagonal mask. Like packing, padding_free is causal_lm-only -- pooled tasks
 # (embedding/reranker/seq_cls) cannot recover per-sequence pooling boundaries from a flattened row.
+# MEASURED: peak VRAM ~4 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

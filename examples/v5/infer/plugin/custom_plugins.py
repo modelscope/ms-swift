@@ -32,6 +32,7 @@ Two things are deliberately NOT here:
     an unknown name raises rather than importing a file. There is no metric selector dev reads at all.
     So there is nothing to register for them, and no honest example to write.
 """
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, batch smoke, 1 card(s), 2026-11-24)
 from __future__ import annotations
 
 import asyncio

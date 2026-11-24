@@ -28,6 +28,7 @@
 # offload it to CPU with --optimizer_cpu_offload true --optimizer_offload_fraction 1. Resources: the ep4 x
 # 4-GPU layout here fits Qwen3-30B-A3B with LoRA + full recompute on ~40GB-class GPUs; a 235B/671B MoE needs
 # a multi-node cluster.
+# MEASURED: peak VRAM ~30 GiB/card (Qwen3-30B-A3B, 4-step smoke, 4 card(s), 2026-11-24)
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \

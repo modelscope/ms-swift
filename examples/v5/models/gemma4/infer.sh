@@ -7,6 +7,7 @@
 #
 # REFERENCE-ONLY: not smoke-run here. google/gemma-4-* is GATED and not cached on this box; accept the
 # license and download it first. The flag shape mirrors ../../../infer/vllm/infer.sh.
+# MEASURED: not run — model not cached (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model google/gemma-4-E2B-it \

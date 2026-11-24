@@ -8,6 +8,7 @@
 # training reads them, so export and training push identically.
 #
 # Replace <model-id> / <sdk-token> before running. --use_hf false targets ModelScope (the default).
+# MEASURED: not run — no hub token (2026-11-24)
 swift export \
     --adapters output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \

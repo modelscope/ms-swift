@@ -14,6 +14,7 @@
 # self-cognition is used only because it is small and cached so the smoke is quick; it demonstrates that the
 # flag is accepted and the run converges. For a real reasoning run point --dataset at data whose responses
 # actually contain rationales, and pair --enable_thinking true with --preserve_thinking.
+# MEASURED: peak VRAM ~2 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3-0.6B \

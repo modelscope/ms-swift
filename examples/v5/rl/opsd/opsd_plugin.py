@@ -21,6 +21,7 @@ opsd_numina`` (or ``opsd_synthetic``) -- the ``dataset_type`` each loader regist
 ``OPSDNuminaLoader`` at another hub dataset by changing its ``datasets`` id and the two column names
 ``_numina_row`` reads, to distil from any problem/solution corpus.
 """
+# MEASURED: not run — FAIL: FlashAttention fp32 vision bug (2026-11-24)
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional

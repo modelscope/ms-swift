@@ -24,6 +24,7 @@ ModelConfig/LoRA/pooling knob mapping, so this class owns its own knob vocabular
 data parallelism; ``remote_group`` names the twinkle DeviceGroup to place the engine in under ``mode='ray'``
 (omitted in local mode); ``template`` is the run's template (omitted when there is none).
 """
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, batch smoke, 1 card(s), 2026-11-24)
 from __future__ import annotations
 
 import logging

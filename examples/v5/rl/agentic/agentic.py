@@ -64,6 +64,7 @@ from swift.dev.recipe.utils import (
 )
 from swift.dev.utils.scoring import copy_inputs
 from twinkle.metric import CompletionRewardMetric
+# MEASURED: not run — HUNG: no steps after 2min (2026-11-24)
 
 
 def build_configs() -> dict:

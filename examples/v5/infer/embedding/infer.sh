@@ -18,6 +18,7 @@
 # Real inference scaffold, smoke-verified end to end. For a fast smoke keep --task_type/--sampler and shrink
 # only the bounded dims (dataset slice, --max_batch_size). Swap --model for any registered embedding model
 # (e.g. a Qwen3-Embedding variant); a bigger hidden_size just widens the output vector.
+# MEASURED: peak VRAM ~3 GiB/card (embeddinggemma-300m, batch smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model google/embeddinggemma-300m \

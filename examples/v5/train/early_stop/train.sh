@@ -19,6 +19,7 @@
 #                                                load_best_model_at_end raise FileNotFoundError.
 # --split_dataset_ratio carves the val set the eval loss is computed on. num_train_epochs is set high on
 # purpose: early stopping is expected to cut the run well short of it.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

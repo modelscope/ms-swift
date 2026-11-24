@@ -13,6 +13,7 @@
 # REFERENCE-ONLY: not smoke-run here. The family `requires` the `qwen-tts` package (Qwen3TTSConfig /
 # Qwen3TTSTokenizer / the 12Hz codec), which is NOT installed on this box, and the checkpoint is not
 # cached. Install qwen-tts, run prepare_data.py, then this script as-is; the 1.7B base fits ~2 GPUs.
+# MEASURED: not run — qwen-tts not installed (2026-11-24)
 SPEAKER_NAME='speaker_test' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \

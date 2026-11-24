@@ -21,6 +21,7 @@
 #
 # Real inference scaffold; the seq_cls+num_labels=1 reward path is smoke-verified (a smaller Qwen2.5-0.5B
 # variant, identical flags). Shrink only bounded dims for a fast smoke; keep --task_type/--num_labels.
+# MEASURED: peak VRAM ~7 GiB/card (internlm2-1_8b-reward, batch smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model Qwen/Qwen3.5-4B \

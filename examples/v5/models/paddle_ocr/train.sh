@@ -14,6 +14,7 @@
 # REFERENCE-ONLY: model_type verified against the loader registry; the flag set ports the legacy
 # recipe (examples/v4/models/paddle_ocr/train.sh) to v5 flag names but was not parse/smoke-verified
 # here. The ~1.9GB checkpoint is small enough to smoke on one card when a run is wanted.
+# MEASURED: peak VRAM ~3 GiB/card (PaddleOCR-VL-1.6, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model PaddlePaddle/PaddleOCR-VL-1.6 \

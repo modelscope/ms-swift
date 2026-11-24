@@ -63,6 +63,7 @@
 # This is a real training scaffold (a full pass over a 10000-row slice), not a 2-step demo, so it downloads a
 # 7B policy and runs a while. For a fast smoke run, shrink everything at once: a smaller policy
 # (Qwen/Qwen3.5-4B), a tiny slice (`#512`), and cap `--max_steps 60`.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type dpo \

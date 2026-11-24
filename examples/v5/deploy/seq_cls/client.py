@@ -23,6 +23,7 @@ to its class names) before running -- a base encoder's random head yields meanin
 Run the server first (``bash examples/v5/deploy/seq_cls/deploy.sh``), then:
     python examples/v5/deploy/seq_cls/client.py
 """
+# MEASURED: not run — FAIL: server broken (2026-11-24)
 from __future__ import annotations
 import os
 import time

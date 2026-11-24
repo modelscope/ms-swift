@@ -10,6 +10,7 @@
 #
 # Multi-GPU is vLLM TP=2 (dp=1), which the interactive guard allows; --sandbox_num_envs 1 leases a
 # single workspace to the one interactive conversation.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, batch smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=4,5,6,7 \
 swift infer \
     --model Qwen/Qwen3.5-4B \

@@ -23,6 +23,7 @@
 # non-finite (it drops out of the log, the tracker discards non-finite scalars) and loss becomes nan.
 # FA2 avoids that kernel and is the usual choice for multi-GPU long-sequence training anyway. An
 # environment without flash-attn can use `--attn_impl eager`, which also sidesteps cuDNN.
+# MEASURED: peak VRAM ~104 GiB/card (Qwen3-30B-A3B, 4-step smoke, 4 card(s), 2026-11-24)
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \

@@ -39,6 +39,7 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
     write_ckpt_args_json,
 )
+# MEASURED: not run — FAIL: tuner='full' not supported (2026-11-24)
 
 
 def build_configs() -> dict:

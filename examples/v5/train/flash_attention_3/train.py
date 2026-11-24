@@ -38,6 +38,7 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
     write_ckpt_args_json,
 )
+# MEASURED: not run — flash_attn_3 not installed (2026-11-24)
 
 
 def build_configs() -> dict:

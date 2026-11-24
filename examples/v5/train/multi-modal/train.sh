@@ -10,6 +10,7 @@
 # is the multimodal Qwen3.5 family; swap in the 9B for a production run. OFFLINE fallback (no hub): the bundled
 # `examples/v5/train/data/vl.jsonl` -- a `messages` turn with an `<image>` placeholder + a parallel `images`
 # list of the canonical ms-swift sample image URLs.
+# MEASURED: peak VRAM ~4 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \

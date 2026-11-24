@@ -70,6 +70,7 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
 )
 from swift.dev.utils.scoring import copy_inputs, weighted_rewards
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 2-step smoke, 2 card(s), 2026-11-24)
 
 
 def build_configs() -> dict:

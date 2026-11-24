@@ -20,6 +20,7 @@
 # which streamed row is too long. So `--truncation_strategy delete` drops any row exceeding `--max_length`
 # instead of crashing (alternatives: 'left'/'right' truncate, 'split' chunks it). max_length is set to 4096 to
 # keep most rows and delete only the rare longer one.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

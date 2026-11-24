@@ -15,6 +15,7 @@
 # EvalScope GenerateConfig fields), NOT the infer/deploy decoding flags.
 #
 # --eval_output_dir is where EvalScope writes reports; --result_jsonl appends one summary row per run.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, eval smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift eval \
     --model Qwen/Qwen3.5-4B \

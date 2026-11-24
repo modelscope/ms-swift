@@ -9,6 +9,7 @@ REFERENCE-ONLY, matching deploy.sh: SGLang is not installed on this machine, so 
 client was smoke-run here. Once SGLang is installed and the server is up, run:
     python examples/v5/deploy/sglang/client.py
 """
+# MEASURED: not run — sglang not installed (2026-11-24)
 from __future__ import annotations
 
 import os

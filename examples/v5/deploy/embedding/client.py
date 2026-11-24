@@ -13,6 +13,7 @@ MEAN and the server leaves vectors un-normalised, so normalise before comparing.
 Run the server first (``bash examples/v5/deploy/embedding/deploy.sh``), then:
     python examples/v5/deploy/embedding/client.py
 """
+# MEASURED: not run — FAIL: server encode path broken (2026-11-24)
 from __future__ import annotations
 
 import math

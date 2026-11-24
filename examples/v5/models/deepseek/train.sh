@@ -14,6 +14,7 @@
 # Megatron cluster (tens of GPUs) plus mcore-bridge; it cannot be exercised on a single box. model_type is
 # verified against swift/dev/model/loader/deepseek.py; the Megatron MoE flag set mirrors the smoke-verified
 # examples/v5/train/megatron/moe/train.sh.
+# MEASURED: not run — weights not cached (12MB stub) (2026-11-24)
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=${NNODES:-1} \
 NODE_RANK=${NODE_RANK:-0} \

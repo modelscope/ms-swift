@@ -13,6 +13,7 @@
 # kernel; asking for flash_attention_3 there fails at kernel dispatch, not in swift. Everything else in this
 # script is the ordinary lora SFT that IS smoke-validated (train/lora/train.sh); only the attn token differs.
 # On a Hopper box with flash-attn 3 installed, run it as-is and expect the same convergence, faster.
+# MEASURED: not run — flash_attn_3 not installed (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

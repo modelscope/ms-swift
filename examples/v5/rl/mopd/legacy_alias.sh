@@ -14,6 +14,7 @@
 # `--lmbda 1.0` samples on-policy every step, so the legacy `response` column is not used as a target
 # (only the prompt is). The teacher setup, flags and placement are identical to mopd.sh -- see that file's
 # header for what MOPD does.
+# MEASURED: not run — FAIL: needs 3 cards (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift rl \
     --rlhf_type mopd \

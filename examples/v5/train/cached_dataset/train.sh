@@ -15,6 +15,7 @@
 # halves together so the consume side is runnable end to end on a small, cached model.
 
 # --- stage 1: build the cache ---------------------------------------------------------------------
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen3.5-4B \

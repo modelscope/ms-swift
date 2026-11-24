@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from swift.dev.callbacks import CallbackControl, CallbackState, TrainCallback
 from swift.dev.utils.plugin import PluginRegistry
 from swift.dev.utils import get_logger
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 
 logger = get_logger()
 

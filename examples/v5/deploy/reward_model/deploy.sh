@@ -23,6 +23,7 @@
 # differs only in the causal-backbone runner flag and in sending a full conversation instead of a pair.
 #
 # Run the matching client with:  python examples/v5/deploy/reward_model/client.py
+# MEASURED: not run — FAIL: signal only works in main thread (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
     --model Shanghai_AI_Laboratory/internlm2-1_8b-reward \

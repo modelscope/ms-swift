@@ -21,6 +21,7 @@
 # This is a real inference scaffold. For a fast smoke run shrink the bounded dimensions only: a tiny slice
 # (`#64`), a small --max_new_tokens, and a smaller model variant. Keep --sampler and --task_type -- they
 # select the engine and the head.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, batch smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model Qwen/Qwen3.5-4B \

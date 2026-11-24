@@ -9,6 +9,7 @@
 # `callback` is the training-side extension point. The other dev plugin kinds -- reward / tool / sampler
 # (RL and inference) -- load through the same --external_plugins flag; see examples/rl and examples/infer.
 # An eval is configured (eval_strategy/eval_steps + a val split) so the callback's on_evaluate fires.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

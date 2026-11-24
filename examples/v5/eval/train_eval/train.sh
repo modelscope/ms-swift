@@ -9,6 +9,7 @@
 # The `vllm` / `sglang` sampler backends build a co-resident, weight-synced engine and are RAY-ONLY
 # (validate._check_eval_generation refuses them under torchrun): add `--mode ray --nproc_per_node 2`
 # and `--eval_sampler_backend vllm` to use one. dict-valued Config fields are passed as JSON strings.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

@@ -20,6 +20,7 @@ from twinkle.dataloader import DataLoader
 from twinkle.dataset import Dataset, DatasetMeta
 from twinkle_client.model import MultiLoraTransformersModel
 from twinkle_client.sampler import vLLMSampler
+# MEASURED: client verified against server (2026-11-24)
 
 logger = get_logger()
 

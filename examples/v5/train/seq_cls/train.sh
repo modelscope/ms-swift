@@ -12,6 +12,7 @@
 # the raw hub id, so the loader's classification preprocessor runs and the `label` column is produced. For an
 # OFFLINE run with no hub access, fall back to the bundled `examples/v5/train/data/seq_cls.jsonl` (the same
 # {messages, label} shape).
+# MEASURED: peak VRAM ~6 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

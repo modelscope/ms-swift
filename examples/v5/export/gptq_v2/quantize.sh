@@ -10,6 +10,7 @@
 # REFERENCE-ONLY: gptqmodel is not installed on this box, so this script was not smoke-run here. Install
 # gptqmodel, then run it as-is (a single GPU is enough for a 4B model; --device_map is retired -- to
 # keep calibration off the GPU at the cost of speed, run with CUDA_VISIBLE_DEVICES='').
+# MEASURED: not run — gptqmodel not installed (2026-11-24)
 OMP_NUM_THREADS=14 \
 CUDA_VISIBLE_DEVICES=0 \
 swift export \

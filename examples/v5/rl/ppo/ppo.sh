@@ -70,6 +70,7 @@
 # This is a real training scaffold, not a 2-step demo. For a fast smoke run, shrink everything at once: a
 # smaller policy AND reward model (Qwen/Qwen3.5-4B for both), a tiny slice (`#256`),
 # --nproc_per_node 1 (then 2 cards: 1 trainer + 1 reward), --num_generations 2, and cap `--max_steps 4`.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 2-step smoke, 2 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3,5 \
 swift rl \
     --rlhf_type ppo \

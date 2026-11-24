@@ -23,6 +23,7 @@
 # replicas: --mode ray --nproc_per_node 4 gives sampler dp=4 across GPUs [0,1,2,3] (tp=pp=cp=1).
 # --sandbox_num_envs sizes the LocalEnv pool to the concurrency (one env leased per episode); the calculator
 # ignores the leased env, but the pool is still built whenever any tool is named.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, batch smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift infer \
     --model Qwen/Qwen3.5-4B \

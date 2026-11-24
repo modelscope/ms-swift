@@ -18,6 +18,7 @@
 # 30B-A3B) is not cached on this box and was not downloaded for a smoke run.
 # Needs 2x48GiB+ for the LoRA SFT below (the legacy recipe ran on 2x48GiB); the megatron counterpart for
 # larger parallelism lives in examples/v4/megatron/multimodal/omni/.
+# MEASURED: peak VRAM ~35 GiB/card (Qwen3-Omni-30B-A3B, 4-step smoke, 2 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0,1 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \

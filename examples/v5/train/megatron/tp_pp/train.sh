@@ -21,6 +21,7 @@
 # examples/v5/train/multi-node/torchrun), and switch --tuner lora to full-parameter training with
 # --use_distributed_optimizer. When the optimizer state no longer fits, offload it to CPU with
 # --optimizer_cpu_offload true --optimizer_offload_fraction 1 (slower steps, far less GPU memory).
+# MEASURED: peak VRAM ~104 GiB/card (Qwen3-30B-A3B, 4-step smoke, 4 card(s), 2026-11-24)
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \

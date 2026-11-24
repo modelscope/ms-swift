@@ -6,6 +6,7 @@
 #
 # REFERENCE-ONLY: eetq is not installed on this box, so this script was not smoke-run here. Install eetq,
 # then run it as-is; a single GPU is enough for a 4B model.
+# MEASURED: not run — eetq not installed (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen3.5-4B \

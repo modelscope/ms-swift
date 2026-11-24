@@ -65,6 +65,7 @@
 # at once: a tiny student with two tiny teachers of the SAME tokenizer family (--model Qwen/Qwen3.5-0.8B
 # --teacher_model Qwen/Qwen3.5-0.8B Qwen/Qwen3.5-2B --teacher_weights 0.6 0.4), a tiny slice
 # (`AI-MO/NuminaMath-TIR#8`), and cap `--max_steps 4`.
+# MEASURED: not run — FAIL: needs 3 cards (resource) (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3,4 \
 swift rl \
     --rlhf_type mopd \

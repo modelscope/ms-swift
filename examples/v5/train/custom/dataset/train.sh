@@ -14,6 +14,7 @@
 # For a dataset that needs real code (a bespoke row -> messages transform), write a DatasetLoader
 # subclass decorated with @register_dataset and load it with --external_plugins instead; see
 # ../model_template for the analogous model/template plugin path.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

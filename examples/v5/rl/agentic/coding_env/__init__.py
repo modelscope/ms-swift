@@ -11,6 +11,7 @@ with heredocs and run with ``python file.py``).
 Run a GRPO training with it by putting this directory on PYTHONPATH and passing
 ``--sandbox_kind openenv --sandbox_env_name coding_env``.
 """
+# MEASURED: not run — coding_env module not installed (2026-11-24)
 from .action import RunCommandAction
 from .server.terminal_environment import TerminalEnvironment
 

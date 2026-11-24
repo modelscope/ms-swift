@@ -9,6 +9,7 @@
 # gptq_v2 is the same command with `--quant_method gptq_v2` (it needs gptqmodel installed); plain gptq
 # needs auto-gptq/gptqmodel. OMP_NUM_THREADS=14 works around a known AutoGPTQ threading issue
 # (https://github.com/AutoGPTQ/AutoGPTQ/issues/439).
+# MEASURED: not run — gptqmodel not installed (2026-11-24)
 OMP_NUM_THREADS=14 \
 CUDA_VISIBLE_DEVICES=0 \
 swift export \

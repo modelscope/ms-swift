@@ -10,6 +10,7 @@
 # DATASET CHOICE = VISIBLE CONVERGENCE. `swift/self-cognition` is new knowledge the model must fit, so the
 # loss falls clearly (a real SFT curve) instead of plateauing the way an already-instruct model does on
 # alpaca. Keep --num_train_epochs 3 so the descent completes.
+# MEASURED: peak VRAM ~9 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

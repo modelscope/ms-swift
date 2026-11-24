@@ -11,6 +11,7 @@
 # root run `pip install -e .` first.
 #
 # Blocks in the foreground until Ctrl-C. Run client.py (via train.sh) from another shell.
+# MEASURED: peak VRAM ~12 GiB/card (Qwen3.5-4B, server smoke, 2 card(s), 2026-11-24)
 set -euo pipefail
 cd "$(dirname "$0")"
 

@@ -6,6 +6,7 @@
 # LoRA/adapter tuner. `--galore_target_modules` is left unset so twinkle's GaLoreConfig projects the
 # attn/mlp Linear (+ embedding) weights it defaults to; `--galore_update_proj_gap` is how often the
 # projection is recomputed.
+# MEASURED: peak VRAM ~7 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

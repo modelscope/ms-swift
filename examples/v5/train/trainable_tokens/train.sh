@@ -16,6 +16,7 @@
 # Qwen3.5-4B (you=9053, are=532, the=1719, assistant=74455, What=3710, I=40, a=64, to=951) so
 # gradients flow and the loss moves without needing a dataset that contains brand-new tokens; swap in your
 # own new-special-token ids for the real workflow.
+# MEASURED: peak VRAM ~4 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

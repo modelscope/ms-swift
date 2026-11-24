@@ -31,6 +31,7 @@
 # --max_turns, --tools sandbox and the two openenv flags -- they are what make this run agentic-on-
 # OpenEnv; the sibling `openenv_client` kind (needs --sandbox_api_url) connects to a standalone
 # OpenEnv server instead of embedding the package.
+# MEASURED: not run — coding_env module not installed (2026-11-24)
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" \
 CUDA_VISIBLE_DEVICES=1,3 \

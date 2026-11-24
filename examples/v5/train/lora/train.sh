@@ -11,6 +11,7 @@
 # the model must actually fit, so the loss falls clearly (measured 2.6 -> 0.28) -- a real SFT curve. Keep
 # --num_train_epochs 3 so the descent completes; swap the dataset back to alpaca for a general-SFT run
 # whose curve is genuinely flatter.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \

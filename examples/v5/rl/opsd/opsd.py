@@ -72,6 +72,7 @@ from swift.dev.recipe.utils import (
     stream_batch_size,
 )
 from swift.dev.utils.scoring import copy_inputs
+# MEASURED: not run — FAIL: FlashAttention fp32 vision bug (2026-11-24)
 
 
 def build_configs() -> dict:
