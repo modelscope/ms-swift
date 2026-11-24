@@ -133,11 +133,13 @@ class RolloutState:
     reasoning_started: bool
     media: MediaBundle
     render_cache: Optional[Any] = None
+    mm_processor_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def __reduce__(self):
         return (
             type(self),
-            (self.feature, self.engine_input_ids, self.messages, self.tools, self.reasoning_started, self.media, None),
+            (self.feature, self.engine_input_ids, self.messages, self.tools, self.reasoning_started, self.media, None,
+             self.mm_processor_kwargs),
         )
 
 
