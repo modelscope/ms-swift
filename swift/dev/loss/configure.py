@@ -136,16 +136,11 @@ def configure_decision_metric(model: TrainableModel) -> None:
     from swift.dev.metrics import DecisionScoringMetric
 
     model.add_metric(DecisionScoringMetric, is_training=None)
-    # add_metric resolves the same default adapter group; strip the seeded token Accuracy from it.
-    adapter_name = model._get_default_group()
-    optimizer_config = model.optimizer_group.get(adapter_name)
-    if optimizer_config is None:
-        raise RuntimeError(
-            "configure_decision_metric must run after configure_optimizer: the optimizer "
-            f"group {adapter_name!r} has no metric statuses yet."
-        )
-    for status in (optimizer_config.train_status, optimizer_config.eval_status):
-        status.metrics = [m for m in status.metrics if not isinstance(m, Accuracy)]
+    # The default group seeds a token Accuracy that the scoring head replaces. Strip it worker-side:
+    # remove_metric is @remote_function, so it reaches the workers' optimizer_group. Reading
+    # model.optimizer_group / _get_default_group here would run against the driver's Ray proxy stub,
+    # which has no optimizer_group (it is built worker-side) and raise AttributeError.
+    model.remove_metric(Accuracy)
 
 
 _RL_LOSS_NAME = {
