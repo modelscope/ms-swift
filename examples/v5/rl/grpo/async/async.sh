@@ -56,7 +56,7 @@
 # --nproc_per_node 1 (then 2 cards total: 1 trainer + 1 sampler), and --max_steps 4. Keep --async_mode,
 # --vllm_mode disaggregated and --rollout_importance_sampling_mode -- they are the legality-defining flags;
 # dropping them would silently turn this back into the synchronous ../grpo.sh and prove nothing about async.
-# MEASURED: not run — FAIL: needs 3 cards (2026-11-24)
+# MEASURED: VRAM not measured — B 重跑 PASS 3卡 reward通道存活 (fix tw b49f8d89 fp32+3卡调度); 注:显式max_steps4未遵守跑146+步(缺陷待查); 未采B VRAM (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3,5 \
 swift rl \
     --rlhf_type grpo \

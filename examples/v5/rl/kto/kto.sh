@@ -53,7 +53,7 @@
 #
 # This is a real training scaffold, not a 2-step demo. For a fast smoke run, shrink everything at once: a
 # smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#512`), and cap `--max_steps 60`.
-# MEASURED: not run — FAIL: TypeError len() of 0-d tensor in _project_collected (2026-11-24)
+# MEASURED: VRAM not measured — B 重跑 PASS 4步 (fix tw 5b67b46b/ms d44ba48bf Future物化), 未采B VRAM (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type kto \

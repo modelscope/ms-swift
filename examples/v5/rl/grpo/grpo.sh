@@ -55,7 +55,7 @@
 # This is a real training scaffold (a full pass over a 5000-row slice, --num_train_epochs 1), not a 2-step
 # demo, so it downloads a 7B policy and runs a while. For a fast smoke run, shrink everything at once:
 # a smaller policy (Qwen/Qwen3.5-4B), a tiny slice (`#64`), and cap `--max_steps 4`.
-# MEASURED: not run — FAIL: FlashAttention fp32 vision bug (2026-11-24)
+# MEASURED: VRAM not measured — B 重跑 PASS 2步 reward0.28 (fix tw b49f8d89 frozen_tower autocast), 未采B VRAM (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3 \
 swift rl \
     --rlhf_type grpo \

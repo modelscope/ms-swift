@@ -89,7 +89,7 @@
 # (`AI-ModelScope/alpaca-gpt4-data-zh#256`), --nproc_per_node 1, and cap `--max_steps 4` (with --lmbda 0.5 and
 # the default seed the first four rounds hit BOTH an off-policy and on-policy round, so the smoke exercises the
 # dataset-completion path AND the vLLM rollout + teacher-scoring path).
-# MEASURED: not run — FAIL: FlashAttention fp32 vision bug (2026-11-24)
+# MEASURED: VRAM not measured — B 重跑 PASS (fix tw b49f8d89 fp32 vision), py teacher==student散度0退化, 未采B VRAM (2026-11-24)
 CUDA_VISIBLE_DEVICES=1,3,4 \
 swift rl \
     --rlhf_type gkd \
