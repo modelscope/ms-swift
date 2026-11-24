@@ -534,6 +534,8 @@ def build_model(
     if distributed_config.mode == 'remote':
         from .remote import build_remote_model
 
+        if quantize_config is not None and quantize_config.quant_method is None:
+            quantize_config = None
         for name, value in (('quantize_config', quantize_config),
                             ('megatron_config', megatron_config),
                             ('moe_config', moe_config)):
