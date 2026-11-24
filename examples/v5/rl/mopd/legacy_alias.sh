@@ -14,6 +14,8 @@
 # `--lmbda 1.0` samples on-policy every step, so the legacy `response` column is not used as a target
 # (only the prompt is). The teacher setup, flags and placement are identical to mopd.sh -- see that file's
 # header for what MOPD does.
+# lr MUST stay at mopd.sh's 2e-5: the sampled-token k3 surrogate (grad ~ exp(teacher-student)-1) explodes
+# at 1e-4 (step2 grad_norm >1e4); 2e-5 keeps the on-policy distillation stable.
 # MEASURED: not run — FAIL: needs 3 cards (2026-11-24)
 CUDA_VISIBLE_DEVICES=0 \
 swift rl \
@@ -34,7 +36,7 @@ swift rl \
     --max_steps 20 \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 4 \
-    --learning_rate 1e-4 \
+    --learning_rate 2e-5 \
     --logging_steps 1 \
     --save_steps 20 \
     --save_total_limit 2 \
