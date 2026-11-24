@@ -337,7 +337,8 @@ class TestThinkingPolicyUnits(unittest.TestCase):
                          'ernie_vl_thinking glm4_5 glm4_5v glm4_7 glm4_z1_rumination glm5_1 glm5_2 glm5_3 glm5_next '
                          'hunyuan interns1 kimi_k25 kimi_k3 minicpmo4_5 minimax_m2 minimax_m2_1 minimax_m2_5 '
                          'minimax_m2_7 nemo_speechlm nemotron_h nemotron_h_omni olmo3 ovis2_5 qwen3 qwen3_5 '
-                         'qwen3_8 qwen3_thinking qwq ring2 ring2_5 spark2_5 step3_vl xing4_0 youtu_llm'.split())
+                         'qwen3_8 qwen3_thinking qwq ring2 ring2_5 spark2_5 step3_vl xing4_0 youtu_llm '
+                         'lfm3 lfm3_vl'.split())
         unspecified = {'minicpm5', 'minicpm5_2b', 'minicpmv4_5'}
         self.assertTrue((true_names | unspecified).issubset(TEMPLATE_MAPPING))
         preserve_true = {'olmo3', 'glm5_3', 'glm5_next', 'qwen3_8', 'minicpm5_2b', 'ling3', 'spark2_5', 'minimax_m3_vl'}
