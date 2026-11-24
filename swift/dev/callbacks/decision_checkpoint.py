@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import Optional
 
 from swift.dev.callbacks.base import CALLBACK, CallbackControl, CallbackState, TrainCallback
-from swift.dev.model.decision_head import get_scoring_head
 from swift.dev.utils import get_logger
 from swift.dev.utils.plugin import PluginRegistry
 
@@ -47,9 +46,6 @@ class DecisionCheckpointCallback(TrainCallback):
     def on_save(self, state: CallbackState, control: CallbackControl, checkpoint_dir: Optional[str] = None) -> None:
         if self._model is None or not checkpoint_dir:
             return
-        head = get_scoring_head(self._model)
-        if head is None:
-            return
         save_weights = self._save_weights
         if save_weights is None:
             save_weights = _is_adapter_model(self._model)
@@ -59,16 +55,22 @@ class DecisionCheckpointCallback(TrainCallback):
 
         try:
             with write_dir(checkpoint_dir) as local:
-                head.save_pretrained(local, save_weights=save_weights)
+                # Worker-side: under Ray the bound model is a driver proxy with no _modules
+                # tree (the head lives on the workers), so head discovery + save_pretrained
+                # run on the workers via this @remote_function handle (master rank writes).
+                saved = self._model.save_scoring_head_sidecar(local, save_weights=save_weights)
         except Exception as e:  # noqa: BLE001 -- a failed sidecar must not kill the main save
             logger.warning(f"decision_checkpoint: failed to save scoring_head to {checkpoint_dir} ({e}).")
             return
+        if not saved:
+            return
+        from swift.dev.model.decision_head import ScoringHead
         if save_weights:
             logger.info(
-                f"decision: saved scoring_head ({head.HEAD_WEIGHTS_NAME} + {head.HEAD_META_NAME}) to {checkpoint_dir}."
+                f"decision: saved scoring_head ({ScoringHead.HEAD_WEIGHTS_NAME} + {ScoringHead.HEAD_META_NAME}) to {checkpoint_dir}."
             )
         else:
             logger.info(
-                f"decision: saved scoring_head meta ({head.HEAD_META_NAME}) to {checkpoint_dir} "
+                f"decision: saved scoring_head meta ({ScoringHead.HEAD_META_NAME}) to {checkpoint_dir} "
                 "(weights in model state_dict)."
             )
