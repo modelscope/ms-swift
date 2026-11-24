@@ -6,7 +6,7 @@ sandbox env, whose run_command/write_file/read_file the rollout binds to each ep
 use your own, write a ``ToolPlugin`` in a .py like this, register it under a name, then point the run
 at the file and the name::
 
-    swift infer ... --external_plugins examples/v5/infer/code/custom_tools.py --tools calculator
+    swift infer ... --external_plugins examples/v5/infer/plugin/custom_tools.py --tools calculator
 
 ``--external_plugins`` accepts a local .py file, a local folder (its ``__init__.py`` is imported), or a
 hub id (``hf://``/``ms://``, downloaded if absent), and imports it before anything is built

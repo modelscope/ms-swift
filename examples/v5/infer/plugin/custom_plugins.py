@@ -7,7 +7,7 @@ source. ``--external_plugins THIS_FILE`` imports this module before anything is 
 (``PluginRegistry.load_configured``), so every ``@register`` below has run by the time a run selects an
 implementation by name. One file therefore carries all six kinds; a real project usually splits them.
 
-    swift infer ... --external_plugins examples/v5/infer/code/custom_plugins.py \
+    swift infer ... --external_plugins examples/v5/infer/plugin/custom_plugins.py \
         --model_type demo_qwen2 --template demo_chatml --dataset demo_synthetic \
         --orm length_bonus async_length_bonus --tools word_count --max_turns 4
 

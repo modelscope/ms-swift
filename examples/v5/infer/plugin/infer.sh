@@ -1,4 +1,4 @@
-# v5 infer wiring EVERY hand-writable plugin kind from examples/v5/infer/code/custom_plugins.py at once.
+# v5 infer wiring EVERY hand-writable plugin kind from examples/v5/infer/plugin/custom_plugins.py at once.
 #
 # --external_plugins imports custom_plugins.py before anything is built, so all five name-selected kinds
 # registered there are available; --sampler points at a SECOND file (custom_sampler.py) because a custom
@@ -25,9 +25,9 @@ swift infer \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --model_type demo_qwen2 \
     --template demo_chatml \
-    --external_plugins examples/v5/infer/code/custom_plugins.py \
+    --external_plugins examples/v5/infer/plugin/custom_plugins.py \
     --dataset demo_synthetic \
-    --sampler examples/v5/infer/code/custom_sampler.py \
+    --sampler examples/v5/infer/plugin/custom_sampler.py \
     --orm length_bonus async_length_bonus \
     --tools word_count \
     --max_turns 4 \

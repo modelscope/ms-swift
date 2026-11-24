@@ -7,7 +7,7 @@ a ``hf://`` / ``ms://`` id -- which ``swift.dev.builders.sampler._resolve_sample
 same unified loader (``resolve_plugin_class`` -> ``Plugin.load_plugin``) and picks the twinkle ``Sampler``
 subclass out of. So a custom sampler is selected by pointing ``--sampler`` AT THIS FILE::
 
-    swift infer ... --sampler examples/v5/infer/code/custom_sampler.py
+    swift infer ... --sampler examples/v5/infer/plugin/custom_sampler.py
 
 Why a SEPARATE file from ``custom_plugins.py`` (which carries the other five kinds): the 'sampler' plugin
 kind is declared LAZILY, inside ``build_sampler``, because importing ``twinkle.sampler`` pulls in vLLM and
