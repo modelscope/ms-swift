@@ -42,8 +42,8 @@ Essentials:
   (`swift.dev.recipe.sft`); `run_grpo / run_ppo / run_rft / run_dpo / run_opsd ...`
   (`recipe/grpo|ppo|rft|distill|rlhf`); `run_infer`; the export and eval entries.
 - **Plugins work here too**: pass `PluginConfig(external_plugins=['my_plugin.py'])` and
-  registered names resolve as usual. A real example: `examples/rl/code/opsd.py`, which loads
-  a custom dataset plugin and calls the RL entry in code form.
+  registered names resolve as usual. A real example: `examples/v5/rl/opsd/opsd.py`, which loads
+  a custom dataset plugin and writes the RL training loop in code form.
 - The authoritative list of every Config knob: read `swift/dev/config/<name>_config.py`
   field comments.
 

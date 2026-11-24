@@ -44,7 +44,7 @@ By default models are downloaded from ModelScope. To use HuggingFace instead add
 ```
 examples/
   infer/     vllm/ sglang/ transformers/ agentic/ dataset/ sample/ embedding/ grounding/
-             reranker/ reward_model/ code/
+             reranker/ reward_model/ plugin/
   deploy/    vllm/ sglang/ embedding/ reranker/ reward_model/ seq_cls/ lora/ code/
              (each server dir ships a deploy.sh + client.py)
   eval/      eval.sh  eval_lora.sh  eval_url/  vlm/  train_eval/
@@ -55,7 +55,7 @@ examples/
              padding_free/ flash_attention_3/ early_stop/ think_model/ base_to_chat/ streaming/
              agentic/ sequence_parallel/ plugins/ custom/ cached_dataset/ megatron/ code/ yaml/
              multi-gpu/(torchrun,ray)  multi-node/(torchrun,ray)  data/
-  rl/        grpo/ ppo/ dpo/ kto/ orpo/ cpo/ simpo/ rm/ rft/ gkd/ opsd/ mopd/ agentic/ code/  data/
+  rl/        grpo/ ppo/ dpo/ kto/ orpo/ cpo/ simpo/ rm/ rft/ gkd/ opsd/ mopd/ agentic/  data/
   models/    per-model train.sh + infer.sh (model_type verified against the loader registry)
   server/    twinkle server-client multi-LoRA cookbook
   notebook/  Jupyter walkthroughs (kept as-is)
@@ -68,15 +68,23 @@ The v5 target tree is now fully authored. Every directory below ships real, head
 the ones marked *(smoke-verified)* were run end-to-end on this box, the rest are *reference-only* with the
 exact reason (large / gated / uncached model, missing engine, or hardware) stated in their script header.
 
+**Component-level Python twins** — every `train/` and `rl/` algorithm dir also ships a
+`.py` next to its `.sh` (41 scripts): same knob values as typed `Config` objects, all in `mode='ray'`,
+with the recipe's training loop written out in the file (assembly via the recipe's public builders,
+engineering scaffolds like resume/eval/EMA trimmed, every algorithmic step kept and commented). Each
+header carries a `STATUS:` line — `SMOKE-VERIFIED` (bounded shrink run) or `REFERENCE-ONLY` (seams
+signature-verified, not run). Start with [train/lora/train.py](train/lora/train.py),
+[rl/grpo/grpo.py](rl/grpo/grpo.py), [rl/dpo/dpo.py](rl/dpo/dpo.py).
+
 - **train** *(31 v5 scripts)*: `lora`, `full`, `trainable_tokens`, `pretrain`, `embedding`,
   `reranker`, `seq_cls`, `reward_model`, `multi-modal`, `multimodal_embedding`, `liger`, `muon`, `galore`,
   `packing`, `padding_free`, `flash_attention_3`, `early_stop`, `think_model`, `base_to_chat`, `streaming`,
   `agentic`, `sequence_parallel`, `plugins`, `custom`, `cached_dataset`, `megatron/{tp_pp,moe}`,
   `multi-gpu/{torchrun,ray}`, `multi-node/{torchrun,ray}`, `code`, `yaml`.
 - **rl** *(19 v5 scripts)*: `grpo` (+ `external`/`internal` multi-controller), `ppo`, `dpo`, `kto`, `orpo`,
-  `cpo`, `simpo`, `rm`, `rft`, `gkd`, `opsd`, `mopd`, `agentic`, `code`.
+  `cpo`, `simpo`, `rm`, `rft`, `gkd`, `opsd`, `mopd`, `agentic`.
 - **infer** *(11 v5 scripts)*: `transformers`, `vllm`, `sglang`, `agentic`, `dataset`, `sample`,
-  `embedding`, `grounding`, `reranker`, `reward_model`, `code`.
+  `embedding`, `grounding`, `reranker`, `reward_model`, `plugin`.
 - **deploy** *(8 server dirs, each `deploy.sh` + `client.py`)*: `vllm`, `sglang`, `embedding`, `reranker`,
   `reward_model`, `seq_cls`, `lora`, `code`. See [deploy/README.md](deploy/README.md).
 - **export** *(12 v5 scripts)*: `awq`, `gptq`, `gptq_v2`, `bnb`, `hqq`, `eetq`, `quanto`, `fp8`, `merge`,
