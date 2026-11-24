@@ -45,6 +45,8 @@ class TemplateMeta:
     agent_template: Optional[str] = None
     # thinking
     is_thinking: bool = False
+    # Thinking-only model: an explicit `enable_thinking=False` is ignored with a warning.
+    force_thinking: bool = False
     thinking_prefix: str = ''
     non_thinking_prefix: str = ''
     default_enable_thinking: Optional[bool] = False  # None leaves generation prefixes unset.
@@ -80,6 +82,9 @@ class TemplateMeta:
             assert x is None or isinstance(x, list)
 
     def __post_init__(self):
+        # A thinking-only model has no non-thinking default to fall back to.
+        if self.force_thinking:
+            self.default_enable_thinking = True
         # system
         if self._has_system(self.prefix):
             assert self.system_prefix is None, 'The prefix already contains {{SYSTEM}}.'

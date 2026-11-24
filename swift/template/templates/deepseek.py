@@ -721,19 +721,9 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
-
-class DeepseekR1Template(Template):
-
-    _normalize_enable_thinking = Template._force_thinking
-
-
 register_template(
     DeepseekV2_5TemplateMeta(
-        LLMTemplateType.deepseek_r1,
-        template_cls=DeepseekR1Template,
-        is_thinking=True,
-        thinking_prefix='<think>\n',
-        default_enable_thinking=True))
+        LLMTemplateType.deepseek_r1, is_thinking=True, force_thinking=True, thinking_prefix='<think>\n'))
 
 
 class DeepseekV3_1Template(Template):

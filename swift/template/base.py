@@ -179,6 +179,8 @@ class Template(ProcessorMixin):
         return self._normalize_enable_thinking(enable_thinking)
 
     def _normalize_enable_thinking(self, enable_thinking):
+        if self.template_meta.force_thinking:
+            return self._force_thinking(enable_thinking)
         return enable_thinking
 
     def _force_thinking(self, enable_thinking):

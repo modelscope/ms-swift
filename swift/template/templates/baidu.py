@@ -27,8 +27,6 @@ register_template(ERNIETemplateMeta(LLMTemplateType.ernie))
 
 class ErnieThinkingTemplate(Template):
 
-    _normalize_enable_thinking = Template._force_thinking
-
     def _swift_prepare_inputs(self, inputs) -> None:
         super()._swift_prepare_inputs(inputs)
         for message in inputs.messages:
@@ -73,8 +71,8 @@ register_template(
         LLMTemplateType.ernie_thinking,
         template_cls=ErnieThinkingTemplate,
         is_thinking=True,
-        thinking_prefix='<think>\n',
-        default_enable_thinking=True))
+        force_thinking=True,
+        thinking_prefix='<think>\n'))
 
 
 class PaddleOCRTemplate(Template):
@@ -267,22 +265,16 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n\n',
         default_enable_thinking=True))
 
-
-class ERNIE_VLThinkingTemplate(ERNIE_VLTemplate):
-
-    _normalize_enable_thinking = Template._force_thinking
-
-
 ERNIE_VL_SYSTEM = ('You are a multimodal AI assistant called ERNIE developed by Baidu based on the PaddlePaddle '
                    'framework.')
 
 register_template(
     ERNIETemplateMeta(
         MLLMTemplateType.ernie_vl_thinking,
-        template_cls=ERNIE_VLThinkingTemplate,
+        template_cls=ERNIE_VLTemplate,
         is_thinking=True,
+        force_thinking=True,
         thinking_prefix='\n<think>\n',
-        default_enable_thinking=True,
         default_system=ERNIE_VL_SYSTEM))
 
 

@@ -217,6 +217,7 @@ class TestThinkingPolicyUnits(unittest.TestCase):
                   'ernie_vl_thinking', 'olmo3', 'ring2', 'ring2_5')
         for name in always:
             meta = copy.deepcopy(TEMPLATE_MAPPING[name])
+            self.assertIs(meta.force_thinking, True, name)
             template = meta.template_cls(None, meta, enable_thinking=False)
             self.assertIs(template.enable_thinking, True, name)
             self.assertIs(template._get_enable_thinking(), True, name)
@@ -344,6 +345,8 @@ class TestThinkingPolicyUnits(unittest.TestCase):
         for name, meta in TEMPLATE_MAPPING.items():
             expected = None if name in unspecified else name in true_names
             self.assertIs(meta.default_enable_thinking, expected, name)
+            if meta.force_thinking:
+                self.assertIs(meta.default_enable_thinking, True, name)
             expected_preserve = True if name in preserve_true else False if name in preserve_false else None
             self.assertIs(meta.preserve_thinking, expected_preserve, name)
             if name == 'sail_vl2':

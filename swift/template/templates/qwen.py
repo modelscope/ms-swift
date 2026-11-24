@@ -55,20 +55,9 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
-
-class QwenThinkingTemplate(Template):
-
-    _normalize_enable_thinking = Template._force_thinking
-
-
 register_template(
     QwenTemplateMeta(
-        LLMTemplateType.qwq,
-        template_cls=QwenThinkingTemplate,
-        default_system=None,
-        is_thinking=True,
-        thinking_prefix='<think>\n',
-        default_enable_thinking=True))
+        LLMTemplateType.qwq, default_system=None, is_thinking=True, force_thinking=True, thinking_prefix='<think>\n'))
 
 
 @dataclass
@@ -114,11 +103,10 @@ register_template(Qwen3MixedTemplateMeta(
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.qwen3_thinking,
-        template_cls=QwenThinkingTemplate,
         default_system=None,
         is_thinking=True,
-        thinking_prefix='<think>\n',
-        default_enable_thinking=True))
+        force_thinking=True,
+        thinking_prefix='<think>\n'))
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None))
 

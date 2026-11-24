@@ -308,8 +308,6 @@ class Step3VLTemplate(Template):
     image_token_id = 151679
     placeholder_tokens = ['<im_patch>']
 
-    _normalize_enable_thinking = Template._force_thinking
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
@@ -415,6 +413,6 @@ register_template(
         template_cls=Step3VLTemplate,
         default_system=None,
         is_thinking=True,
+        force_thinking=True,
         thinking_prefix='<think>\n',
-        default_enable_thinking=True,
     ))

@@ -537,37 +537,29 @@ register_template(
         preserve_thinking=True,
     ))
 
-
-class RingThinkingTemplate(Template):
-
-    _normalize_enable_thinking = Template._force_thinking
-
-
 register_template(
     TemplateMeta(
         LLMTemplateType.ring2,
-        template_cls=RingThinkingTemplate,
         prefix=[],
         system_prefix=['<role>SYSTEM</role>{{SYSTEM}}'],
         prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
         chat_sep=[],
         suffix=['<|endoftext|>'],
         is_thinking=True,
+        force_thinking=True,
         thinking_prefix='<think>\n',
-        default_enable_thinking=True,
     ))
 
 register_template(
     TemplateMeta(
         LLMTemplateType.ring2_5,
-        template_cls=RingThinkingTemplate,
         prefix=[],
         system_prefix=['<role>SYSTEM</role>\n{{SYSTEM}}\n\n'],
         prompt=['<role>HUMAN</role>\n{{QUERY}}<|role_end|>\n\n<role>ASSISTANT</role>\n'],
         chat_sep=['<|role_end|>\n\n'],
         suffix=['<|role_end|>\n\n'],
         is_thinking=True,
-        default_enable_thinking=True,
+        force_thinking=True,
     ))
 
 register_template(
@@ -653,8 +645,6 @@ register_template(
 
 class Olmo3Template(Template):
 
-    _normalize_enable_thinking = Template._force_thinking
-
     # Packed/padding-free paths do not preserve Olmo3's separate
     # sliding-window and full-attention masks.
     support_padding_free = False
@@ -689,9 +679,9 @@ register_template(
         suffix=[['eos_token_id']],
         auto_add_bos=False,
         is_thinking=True,
+        force_thinking=True,
         thinking_prefix='<think>',
         preserve_thinking=True,
-        default_enable_thinking=True,
     ))
 
 
