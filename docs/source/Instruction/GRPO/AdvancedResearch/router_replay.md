@@ -87,7 +87,18 @@ R3 论文还提出路由掩码可以与 KV Cache 一起缓存：对于相同的�
 环境依赖:
 
 - R3 需要 vLLM ≥ 0.14.0 以支持返回 `routed_experts` 信息。
-- 当前 Router Replay 仅在 Megatron backend 下可用。
+- legacy 实现仅支持 Megatron backend；v5 的训练后端支持 Transformers 和 Megatron。
+
+### v5 remote R3
+
+v5 GRPO 支持 `--mode remote --router_replay_mode R3`。采样 server 返回原始回复 token、logprobs 和 `routed_experts`，client 使用已有模板直接追加训练 feature，不对回复重新分词；路由随训练 inputs 发送给训练 server 做回放。文本和多模态使用相同流程。
+
+client 与 server 必须使用包含该协议支持的版本，并在已有 twinkle-server 配置中分别开启：
+
+- 模型 application 的 `args.enable_router_replay: true`。
+- 采样 application 的 `args.engine_args.enable_return_routed_experts: true`（vLLM 引擎及 MoE 模型须支持导出路由）。
+
+这些是 server 部署参数，不能仅在 client 开启 R3。引擎未导出路由或 server 模型未开启回放时会明确报错，不会自动重算路由或降为 R2。remote 暂不支持 R2 的训练模型录制与路由收集流程；需要 R2 时使用 Ray 模式。
 
 ### 与训推校正的关系
 

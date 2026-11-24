@@ -265,16 +265,18 @@ def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutCon
     multi-tenant server hosts as many served models as the run needs), the rollout rides the
     HTTPSampler face over the served engine, and the weight channel is the save -> adapter_uri
     hand-off. Refused here is only what genuinely lives in the LOCAL actor fabric with no client
-    port: the colocate / elastic devices, the delta weight transports, the in-process
-    routing-replay and sampling-replay engines, and the EMA reference sync. The multi-turn
+    port: the colocate / elastic devices, the delta weight transports, the R2 recording
+    workflow, the sampling-replay engine, and the EMA reference sync. R3 transports the
+    sampler-exported routing through the protocol for replay on the served model. The multi-turn
     rollout / tools / harness need no refusal: the rollout, its sandbox env and the driver all
     run in-process in this client, sampling each turn through the HTTPSampler face.
     """
-    if rl_config.router_replay_mode != 'disabled':
+    if rl_config.router_replay_mode == 'R2':
         raise ValueError(
-            f"--mode remote does not support router_replay_mode={rl_config.router_replay_mode!r}: "
-            "the recording forward replays the training model's own expert routing in-process. "
-            "Use the default 'disabled', or mode=ray.")
+            "--mode remote does not support router_replay_mode='R2': "
+            'the training-model routing capture and collection workflow is not implemented remotely. '
+            "Use 'R3' with a sampler that exports routed_experts and a replay-enabled server model, "
+            "use 'disabled', or run mode=ray for R2.")
     if rl_config.enable_sampling_replay:
         raise ValueError(
             '--mode remote does not support --enable_sampling_replay (the replay engine is a '

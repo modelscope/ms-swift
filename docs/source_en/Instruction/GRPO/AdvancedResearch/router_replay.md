@@ -87,7 +87,18 @@ Select the routing replay strategy via the `--router_replay_mode` parameter:
 Environment requirements:
 
 - R3 requires vLLM ≥ 0.14.0 to support returning `routed_experts` information.
-- Router Replay is currently only available with the Megatron backend.
+- The legacy implementation supports only Megatron; v5 supports both Transformers and Megatron training backends.
+
+### v5 remote R3
+
+v5 GRPO supports `--mode remote --router_replay_mode R3`. The sampling server returns the original reply tokens, logprobs, and `routed_experts`. The client appends the tokens to its training feature using the existing template, without retokenizing the reply, and sends the routing alongside the training inputs for server-side replay. Text and multimodal prompts use the same flow.
+
+Both client and server must include this protocol support. Enable the following fields in the existing twinkle-server deployment configuration:
+
+- `args.enable_router_replay: true` on the model application.
+- `args.engine_args.enable_return_routed_experts: true` on the sampler application (the vLLM engine and MoE model must support routing export).
+
+These are server deployment settings; enabling R3 on the client alone is insufficient. Missing routing exports or a server model without replay enabled cause explicit errors, not routing recomputation or a fallback to R2. The training-model recording and routing collection workflow for R2 is not implemented in remote mode; use Ray mode for R2.
 
 ### Relationship with Training-Inference Correction
 
