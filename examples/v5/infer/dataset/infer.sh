@@ -2,7 +2,7 @@
 # GRPO-format dump.
 #
 # Tools are a plugin kind, selected by registered name via --tools. Instead of the built-in `sandbox`
-# (run_command/write_file/read_file), this loads examples/v5/infer/code/custom_tools.py through --external_plugins
+# (run_command/write_file/read_file), this loads examples/v5/infer/plugin/custom_tools.py through --external_plugins
 # and selects the `calculator` tool registered there -- the bring-your-own-tool path. Tool calling is
 # inherently multi-turn (the model emits a call, reads the observation back, then answers), so --max_turns
 # caps the rounds, and a math dataset like NuminaMath pairs naturally with a calculator. NO reward channel
@@ -28,7 +28,7 @@ swift infer \
     --model Qwen/Qwen3.5-4B \
     --sampler vllm \
     --dataset 'AI-MO/NuminaMath-TIR#500' \
-    --external_plugins examples/v5/infer/code/custom_tools.py \
+    --external_plugins examples/v5/infer/plugin/custom_tools.py \
     --tools calculator \
     --max_turns 8 \
     --max_trajectory_tokens 8192 \
