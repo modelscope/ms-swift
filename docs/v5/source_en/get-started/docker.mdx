@@ -1,0 +1,32 @@
+---
+title: Docker
+description: Container images and running v5 inside containers.
+---
+
+## Images
+
+ModelScope maintains SWIFT image builds in the
+[modelscope image builder](https://github.com/modelscope/modelscope/blob/build_swift_image/docker/build_image.py#L392).
+Published images track released SWIFT versions; **v5 is a development version**,
+so inside any container install the v5 source on top:
+
+```bash
+git clone https://github.com/modelscope/ms-swift.git && cd ms-swift
+pip install -e .
+git clone https://github.com/modelscope/twinkle.git && pip install -e twinkle
+```
+
+## Running
+
+```bash
+docker run --gpus all -it --rm \
+    -v $PWD:/workspace -w /workspace \
+    -e MODELSCOPE_CACHE=/workspace/.cache/modelscope \
+    <image> bash
+```
+
+Notes:
+
+- Mount a persistent volume for `MODELSCOPE_CACHE` so model weights survive container restarts.
+- Ray mode needs shared memory: add `--shm-size=8g` (or larger for big rollouts).
+- Multi-node containers must share the Ray network; see [Scaling](./scaling.mdx).

@@ -1,0 +1,42 @@
+---
+title: Installation & Hardware
+description: Python/CUDA requirements and GPU, NPU, XPU, CPU support.
+---
+
+## Requirements
+
+| Item | Range | Recommended |
+|---|---|---|
+| python | >= 3.10 | 3.12 |
+| cuda | — | 12.8 / 13.0 (not needed for CPU/NPU/MPS) |
+| torch | >= 2.6 | latest stable |
+| transformers | v5 backend | 5.x |
+| vllm | rollouts / inference | recent release |
+| flash-attn | attention kernel | 2.x (`--attn_impl flash_attention_2`) |
+
+Install from source as in [Quick Start](./quick-start.mdx). Optional extras:
+
+```bash
+pip install -r requirements/tests.txt   # test/lint tooling
+pip install megatron-core               # Megatron backend (via mcore-bridge)
+```
+
+## Hardware
+
+- **NVIDIA GPU**: the default path. bf16 training scripts pin
+  `--attn_impl flash_attention_2` — the cuDNN SDPA backward can produce NaNs in
+  bf16 on some model families, FA2 avoids it.
+- **Ascend NPU**: supported through torch_npu; see the twinkle NPU guide in the
+  [twinkle reference](../twinkle/npu-support.mdx).
+- **Other accelerators / CPU**: device selection follows torch; small models run
+  on CPU for smoke tests, large-scale training expects accelerators.
+
+## Verify the install
+
+```bash
+python -c "import swift; print(swift.__version__)"   # 5.0.0.dev (packaging normalizes to 5.0.0.dev0)
+swift sft --help | head
+```
+
+If you work from multiple checkouts, confirm the editable install resolves to
+the intended one: `python -c "import swift; print(swift.__file__)"`.

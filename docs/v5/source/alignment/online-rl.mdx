@@ -1,0 +1,49 @@
+---
+title: 在线学习
+description: GRPO/PPO/RFT/GKD 与 vLLM 采样；共卡或异构放置。
+---
+
+## GRPO 全流程
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rl \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --mode ray --nproc_per_node 2 \
+    --num_generations 8 --temperature 1.0 --max_completion_length 2048 \
+    --orm accuracy --beta 0.04 --epsilon 0.2 \
+    --vllm_mode colocate --vllm_gpu_memory_utilization 0.5 \
+    --learning_rate 1e-4 --output_dir output
+```
+
+每步：从当前策略采 `--num_generations` 个 completion（每次 rollout 前把
+训练权重同步进 vLLM），用 `--orm` 打分，把每组转成组相对 advantage，
+用裁剪代理目标更新。**看 reward 曲线判断收敛，不要看 loss**——
+策略梯度 loss 天然在零附近震荡。
+
+## 放置
+
+- `--vllm_mode colocate`——采样器与训练器共卡（阶段间 sleep/wake）；
+  最简单，适合小集群。
+- `--vllm_mode disaggregate`——采样器独占一组卡、训练器另一组；
+  规模化吞吐的异构布局。
+
+## 算法族
+
+| `--rlhf_type` | 增加什么 |
+|---|---|
+| `grpo` | 无 critic 的组相对 advantage |
+| `ppo` | value 模型 + GAE（需要 `rm` 训出的奖励模型） |
+| `rft` | 带奖励 rollout 上的拒绝采样微调 |
+| `gkd` / `opsd` / `mopd` | 教师引导的 on-policy 蒸馏 |
+
+奖励：注册 orm（`accuracy` 等）、奖励模型或插件（`--external_plugins`）。
+tensorboard 看 `train/total_reward`、`train/completion_length`、
+`train/clip_ratio`、`train/approx_kl`；`--log_completions true` 把 completion
+采样进日志。
+
+带实测显存的可运行参考：`examples/v5/rl/{grpo,ppo,rft,gkd,opsd,mopd}`。

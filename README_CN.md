@@ -74,7 +74,7 @@
 
 ## 🎉 新闻
 - 🔥 2026.10.29: Day-0 支持 [NVIDIA-Nemotron-3.5-Transcribe](nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B)，训练示例参考 [SFT示例](examples/models/nemotron_transcribe)。
-- 🔥 2026.10.22: 支持 [EntroPack](https://github.com/modelscope/entropack) 灵活码率模型量化，可根据显存预算精细控制模型码率，支持 Transformers 推理和 LoRA 训练。参考[最佳实践](docs/source/BestPractices/Flexble-Quantization-With-Entropack.md)和 [QLoRA 示例](examples/train/qlora/entropack.sh)。
+- 🔥 2026.10.22: 支持 [EntroPack](https://github.com/modelscope/entropack) 灵活码率模型量化，可根据显存预算精细控制模型码率，支持 Transformers 推理和 LoRA 训练。参考[最佳实践](docs/v4/source/BestPractices/Flexble-Quantization-With-Entropack.md)和 [QLoRA 示例](examples/train/qlora/entropack.sh)。
 - 🔥 2026.10.19: 支持 [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2)（740M，多模态嵌入模型，支持文本/图像/视频/音频统一向量空间），支持 infonce loss 微调。
 - 🔥 2026.10.15: Day-0 支持 [NVIDIA-Nemotron-3.5-Super-VL-120B-A12B](https://www.modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)，训练示例参考 [SFT示例](examples/models/nemotron_super_vl)。
 - 🔥 2026.10.13: 支持Decision模型（类型化决策System-1打分模型）的训练与推理，使用 `--task_type decision`，通过单次前向传播输出每个问题选项集上的校准概率。
@@ -85,32 +85,32 @@
 - 🎁 2026.08.21: 支持OpenMOSS多模态模型 [MOSS-VL-Instruct-0708](https://modelscope.cn/models/openmoss/MOSS-VL-Instruct-0708)的推理与训练，支持LoRA与全参数微调，覆盖单图/多图、单视频/多视频及混合模态场景。
 - 🎁 2026.08.11: 支持多模态模型[Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B)的推理与训练，Megatron-SWIFT同步支持。
 - 🎁 2026.07.22: 支持moonshotai多模态模型[Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3)的推理，包含XTML对话模板、思考通道（`reasoning_effort`）与工具调用（`--agent_template kimi_k3`）。
-- 🎁 2026.06.10: Megatron-Ray支持GRPO和GKD训练，查看[文档](docs/source/Instruction/Ray.md)和[示例](examples/ray)。
+- 🎁 2026.06.10: Megatron-Ray支持GRPO和GKD训练，查看[文档](docs/v4/source/Instruction/Ray.md)和[示例](examples/ray)。
 - 🎁 2026.03.03: **ms-swift v4.0**大版本正式发布，release note参考[这里](https://github.com/modelscope/ms-swift/releases/tag/v4.0.0)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
 
 
 <details><summary>更多</summary>
-- 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
-- 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
-- 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
-- 🎁 2025.09.07: 支持CHORD训练算法，请查看[文档](docs/source/Instruction/GRPO/AdvancedResearch/CHORD.md)。
+- 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/v4/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
+- 🎁 2025.11.04: 支持[Mcore-Bridge](docs/v4/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
+- 🎁 2025.10.28: Ray [已支持](docs/v4/source/Instruction/Ray.md)。
+- 🎁 2025.09.07: 支持CHORD训练算法，请查看[文档](docs/v4/source/Instruction/GRPO/AdvancedResearch/CHORD.md)。
 - 🎁 2025.09.06: Ulysses现已支持与ring-attention结合使用，使得输入序列可以被切分成任意数量的块（不再受限于num_heads），命令参数仍然是`--sequence_parallel_size N`。
-- 🎁 2025.09.02: Megatron-SWIFT支持多模态模型训练。文档参考[这里](./docs/source/Megatron-SWIFT/Multimodal-Model.md)。
+- 🎁 2025.09.02: Megatron-SWIFT支持多模态模型训练。文档参考[这里](./docs/v4/source/Megatron-SWIFT/Multimodal-Model.md)。
 - 🎁 2025.08.12: 支持在SFT训练中使用[Dynamic Fine-Tuning](https://arxiv.org/abs/2508.05629)(DFT)，使用参数 `--enable_dft_loss true`。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/dft.sh)
 - 🎁 2025.07.09: Megatron-SWIFT支持LoRA训练。相比ms-swift，在MoE模型提速显著。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora)。
 - 🎁 2025.06.23: 支持Reranker模型训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)。
 - 🎁 2025.06.15: 支持对纯文本大模型和多模态模型进行GKD训练。训练脚本参考这里：[纯文本](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd), [多模态](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/gkd)。
 - 🎁 2025.06.11: 支持使用Megatron并行技术进行RLHF训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf)。
 - 🎁 2025.05.29: 支持pt、sft、dpo、grpo的序列并行，具体请查看[脚本](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
-- 🎁 2025.05.11: GRPO中的奖励模型支持自定义处理逻辑，GenRM的例子参考[这里](./docs/source/Instruction/GRPO/DeveloperGuide/reward_model.md)。
+- 🎁 2025.05.11: GRPO中的奖励模型支持自定义处理逻辑，GenRM的例子参考[这里](./docs/v4/source/Instruction/GRPO/DeveloperGuide/reward_model.md)。
 - 🎁 2025.04.15: ms-swift论文已经被AAAI 2025接收，论文地址在[这里](https://ojs.aaai.org/index.php/AAAI/article/view/35383)。
-- 🎁 2025.03.23: 支持了多轮GRPO，用于构建多轮对话场景的训练(例如agent tool calling)，请查看[文档](docs/source/Instruction/GRPO/DeveloperGuide/multi_turn.md)。
+- 🎁 2025.03.23: 支持了多轮GRPO，用于构建多轮对话场景的训练(例如agent tool calling)，请查看[文档](docs/v4/source/Instruction/GRPO/DeveloperGuide/multi_turn.md)。
 - 🎁 2025.03.16: 支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Quick-start.html)。
 - 🎁 2025.03.15: 支持纯文本和多模态模型的embedding模型的微调，请查看[训练脚本](examples/train/embedding)。
 - 🎁 2025.03.05: 支持GRPO的hybrid模式，4GPU(4*80G)训练72B模型的脚本参考[这里](examples/train/grpo/internal/vllm_72b_4gpu.sh)。同时支持vllm的tensor并行，训练脚本参考[这里](examples/train/grpo/internal)。
 - 🎁 2025.02.21: GRPO算法支持使用LMDeploy，训练脚本参考[这里](examples/train/grpo/internal/full_lmdeploy.sh)。此外测试了GRPO算法的性能，使用一些tricks使训练速度提高到300%。WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)。
-- 🎁 2025.02.21: 支持`swift sample`命令。强化微调脚本参考[这里](docs/source/Instruction/Reinforced-Fine-tuning.md)，大模型API蒸馏采样脚本参考[这里](examples/sampler/distill/distill.sh)。
-- 🔥 2025.02.12: 支持GRPO (Group Relative Policy Optimization) 训练算法，文档参考[这里](docs/source/Instruction/GRPO/GetStarted/GRPO.md)。
+- 🎁 2025.02.21: 支持`swift sample`命令。强化微调脚本参考[这里](docs/v4/source/Instruction/Reinforced-Fine-tuning.md)，大模型API蒸馏采样脚本参考[这里](examples/sampler/distill/distill.sh)。
+- 🔥 2025.02.12: 支持GRPO (Group Relative Policy Optimization) 训练算法，文档参考[这里](docs/v4/source/Instruction/GRPO/GetStarted/GRPO.md)。
 - 🎁 2024.12.04: **ms-swift3.0**大版本更新。请查看[发布说明和更改](https://github.com/modelscope/ms-swift/releases/tag/v3.0.0)。
 - 🎉 2024.08.12: ms-swift论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
 - 🔥 2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行大模型和多模态模型的评测。

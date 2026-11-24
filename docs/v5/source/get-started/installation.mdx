@@ -1,0 +1,40 @@
+---
+title: 环境安装与硬件支持
+description: Python/CUDA 要求与 GPU、NPU、XPU、CPU 支持。
+---
+
+## 环境要求
+
+| 项 | 范围 | 推荐 |
+|---|---|---|
+| python | >= 3.10 | 3.12 |
+| cuda | — | 12.8 / 13.0（CPU/NPU/MPS 无需） |
+| torch | >= 2.6 | 最新稳定版 |
+| transformers | v5 后端 | 5.x |
+| vllm | 采样/推理 | 近期版本 |
+| flash-attn | attention 内核 | 2.x（`--attn_impl flash_attention_2`） |
+
+按[快速启动](./quick-start.mdx)从源码安装。可选依赖：
+
+```bash
+pip install -r requirements/tests.txt   # 测试/lint 工具
+pip install megatron-core               # Megatron 后端（经 mcore-bridge）
+```
+
+## 硬件
+
+- **NVIDIA GPU**：默认路径。bf16 训练脚本钉扎
+  `--attn_impl flash_attention_2`——部分模型族上 cuDNN SDPA 的 bf16 反向
+  会产生 NaN，FA2 规避该问题。
+- **昇腾 NPU**：经 torch_npu 支持，见 [twinkle 参考](../twinkle/npu-support.mdx)的 NPU 指引。
+- **其他加速卡 / CPU**：设备选择跟随 torch；小模型可在 CPU 冒烟，大规模训练需要加速卡。
+
+## 验证安装
+
+```bash
+python -c "import swift; print(swift.__version__)"   # 5.0.0.dev（打包规范化为 5.0.0.dev0）
+swift sft --help | head
+```
+
+多 checkout 并存时，确认 editable 安装解析到目标仓：
+`python -c "import swift; print(swift.__file__)"`。

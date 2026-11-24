@@ -1,0 +1,33 @@
+---
+title: 组件与 M/P 分离
+description: Mechanism/Policy 分离——基础设施机制对训练策略不可见。
+---
+
+## 思想
+
+SWIFT v5 把 **Mechanism**（分布式执行、传输、放置、权重搬运怎么做）与
+**Policy**（训练算法做什么：loss、advantage、reward、采样节奏）分开。
+这个术语沿用操作系统设计里经典的 mechanism/policy 分离。
+
+对用户的直接效果是*分布式透明*：组件作者写单机逻辑；同一份代码不改一行
+就能跑在单卡、Ray 集群或远端 twinkle-server 上。
+
+## 边界在哪
+
+| 层 | 拥有 | 不拥有 |
+|---|---|---|
+| twinkle infra（Mechanism） | Ray actor、device mesh、传输、权重同步通道、checkpoint IO | 算法语义 |
+| 组件（Policy） | 模型 forward/backward、loss、采样逻辑、reward、advantage | 集群拓扑、进程放置 |
+| SWIFT recipe | 把组件装配成一次训练 | 重新实现机制 |
+
+接触面只有两个：`initialize`（拉起运行时）与函数标注（声明什么可以远程执行）。
+其余一切跨边界只传可序列化 spec、注册名与标量。
+
+## 换来什么
+
+- **换东西不用重写**：改 loss、改 reward 不碰分布式代码；改放置不碰算法。
+- **后端中立**：transformers、Megatron、remote 三类后端暴露同一组件面。
+- **规模中立**：单卡到 1000B+ 一条代码路径；放置由配置驱动，不写死分支。
+
+读组件级示例（`examples/v5/**/*.py`）能看到边界的实际形态：装配与循环是
+policy；每个分布式调用都是委托给 twinkle 的 mechanism。

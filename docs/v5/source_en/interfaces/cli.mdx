@@ -1,0 +1,50 @@
+---
+title: Command Line
+description: One CLI for pretrain, SFT, RL, inference, deployment, evaluation and export.
+---
+
+## Commands
+
+| Command | Task |
+|---|---|
+| `swift pt` | pre-training (base models) |
+| `swift sft` | supervised fine-tuning (all task types) |
+| `swift rl` | alignment & online RL (`--rlhf_type` selects the algorithm; `rlhf` is an alias) |
+| `swift infer` | interactive / batch inference |
+| `swift deploy` | serving (vLLM / sglang / transformers engines) |
+| `swift eval` | evaluation (EvalScope) |
+| `swift export` | checkpoint export / merge / quantization / push |
+| `swift merge` | LoRA merge into base weights |
+
+By default the CLI routes to the v5 implementation (`swift.dev.cli.*`), which
+parses arguments straight into typed Config dataclasses. Set `USE_SWIFT_V5=0`
+to run the legacy v4 path — used only for regression comparisons.
+
+## Shared knobs
+
+Every training command shares the same configuration surface:
+
+```bash
+swift sft \
+    --model Qwen/Qwen3.5-4B --torch_dtype bfloat16 --attn_impl flash_attention_2 \
+    --task_type causal_lm \
+    --dataset 'swift/self-cognition#600' \
+    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --mode ray --nproc_per_node 2 \
+    --num_train_epochs 1 --learning_rate 1e-4 \
+    --save_steps 100 --output_dir output
+```
+
+- **Task**: `--task_type` ∈ causal_lm / embedding / reranker / generative_reranker /
+  seq_cls / decision … selects the head and loss family.
+- **Tuner**: `--tuner lora|full|…` with `--lora_rank/--lora_alpha/--target_modules`.
+- **Distribution**: `--mode local|ray|remote`, `--nproc_per_node`;
+  remote adds `--server_base_url` (the training processes then run inside a twinkle-server).
+- **Backend**: `--backend transformers|megatron`.
+- **RL**: `swift rl --rlhf_type grpo|ppo|dpo|kto|cpo|orpo|simpo|rm|rft|gkd|opsd|mopd`,
+  with `--num_generations`, `--orm`, `--vllm_mode colocate|disaggregate`,
+  `--beta`, `--epsilon` etc. per algorithm.
+
+Unknown or unconsumed flags fail loudly instead of being silently ignored.
+Full runnable flag sets: [`examples/v5`](https://github.com/modelscope/ms-swift/tree/main/examples/v5)
+— every script header documents its knobs and measured VRAM.

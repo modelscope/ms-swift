@@ -7,7 +7,7 @@
 # `positive_images` / `negative_images` for the candidates. The positive/negative media columns are
 # list-of-list: the outer list aligns with the candidate conversations (one positive is the documented
 # constraint), the inner list with the `<image>` tags in that conversation. See data/vl_embedding.jsonl
-# for the row shape and docs/source/BestPractices/Embedding.md for the format.
+# for the row shape and docs/v4/source/BestPractices/Embedding.md for the format.
 #
 # The template/model_type are resolved from the checkpoint, so no explicit --template is needed.
 # MAX_PIXELS caps the per-image token budget the vision tower produces. Embedding has no classification

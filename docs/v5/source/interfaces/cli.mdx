@@ -1,0 +1,49 @@
+---
+title: 命令行
+description: 一个 CLI 覆盖预训练、SFT、RL、推理、部署、评测与导出。
+---
+
+## 命令
+
+| 命令 | 任务 |
+|---|---|
+| `swift pt` | 预训练（base 模型） |
+| `swift sft` | 有监督微调（全部任务类型） |
+| `swift rl` | 对齐与在线 RL（`--rlhf_type` 选算法；`rlhf` 是别名） |
+| `swift infer` | 交互/批量推理 |
+| `swift deploy` | 服务化（vLLM / sglang / transformers 引擎） |
+| `swift eval` | 评测（EvalScope） |
+| `swift export` | checkpoint 导出 / 合并 / 量化 / 推送 |
+| `swift merge` | LoRA 合并进 base 权重 |
+
+CLI 默认路由到 v5 实现（`swift.dev.cli.*`），参数直接解析为类型化 Config
+dataclass。设 `USE_SWIFT_V5=0` 走 legacy v4 路径——仅用于回归对照。
+
+## 共享旗标
+
+所有训练命令共享同一配置面：
+
+```bash
+swift sft \
+    --model Qwen/Qwen3.5-4B --torch_dtype bfloat16 --attn_impl flash_attention_2 \
+    --task_type causal_lm \
+    --dataset 'swift/self-cognition#600' \
+    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --mode ray --nproc_per_node 2 \
+    --num_train_epochs 1 --learning_rate 1e-4 \
+    --save_steps 100 --output_dir output
+```
+
+- **任务**：`--task_type` ∈ causal_lm / embedding / reranker / generative_reranker /
+  seq_cls / decision …，决定任务头与 loss 族。
+- **Tuner**：`--tuner lora|full|…` 配 `--lora_rank/--lora_alpha/--target_modules`。
+- **分布式**：`--mode local|ray|remote`、`--nproc_per_node`；
+  remote 另加 `--server_base_url`（训练进程随即跑在 twinkle-server 内）。
+- **后端**：`--backend transformers|megatron`。
+- **RL**：`swift rl --rlhf_type grpo|ppo|dpo|kto|cpo|orpo|simpo|rm|rft|gkd|opsd|mopd`，
+  按算法配 `--num_generations`、`--orm`、`--vllm_mode colocate|disaggregate`、
+  `--beta`、`--epsilon` 等。
+
+未知或未被消费的旗标会直接报错，绝不静默忽略。
+完整可运行旗标集见 [`examples/v5`](https://github.com/modelscope/ms-swift/tree/main/examples/v5)
+——每个脚本页头注明旗标与实测显存。

@@ -1,0 +1,50 @@
+---
+title: Online RL
+description: GRPO/PPO/RFT/GKD with vLLM rollouts; colocate or disaggregated placement.
+---
+
+## GRPO end to end
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rl \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --mode ray --nproc_per_node 2 \
+    --num_generations 8 --temperature 1.0 --max_completion_length 2048 \
+    --orm accuracy --beta 0.04 --epsilon 0.2 \
+    --vllm_mode colocate --vllm_gpu_memory_utilization 0.5 \
+    --learning_rate 1e-4 --output_dir output
+```
+
+Each step: sample `--num_generations` completions per prompt from the current
+policy (weights synced into vLLM before every rollout), score with `--orm`,
+turn each group into a group-relative advantage, update with the clipped
+surrogate. **Judge convergence by the reward curve, not the loss** — a
+policy-gradient loss oscillates around zero by construction.
+
+## Placement
+
+- `--vllm_mode colocate` — sampler and trainer share GPUs (sleep/wake between
+  phases); simplest, fits small clusters.
+- `--vllm_mode disaggregate` — sampler owns its GPU group, trainer another;
+  the heterogeneous layout for throughput at scale.
+
+## Algorithm family
+
+| `--rlhf_type` | What it adds |
+|---|---|
+| `grpo` | critic-free group-relative advantage |
+| `ppo` | value model + GAE (needs a reward model from `rm` training) |
+| `rft` | rejection-sampling fine-tuning on rewarded rollouts |
+| `gkd` / `opsd` / `mopd` | teacher-guided on-policy distillation |
+
+Rewards: registered orms (`accuracy`, …), reward models, or plugins
+(`--external_plugins`). Watch `train/total_reward`, `train/completion_length`,
+`train/clip_ratio`, `train/approx_kl` in tensorboard; `--log_completions true`
+samples completions into the log.
+
+Runnable references with measured VRAM: `examples/v5/rl/{grpo,ppo,rft,gkd,opsd,mopd}`.

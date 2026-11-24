@@ -1,0 +1,57 @@
+---
+title: Quick Start
+description: Install SWIFT v5 from source and run your first LoRA fine-tune.
+---
+
+## Install (development version)
+
+v5 is under active development and not published to PyPI. Install from source:
+
+```bash
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+pip install -e .
+# twinkle (component library) and mcore-bridge (Megatron weight conversion)
+git clone https://github.com/modelscope/twinkle.git && pip install -e twinkle
+git clone https://github.com/modelscope/mcore-bridge.git && pip install -e mcore-bridge
+```
+
+Requirements: Python >= 3.10 (3.12 recommended), CUDA 12.8/13.0 for GPU training.
+See [Installation & Hardware](./installation.mdx) for NPU/XPU/CPU notes.
+
+## First LoRA run
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --task_type causal_lm \
+    --torch_dtype bfloat16 \
+    --dataset 'swift/self-cognition#600' \
+    --tuner lora \
+    --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 --gradient_accumulation_steps 8 \
+    --learning_rate 1e-4 --lr_scheduler cosine --warmup_ratio 0.05 \
+    --max_length 2048 \
+    --logging_steps 5 --save_steps 100 --save_total_limit 2 \
+    --output_dir output
+```
+
+What to watch:
+
+- `loss` should fall clearly on self-cognition (new knowledge the model must fit);
+  on general SFT data an already-instruct model has little headroom and a flat curve is normal.
+- Checkpoints land in `output/` every `--save_steps`; `--save_total_limit` rotates old ones.
+- `--tuner full` switches to full-parameter training; drop `--tuner` for the same effect.
+
+The runnable script with measured VRAM notes is
+[`examples/v5/train/lora/train.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/v5/train/lora/train.sh);
+its Python twin `train.py` shows the same run as component-level code.
+
+## Next steps
+
+- [Command Line](../interfaces/cli.mdx) — tasks beyond SFT.
+- [Scaling](./scaling.mdx) — the same command on many GPUs via Ray.
+- WebUI — prefer a graphical workbench? Install `ms-webui` (see the WebUI section of this site).

@@ -1,0 +1,26 @@
+---
+title: Classification
+description: Sequence classification with a task head; single/multi-label and regression.
+---
+
+```bash
+swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --task_type seq_cls \
+    --num_labels 2 \
+    --problem_type single_label_classification \
+    --attn_impl flash_attention_2 --torch_dtype bfloat16 \
+    --dataset 'hc3-zh:finance_cls#2000' \
+    --tuner full \
+    --num_train_epochs 3 --learning_rate 1e-5 \
+    --output_dir output
+```
+
+- `--num_labels` sets the head width; `--problem_type` ∈
+  single_label_classification / multi_label_classification / regression.
+- Data: messages rows plus a `label` field (index, label list, or float);
+  layout in `examples/v5/train/data/seq_cls.jsonl`.
+- The classification head is trained from scratch on top of the backbone —
+  LoRA on the backbone plus a trainable head is the usual cheap setup.
+- Reward-model training (`swift rl --rlhf_type rm`) is the preference-pair
+  variant of scalar scoring; see [Human Alignment](../alignment/human-alignment.mdx).
