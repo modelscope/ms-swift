@@ -1,4 +1,4 @@
-from . import (baai, baidu, bert, decision, deepseek, dots, flint, gemma, glm, idefics3, internlm, internvl, kwai,
-               llama, llava, llm, megrez, microsoft, midashenglm, mimo, minicpm, minimax, minimind, mistral, molmo,
-               moonshot, moss, mplug, museglimmer, nvidia, openbuddy, pixtral, qwen, seed, spark, stepfun, tencent,
-               valley, yi)
+from . import (adventists, baai, baidu, bert, decision, deepseek, dots, flint, gemma, glm, idefics3, internlm, internvl,
+               kwai, llama, llava, llm, megrez, microsoft, midashenglm, mimo, minicpm, minimax, minimind, mistral,
+               molmo, moonshot, moss, mplug, museglimmer, nvidia, openbuddy, pixtral, qwen, seed, spark, stepfun,
+               tencent, valley, yi)

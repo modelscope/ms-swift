@@ -101,6 +101,15 @@ def test_qwen3_asr():
     assert response == 'language Chinese<asr_text>甚至出现交易几乎停滞的情况。'
 
 
+def test_sophon_realtime():
+    engine = TransformersEngine('AdventistsAI/Sophon-Realtime-v1:base')
+    messages = [{'role': 'user', 'content': '<audio>'}]
+    response = _infer_model(engine, messages=messages)
+    engine.template.template_backend = 'jinja'
+    response2 = _infer_model(engine, messages=messages)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
@@ -113,4 +122,5 @@ if __name__ == '__main__':
     # test_gemma3n()
     # test_midashenglm()
     # test_step_audio2_mini()
-    test_qwen3_asr()
+    # test_qwen3_asr()
+    test_sophon_realtime()
