@@ -69,6 +69,7 @@ class Qwen3MixedTemplateMeta(QwenTemplateMeta):
 class Qwen3Template(Template):
 
     def _non_thinking_prefix_start(self, messages):
+        # Only the final assistant gets the empty block; a trailing user disables it.
         last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
         return max(get_last_user_round(messages), last_assistant)
 

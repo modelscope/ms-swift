@@ -185,6 +185,7 @@ class ERNIE_VLTemplate(Template):
     placeholder_tokens = ['<|IMAGE_PLACEHOLDER|>']
 
     def _add_non_thinking_prefix(self, inputs) -> None:
+        # The empty think block belongs to the generation prompt, never to existing answers.
         pass
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,

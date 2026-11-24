@@ -425,6 +425,7 @@ class HyV3Template(HyV3PreviewTemplate):
     HYTK = ':opensource'
 
     def _get_preserve_thinking(self, inputs=None):
+        # HyV3 preserves history by default when tools are present, unless the caller overrides it.
         explicit = self._get_chat_template_arg('preserve_thinking', inputs)
         if (explicit is None and self.preserve_thinking is None and self.template_meta.preserve_thinking is None
                 and inputs is not None and getattr(inputs, 'tools', None)):
@@ -688,6 +689,7 @@ register_template(
 class NemotronHTemplate(Template):
 
     def _remove_thinking_content(self, content, thinking_suffix='</think>'):
+        # Keep the whitespace after removed reasoning to match the official jinja.
         _, closed, answer = content.rpartition(thinking_suffix)
         return self.template_meta.history_thinking_prefix + (answer if closed else answer.strip())
 

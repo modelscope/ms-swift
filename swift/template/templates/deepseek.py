@@ -730,10 +730,12 @@ class DeepseekV3_1Template(Template):
     jinja_enable_thinking_key = 'thinking'
 
     def _is_add_non_thinking_round(self, messages, i, start_idx):
+        # Replaces the removed `non_thinking_prefix_only_after_user` flag.
         return (super()._is_add_non_thinking_round(messages, i, start_idx) and i > 0
                 and (messages[i - 1]['role'] == 'user' or messages[i - 1].get('_tool_user_followup')))
 
     def _remove_history_thinking(self, inputs) -> None:
+        # V3.1 keeps the final training answer and tool-call turns; only plain history is stripped.
         messages = inputs.messages
         last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
         for i, message in enumerate(messages):
@@ -741,8 +743,6 @@ class DeepseekV3_1Template(Template):
                 continue
             if self.is_training and i == last_assistant:
                 continue
-            # Official V3.1 keeps tool-call assistant content verbatim and strips only plain
-            # assistant turns.
             next_role = messages[i + 1]['role'] if i + 1 < len(messages) else None
             if next_role in ('tool', 'tool_call'):
                 continue
@@ -789,9 +789,11 @@ class DeepseekV4Template(DeepseekV3_1Template):
     reasoning_effort_prompts = {'high': '', 'max': REASONING_EFFORT_ABSOLUTE_MAX}
     default_reasoning_effort = 'high'
 
+    # V4 drops the V3.1 user-adjacent restriction.
     _is_add_non_thinking_round = Template._is_add_non_thinking_round
 
     def _remove_thinking_content(self, content, thinking_suffix='</think>'):
+        # Keep the whitespace after removed reasoning to match the official encoder.
         _, closed, answer = content.rpartition(thinking_suffix)
         return self.template_meta.history_thinking_prefix + (answer if closed else answer.strip())
 
@@ -863,6 +865,7 @@ class DeepseekV41Template(DeepseekV3_1Template):
 
     # Unlike V3.1 (`thinking`), the V4.1 jinja switches on `enable_thinking`.
     jinja_enable_thinking_key = 'enable_thinking'
+    # V4.1 shares V4's block placement and whitespace-preserving stripping.
     _is_add_non_thinking_round = Template._is_add_non_thinking_round
     _remove_thinking_content = DeepseekV4Template._remove_thinking_content
 
@@ -926,6 +929,7 @@ class DeepseekV41Template(DeepseekV3_1Template):
                 else:
                     message['content'] = prefix + first
 
+    # V4.1 keeps every turn when tools are defined, same as V4.
     _remove_history_thinking = DeepseekV4Template._remove_history_thinking
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):

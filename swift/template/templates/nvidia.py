@@ -24,6 +24,7 @@ class NemoSpeechLMTemplate(Template):
     support_padding_free = False
 
     def _remove_thinking_content(self, content, thinking_suffix='</think>'):
+        # Keep the whitespace after removed reasoning to match the official template.
         _, closed, answer = content.rpartition(thinking_suffix)
         return self.template_meta.history_thinking_prefix + (answer if closed else answer.strip())
 

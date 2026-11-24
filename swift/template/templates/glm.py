@@ -399,6 +399,7 @@ class GLM5_3Template(GLM5_2Template):
     reasoning_effort_needs_thinking = False
 
     def _get_enable_thinking(self, inputs=None):
+        # `to_generate_template_meta` drops `force_thinking`, so keep the non-chat branch explicit.
         if not self.use_chat_template:
             return True
         return super()._get_enable_thinking(inputs)

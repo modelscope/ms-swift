@@ -268,6 +268,7 @@ register_template(Qwen2_5TemplateMeta(
 class MiniCPMV4_5Template(MiniCPMV2_6Template):
 
     def _non_thinking_prefix_start(self, messages):
+        # Only the final assistant gets the empty block; a trailing user disables it.
         last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]['role'] == 'assistant'), -1)
         return max(get_last_user_round(messages), last_assistant)
 
@@ -341,7 +342,6 @@ register_template(
         is_thinking=True,
         thinking_prefix='<think>\n',
         default_enable_thinking=None,
-        # The official jinja emits the empty block for the final answer only.
     ))
 
 

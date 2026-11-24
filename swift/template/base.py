@@ -184,8 +184,6 @@ class Template(ProcessorMixin):
         return enable_thinking
 
     def _force_thinking(self, enable_thinking):
-        if not self.use_chat_template:
-            return enable_thinking
         if enable_thinking is False:
             logger.warning_once(f'{self.template_meta.template_type} only supports thinking mode; '
                                 'ignoring enable_thinking=False.')
