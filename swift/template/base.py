@@ -28,7 +28,7 @@ from swift.utils import (Processor, ProcessorMixin, get_env_args, get_logger, re
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import (Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round,
                     get_token_backed_response_ids, split_str_parts_by)
-from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image
+from .vision_utils import _check_path, load_audio, load_batch, load_image, load_image_size, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
@@ -153,6 +153,7 @@ class Template(ProcessorMixin):
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker', 'generative_reranker',
                                 'decision'] = 'causal_lm'
         self.use_megatron = False
+        self._length_only = False
         self._handles = []
         self._deepspeed_initialize = None
 
@@ -293,6 +294,22 @@ class Template(ProcessorMixin):
         state['_handles'] = []
         state['_deepspeed_initialize'] = None
         return state
+
+    def _can_use_length_only_images(self) -> bool:
+        """Whether this template can compute exact token lengths from `ImageSize` headers without decoding pixels."""
+        return False
+
+    @staticmethod
+    def _load_image_sizes(images: List[Any]) -> Optional[List[Any]]:
+        sizes = []
+        for image in images:
+            if isinstance(image, dict) and 'bytes' in image:
+                image = image['bytes'] or image['path']
+            try:
+                sizes.append(load_image_size(image))
+            except TypeError:
+                return None
+        return sizes
 
     @staticmethod
     def _load_image(image, load_images: bool):
@@ -457,9 +474,14 @@ class Template(ProcessorMixin):
         max_pixels = self._get_max_pixels(inputs)
         if max_pixels is not None or inputs.objects:
             load_images = True
+        use_length_only_images = getattr(self, '_length_only', False) and self._can_use_length_only_images()
         if images:
-            for i, image in enumerate(images):
-                images[i] = self._load_image(images[i], load_images)
+            image_sizes = self._load_image_sizes(images) if use_length_only_images else None
+            if image_sizes is not None:
+                images[:] = image_sizes
+            else:
+                for i, image in enumerate(images):
+                    images[i] = self._load_image(images[i], load_images)
         if inputs.objects:
             self._get_height_width(inputs)
         if max_pixels is not None:
@@ -687,7 +709,8 @@ class Template(ProcessorMixin):
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], 'InferRequest'],
                return_template_inputs: bool = False,
-               return_length: bool = False) -> Dict[str, Any]:
+               return_length: bool = False,
+               length_only: bool = False) -> Dict[str, Any]:
         """The entrance method of Template!
 
         Returns:
@@ -706,31 +729,36 @@ class Template(ProcessorMixin):
         assert isinstance(inputs, TemplateInputs)
 
         chosen = inputs.chosen
-        if self.task_type == 'causal_lm':
-            if self.mode in {'train', 'transformers', 'vllm', 'lmdeploy', 'sglang'}:
+        prev_length_only = getattr(self, '_length_only', False)
+        self._length_only = length_only
+        try:
+            if self.task_type == 'causal_lm':
+                if self.mode in {'train', 'transformers', 'vllm', 'lmdeploy', 'sglang'}:
+                    encoded = self._encode_truncated(chosen)
+                elif self.mode == 'rlhf':
+                    encoded = self._rlhf_encode(inputs)
+                elif self.mode == 'kto':
+                    encoded = self._kto_encode(inputs)
+            elif self.task_type == 'seq_cls':
+                if self.mode == 'rlhf':
+                    encoded = self._rlhf_encode(inputs)
+                    for prefix in ['chosen', 'rejected']:  # rm
+                        encoded.pop(f'{prefix}_labels', None)
+                        encoded.pop(f'{prefix}_loss_scale', None)
+                else:
+                    encoded = self._seq_cls_encode(chosen)
+            elif self.task_type == 'prm':
                 encoded = self._encode_truncated(chosen)
-            elif self.mode == 'rlhf':
-                encoded = self._rlhf_encode(inputs)
-            elif self.mode == 'kto':
-                encoded = self._kto_encode(inputs)
-        elif self.task_type == 'seq_cls':
-            if self.mode == 'rlhf':
-                encoded = self._rlhf_encode(inputs)
-                for prefix in ['chosen', 'rejected']:  # rm
-                    encoded.pop(f'{prefix}_labels', None)
-                    encoded.pop(f'{prefix}_loss_scale', None)
+            elif self.task_type == 'embedding':
+                encoded = self._embedding_encode(inputs)
+            elif self.task_type in {'reranker', 'generative_reranker'}:
+                encoded = self._reranker_encode(inputs)
+            elif self.task_type == 'decision':
+                encoded = self._decision_encode(inputs)
             else:
-                encoded = self._seq_cls_encode(chosen)
-        elif self.task_type == 'prm':
-            encoded = self._encode_truncated(chosen)
-        elif self.task_type == 'embedding':
-            encoded = self._embedding_encode(inputs)
-        elif self.task_type in {'reranker', 'generative_reranker'}:
-            encoded = self._reranker_encode(inputs)
-        elif self.task_type == 'decision':
-            encoded = self._decision_encode(inputs)
-        else:
-            raise ValueError(f'task_type: {self.task_type} is not supported.')
+                raise ValueError(f'task_type: {self.task_type} is not supported.')
+        finally:
+            self._length_only = prev_length_only
 
         # compatible with `--truncation_strategy split`
         batched = encoded

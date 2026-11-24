@@ -7,10 +7,11 @@ import re
 import requests
 import torch
 from contextlib import contextmanager
+from dataclasses import dataclass
 from io import BytesIO
 from PIL import Image
 from requests.adapters import HTTPAdapter
-from typing import Any, Callable, Iterator, List, TypeVar, Union
+from typing import Any, Callable, Iterator, List, Tuple, TypeVar, Union
 from urllib3.util.retry import Retry
 
 from swift.utils import SafeMediaPath, get_env_args
@@ -86,8 +87,18 @@ def _dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbn
 # <<< internvl
 
 
-def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
-    import torchvision.transforms as T
+@dataclass(frozen=True)
+class ImageSize:
+    """Lightweight image-dimension proxy used by length-only pre-passes to avoid pixel decoding."""
+    width: int
+    height: int
+
+    @property
+    def size(self) -> Tuple[int, int]:
+        return (self.width, self.height)
+
+
+def rescale_image(img: Union[Image.Image, ImageSize], max_pixels: int) -> Union[Image.Image, ImageSize]:
     width = img.width
     height = img.height
     if max_pixels is None or max_pixels <= 0 or width * height <= max_pixels:
@@ -96,7 +107,11 @@ def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
     ratio = width / height
     height_scaled = math.sqrt(max_pixels / ratio)
     width_scaled = height_scaled * ratio
-    return T.Resize((int(height_scaled), int(width_scaled)))(img)
+    new_height, new_width = int(height_scaled), int(width_scaled)
+    if isinstance(img, ImageSize):
+        return ImageSize(new_width, new_height)
+    import torchvision.transforms as T
+    return T.Resize((new_height, new_width))(img)
 
 
 _T = TypeVar('_T')
@@ -180,6 +195,36 @@ def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
     elif image.mode != 'RGB':
         image = image.convert('RGB')
     return image
+
+
+def load_image_size(image: Union[str, bytes, BytesIO, Image.Image, ImageSize]) -> ImageSize:
+    """Read image `(width, height)` from headers without decoding pixel buffers."""
+    if isinstance(image, ImageSize):
+        return image
+    if isinstance(image, Image.Image):
+        return ImageSize(image.width, image.height)
+    if isinstance(image, bytes):
+        with Image.open(BytesIO(image)) as img:
+            return ImageSize(img.width, img.height)
+    if isinstance(image, BytesIO):
+        with Image.open(image) as img:
+            return ImageSize(img.width, img.height)
+    if isinstance(image, str):
+        path = image.strip()
+        if path.startswith('http'):
+            bio = load_file(path)
+            with Image.open(bio) as img:
+                return ImageSize(img.width, img.height)
+        resolved = _check_path(path)
+        if resolved is None:
+            # base64 string
+            bio = load_file(path)
+            with Image.open(bio) as img:
+                return ImageSize(img.width, img.height)
+        SafeMediaPath.check(resolved)
+        with Image.open(resolved) as img:
+            return ImageSize(img.width, img.height)
+    raise TypeError(f'Unsupported image input for header-only size loading: {type(image)!r}')
 
 
 def load_batch(path_list: List[Union[str, None, Any, BytesIO]],

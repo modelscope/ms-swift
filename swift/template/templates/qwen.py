@@ -24,7 +24,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall, get_last_user_round
-from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
+from ..vision_utils import ImageSize, load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -351,6 +351,53 @@ class Qwen2VLTemplate(Template):
     def _get_max_pixels(self, inputs=None):
         return self.max_pixels
 
+    def _can_use_length_only_images(self) -> bool:
+        cls = type(self)
+        return (cls.replace_tag is Qwen2VLTemplate.replace_tag
+                and cls._encode in (Qwen2VLTemplate._encode, Qwen3VLTemplate._encode)
+                and self.mode not in {'vllm', 'lmdeploy', 'sglang'})
+
+    @staticmethod
+    def _smart_resize_image_size(image_size: ImageSize,
+                                 chat_template_kwargs: Dict[str, Any],
+                                 image_patch_size: int = 14) -> ImageSize:
+        from qwen_vl_utils import vision_process
+        if hasattr(vision_process, 'SPATIAL_MERGE_SIZE') and hasattr(vision_process, 'IMAGE_MIN_TOKEN_NUM'):
+            patch_factor = int(image_patch_size * vision_process.SPATIAL_MERGE_SIZE)
+            default_min_pixels = vision_process.IMAGE_MIN_TOKEN_NUM * patch_factor**2
+            default_max_pixels = vision_process.IMAGE_MAX_TOKEN_NUM * patch_factor**2
+        else:
+            patch_factor = vision_process.IMAGE_FACTOR
+            default_min_pixels = vision_process.MIN_PIXELS
+            default_max_pixels = vision_process.MAX_PIXELS
+
+        if 'resized_height' in chat_template_kwargs and 'resized_width' in chat_template_kwargs:
+            resized_height, resized_width = vision_process.smart_resize(
+                chat_template_kwargs['resized_height'],
+                chat_template_kwargs['resized_width'],
+                factor=patch_factor,
+            )
+        else:
+            min_pixels = chat_template_kwargs.get('min_pixels')
+            if min_pixels is None:
+                min_pixels = default_min_pixels
+            max_pixels = chat_template_kwargs.get('max_pixels')
+            if max_pixels is None:
+                max_pixels = default_max_pixels
+            resized_height, resized_width = vision_process.smart_resize(
+                image_size.height,
+                image_size.width,
+                factor=patch_factor,
+                min_pixels=min_pixels,
+                max_pixels=max_pixels,
+            )
+        return ImageSize(resized_width, resized_height)
+
+    def _compute_image_grid_thw(self, images: List[ImageSize]) -> torch.Tensor:
+        patch_size = self.processor.image_processor.patch_size
+        grids = [[1, img.height // patch_size, img.width // patch_size] for img in images]
+        return torch.tensor(grids, dtype=torch.long)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_vl_utils import fetch_image, fetch_video
@@ -361,7 +408,14 @@ class Qwen2VLTemplate(Template):
             # ref: https://github.com/modelscope/ms-swift/issues/8445
             inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
-            inputs.images[index] = fetch_image({'image': inputs.images[index], **inputs.chat_template_kwargs}, **kwargs)
+            if isinstance(inputs.images[index], ImageSize):
+                inputs.images[index] = self._smart_resize_image_size(inputs.images[index], inputs.chat_template_kwargs,
+                                                                     **kwargs)
+            else:
+                inputs.images[index] = fetch_image({
+                    'image': inputs.images[index],
+                    **inputs.chat_template_kwargs
+                }, **kwargs)
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             else:
@@ -429,8 +483,12 @@ class Qwen2VLTemplate(Template):
             if mm_data:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
-                    media_grid_thw = media_inputs['image_grid_thw']
+                    if all(isinstance(img, ImageSize) for img in mm_data):
+                        media_inputs = {}
+                        media_grid_thw = self._compute_image_grid_thw(mm_data)
+                    else:
+                        media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
+                        media_grid_thw = media_inputs['image_grid_thw']
                 else:
                     kwargs = {}
                     if hasattr(processor, 'video_processor'):
@@ -460,7 +518,7 @@ class Qwen2VLTemplate(Template):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if self.requires_mm_token_type_ids and any(mm_mask):
+        if not getattr(self, '_length_only', False) and self.requires_mm_token_type_ids and any(mm_mask):
             encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
@@ -603,8 +661,12 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
             if mm_data:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
-                    media_grid_thw = media_inputs['image_grid_thw']
+                    if all(isinstance(img, ImageSize) for img in mm_data):
+                        media_inputs = {}
+                        media_grid_thw = self._compute_image_grid_thw(mm_data)
+                    else:
+                        media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
+                        media_grid_thw = media_inputs['image_grid_thw']
                 else:
                     split_token = self._tokenize('\n')[0]
                     media_inputs = processor(
@@ -635,7 +697,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if self.requires_mm_token_type_ids and any(mm_mask):
+        if not getattr(self, '_length_only', False) and self.requires_mm_token_type_ids and any(mm_mask):
             encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
