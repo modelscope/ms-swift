@@ -14,8 +14,16 @@ class TestLossGroupInitialization(unittest.TestCase):
 
         from swift.fsdpturbo.trainer import FSDPTurboTrainer
 
-        self.assertIs(
-            getattr(FSDPTurboTrainer.sync_loss, '__func__', FSDPTurboTrainer.sync_loss), BaseTrainer.sync_loss.__func__)
+        trainer = self.make_trainer(1)
+        trainer.config = SimpleNamespace(run=SimpleNamespace(gradient_accumulation_steps=2))
+        trainer._accumulated_tokens = torch.tensor(4)
+        losses = {'loss': [torch.tensor(1.), torch.tensor(3.)]}
+        with patch.object(BaseTrainer, 'sync_loss', wraps=BaseTrainer.sync_loss) as reduce:
+            result = trainer.sync_loss(losses)
+        reduce.assert_called_once_with(losses)
+        self.assertEqual(result['loss'].item(), 2.)
+        self.assertEqual(trainer._gradient_scale, 0.5)
+        self.assertEqual(trainer._accumulated_tokens, 0)
 
     def make_trainer(self, size):
         from swift.fsdpturbo.trainer import FSDPTurboTrainer
@@ -23,7 +31,11 @@ class TestLossGroupInitialization(unittest.TestCase):
         trainer = object.__new__(FSDPTurboTrainer)
         trainer.train_args = SimpleNamespace(device=torch.device('cpu'))
         trainer.model = SimpleNamespace(
-            parallel_state=SimpleNamespace(get_data_group_size=lambda: size, get_data_group=lambda: 'loss-group'))
+            parallel_state=SimpleNamespace(
+                get_data_group_size=lambda: size,
+                get_data_group=lambda: 'loss-group',
+                get_group_size=lambda name: size,
+                get_group=lambda name: 'loss-group'))
         return trainer
 
     def test_collective_initializes_the_loss_group_before_training(self):

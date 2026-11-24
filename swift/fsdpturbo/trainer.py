@@ -172,6 +172,8 @@ class FSDPTurboTrainer(BaseTrainer):
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self._eval_history = []
+        self._accumulated_tokens = 0
+        self._gradient_scale = 1.0
         self.spec = get_model_spec(args.model_type)
         self._adapter_resume = args.resume_from_checkpoint if args.tuner_type == 'lora' else None
         if self._adapter_resume:
@@ -423,7 +425,30 @@ class FSDPTurboTrainer(BaseTrainer):
 
     def _on_optimizer_step(self):
         self._sync_replicated_gradients()
+        for parameter in self.model.parameters():
+            if parameter.grad is not None:
+                parameter.grad.mul_(self._gradient_scale)
+        # Host routing and replica reduction sum gradients instead of averaging them.
+        sparse_scale = self._gradient_scale / (dist.get_world_size() if dist.is_initialized() else 1)
+        for table in getattr(self.optimizer, 'tables', ()):
+            table.scale_pending_sparse_grad(sparse_scale)
         return super()._on_optimizer_step()
+
+    def sync_loss(self, accumulated_losses):
+        """Normalize the update by valid targets, counting complete CP labels once."""
+        result = super().sync_loss(accumulated_losses)
+        state = self.model.parallel_state
+        tokens = self._accumulated_tokens.clone()
+        data_size = state.get_group_size('data')
+        if data_size > 1:
+            dist.all_reduce(tokens, group=state.get_group('data'))
+        total_tokens = tokens.item()
+        if total_tokens == 0:
+            raise ValueError('An optimizer update requires at least one valid next-token label.')
+        self._gradient_scale = self.config.run.gradient_accumulation_steps * data_size / total_tokens
+        result['loss'] *= self._gradient_scale
+        self._accumulated_tokens = 0
+        return result
 
     def build_dataloader(self):
         if self.train_dataset is None:
@@ -657,7 +682,10 @@ class FSDPTurboTrainer(BaseTrainer):
         outputs = self.model(**self._prepare_model_inputs(batch))
         if outputs.loss is None:
             raise RuntimeError('Model did not return a loss; ensure the batch contains labels.')
-        loss = outputs.loss / self.config.run.gradient_accumulation_steps
+        tokens = batch['labels'][..., 1:].ne(-100).sum()
+        self._accumulated_tokens = self._accumulated_tokens + tokens.detach()
+        # Backpropagate token sums; the complete update is normalized before clipping.
+        loss = torch.where(tokens > 0, outputs.loss, 0) * tokens / self.config.run.gradient_accumulation_steps
         loss.backward()
         return loss, getattr(outputs, 'aux_loss', None)
 

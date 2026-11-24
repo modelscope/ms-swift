@@ -75,3 +75,5 @@ python -m torch.distributed.run --standalone --nproc_per_node=4 tests/fsdpturbo/
 ```
 
 The distributed commands use CPU/Gloo tensors. They establish metric and replica-gradient contracts, not accelerator model training. Actual model runs must separately verify initial weights, input/label hashes, loss/gradient curves, optimizer updates, topology, peak memory and clean exits. Results from earlier source pairs do not certify this pair.
+
+Accumulation weights micro-batches by valid next-token targets over the complete update and data group. Empty-target micro-batches contribute zero; an entirely empty update is rejected before optimizer stepping. Gradient normalization precedes clipping, including Host sparse gradients.
