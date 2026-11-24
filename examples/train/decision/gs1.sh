@@ -12,7 +12,7 @@ swift sft \
     --loss_type gs1 \
     --dataset gs1_demo \
     --tuner_type full \
-    --freeze_vision_tower true \
+    --freeze_vit true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

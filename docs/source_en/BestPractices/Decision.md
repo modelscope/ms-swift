@@ -63,7 +63,7 @@ GS1_BRIER_WEIGHT=1.0 swift sft \
   --model bigai/GS1-0.8B --model_type gs1 --task_type decision \
   --external_plugins examples/train/decision/dataset.py \
   --dataset gs1_demo --loss_type gs1 \
-  --tuner_type full --freeze_vision_tower true
+  --tuner_type full --freeze_vit true
 ```
 
 ## Loss Functions

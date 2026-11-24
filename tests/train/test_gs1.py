@@ -131,11 +131,15 @@ def test_gs1_template_encodes_while_model_is_detached(monkeypatch):
     assert template.processor.chat_template == 'shared-template'
 
 
-def test_gs1_collator_uses_left_padding_and_native_position_ids():
+@pytest.mark.parametrize('mode', ['train', 'transformers'])
+def test_gs1_collator_aligns_labels_and_native_branches(mode):
     import swift.template.templates.decision as decision_template
 
     template = object.__new__(decision_template.GS1Template)
-    template.mode = 'train'
+    template.mode = mode
+    template.task_type = 'decision'
+    template.packing = False
+    template.remove_unused_columns = True
     template.padding_side = 'right'
     template.processor = SimpleNamespace(pad_token_id=0)
     template.use_megatron = False
@@ -161,9 +165,11 @@ def test_gs1_collator_uses_left_padding_and_native_position_ids():
             'target_probs': None,
         },
     ]
-    result = template._data_collator(batch)
+    result = template.data_collator(batch)
     assert result['input_ids'].tolist() == [[1, 2, 3], [0, 4, 5]]
-    assert result['position_ids'].tolist() == [[0, 1, 2], [0, 0, 1]]
+    assert result['attention_mask'].tolist() == [[1, 1, 1], [0, 1, 1]]
+    if mode == 'train':
+        assert result['position_ids'].tolist() == [[0, 1, 2], [0, 0, 1]]
     assert result['decision_meta']['kinds'] == [1, 2]
     assert result['decision_meta']['gs1_branches'] == ['long', 'short']
     torch.testing.assert_close(result['labels'], torch.tensor([[0.75, 0.25, 0.0], [0.0, 0.0, 0.0]]))

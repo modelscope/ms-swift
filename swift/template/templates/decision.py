@@ -10,7 +10,6 @@ assembly and head-meta contracts are fundamentally different.
 import json
 import re
 import string
-import torch
 from copy import copy
 from importlib import import_module
 from typing import Any, Dict, List, Optional, Tuple
@@ -168,9 +167,7 @@ class GS1Template(DecisionTemplate, Qwen3_5Template):
         if state is not None:
             fields['state'] = json.loads(state)
         if criteria is not None:
-            criteria = json.loads(criteria)
-        if criteria is not None:
-            fields['criteria'] = criteria
+            fields['criteria'] = json.loads(criteria)
         compiler = self._gs1_compiler
         question = {
             'type': fields['kind'],
@@ -197,7 +194,10 @@ class GS1Template(DecisionTemplate, Qwen3_5Template):
         meta = {
             'n_options': [len(fields['options'])],
             'kinds': [QUESTION_TYPES[fields['kind']]],
-            'gs1_branches': [{'branch': branch, 'state_length': len(compiled.state)}],
+            'gs1_branches': [{
+                'branch': branch,
+                'state_length': len(compiled.state)
+            }],
         }
         return {
             'input_ids': list(compiled.state + branch.suffix),
@@ -212,45 +212,9 @@ class GS1Template(DecisionTemplate, Qwen3_5Template):
         return inputs
 
     def _data_collator(self, batch, *, padding_to=None):
-        if self.is_training:
-            self.padding_side = 'left'
-        return self._gs1_data_collator(batch, padding_to=padding_to)
-
-    def _gs1_data_collator(self, batch, *, padding_to=None):
-        record_metas = [item.pop('decision_meta', None) for item in batch]
-        record_targets = [item.pop('target_probs', None) for item in batch]
-        result = Template._data_collator(self, batch, padding_to=padding_to)
-        decision_meta = {
-            'record_index': [],
-            'n_options': [],
-            'kinds': [],
-            'counts': [],
-            'gs1_branches': [],
-            'max_opt': 0,
-            'left_padding': True,
-        }
-        for index, meta in enumerate(record_metas):
-            if meta is None:
-                continue
-            count = len(meta['n_options'])
-            decision_meta['counts'].append(count)
-            decision_meta['record_index'].extend([index] * count)
-            decision_meta['n_options'].extend(meta['n_options'])
-            decision_meta['kinds'].extend(meta['kinds'])
-            decision_meta['gs1_branches'].extend(meta['gs1_branches'])
-            decision_meta['max_opt'] = max(decision_meta['max_opt'], max(meta['n_options'], default=0))
-        decision_meta['seq_lens'] = result['attention_mask'].sum(dim=-1).tolist()
-        result['decision_meta'] = decision_meta
-        if any(target is not None for target in record_targets):
-            width = decision_meta['max_opt']
-            labels = []
-            for meta, targets in zip(record_metas, record_targets):
-                question_count = len(meta.get('n_options') or []) if meta else 0
-                target_rows = targets if targets is not None else [[0.0] * n for n in meta.get('n_options', [])]
-                for target in target_rows[:question_count]:
-                    labels.append(target + [0.0] * (width - len(target)))
-            result['labels'] = torch.tensor(labels, dtype=torch.float32)
-        return result
+        # GS1 locates each compiled branch relative to the right edge of the batch.
+        self.padding_side = 'left'
+        return Template._data_collator(self, batch, padding_to=padding_to)
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.gs1, template_cls=GS1Template, default_system=None))
