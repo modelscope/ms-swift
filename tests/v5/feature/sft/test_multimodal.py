@@ -141,7 +141,7 @@ def test_run_sft_vl_image_text_end_to_end(tmp_path, vl_model, assert_trained):
 def _write_vl_embedding_data(path, anchor_images, negative_images):
     """A jsonl multimodal-embedding dataset: an ``<image>`` anchor plus an ``<image>`` positive/negative.
 
-    The documented dev/legacy multimodal-embedding row shape (docs/source/BestPractices/Embedding.md):
+    The documented dev/legacy multimodal-embedding row shape (docs/v4/source/BestPractices/Embedding.md):
     ``<image>`` may appear in ``messages`` / ``positive_messages`` / ``negative_messages``, each with its
     own parallel media column -- ``images`` / ``positive_images`` / ``negative_images``. The positive and
     negative media columns are list-of-list: the outer list aligns with the candidate conversations (one

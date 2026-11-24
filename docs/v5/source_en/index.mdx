@@ -1,0 +1,28 @@
+---
+title: SWIFT v5 Documentation
+description: Training, alignment, inference and deployment with SWIFT v5 and twinkle.
+---
+
+SWIFT is a large-model training framework: complete recipes, a CLI and a code-level
+API for fine-tuning, human alignment, online RL, evaluation, export and deployment.
+[twinkle](https://github.com/modelscope/twinkle) is its component library — the
+training/inference building blocks can also be composed on their own.
+
+<Callout type="info">
+This is the **5.0.0.dev** development documentation. v5 is not on PyPI yet; install
+from source as shown in [Quick Start](./get-started/quick-start.mdx).
+</Callout>
+
+## Where to start
+
+- [Quick Start](./get-started/quick-start.mdx) — first LoRA run in minutes.
+- [Command Line](./interfaces/cli.mdx) — every task from one CLI.
+- [Code API & Plugins](./interfaces/code-api.mdx) — the same training as Python objects.
+- [Online RL](./alignment/online-rl.mdx) — GRPO/PPO/RFT with vLLM rollouts.
+- [Performance & Regression](../../performance) — measured v4/v5 speed and curve comparison; remote training uses the same command with `--mode remote`.
+
+## Design principle
+
+Write single-machine code, train at any scale. Distribution (Ray), backends
+(transformers / Megatron / remote) and placement are configuration, not rewrites:
+the same recipe runs on one GPU, a node, or a cluster.

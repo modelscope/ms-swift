@@ -1,7 +1,7 @@
 export USE_SWIFT_V5=0
 # 2*10GiB
 # losses: swift/loss
-# data format: docs/source_en/BestPractices/Embedding.md
+# data format: docs/v4/source_en/BestPractices/Embedding.md
 # --dataloader_drop_last must be true or eval gather will throw error
 # --model iic/gte-modernbert-base iic/gte_Qwen2-7B-instruct also supported
 CUDA_VISIBLE_DEVICES=0,1 \

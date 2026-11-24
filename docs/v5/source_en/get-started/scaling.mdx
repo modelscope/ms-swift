@@ -1,0 +1,45 @@
+---
+title: Single GPU to Cluster
+description: The same recipe scales through Ray; placement is configuration.
+---
+
+## One command, any scale
+
+v5 hides distribution behind `DistributedConfig`. The training code reads like a
+single-machine program; Ray actors carry the distributed execution.
+
+```bash
+# single GPU: default local mode
+swift sft --model Qwen/Qwen3.5-4B --tuner lora --dataset 'swift/self-cognition#600' ...
+
+# multi-GPU on one node: Ray mode
+swift sft --mode ray --nproc_per_node 8 \
+    --model Qwen/Qwen3.5-4B --tuner lora --dataset 'swift/self-cognition#600' ...
+```
+
+- `--mode ray` starts an isolated local Ray head per run; workers load the same
+  checkout. Do not attach to a foreign cluster by accident — each run owns its head.
+- Multi-node: start Ray across nodes first, then point the run at it; see
+  [`examples/v5/train/multi-node`](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/multi-node).
+- Parallelism knobs (`--tensor_model_parallel_size`, `--pipeline_model_parallel_size`,
+  `--expert_model_parallel_size`, sequence parallel) apply to the Megatron backend;
+  the transformers backend scales with data parallel + ZeRO/FSDP-style sharding.
+
+## Megatron backend
+
+For very large dense/MoE models use the Megatron path (weights converted by
+mcore-bridge):
+
+```bash
+swift sft --backend megatron \
+    --tensor_model_parallel_size 4 --pipeline_model_parallel_size 2 \
+    --model Qwen/Qwen3-30B-A3B --tuner lora ...
+```
+
+Runnable references: `examples/v5/train/megatron/{tp_pp,moe}`.
+
+## Rule of thumb
+
+Choose the smallest placement that fits, then scale the same script — never fork
+the recipe per scale. If a configuration only works at one scale, that is a bug
+to report, not a pattern to copy.

@@ -1,0 +1,38 @@
+---
+title: Offline Distillation
+description: Sequence-level distillation on teacher-generated data; on-policy paths live in Online RL.
+---
+
+## Sequence-level (offline) distillation
+
+The simplest distillation needs no special algorithm: generate responses with a
+strong teacher, then SFT the student on them.
+
+1. Produce teacher data with `swift infer` (or any teacher serving endpoint)
+   over your prompt set; save messages-format jsonl.
+2. Train the student:
+
+```bash
+swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --dataset /path/to/teacher_outputs.jsonl \
+    --tuner lora --learning_rate 1e-4 \
+    --torch_dtype bfloat16 --attn_impl flash_attention_2 \
+    --output_dir output
+```
+
+This is ordinary SFT — the knowledge transfer happens in the data. It is the
+right starting point when the teacher is much stronger and prompts are fixed.
+
+## On-policy distillation
+
+When the student must learn from its **own** samples scored against a teacher,
+use the online paths (they run rollouts, so they sit in the RL family):
+
+- `swift rl --rlhf_type gkd --teacher_model <teacher>` — generalized knowledge
+  distillation on student rollouts.
+- `swift rl --rlhf_type opsd --teacher_model <teacher> --external_plugins <plugin>` —
+  on-policy self-distillation with a plugin-defined objective.
+- `swift rl --rlhf_type mopd` — multi-teacher on-policy distillation.
+
+See [Online RL](./online-rl.mdx) and `examples/v5/rl/{gkd,opsd,mopd}`.

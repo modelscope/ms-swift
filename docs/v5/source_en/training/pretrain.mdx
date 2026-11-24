@@ -1,0 +1,25 @@
+---
+title: Pre-training
+description: Continue pre-training base models with the non-chat loss.
+---
+
+`swift pt` is SFT with the non-chat loss: every token in the packed text carries
+loss, no chat template masking. Use base weights, not instruct checkpoints.
+
+```bash
+swift pt \
+    --model Qwen/Qwen3.5-4B-Base \
+    --attn_impl flash_attention_2 --torch_dtype bfloat16 \
+    --dataset examples/v5/train/data/pretrain.jsonl \
+    --tuner full \
+    --num_train_epochs 5 --learning_rate 2e-5 --lr_scheduler cosine \
+    --per_device_train_batch_size 1 --gradient_accumulation_steps 1 \
+    --max_length 2048 --output_dir output
+```
+
+- Data: plain text rows (`{"messages": [{"role": "assistant", "content": "..."}]}`
+  or raw text jsonl); see `examples/v5/train/data/pretrain.jsonl`.
+- `--packing true` packs short documents into full-length sequences for throughput.
+- **Base-to-chat**: after pre-training, run SFT on instruct data to obtain a chat
+  model — `examples/v5/train/base_to_chat` shows the two-stage pipeline.
+- Scale with `--mode ray --nproc_per_node N` exactly like SFT.

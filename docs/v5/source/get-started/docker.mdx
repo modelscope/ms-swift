@@ -1,0 +1,32 @@
+---
+title: Docker 镜像
+description: 容器镜像与在容器内运行 v5。
+---
+
+## 镜像
+
+ModelScope 在
+[modelscope 镜像构建器](https://github.com/modelscope/modelscope/blob/build_swift_image/docker/build_image.py#L392)
+维护 SWIFT 镜像。已发布镜像跟随正式版本；**v5 是开发版本**，
+在任意容器内需要叠加安装 v5 源码：
+
+```bash
+git clone https://github.com/modelscope/ms-swift.git && cd ms-swift
+pip install -e .
+git clone https://github.com/modelscope/twinkle.git && pip install -e twinkle
+```
+
+## 运行
+
+```bash
+docker run --gpus all -it --rm \
+    -v $PWD:/workspace -w /workspace \
+    -e MODELSCOPE_CACHE=/workspace/.cache/modelscope \
+    <image> bash
+```
+
+注意：
+
+- 给 `MODELSCOPE_CACHE` 挂持久卷，模型权重不随容器重启丢失。
+- Ray 模式需要共享内存：加 `--shm-size=8g`（大 rollout 酌情调大）。
+- 多机容器须共享 Ray 网络，见[单卡到集群](./scaling.mdx)。
