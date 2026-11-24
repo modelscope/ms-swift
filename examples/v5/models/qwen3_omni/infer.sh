@@ -14,7 +14,7 @@
 # REFERENCE-ONLY: model_type verified against the loader registry; not parse/smoke-verified here.
 # The ~70GB checkpoint is not cached on this box. Requires transformers>=4.57.dev0, soundfile, decord,
 # qwen_omni_utils>=0.0.9. vLLM engine flag reference: ../../../infer/vllm/infer.sh.
-# MEASURED: peak VRAM ~35 GiB/card (Qwen3-Omni-30B-A3B, 4-step smoke, 2 card(s), 2026-11-24)
+# MEASURED: not run — FAIL: train LoRA regex bug; infer cu_seqlens_q CUDA error (2026-11-24)
 CUDA_VISIBLE_DEVICES=0,1 \
 swift infer \
     --model Qwen/Qwen3-Omni-30B-A3B-Instruct \
