@@ -683,6 +683,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'train' if self.model.training else 'eval'
         num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+        if self.scale_rewards == 'gdpo' and not self.dynamic_num_samples:
+            # 'gdpo' advantages are not a function of the raw weighted sum (std(R)=0 does not imply
+            # zero advantage), so take the std on the actual gdpo advantages instead.
+            rewards, _ = compute_advantages(rewards_per_func, self.reward_weights, num_generations,
+                                            self.advantage_estimator, 'gdpo')
         if not self.dynamic_num_samples:
             grouped_rewards = rewards.view(-1, num_generations)
             # Handle edge case when num_generations_eval=1
