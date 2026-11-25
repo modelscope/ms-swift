@@ -19,8 +19,7 @@ def _typed_configs(params: Mapping[str, Any], node_id: str):
     model_config = _fill(config_pkg.ModelConfig, model_kv, node_id)
     train_type = str(params.get('train_type') or 'lora')
     tuner_kv = dict(params.get('tuner_config') or {})
-    if train_type != 'full':
-        tuner_kv['tuner'] = train_type
+    tuner_kv['tuner'] = train_type
     tuner_config = _fill(config_pkg.TunerConfig, tuner_kv, node_id) if tuner_kv else None
     train_kv = dict(params.get('train_config') or {})
     train_config = _fill(config_pkg.TrainConfig, train_kv, node_id) if train_kv else None

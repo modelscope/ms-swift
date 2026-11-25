@@ -45,8 +45,24 @@ def test_full_and_frozen_model_node(monkeypatch):
 
     monkeypatch.setattr('swift.dev.webui.model_inspection.inspect_model', inspect)
     inspect_model_node('model-node', {'model': '/tiny/model', 'train_type': 'full', 'freeze': True})
-    assert captured['tuner_config'] is None
+    assert captured['tuner_config'].tuner == 'full'
     assert captured['frozen']
+
+
+def test_full_train_type_wins_over_stale_lora_fields(monkeypatch):
+    captured = {}
+
+    def inspect(model_config, **kwargs):
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr('swift.dev.webui.model_inspection.inspect_model', inspect)
+    inspect_model_node('model-node', {
+        'model': '/tiny/model',
+        'train_type': 'full',
+        'tuner_config': {'lora_rank': 8},
+    })
+    assert captured['tuner_config'].tuner == 'full'
 
 
 def test_model_descriptor_exposes_inspection_factory():

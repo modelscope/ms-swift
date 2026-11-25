@@ -385,6 +385,15 @@ def _apply_config_training(nodes: List[StructureNode], tuner_config, train_confi
                 'mixed' if has_rules else 'full_trainable')
             node.training = _estimated(status)
         return
+    if tuner_config.tuner == 'trainable_tokens':
+        # Only the embedding matrix rows are trained: an exact count needs the index list, so the
+        # config view marks the embedding as partially trainable and everything else frozen.
+        for node in nodes:
+            if node.parent_id is None:
+                node.training = _estimated('mixed')
+            else:
+                node.training = _estimated('trainable_base' if node.id == 'llm.embedding' else 'frozen_base')
+        return
     if tuner_config.tuner != 'lora':
         for node in nodes:
             node.training = _estimated('unknown' if node.parent_id is not None else 'mixed')

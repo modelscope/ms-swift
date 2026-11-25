@@ -328,6 +328,17 @@ def test_eighty_layers_are_one_folded_group():
     assert nodes['layers.0'].repeat == 80
 
 
+def test_trainable_tokens_marks_only_the_embedding(tmp_path):
+    path = _build_text(tmp_path)
+    result = inspect_model(
+        ModelConfig(model=path, model_type='qwen2_5'),
+        training=True,
+        tuner_config=TunerConfig(tuner='trainable_tokens', trainable_token_indices=[1, 2]))
+    assert _node(result, 'llm.embedding')['training']['status'] == 'trainable_base'
+    assert _node(result, 'llm.decoder')['training']['status'] == 'frozen_base'
+    assert result['summary']['training']['status'] == 'mixed'
+
+
 def test_config_arch_matches_loader_arch():
     """The dependency-free table must mirror ``loader/*.py`` for the families it covers."""
     from swift.dev.webui.model_inspection import _config_arch
