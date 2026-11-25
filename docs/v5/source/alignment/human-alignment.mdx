@@ -1,0 +1,32 @@
+---
+title: 人类对齐
+description: 离线偏好优化（DPO/KTO/CPO/ORPO/SimPO）与奖励模型。
+---
+
+所有离线偏好算法都走 `swift rl --rlhf_type <algo>`，在偏好数据上训练——
+无采样器、无 rollout：
+
+```bash
+swift rl \
+    --rlhf_type dpo \
+    --model Qwen/Qwen3.5-4B \
+    --dataset 'hjh0119/shareAI-Llama3-DPO-zh-en-emoji#10000' \
+    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --torch_dtype bfloat16 --attn_impl flash_attention_2 \
+    --beta 0.1 \
+    --num_train_epochs 1 --learning_rate 1e-4 \
+    --output_dir output
+```
+
+| 算法 | 数据形态 | 关键旗标 |
+|---|---|---|
+| `dpo` | chosen / rejected 对 | `--beta`（KL 强度） |
+| `kto` | 单响应 + 二值 desirable 标签 | `--beta` |
+| `cpo` / `orpo` / `simpo` | chosen / rejected 对 | 各算法 loss 旗标 |
+| `rm` | chosen / rejected 对 → 标量奖励头 | 供 PPO 后续使用 |
+
+- 偏好行：messages 加 `chosen`/`rejected` 续写（KTO 为布尔标签），
+  布局见 `examples/v5/rl/data`。
+- 这些是有监督式训练：看 loss 与 eval 偏好准确率，不看 reward 曲线。
+- 用 `--mode ray --nproc_per_node N` 扩展，与 SFT 一致。
+- 可运行参考：`examples/v5/rl/{dpo,kto,cpo,orpo,simpo,rm}`。

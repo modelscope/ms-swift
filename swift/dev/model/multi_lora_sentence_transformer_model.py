@@ -53,6 +53,7 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
                  acc_strategy: str = 'token',
                  model_arch: Optional[Dict[str, Any]] = None,
                  **kwargs):
+        self._reject_router_replay(kwargs)
         # Overrides both parents' __init__ (the ST one builds the pipeline, the multi-LoRA one
         # patches an AutoModel backbone), so it carries the union of the state they set up.
         os.environ['TOKENIZERS_PARALLELISM'] = 'true'
@@ -65,7 +66,7 @@ class MultiLoraSentenceTransformerModel(MultiLoraTransformersModel, SentenceTran
         self._fsdp_config = dict(fsdp_config or {})
         self._ddp_config = ddp_config or {}
         self._memory_efficient_init = memory_efficient_init
-        # Router replay is a MoE-causal-LM concept; irrelevant to sentence encoders.
+        # This pipeline bypasses the causal-LM router replay hooks.
         self._router_replay_enabled = False
         self._router_replay_applied = False
         # ``_acc_strategy`` / ``model_arch`` are read by inherited TransformersModel code but

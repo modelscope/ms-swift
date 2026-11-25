@@ -1,0 +1,58 @@
+---
+title: 代码 API 与插件
+description: 同样的训练写成类型化 Config 对象与显式循环；通过插件扩展。
+---
+
+## Config 对象就是 API
+
+CLI 把参数解析成的 dataclass，你也可以直接构造：
+
+```python
+from swift.dev.config import (
+    ModelConfig, DatasetConfig, TemplateConfig, TrainConfig,
+    TunerConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
+)
+
+model_config = ModelConfig(model='Qwen/Qwen3.5-4B', task_type='causal_lm',
+                           torch_dtype='bfloat16', attn_impl='flash_attention_2')
+train_config = TrainConfig(num_train_epochs=3, learning_rate=1e-4,
+                           per_device_train_batch_size=1, gradient_accumulation_steps=8)
+tuner_config = TunerConfig(tuner='lora', lora_rank=8, lora_alpha=32,
+                           target_modules=['all-linear'])
+```
+
+## 训练循环在你手里
+
+`build_supervised_objects` 装配模型/模板/数据集/优化器；循环留在你的脚本里：
+
+```python
+from swift.dev.loss import configure_loss
+from swift.dev.recipe.sft.assembly import build_supervised_objects
+
+def sft_loss(model):
+    configure_loss(model, loss_type='cross_entropy')   # 在这里换目标函数
+
+cluster = build_supervised_objects(model_config=..., dataset_config=...,
+                                   tuner_config=..., configure_loss=sft_loss, ...)
+for batch in batches:
+    model.forward_backward(**micro_kwargs)             # 参数更新
+    model.clip_grad_and_step(max_grad_norm=..., gradient_accumulation_steps=1)
+```
+
+`examples/v5/**/*.py` 每个都是这个模式的完整注释版——装配调用、loss 闭包、
+step 循环、checkpoint 闭包是四个可定制接缝。在线 RL 脚本暴露的是五段式装配：
+prompts → devices → cluster → driver → rollout/train 循环。
+
+## 插件
+
+- **Loss / reward / advantage / metric**：按名注册；配置里传名字
+  （如 `--orm accuracy`），代码里传对象。
+- **数据集与模板**：注册自定义 loader/template，见
+  `examples/v5/train/custom` 与 `examples/v5/train/plugins`。
+- 插件跨进程边界只传可序列化 spec 或注册名——Ray 下绝不传活的 Python 对象。
+
+## 更底层
+
+需要完全控制时，直接组合 [twinkle](https://github.com/modelscope/twinkle)
+组件（model、sampler、loss、checkpoint engine），不经过 SWIFT——
+见本文档的 [twinkle 参考](../twinkle/index.mdx)。

@@ -11,6 +11,8 @@ from swift.dev.recipe.utils import (
     auxiliary_mesh,
     build_rl_sampler,
     effective_colocate,
+    fp8_seq_align_option,
+    processor_cp_size,
     resolve_reward_scorers,
 )
 from swift.dev.utils.logger import get_logger
@@ -129,6 +131,8 @@ class Cluster(NamedTuple):
     advantage: Any
     privileged: Any
     routing: Any
+    prm_segment: Any = None
+    traj_update: Any = None
 
 
 def build_advantage(rl_config: "RLConfig", reward_config: "RewardConfig", *, use_prm: bool,
@@ -213,11 +217,12 @@ def initialize_cluster(
     """
     from twinkle.advantage import TeacherReweight
     from twinkle.metric import RolloutCorrection
-    from twinkle.processor import RoutingReplay
+    from twinkle.processor import RoutingReplay, TrajectoryUpdate
 
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.remote import configure_remote_processor
+    from swift.dev.rewards.prm import build_prm_segment
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.builders.streaming import (
         CONTROL_GROUP,
@@ -288,11 +293,16 @@ def initialize_cluster(
         # process's row semantics; locally the built Template is set directly.
         configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
+        # fp8/fp4 micro-batch token padding, same wire as the supervised assembly: without it a
+        # megatron fp8 policy forward dies on TE's GEMM dim assert (token dim % 16) as soon as a
+        # rollout group's packed length is not aligned. None keeps bf16 runs untouched.
+        seq_align_to = fp8_seq_align_option(model_config, distributed_config, processor_cp_size(distributed_config))
         model.set_processor(
             InputProcessor,
             padding_free=template_config.padding_free,
             padding_side=template_config.padding_side,
             cp_partition_mode=distributed_config.cp_partition_mode,
+            seq_align_to=seq_align_to,
             **processor_kwargs(template),
         )
         model.set_template(template)
@@ -432,6 +442,8 @@ def initialize_cluster(
                                    has_teacher=has_teacher, remote_group=worker_group),
         privileged=PrivilegedView(template=template, **{"remote_group": worker_group}) if teacher_prompt else None,
         routing=RoutingReplay(**{"remote_group": worker_group}) if rl_config.router_replay_mode != "disabled" else None,
+        prm_segment=build_prm_segment(reward_config, rollout_config, remote_group=worker_group),
+        traj_update=TrajectoryUpdate(**{"remote_group": worker_group}),
     )
 
 
@@ -483,7 +495,6 @@ def build_driver(*, cluster: Cluster, rl_config: "RLConfig", rollout_config: "Ro
     scorers); the group verdict reads the samples' ``orm_reward`` rows.
     """
     from swift.dev.builders.streaming import build_streaming_driver
-    from swift.dev.rewards.prm import build_prm_segment
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,
@@ -498,7 +509,7 @@ def build_driver(*, cluster: Cluster, rl_config: "RLConfig", rollout_config: "Ro
         orm_names=cluster.orm_names,
         prms=cluster.prm_scorers,
         prm_names=cluster.prm_names,
-        prm_segment=build_prm_segment(reward_config, rollout_config),
+        prm_segment=cluster.prm_segment,
         on_group=grpo_on_group(rl_config, reward_config, cluster.sampling_params, len(cluster.orm_scorers)),
         max_group_regenerations=(rl_config.max_resample_times if rl_config.dynamic_sample else 0),
         cluster_adapter=cluster.adapter,

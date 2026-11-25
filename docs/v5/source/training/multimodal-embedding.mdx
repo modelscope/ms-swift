@@ -1,0 +1,25 @@
+---
+title: 多模态 Embedding
+description: 图像/文本/视频行进同一向量空间，复用 InfoNCE 路径。
+---
+
+多模态 embedding 与文本 embedding **同一命令、同一 loss**——只是数据带媒体：
+
+```bash
+swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --task_type embedding --loss infonce \
+    --attn_impl flash_attention_2 --torch_dtype bfloat16 \
+    --dataset examples/v5/train/data/vl_embedding.jsonl \
+    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --output_dir output
+```
+
+- 数据行把图像/视频引用放进 messages content；所选模型族的多模态处理器
+  在池化前完成编码。
+- 模型必须是多模态族（如 Qwen3.5-VL 类）；vision 塔冻结旗标
+  （`--freeze_vit`、`--freeze_aligner`）照常生效。
+- 数据布局见 `examples/v5/train/data/vl_embedding.jsonl`；可运行参考
+  `examples/v5/train/multimodal_embedding`。
+- 专用多模态 embedding 模型（WeMM-Embedding、EmbeddingGemma 族等）
+  已注册，走同一训练面。

@@ -1,0 +1,38 @@
+# v5 text SFT (causal_lm) with LoRA on a single GPU.
+#
+# The default v5 CLI routes `swift sft` to the v5 dev CLI (swift.dev.cli.sft), which parses argv straight
+# into the dev Config dataclasses -- there is no legacy SftArguments bridge. `--tuner lora` selects the
+# LoRA adapter path (TunerConfig); drop it (or set `--tuner full`) for full-parameter training.
+# The 4B model keeps the example light; swap in a larger Qwen3.5 for a real run.
+#
+# DATASET CHOICE = VISIBLE CONVERGENCE. This uses `swift/self-cognition`, not alpaca-gpt4: an
+# already-instruct model has almost no headroom on alpaca, so its loss plateaus (measured on the
+# former Qwen2.5-0.5B: 1.78 -> 1.58 over 3 epochs) and the run looks like it is not learning. self-cognition is new knowledge
+# the model must actually fit, so the loss falls clearly (measured 2.6 -> 0.28) -- a real SFT curve. Keep
+# --num_train_epochs 3 so the descent completes; swap the dataset back to alpaca for a general-SFT run
+# whose curve is genuinely flatter.
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --task_type causal_lm \
+    --torch_dtype bfloat16 \
+    --dataset 'swift/self-cognition#600' \
+    --tuner lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-4 \
+    --lr_scheduler cosine \
+    --warmup_ratio 0.05 \
+    --max_length 2048 \
+    --logging_steps 5 \
+    --save_steps 100 \
+    --save_total_limit 2 \
+    --split_dataset_ratio 0.01 \
+    --output_dir output \
+    --report_to tensorboard

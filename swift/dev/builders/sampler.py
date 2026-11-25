@@ -119,6 +119,25 @@ def build_engine_args(backend: str, infer_config: "InferConfig", rollout_config:
             if backend == "sglang":
                 key = sglang_rename.get(key, key)
             result[key] = value
+    # Config-mapped defaults (e.g. enable_ep_moe=False, retired in sglang 0.5.x) must be
+    # filtered BEFORE the user's engine_kwargs override: SGLangSampler validates engine_args
+    # fail-loud, and a retired boolean default forwarded by the loop above would raise there
+    # before SGLangEngine's warn-and-drop lane runs. User-set engine_kwargs are NOT filtered
+    # here, so a purpose-set retired knob still raises at the sampler (design intent preserved).
+    if backend == "sglang":
+        try:
+            from twinkle.sampler.sglang_sampler.sglang_engine import _sglang_engine_arg_names
+
+            accepted = _sglang_engine_arg_names()
+        except Exception:
+            accepted = None
+        if accepted is not None:
+            own_params = {"tensor_parallel_size", "data_parallel_size", "enable_memory_saver"}
+            retired = sorted(k for k in result if k not in accepted and k not in own_params)
+            if retired:
+                logger.warning(f"sglang config: dropping retired/unknown engine knobs {retired}")
+                for k in retired:
+                    del result[k]
     result.update(getattr(rollout_config, f"{prefix}engine_kwargs", None) or {})
     return result
 

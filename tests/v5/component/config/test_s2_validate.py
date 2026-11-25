@@ -234,6 +234,8 @@ def test_chord_router_replay_and_sampling_replay():
     with pytest.raises(ValueError, match='router_replay_mode'):
         _check_router_replay(RLConfig(rl_type='dpo', router_replay_mode='record'))
     _check_router_replay(RLConfig(rl_type='grpo', router_replay_mode='disabled'))
+    with pytest.raises(ValueError, match='CHORD'):
+        _check_router_replay(RLConfig(rl_type='grpo', router_replay_mode='R2', chord_sft_dataset=['d']))
 
     with pytest.raises(ValueError, match='enable_sampling_replay is GRPO-only'):
         _check_sampling_replay(RLConfig(rl_type='dpo', enable_sampling_replay=True))

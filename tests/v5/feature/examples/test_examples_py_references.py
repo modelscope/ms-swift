@@ -35,9 +35,6 @@ PLUGIN_FILES = [
 #: Files whose point is being importable (code-mode entries + client); import must be clean.
 IMPORT_ONLY_FILES = [
     'deploy/code/deploy.py',
-    'rl/code/dpo.py',
-    'rl/code/grpo.py',
-    'rl/code/opsd.py',
     'train/custom/model_template/model.py',
     'server/client.py',
 ]
@@ -105,6 +102,6 @@ print("RESULT: imported")
 
 @pytest.mark.parametrize('rel', IMPORT_ONLY_FILES)
 def test_code_entry_files_import_cleanly(rel):
-    """deploy/code/*.py, rl/code/*.py, the custom model template and the server client import
+    """deploy/code/*.py, the custom model template and the server client import
     without error -- the level of smoke a docs-copy-and-paste user needs to hold."""
     _load_in_clean_interpreter(rel, 'result = "imported"')

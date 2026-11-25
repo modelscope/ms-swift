@@ -21,6 +21,7 @@ from swift.dev.recipe.utils import (
     build_save_knobs,
     close_driver_preserving_error,
     effective_colocate,
+    finalize_rl_resources,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -196,14 +197,10 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                          'privileged context (reference/rubric). None of the rows provide it. Add it '
                          'via a dataset plugin (see examples/rl/opsd), or use --rl_type gkd.')
     # the optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer.
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builders import resolve_rl_dp_size
 
     remote_run = distributed_config.mode == 'remote'
-    if remote_run:
-        # One client process drives the server: the student handle's own mesh sizes the batches.
-        dp_size = 1
-    else:
-        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    dp_size = resolve_rl_dp_size(distributed_config, template_config.sequence_parallel_size)
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
     # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
@@ -297,27 +294,14 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
     try:
         _train_loop(cluster, driver, rl_config, rollout_config, dataset_rows, state,
                     train_batch_size=train_batch_size, batch_size=batch_size, seed=train_config.seed, save=save)
+        state.handler.on_train_end()
+        save_final_checkpoint(cluster.model, save, enabled=_save_final)
     finally:
-        _failed = sys.exc_info()[0] is not None
-        try:
-            Perf.shutdown()
-        finally:
-            try:
-                cluster.rollout.close()
-            finally:
-                try:
-                    # A served sampler's lifecycle is the server session's, not this client's.
-                    cluster.sampler.shutdown() if not remote_run else None
-                finally:
-                    try:
-                        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
-                        # record, and close() is what writes the summary.
-                        state.finish_metrics(status='failed' if _failed else 'loop_completed')
-                    finally:
-                        state.tracker.close()
-    state.handler.on_train_end()
-    # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.
-    save_final_checkpoint(cluster.model, save, enabled=_save_final)
+        finalize_rl_resources(
+            state, cluster, remote_run=remote_run,
+            finish=lambda: state.finish_metrics(
+                status='failed' if sys.exc_info()[0] is not None else 'loop_completed'),
+            driver=driver, recipe=rl_config.rl_type.upper())
     return state.history
 
 

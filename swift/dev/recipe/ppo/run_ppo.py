@@ -14,6 +14,7 @@ from swift.dev.recipe.utils import (
     build_save_knobs,
     close_driver_preserving_error,
     effective_colocate,
+    finalize_rl_resources,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -243,7 +244,7 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
             state.begin_rollout_iteration()
     finally:
         # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
-        close_driver_preserving_error(driver)
+        state.stream_stats = close_driver_preserving_error(driver)
         if lent:
             # ended with the devices lent: give them back so the final save finds both models resident
             reclaim()
@@ -338,14 +339,10 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         group_requests=(lambda: ppo_group_requests(
             rl_config, reward_config, distributed_config, tuner_config)))
     # the optimizer's LR-scheduler horizon (num_ppo_epochs replays per rollout), derived BEFORE the build.
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builders import resolve_rl_dp_size
 
     remote_run = distributed_config.mode == 'remote'
-    if remote_run:
-        # One client process drives the server: the policy handle's own mesh sizes the batches.
-        dp_size = 1
-    else:
-        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    dp_size = resolve_rl_dp_size(distributed_config, template_config.sequence_parallel_size)
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the dataloader: the derived default fills
     # whole optimizer updates (never the whole dataset -- see resolve_generation_batch_size).
@@ -503,33 +500,20 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
             _train_loop(cluster, driver, rl_config, rollout_config, state, reward_metric,
                         train_batch_size=train_batch_size, ema_manager=ema_manager, save=save,
                         versions_cell=_versions_cell, unscored_cell=_unscored_cell)
+        state.handler.on_train_end()
+        if _save_final:
+            cluster.model.wait_async_saves()
+            cluster.value_model.wait_async_saves()
+            save('checkpoint-final', is_final=True)
     finally:
-        try:
-            # The terminal run totals (rollout / trained samples, throughput, wall time) go through the
-            # same reporter as the per-iteration records. Without this call the run summary reports zero
-            # for every throughput field even though the loop folded each iteration, and a run that died
-            # mid-loop would leave no totals at all -- so it runs first and cannot be skipped by, nor
-            # skip, the teardown below it.
-            state.finish_rollout_metrics(
-                stream_stats=driver.stats(),
-                status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None
-        finally:
-            try:
-                Perf.shutdown()
-            finally:
-                try:
-                    cluster.rollout.close()
-                finally:
-                    try:
-                        # A served sampler's lifecycle is the server session's, not this client's.
-                        cluster.sampler.shutdown() if not remote_run else None
-                    finally:
-                        state.tracker.close()
-    state.handler.on_train_end()
-    if _save_final:
-        # The final checkpoint is synchronous on BOTH models; its args.json is written by
-        # initialize_rl_devices' copy. The wait must pierce to the workers (decorated method).
-        cluster.model.wait_async_saves()
-        cluster.value_model.wait_async_saves()
-        save('checkpoint-final', is_final=True)
+        # The terminal run totals (rollout / trained samples, throughput, wall time) go through the
+        # same reporter as the per-iteration records. Without this call the run summary reports zero
+        # for every throughput field even though the loop folded each iteration, and a run that died
+        # mid-loop would leave no totals at all -- so it runs first inside the guarded teardown.
+        finalize_rl_resources(
+            state, cluster, remote_run=remote_run,
+            finish=lambda: state.finish_rollout_metrics(
+                stream_stats=state.stream_stats,
+                status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None,
+            driver=driver, companions=(ema_manager,), recipe='PPO')
     return state.history

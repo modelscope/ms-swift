@@ -1,0 +1,61 @@
+---
+title: Code API & Plugins
+description: The same training as typed Config objects and an explicit loop; extend via plugins.
+---
+
+## Config objects are the API
+
+The CLI parses arguments into the same dataclasses you can construct directly:
+
+```python
+from swift.dev.config import (
+    ModelConfig, DatasetConfig, TemplateConfig, TrainConfig,
+    TunerConfig, DistributedConfig, CheckpointConfig, LoggingConfig,
+)
+
+model_config = ModelConfig(model='Qwen/Qwen3.5-4B', task_type='causal_lm',
+                           torch_dtype='bfloat16', attn_impl='flash_attention_2')
+train_config = TrainConfig(num_train_epochs=3, learning_rate=1e-4,
+                           per_device_train_batch_size=1, gradient_accumulation_steps=8)
+tuner_config = TunerConfig(tuner='lora', lora_rank=8, lora_alpha=32,
+                           target_modules=['all-linear'])
+```
+
+## The training loop is yours
+
+`build_supervised_objects` assembles model / template / dataset / optimizer;
+the loop stays visible in your script:
+
+```python
+from swift.dev.loss import configure_loss
+from swift.dev.recipe.sft.assembly import build_supervised_objects
+
+def sft_loss(model):
+    configure_loss(model, loss_type='cross_entropy')   # swap the objective here
+
+cluster = build_supervised_objects(model_config=..., dataset_config=...,
+                                   tuner_config=..., configure_loss=sft_loss, ...)
+for batch in batches:
+    model.forward_backward(**micro_kwargs)             # the update
+    model.clip_grad_and_step(max_grad_norm=..., gradient_accumulation_steps=1)
+```
+
+Every `examples/v5/**/*.py` is a complete, commented version of this pattern —
+the assembly call, the loss closure, the step loop and the checkpoint closure
+are the four seams you can customize. Online RL scripts expose the five-stage
+assembly instead: prompts → devices → cluster → driver → rollout/train loop.
+
+## Plugins
+
+- **Loss / reward / advantage / metric**: registered by name; pass the name in
+  config (e.g. `--orm accuracy`) or the object in code.
+- **Dataset & template**: register custom loaders/templates; see
+  `examples/v5/train/custom` and `examples/v5/train/plugins`.
+- Plugins cross process boundaries as serializable specs or registered names —
+  never as live Python objects under Ray.
+
+## Going lower
+
+For full control, compose [twinkle](https://github.com/modelscope/twinkle)
+components directly (model, sampler, loss, checkpoint engine) without SWIFT —
+see the [twinkle reference](../twinkle/index.mdx) in this documentation.

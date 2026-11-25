@@ -88,25 +88,12 @@ class DataloaderComponent(IteratorComponent):
 
 
 def _orm_adapter(scorer: Any) -> Any:
-    """One wired scorer as a driver ORM callable: a Future resolving to ``[score]``.
+    """Place admission scoring on its compute worker; the streaming driver receives score Futures only."""
+    import uuid
+    from twinkle.reward.worker import FunctionWorker
+    from ..placement import NUMERIC_GROUP
 
-    The driver's orm channel expects ``scorer([traj]) -> Future`` (it registers completion
-    callbacks and reads ``future.result()[0]``); a webui scorer is a plain
-    ``scorer(rows) -> list[float]`` callable, so the adapter resolves synchronously into a
-    completed Future -- the driver's event thread never blocks on it and a raising scorer
-    fails the run through the driver's own error path.
-    """
-    from concurrent.futures import Future
-
-    def orm(trajs: List[Any]) -> Any:
-        future: Future = Future()
-        try:
-            future.set_result([scorer(trajs)])
-        except Exception as exc:  # noqa: BLE001 -- the driver's error path re-raises it
-            future.set_exception(exc)
-        return future
-
-    return orm
+    return FunctionWorker(scorer, remote_group=NUMERIC_GROUP, instance_id=uuid.uuid4().hex)
 
 
 class StreamingDriverComponent(IteratorComponent):
@@ -186,8 +173,10 @@ class StreamingDriverComponent(IteratorComponent):
                 dict(self.params.get('template_config') or {}), self.node_id,
                 model_kv=dict(self.params.get('model_config') or {}))
             gen_config = _fill(config_pkg.GenerationConfig, gen_kv, self.node_id) if gen_kv else None
+            from ..placement import NUMERIC_GROUP
             rollout = self._owned_rollout = build_rollout(
-                engines[0], template, rollout_config, sampling_params=asdict(to_sampling_params(gen_config)))
+                engines[0], template, rollout_config, remote_group=NUMERIC_GROUP,
+                sampling_params=asdict(to_sampling_params(gen_config)))
         # One batch is whole groups and whole optimizer updates; max_steps counts
         # optimizer steps, the driver counts batches. The click budget is NOT
         # passed here: a click must never make the driver terminate.
@@ -201,7 +190,10 @@ class StreamingDriverComponent(IteratorComponent):
         # same scorer identity a downstream score node reuses instead of rescoring.
         scorers = inputs.get('scorers') or []
         orm_names = [str(slot) for slot, _scorer in scorers]
-        orms = tuple(_orm_adapter(scorer) for _slot, scorer in scorers)
+        self._orm_workers = []
+        for _slot, scorer in scorers:
+            self._orm_workers.append(_orm_adapter(scorer))
+        orms = tuple(self._orm_workers)
         self.obj = build_streaming_driver(
             dataloader=prompt_loader,
             rollout=rollout,
@@ -214,26 +206,19 @@ class StreamingDriverComponent(IteratorComponent):
             orm_names=orm_names or None)
 
     def take_batch(self) -> Any:
-        # The single-return contract: one next() hands the batch as the driver delivers it --
-        # the rows plus the light facts carrying the row-aligned score column. The webui
-        # runs the driver IN-PROCESS, so its rows are plain dicts this component owns: the
-        # admission scores are merged onto row copies HERE (the write-back post sits with
-        # the executor holding the row bodies) and the downstream row-shaped stages -- the
-        # score stage's no-rescore reuse, select's criterion, the advantage seam -- keep
-        # reading the named columns off the rows.
+        # Delivery facts are light; field write-back executes where the trajectories are consumed.
         rows, facts = next(self._iterator)
         scores = facts.get('scores') or ()
         if scores:
-            merged = [dict(row) if isinstance(row, dict) else row for row in rows]
-            for row, score in zip(merged, scores):
-                if not isinstance(row, dict):
-                    continue
-                rewards = dict(row.get('rewards') or {})
-                rewards.update(score.get('rewards') or {})
-                row['rewards'] = rewards
-                if score.get('prm_segments') is not None:
-                    row['prm_segments'] = score['prm_segments']
-            rows = merged
+            transform = getattr(self, '_score_update', None)
+            if transform is None:
+                import uuid
+                from twinkle.processor import TrajectoryUpdate
+                from ..placement import NUMERIC_GROUP
+
+                transform = self._score_update = TrajectoryUpdate(
+                    remote_group=NUMERIC_GROUP, instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}')
+            rows, _summary = transform.update(rows, updates=scores, merge_fields=('rewards',))
         # The traj port projects the LAST delivered batch: downstream stages
         # wired to this port read batch data, not the control-plane object.
         self._current = rows
@@ -250,20 +235,28 @@ class StreamingDriverComponent(IteratorComponent):
         self.last_steps = int(steps)
 
     def release(self) -> None:
-        """Terminate the source: stop the driver, then the rollout this node built."""
-        driver = self.obj
-        if driver is None:
-            return
-        self.obj = None
-        self._iterator = None
-        for closeable in (driver, getattr(self, '_owned_rollout', None)):
+        """Close owned source resources, retaining failed handles for cleanup retry."""
+        failures = []
+        for name in ('obj', '_owned_rollout', '_score_update'):
+            closeable = getattr(self, name, None)
             if closeable is None:
                 continue
             try:
                 closeable.close()
-            except Exception:
-                pass
-        self._owned_rollout = None
+            except BaseException as error:
+                failures.append(error)
+            else:
+                setattr(self, name, None)
+        for worker in tuple(getattr(self, '_orm_workers', ())):
+            try:
+                worker.close()
+            except BaseException as error:
+                failures.append(error)
+            else:
+                self._orm_workers.remove(worker)
+        self._iterator = None
+        if failures:
+            raise BaseExceptionGroup('Streaming source cleanup is incomplete', failures)
 
 
 class ChallengerComponent(IteratorComponent):
@@ -365,16 +358,15 @@ class GenerateStage(StageComponent):
     type = 'generate'
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
-        from twinkle.data_format import attach_user_data
-
-        from swift.dev.utils.scoring import collect
         episode = inputs.get('episode')
         engine = inputs.get('engine')
         if (episode is None) == (engine is None):
             raise ComponentError(f'{self.node_id}: generate needs exactly one wired engine or episode')
-        rows = batch if isinstance(batch, list) else (batch or {}).get('rows', [])
-        if not rows:
-            raise ComponentError(f'{self.node_id}: generate received an empty batch')
+        rows = inputs.get('prompts')
+        if rows is None:
+            rows = batch
+        if rows is None:
+            raise ComponentError(f'{self.node_id}: generate needs a wired prompt batch')
         # Sampling knobs are the REAL GenerationConfig fields (the typed
         # generation_config param), translated through the SAME builder the
         # recipes use; each episode carries them in user_data, which the
@@ -385,14 +377,20 @@ class GenerateStage(StageComponent):
         from swift.dev.builders.sampler import to_sampling_params
         from .resources import _configs, _fill
         gen_kv = dict(self.params.get('generation_config') or {})
-        if gen_kv:
-            params = asdict(to_sampling_params(_fill(_configs().GenerationConfig, gen_kv, self.node_id)))
-            rows = [attach_user_data(row, sampling_params=params) for row in rows]
-        num_generations = int(self.params.get('num_generations', '8') or 8)
-        # One episode per (row, generation): a group is num_generations consecutive trajectories.
-        trajs = [dict(row) for row in rows for _ in range(num_generations)]
+        params = (asdict(to_sampling_params(_fill(_configs().GenerationConfig, gen_kv, self.node_id)))
+                  if gen_kv else None)
+        transform = getattr(self, '_prompt_transform', None)
+        if transform is None:
+            import uuid
+            from twinkle.processor import TrajectoryUpdate
+            from ..placement import NUMERIC_GROUP
+
+            transform = self._prompt_transform = TrajectoryUpdate(
+                remote_group=NUMERIC_GROUP, instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}')
+        trajs = transform.expand_prompts(
+            rows, num_generations=int(self.params.get('num_generations', 8)), sampling_params=params)
         rollout = episode if episode is not None else self._rollout_for(engine)
-        return {'traj': collect(rollout(trajs))}
+        return {'traj': rollout(trajs)}
 
     def _rollout_for(self, engine: Any) -> Any:
         """One resident episode engine per wired sampler."""
@@ -401,53 +399,46 @@ class GenerateStage(StageComponent):
             rollouts = self._rollouts = {}
         rollout = rollouts.get(id(engine))
         if rollout is None:
+            import uuid
             from twinkle_agentic.rollout import MultiTurnRollout
-            rollout = MultiTurnRollout(engine, getattr(engine, 'template', None))
+            from .resources import build_template_from
+            from ..placement import NUMERIC_GROUP
+
+            template = build_template_from(
+                str(self.params.get('tokenizer') or ''),
+                dict(self.params.get('template_config') or {}), self.node_id,
+                model_kv=dict(self.params.get('model_config') or {}))
+            rollout = MultiTurnRollout(
+                engine, template, max_turns=1, remote_group=NUMERIC_GROUP,
+                instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}')
             rollouts[id(engine)] = rollout
         return rollout
 
-
-def _slice_output(value: Any, keep: List[int]) -> Any:
-    """Slice one MODEL_OUTPUT value's per-row channels by the selection mask.
-
-    A whole ModelOutput's data channels (and its per-row identity lists) carry one entry
-    per row: they are sliced by ``keep``. ``field_frames`` is per-FIELD metadata and
-    scalars ride whole -- neither is row-indexed. A bare per-row list slices directly.
-    """
-    value = _deref(value)
-    if isinstance(value, dict):
-        sliced = {}
-        for key, item in value.items():
-            if key == 'field_frames':
-                sliced[key] = item
-            elif isinstance(item, list):
-                sliced[key] = [item[i] for i in keep]
+    def release(self) -> None:
+        """Close owned transforms and rollouts, retaining failures for another cleanup attempt."""
+        failures = []
+        transform = getattr(self, '_prompt_transform', None)
+        if transform is not None:
+            try:
+                transform.close()
+            except BaseException as error:
+                failures.append(error)
             else:
-                sliced[key] = item
-        return sliced
-    if isinstance(value, list):
-        return [value[i] for i in keep]
-    return value
-
-
-def _deref(value: Any) -> Any:
-    """Resolve a maybe-lazy remote result to its value (the shared dual-mode shim)."""
-    from swift.dev.utils.scoring import collect
-
-    return collect(value)
+                self._prompt_transform = None
+        rollouts = getattr(self, '_rollouts', {})
+        for key, rollout in tuple(rollouts.items()):
+            try:
+                rollout.close()
+            except BaseException as error:
+                failures.append(error)
+            else:
+                del rollouts[key]
+        if failures:
+            raise BaseExceptionGroup('Generation cleanup is incomplete', failures)
 
 
 class ScoreStage(StageComponent):
-    """Actually call r(tau): every wired scorer contributes one named column.
-
-    The scorers arrive on the many-port as ``(slot, scorer)`` pairs -- the slot
-    names its column. Each scorer is called once over the SAME row protocol;
-    the named columns are written onto copies of the trajectories as
-    ``rewards.orm`` (a scorer that does not score every row fails loudly -- no
-    silent truncation, no padding). Rows already carrying a slot's column
-    from the driver's admission scoring are NOT rescored: one episode, one
-    scorer, one score. The metric port carries this batch's per-column means.
-    """
+    """Delegate scoring and field write-back; only scalar metrics reach the graph executor."""
 
     type = 'score'
 
@@ -455,121 +446,72 @@ class ScoreStage(StageComponent):
         scorers = inputs.get('scorers')
         if not scorers:
             raise ComponentError(f'{self.node_id}: score needs wired scorers (one per column)')
-        # The sample list rides the wired traj port when the frame source is
-        # a driver or generate (trajectory rows); the positional batch is the
-        # loader shape. The port is single-entry: its value IS the sample list.
-        port_samples = inputs.get('traj')
-        samples = port_samples if isinstance(port_samples, list) else (
-            batch if isinstance(batch, list) else [])
+        samples = inputs.get('traj')
+        if not isinstance(samples, list):
+            samples = batch if isinstance(batch, list) else []
         if not samples:
-            # Refuse rather than return an empty batch: with no rows the per-slot check below is
-            # vacuously true, so every scorer is skipped and the stage reports a clean result.
-            # The sibling stages (advantage, privileged_view) already fail loudly on an unwired
-            # traj, and a silently empty score batch is indistinguishable downstream from a batch
-            # that was legitimately drained.
+            # Refuse an empty/None batch rather than delegate: twinkle's score() raises a plain
+            # ValueError on empty input, but the stage contract is a ComponentError naming the
+            # unwired traj port (an empty score batch is indistinguishable from a drained one).
             raise ComponentError(f'{self.node_id}: score needs a wired traj batch')
-        # Every producer (generate, the streaming driver, the challenger lanes)
-        # hands over trajectory dicts -- the scorers' native input, passed verbatim.
-        rows = [sample for sample in samples if isinstance(sample, dict)]
-        if len(rows) != len(samples):
-            raise ComponentError(f'{self.node_id}: score takes trajectory dicts')
-        columns: List[List[Any]] = []
-        scorer_ids: List[str] = []
-        new_rows = [dict(row) for row in rows]
-        for slot, scorer in scorers:
-            if not callable(scorer):
-                raise ComponentError(f'{self.node_id}: scorer slot {slot!r} is not callable')
-            name = str(slot)
-            has_column = [name in ((row.get('rewards') or {}).get('orm') or {}) for row in rows]
-            if all(has_column):
-                # The admission binding already scored every row under this slot: reuse,
-                # never rescore (overwriting would have to be an explicit request).
-                column = [((row.get('rewards') or {}).get('orm') or {}).get(name) for row in rows]
-            elif any(has_column):
-                raise ComponentError(
-                    f'{self.node_id}: scorer {name!r} has already scored SOME of the rows '
-                    '(the admission binding); a partial column is inconsistent -- either '
-                    'the driver scored the whole batch or none of it.')
-            else:
-                rewards = scorer(rows)
-                column = list(rewards) if rewards is not None else []
-                if len(column) != len(rows):
-                    raise ComponentError(
-                        f'{self.node_id}: scorer {name!r} returned {len(column)} scores '
-                        f'for {len(rows)} rows -- a scorer scores every row')
-            for row, value in zip(new_rows, column):
-                rewards = dict(row.get('rewards') or {})
-                orm = dict(rewards.get('orm') or {})
-                orm[name] = value
-                rewards['orm'] = orm
-                row['rewards'] = rewards
-            columns.append(column)
-            scorer_ids.append(name)
-        # The metric port's summary: one mean per named column; None / nan counted separately.
-        values: Dict[str, Any] = {}
-        invalid = 0
-        for name, column in zip(scorer_ids, columns):
-            finite = [float(v) for v in column if v is not None and v == v]
-            invalid += len(column) - len(finite)
-            values[name] = (sum(finite) / len(finite)) if finite else None
-        return {'traj': new_rows,
-                'metric': {'values': values, 'invalid_count': invalid}}
+        transform = getattr(self, '_score_transform', None)
+        if transform is None:
+            import uuid
+            from twinkle.processor import TrajectoryUpdate
+            from ..placement import NUMERIC_GROUP
+
+            transform = self._score_transform = TrajectoryUpdate(
+                remote_group=NUMERIC_GROUP, instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}')
+        try:
+            trajs, scores, metric = transform.score(samples, scorers=scorers)
+        except (ValueError, TypeError) as e:
+            # Surface the shared scoring engine's contract violations as ComponentError so the
+            # graph executor treats them as stage failures (a scorer that does not score every
+            # row fails loudly -- no silent truncation, no padding).
+            msg = str(e)
+            if 'scores for' in msg:
+                msg = f'{msg} -- a scorer scores every row'
+            raise ComponentError(f'{self.node_id}: {msg}') from e
+        return {'traj': trajs, 'scores': scores, 'metric': metric}
+
+    def release(self) -> None:
+        transform = getattr(self, '_score_transform', None)
+        if transform is not None:
+            transform.close()
+            self._score_transform = None
 
 
 class SelectStage(StageComponent):
-    """Keep rows / whole groups by the declared criterion; every aligned
-    ModelOutput lane is co-selected with the same mask.
-
-    The criterion is the trajectories' single named score column
-    (``rewards.orm``); a multi-column reward is an ambiguous criterion --
-    combine the columns first. The kept rows keep their rewards (nothing is
-    stripped), and each wired signal lane's rows are sliced by the same mask.
-    """
+    """Delegate one aligned selection to the data worker; keep all payload channels as references."""
 
     type = 'select'
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
-        port_batch = inputs.get('batch')
-        samples = port_batch if isinstance(port_batch, list) else (
-            batch if isinstance(batch, list) else [])
-        mode = self.params.get('select', 'best_of_n')
-        num_generations = int(self.params.get('num_generations', '8') or 8)
-        if not samples:
-            raise ComponentError(f'{self.node_id}: select received an empty batch')
-        # The criterion column: every row carries the SAME named scorer set, and the
-        # set has exactly one column -- a wider set is ambiguous.
-        column_sets = {tuple(sorted((row.get('rewards') or {}).get('orm') or {})) for row in samples}
-        if len(column_sets) != 1 or not next(iter(column_sets), ()):
-            raise ComponentError(
-                f'{self.node_id}: select needs the trajectories to carry one named score '
-                'column (rewards.orm); score them first')
-        names = next(iter(column_sets))
-        if len(names) > 1:
-            raise ComponentError(
-                f'{self.node_id}: select received a multi-column reward ({len(names)} scorers); '
-                'it selects on ONE criterion. Combine the columns into a single score first.')
-        rewards = [((row.get('rewards') or {}).get('orm') or {}).get(names[0]) for row in samples]
-        keep: List[int] = []
-        if mode in ('best_of_n', 'top_k'):
-            top_k = 1 if mode == 'best_of_n' else int(self.params.get('top_k', '1') or 1)
-            for start in range(0, len(samples), num_generations):
-                group = list(range(start, min(start + num_generations, len(samples))))
-                ranked = sorted(group, key=lambda i: -(rewards[i] or 0.0))
-                keep.extend(ranked[:top_k])
-        elif mode == 'threshold':
-            threshold = float(self.params.get('threshold', '0.0') or 0.0)
-            keep = [i for i, value in enumerate(rewards)
-                    if value is not None and value == value and value >= threshold]
-        else:
-            raise ComponentError(f'{self.node_id}: unknown select mode {mode!r}')
-        kept = [samples[i] for i in keep]
-        kept_signals = None
-        signals = inputs.get('signals')
-        if signals:
-            kept_signals = [_slice_output(value, keep) for _slot, value in signals]
-        out: Dict[str, Any] = {'batch': kept,
-                               'metric': {'values': {'kept': len(keep), 'dropped': len(samples) - len(keep)},
-                                          'invalid_count': 0}}
-        if kept_signals is not None:
-            out['signals'] = kept_signals
-        return out
+        samples = inputs.get('batch')
+        if samples is None:
+            samples = batch
+        if samples is None:
+            raise ComponentError(f'{self.node_id}: select needs a wired batch')
+        transform = getattr(self, '_selection', None)
+        if transform is None:
+            import uuid
+            from twinkle.processor import TrajectoryFilter
+            from ..placement import NUMERIC_GROUP
+
+            transform = self._selection = TrajectoryFilter(
+                remote_group=NUMERIC_GROUP, instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}')
+        rows, signals, scores, metric = transform.select_scored(
+            samples, mode=str(self.params.get('select') or 'threshold'),
+            num_generations=int(self.params.get('num_generations') or 8),
+            top_k=int(self.params.get('top_k') or 1), threshold=float(self.params.get('threshold') or 0.0),
+            signals=tuple(inputs.get('signals') or ()), scores=inputs.get('scores'))
+        output = {'batch': rows, 'scores': scores, 'metric': metric}
+        if inputs.get('signals'):
+            output['signals'] = signals
+        return output
+
+    def release(self) -> None:
+        transform = getattr(self, '_selection', None)
+        if transform is not None:
+            transform.close()
+            self._selection = None

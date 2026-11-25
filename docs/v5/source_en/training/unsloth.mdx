@@ -1,0 +1,27 @@
+---
+title: Unsloth Models
+description: The unsloth backend rides transformers construction for faster LoRA/full training.
+---
+
+`--backend unsloth` selects the Unsloth-optimized construction path on top of
+transformers — same Config surface, same recipes, faster kernels and lower
+memory where Unsloth supports the model family.
+
+```bash
+swift sft \
+    --backend unsloth \
+    --model Qwen/Qwen3.5-4B \
+    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --dataset 'swift/self-cognition#600' \
+    --torch_dtype bfloat16 \
+    --output_dir output
+```
+
+Notes:
+
+- Requires the `unsloth` package installed in the environment; supported
+  families follow Unsloth's own coverage.
+- LoRA and full-parameter training both ride this path; distribution knobs
+  (`--mode`, `--nproc_per_node`) are unchanged.
+- If a family is unsupported by Unsloth, construction fails loudly — switch
+  back to the default transformers backend rather than expecting a silent fallback.

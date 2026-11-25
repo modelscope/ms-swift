@@ -5,6 +5,7 @@ import copy
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
 
 from swift.dev.recipe.utils import (
+    fp8_seq_align_option as _fp8_seq_align_option,
     initialize_supervised_twinkle,
     plan_supervised_steps,
     process_and_validate,
@@ -219,6 +220,9 @@ def build_supervised_objects(
                 and (distributed_config.nproc_per_node or Platform.get_world_size()) > 1
                 and cp_size == 1 and template.multimodal_graph_adapter is not None):
             processor_options['uniform_multimodal_graph'] = True
+        # fp8/fp4 micro-batch token padding (None = off); the processor right-pads token columns
+        # to this alignment before twinkle builds cu_seqlens, reproducing legacy's collator pad.
+        processor_options['seq_align_to'] = _fp8_seq_align_option(model_config, distributed_config, cp_size)
         model.set_processor(
             InputProcessor,
             padding_free=template_config.padding_free,

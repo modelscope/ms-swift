@@ -20,6 +20,7 @@ from .model import (
     is_megatron_backend,
     load_model_processor,
     resolve_new_special_tokens,
+    resolve_rl_dp_size,
 )
 from .reward import build_reward_model
 from .sampler import (
@@ -55,6 +56,7 @@ __all__ = [
     "is_megatron_backend",
     "load_model_processor",
     "resolve_new_special_tokens",
+    "resolve_rl_dp_size",
     "build_reward_model",
     "build_engine_args",
     "build_sampler",

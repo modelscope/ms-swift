@@ -432,9 +432,9 @@ def run_supervised(
     from swift.dev.recipe.utils import finish_manual_gc, start_manual_gc
 
     gc_was_enabled = start_manual_gc(manual_gc)
-    state.publish_state()
-    handler.on_train_begin()
     try:
+        state.publish_state()
+        handler.on_train_begin()
         if train_config.eval_on_start:
             evaluate()
         fit_supervised(
@@ -455,20 +455,36 @@ def run_supervised(
                 adapter_name=best_model_adapter_name,
             )
     finally:
-        Perf.shutdown()
-        state.publish_state()
-        handler.on_train_end()
-        # The resident eval sampler is built once and lives across every eval; release it here.
-        shutdown = getattr(generative.sampler if generative is not None else None, "shutdown", None)
-        if callable(shutdown):
-            shutdown()
-        finish_manual_gc(gc_was_enabled)
-        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
-        # record, and close() is what writes the summary. sys.exc_info() is the in-flight exception,
-        # which inside a finally block is the only signal that distinguishes a loop that finished from
-        # one that was raised out of -- the same reading run_grpo uses for its own terminal record.
-        state.finish_metrics(status='failed' if sys.exc_info()[0] is not None else 'loop_completed')
-        state.tracker.close()
+        pending_error = sys.exc_info()[1]
+        cleanup_error = None
+
+        def cleanup(action):
+            nonlocal cleanup_error
+            try:
+                action()
+            except BaseException as exc:
+                if pending_error is None and cleanup_error is None:
+                    cleanup_error = exc
+                else:
+                    logger.exception('Secondary error during supervised training cleanup.')
+
+        cleanup(Perf.shutdown)
+        cleanup(state.publish_state)
+        # Post-training callbacks (temperature calibration) write state only to a SUCCESSFUL run:
+        # the flag carries the pending/cleanup error into on_train_end, which fires before the
+        # final save, so a failed run keeps its loaded/factory temperatures and no success
+        # checkpoint is written.
+        handler.state.training_failed = pending_error is not None or cleanup_error is not None
+        cleanup(handler.on_train_end)
+        if generative is not None:
+            cleanup(lambda: getattr(generative.sampler, 'shutdown', lambda: None)())
+        cleanup(lambda: finish_manual_gc(gc_was_enabled))
+        # Record terminal status before the tracker writes its summary.
+        status = 'failed' if pending_error is not None or cleanup_error is not None else 'loop_completed'
+        cleanup(lambda: state.finish_metrics(status=status))
+        cleanup(state.tracker.close)
+        if cleanup_error is not None:
+            raise cleanup_error
     ckpt_dir = save_final_checkpoint(model, save, enabled=_save_final)
     # A remote ckpt_dir is a twinkle:// URI in the SERVER's store: the server-side checkpoint has
     # no local dir to copy args.json into, and the run-level args.json (written by the

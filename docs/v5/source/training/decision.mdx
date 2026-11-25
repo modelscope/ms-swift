@@ -1,0 +1,32 @@
+---
+title: Decision 模型的训练
+description: 类型化 System-1 打分——单次前向输出选项集上的校准概率。
+---
+
+Decision 模型把选择题当**打分任务**回答，而不是生成文本：单次前向输出
+每个问题选项集上的校准概率。
+
+```bash
+swift sft \
+    --model <decision族模型> \
+    --task_type decision \
+    --torch_dtype bfloat16 \
+    --dataset <decision数据集> \
+    --tuner lora \
+    --output_dir output
+```
+
+工作方式：
+
+- 模板把每行编码为问题 + 选项序列；collator 摊平成
+  `[total_questions, max_options]` 的 labels 张量。
+- 挂在骨干上的 `ScoringHead` 产出逐选项分数；loss 把它训向标注选项。
+- 已注册的 decision 族（H2O / THX-02 类打分模型）从模型 spec 自动加载头配置。
+
+需要快速、校准的选项打分（路由、评判、System-1 式决策）而非自由生成时，
+用这个任务类型。实现见 `swift/dev/model/decision_head.py`、
+`swift/dev/model/loader/decision.py`。
+
+### 远端温度校准
+
+使用 `--mode remote --task_type decision` 时，通过 `--val_dataset` 或 `--split_dataset_ratio` 提供验证集。对于支持温度缩放的 head，训练成功结束后，Swift 在客户端拟合温度，再写回当前训练句柄。Twinkle 服务端确认更新后，最终 checkpoint 将温度保存在 `task_head.safetensors` 中；中间 checkpoint 不变。此功能需要支持 task-head 温度接口的 Twinkle 服务端和 SDK。
