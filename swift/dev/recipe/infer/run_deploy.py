@@ -200,6 +200,10 @@ def build_server_config(
                 device_mesh=device_mesh,
                 sampler_type=sampler_type,
                 engine_args=sampler_engine_args or None,
+                # The sampler router shares the gateway's proxy port: give it the SAME credential,
+                # or a caller could bypass --api_key by posting to {route_prefix}/sampler/{name}
+                # directly (twinkle's token middleware accepts every token as tenant identity).
+                api_key=deploy_config.api_key,
                 data_plane_url=data_plane_url,
                 template=template_spec,
                 adapters=adapter_mapping or None,
