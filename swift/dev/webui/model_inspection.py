@@ -779,6 +779,9 @@ def _run_meta_worker(model_config, tuner_config, train_config, *, expand: Option
     del _loader
     model_config = copy.copy(model_config)
     model_config.torch_dtype = model_config.torch_dtype or base['model']['torch_dtype']
+    # Local checkpoint dirs carry no registered id: reuse the config tier's model_type so the
+    # builder resolves the family instead of failing on an unrecognized directory name.
+    model_config.model_type = model_config.model_type or base['model']['model_type']
     method = 'fork' if 'fork' in multiprocessing.get_all_start_methods() else 'spawn'
     context = multiprocessing.get_context(method)
     with tempfile.TemporaryDirectory() as directory:
