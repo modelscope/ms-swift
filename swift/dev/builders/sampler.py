@@ -76,7 +76,8 @@ def _resolve_sampler(spec: Any) -> Tuple[type, Optional[str]]:
         raise ValueError(
             f"sampler={spec!r} (legacy remote generation) is not migrated: v5 samples with the local "
             "vllm/sglang/transformers backends. Serve the remote side with `swift deploy` and point an "
-            "http(s) URL at it (an API-judge reward channel) instead of a client sampler.")
+            "http(s) URL at it (an API-judge reward channel) instead of a client sampler."
+        )
     kind = _sampler_kind()
     sampler_cls = resolve_plugin_class(spec, kind.base, kind.entries, kind="sampler")
     engine = next((name for name, cls in kind.entries.items() if cls is sampler_cls), None)
@@ -310,8 +311,9 @@ def build_sampler(
     return sampler_cls(model_config.model, engine_args=kwargs, device_mesh=device_mesh, **extra)
 
 
-def _build_client_sampler(model_config: "ModelConfig", template: Any,
-                          adapters: Optional[List[str]], is_pooling: bool) -> Any:
+def _build_client_sampler(
+    model_config: "ModelConfig", template: Any, adapters: Optional[List[str]], is_pooling: bool
+) -> Any:
     """backend='twinkle': a client-side vLLMSampler handle over a SERVED sampler.
 
     The transport must already be bound (init_twinkle_client, done by the mode='remote'
@@ -325,13 +327,15 @@ def _build_client_sampler(model_config: "ModelConfig", template: Any,
     if is_pooling:
         raise ValueError(
             'backend="twinkle" cannot serve the pooling task: the client sampler face is '
-            'sample()/encode() over a served generation engine. Run pooling locally, or serve it '
-            'through the gateway\'s OpenAI-compatible /embeddings route.')
+            "sample()/encode() over a served generation engine. Run pooling locally, or serve it "
+            "through the gateway's OpenAI-compatible /embeddings route."
+        )
     if adapters:
         raise ValueError(
             f'backend="twinkle" received local adapters {adapters!r}: a local adapter directory '
-            'cannot load into a remote engine. Merge the adapter first (`swift merge`), or wait '
-            'for the adapter_uri wiring (a twinkle:// checkpoint served as a sampler LoRA).')
+            "cannot load into a remote engine. Merge the adapter first (`swift merge`), or wait "
+            "for the adapter_uri wiring (a twinkle:// checkpoint served as a sampler LoRA)."
+        )
     sampler = ClientSampler(model_config.model)
     if template is not None:
         spec = resolve_twinkle_template(None, model_config)
@@ -442,8 +446,9 @@ def _reject_unsupported(generation_config: GenerationConfig) -> None:
     # under it); alone it is silently ignored, so refuse the dead combination here.
     if generation_config.top_logprobs is not None and not generation_config.logprobs:
         raise ValueError(
-            f'top_logprobs={generation_config.top_logprobs} needs --logprobs true: the top-k logprobs '
-            'only ride the logprobs flag, so without it the setting is silently ignored.')
+            f"top_logprobs={generation_config.top_logprobs} needs --logprobs true: the top-k logprobs "
+            "only ride the logprobs flag, so without it the setting is silently ignored."
+        )
     if generation_config.num_beams and generation_config.num_beams > 1:
         raise ValueError(
             f"num_beams={generation_config.num_beams} is not supported: twinkle SamplingParams "

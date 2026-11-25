@@ -85,8 +85,11 @@ _REPLACEABLE = frozenset({"max_length", "truncation_strategy"})
 #: The slots a prompt block may carry; substituted in one pass so injected payload text is never rescanned.
 _PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY = "{{SYSTEM}}", "{{QUERY}}"
 _PLACEHOLDER_ROUND0, _PLACEHOLDER_ROUND1 = "{{ROUND0}}", "{{ROUND1}}"
-_PLACEHOLDER_RE = re.compile("|".join(
-    re.escape(name) for name in (_PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY, _PLACEHOLDER_ROUND0, _PLACEHOLDER_ROUND1)))
+_PLACEHOLDER_RE = re.compile(
+    "|".join(
+        re.escape(name) for name in (_PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY, _PLACEHOLDER_ROUND0, _PLACEHOLDER_ROUND1)
+    )
+)
 
 
 @contextmanager
@@ -647,9 +650,11 @@ class Template(ProcessorMixin):
             positive = inputs.positive
             if isinstance(positive, list):
                 if not positive:
-                    raise ValueError('An embedding row has an empty `positive` list: the positive leg '
-                                     'is required (labels default to 1.0 off it), so encoding cannot '
-                                     'proceed. Provide at least one positive message pair.')
+                    raise ValueError(
+                        "An embedding row has an empty `positive` list: the positive leg "
+                        "is required (labels default to 1.0 off it), so encoding cannot "
+                        "proceed. Provide at least one positive message pair."
+                    )
                 positive = positive[0]
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
@@ -753,8 +758,9 @@ class Template(ProcessorMixin):
                 # surfaced at loss construction with no pointer back to the data. Reject at encode
                 # time, where the offending row is still identifiable.
                 raise ValueError(
-                    'decision training rows need `target_probs` (the per-question gold '
-                    'distributions); this row carries none. Label the row, or run it as inference.')
+                    "decision training rows need `target_probs` (the per-question gold "
+                    "distributions); this row carries none. Label the row, or run it as inference."
+                )
             encoded["target_probs"] = target_probs
         return encoded
 
@@ -1518,8 +1524,12 @@ class Template(ProcessorMixin):
         # rewrite a user's literal '{{RESPONSE}}'.
         replacements = {
             name: value
-            for name, value in ((_PLACEHOLDER_SYSTEM, system), (_PLACEHOLDER_QUERY, query),
-                                (_PLACEHOLDER_ROUND0, round0), (_PLACEHOLDER_ROUND1, round1))
+            for name, value in (
+                (_PLACEHOLDER_SYSTEM, system),
+                (_PLACEHOLDER_QUERY, query),
+                (_PLACEHOLDER_ROUND0, round0),
+                (_PLACEHOLDER_ROUND1, round1),
+            )
             if value is not None
         }
         for context in context_list:
@@ -1530,8 +1540,9 @@ class Template(ProcessorMixin):
                     res_context_type.append(ContextType.RESPONSE)
                     continue
                 if replacements and "{{" in context:
-                    context = _PLACEHOLDER_RE.sub(lambda match: replacements.get(match.group(0), match.group(0)),
-                                                  context)
+                    context = _PLACEHOLDER_RE.sub(
+                        lambda match: replacements.get(match.group(0), match.group(0)), context
+                    )
             if len(context) == 0:
                 continue
             res_context_list.append(context)
@@ -1786,14 +1797,15 @@ class Template(ProcessorMixin):
         Returns ``(token_ids, piece_index_per_token)``. A piece that overrides ``_tokenize``
         (custom processor kwargs) keeps the per-piece path: its offsets are not ours to assume.
         """
-        merged = ''.join(pieces)
+        merged = "".join(pieces)
         token_ids = offsets = None
         if type(self)._tokenize is Template._tokenize:
             try:
                 encoded = self.tokenizer(
-                    merged, add_special_tokens=False, return_attention_mask=False, return_offsets_mapping=True)
-                token_ids = encoded['input_ids']
-                offsets = encoded['offset_mapping']
+                    merged, add_special_tokens=False, return_attention_mask=False, return_offsets_mapping=True
+                )
+                token_ids = encoded["input_ids"]
+                offsets = encoded["offset_mapping"]
             except Exception:  # noqa: BLE001 -- slow tokenizers expose no offsets
                 token_ids = offsets = None
         if token_ids is None or offsets is None or len(offsets) != len(token_ids):
@@ -1824,7 +1836,7 @@ class Template(ProcessorMixin):
         for piece in pieces[:-1]:
             position += len(piece)
             prefix = list(self._tokenize(merged[:position]))
-            if prefix != token_ids[:len(prefix)] or (bounds and len(prefix) < bounds[-1]):
+            if prefix != token_ids[: len(prefix)] or (bounds and len(prefix) < bounds[-1]):
                 token_ids, owners = [], []
                 for index, single in enumerate(pieces):
                     ids = self._tokenize(single)
@@ -1959,8 +1971,10 @@ class Template(ProcessorMixin):
         content = message["content"]
         # After merge, content may be a list; only process the first element.
         if isinstance(content, list):
-            if content and isinstance(content[0], str) and not content[0].startswith(
-                (thinking_prefix, non_thinking_prefix)
+            if (
+                content
+                and isinstance(content[0], str)
+                and not content[0].startswith((thinking_prefix, non_thinking_prefix))
             ):
                 content[0] = non_thinking_prefix + content[0]
         elif isinstance(content, str):
@@ -2192,15 +2206,15 @@ class Template(ProcessorMixin):
                     # so it is payload: no slot substitution runs over it, or a literal '{{QUERY}}'
                     # or '{{ROUND0}}' inside a tool result or follow-up would be rewritten here.
                     context_list = query.copy() if isinstance(query, list) else [query]
-                    block_slots = dict(system=None, query=None, round0=None)
+                    block_slots = {"system": None, "query": None, "round0": None}
                 elif template_meta.is_post_system and system is not None and last_round and response_message is None:
                     # post-system families render the system block on the trailing generation prompt
                     # only, never on the rounds that carry a response (Mistral-Nemo)
                     context_list = template_meta.system_prompt.copy()
-                    block_slots = dict(system=system, query=query, round0=round_idx)
+                    block_slots = {"system": system, "query": query, "round0": round_idx}
                 else:
                     context_list = template_meta.prompt.copy()
-                    block_slots = dict(system=system, query=query, round0=round_idx)
+                    block_slots = {"system": system, "query": query, "round0": round_idx}
                 self._concat_context_list(
                     context_list,
                     res_context_list,
@@ -2211,9 +2225,13 @@ class Template(ProcessorMixin):
             # closing markers in some families (DeepSeek V3.1): no turn opener there. A tool block
             # that already carries trailing user content is not that case -- the official jinja
             # resets its `is_tool` flag on the user message and re-opens the turn.
-            opener_suppressed = template_meta.suppress_opener_after_tool and query_messages and all(
-                query_message["role"] == "tool" and not query_message.get("_tool_user_followup")
-                for query_message in query_messages
+            opener_suppressed = (
+                template_meta.suppress_opener_after_tool
+                and query_messages
+                and all(
+                    query_message["role"] == "tool" and not query_message.get("_tool_user_followup")
+                    for query_message in query_messages
+                )
             )
             if template_meta.response_opener and not opener_suppressed:
                 opener = template_meta.response_opener.copy()
@@ -2231,9 +2249,7 @@ class Template(ProcessorMixin):
                     # generation prompt: drop the single trailing whitespace character the opener keeps
                     # before a response (GLM drops a newline, LLaVA-HF a space, LLaVA-NeXT one of two
                     # newlines) -- only one, the rest belongs to the prompt
-                    opener = [
-                        item[:-1] if isinstance(item, str) and item[-1:].isspace() else item for item in opener
-                    ]
+                    opener = [item[:-1] if isinstance(item, str) and item[-1:].isspace() else item for item in opener]
                 self._concat_context_list(opener, res_context_list, res_context_types)
             response = None if response_message is None else response_message["content"]
             context_list = []
