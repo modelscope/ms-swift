@@ -26,6 +26,7 @@ class LLMModelArch:
 
 
 class MLLMModelArch:
+    lfm3_vl = 'lfm3_vl'
     moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
@@ -632,6 +633,15 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner=['model.visual.merger', 'model.separator_token'],
         vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.lfm3_vl,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.multi_modal_projector',
+        vision_tower='model.vision_tower',
         mlp='model.language_model.layers.{}.mlp',
     ))
 
