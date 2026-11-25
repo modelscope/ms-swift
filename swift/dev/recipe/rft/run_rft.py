@@ -217,20 +217,51 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
     return rft_state.next_round
 
 
+def _reown_kept_payloads(payloads):
+    """Materialise the kept trajectories in this (driver) process and re-put them so THIS process
+    owns the training payloads.
+
+    defect129/G35 item7: the rollout actor owns the row objects (its ``stash`` ray.put) and the
+    StreamingDriver actor is only a borrower that forwards the refs to main. Closing the driver
+    ``ray.kill``s that borrowing actor; Ray's distributed reference counting can then erase the
+    rollout owner's entry before the trainer's borrow propagates back to it (the borrower-info race
+    documented in ray PR #63560 / #63557), so ``forward_backward``'s ``ray.get`` hits
+    ``ReferenceCountingAssertionError`` even though main still holds the refs. Anchoring the refs in
+    main does not close the race: the anchor's completion-token task releases its argument refs on
+    completion, and main's local borrow is exactly what the owner fails to learn about in time.
+    Re-owning the kept subset in the surviving consumer process removes the cross-actor borrow chain
+    entirely -- the trainer fetches objects whose owner (this process) outlives training. Only the
+    kept subset is materialised (bounded by rejection sampling), never the full rollout. Outside ray
+    (local mode) the payloads are already plain values and pass through untouched.
+    """
+    from twinkle.infra._ray.ray_helper import RayHelper
+    if not RayHelper.ray_inited() or RayHelper.is_worker():
+        return payloads
+    import ray
+    owned = []
+    for payload in payloads:
+        if isinstance(payload, ray.ObjectRef):
+            payload = ray.get(payload)
+        elif hasattr(payload, 'result'):
+            payload = payload.result()
+        owned.append(ray.put(payload))
+    return owned
+
+
 def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloader, num_samples, window):
-    """Generate and score one round, returning the kept trajectories (references), row lengths and
-    a payload anchor the caller must hold until training consumes the references.
+    """Generate and score one round, returning the kept trajectories (this process's own refs) and
+    their row lengths; the third slot is retained for call-site compatibility and is always ``None``.
 
     The driver hands each batch out as it travels (references) with its row-aligned score
     column riding the facts; the round collects the references plus the facts' numeric columns
     (score rows, response lengths), so rejection sampling and the reward metric never materialise
-    a trajectory.
+    a trajectory. Only the KEPT subset is materialised and re-owned here (see
+    :func:`_reown_kept_payloads`) so training never depends on the rollout/driver borrow chain.
     The round's policy is the one the previous round trained: one sync first (colocated, it hands
     the devices to the sampler), then one driver over the whole prompt set; the devices come back
     on every exit.
     """
     import torch
-    from twinkle.infra._ray.ray_helper import RayHelper
 
     from swift.dev.recipe.offload import sleep_for_rollout
     from swift.dev.utils.scoring import weighted_rewards
@@ -239,7 +270,7 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
     driver = build_rft_driver(cluster=cluster, rollout_config=rollout_config, prompt_dataloader=dataloader,
                               num_samples=num_samples, window=window)
     trajs, orm_rows, lengths = [], [], []
-    payload_anchor = None
+    kept_trajs, kept_lengths = [], []
     try:
         for batch, batch_facts in driver:
             trajs.extend(batch)
@@ -250,42 +281,34 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
             lengths.extend(batch_facts.get('response_lengths') or ())
             if len(trajs) % (window * num_samples) == 0:
                 logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')
+        if not trajs:
+            raise RuntimeError('the RFT round produced no scored group (every episode failed).')
+        # None (an unparseable judge verdict) rides as nan: the metric fold and the weighted sum below
+        # consume the same nan-normalized sample-major matrix.
+        rewards_matrix = torch.tensor(
+            [[float("nan") if value is None or value != value else float(value) for value in (row or ())]
+             or [float("nan")] for row in orm_rows],
+            dtype=torch.float32,
+        )
+        # Feed the whole generated rollout (before rejection) into the reward metric, so the logged
+        # train/total_reward tracks the policy's improving sample quality -- the SFT loss on the kept
+        # subset alone hides it.
+        selector.accumulate_metric(rewards_matrix, lengths)
+        rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
+        kept = selector.select(len(trajs), rewards)
+        kept_lengths = [lengths[i] for i in kept]
+        # Re-own the kept payloads in THIS process BEFORE the driver close (while the driver's
+        # borrow chain is still intact, so the fetch succeeds). defect129/G35 item7: closing the
+        # driver ray.kills the borrowing actor, and Ray's reference counting can erase the rollout
+        # owner's entry before the trainer's borrow propagates -- anchoring refs in main does not
+        # close that race. Owning the kept objects here removes the cross-actor chain entirely.
+        kept_trajs = _reown_kept_payloads([trajs[i] for i in kept])
     finally:
-        # defect129/G35: the received payload refs are anchored on the DRIVER's continuous-work
-        # receipt, and closing the driver drains those anchors. RFT trains the kept refs only
-        # AFTER the close (colocated devices must come back first), so without an independent
-        # main-process anchor the owner can free a payload before forward_backward's ray.get
-        # (ReferenceCountingAssertionError). Anchor here, before the drain; skipped on an
-        # in-flight exception so the original error is preserved (no training will follow).
-        if sys.exc_info()[0] is None:
-            payload_anchor = RayHelper.anchor_refs(trajs)
         close_driver_preserving_error(driver)
         if cluster.colocate:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
-    if not trajs:
-        raise RuntimeError('the RFT round produced no scored group (every episode failed).')
-    # None (an unparseable judge verdict) rides as nan: the metric fold and the weighted sum below
-    # consume the same nan-normalized sample-major matrix.
-    rewards_matrix = torch.tensor(
-        [[float("nan") if value is None or value != value else float(value) for value in (row or ())]
-         or [float("nan")] for row in orm_rows],
-        dtype=torch.float32,
-    )
-    # Feed the whole generated rollout (before rejection) into the reward metric, so the logged
-    # train/total_reward tracks the policy's improving sample quality -- the SFT loss on the kept
-    # subset alone hides it.
-    selector.accumulate_metric(rewards_matrix, lengths)
-    rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
-    kept = selector.select(len(trajs), rewards)
-    kept_trajs = [trajs[i] for i in kept]
-    # Narrow the anchor to the kept payloads: the full-rollout anchor only had to bridge the
-    # driver close; holding it through training would pin every discarded payload in the object
-    # store for the whole train pass. The kept anchor is created BEFORE the full one is dropped,
-    # so there is no unanchored gap.
-    kept_anchor = RayHelper.anchor_refs(kept_trajs)
-    del payload_anchor
-    return kept_trajs, [lengths[i] for i in kept], kept_anchor
+    return kept_trajs, kept_lengths, None
 
 
 def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, save_steps):
@@ -468,15 +491,12 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         for round_index in range(start_round, rl_config.rft_iterations):
             if state.reached_max():
                 break
-            kept_trajs, kept_lengths, payload_anchor = _sample_and_select(
+            kept_trajs, kept_lengths, _ = _sample_and_select(
                 cluster, rollout_config, reward_config, selector, dataloader, num_samples, generation_batch_size)
-            try:
-                round_save_due = _train_selected_samples(
-                    cluster, state, kept_trajs, kept_lengths, train_batch_size, save_steps)
-            finally:
-                # forward_backward has consumed the kept payload refs (or failed trying); drop
-                # the main-process anchor so this round's payloads do not leak into the next.
-                del payload_anchor
+            # kept_trajs are THIS process's own object refs (re-owned in _sample_and_select); they
+            # are released when the name is rebound next round, so this round's payloads never leak.
+            round_save_due = _train_selected_samples(
+                cluster, state, kept_trajs, kept_lengths, train_batch_size, save_steps)
             # Commit the round only after its SFT pass has completed (or max_steps deliberately
             # truncated it), then persist at this safe boundary.
             rft_state.next_round = round_index + 1
