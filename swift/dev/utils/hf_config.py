@@ -292,9 +292,26 @@ def _rebuild_remote_code_config(model_dir: str, revision: Optional[str], config_
     from transformers import AutoConfig
 
     config = AutoConfig.from_pretrained(model_dir, revision=revision, trust_remote_code=True)
-    for key, value in config_dict.items():
-        setattr(config, key, value)
+    _reapply_config_state(config, config_dict)
     return make_remote_code_config_picklable(config, model_dir, revision=revision)
+
+
+def _reapply_config_state(config: PretrainedConfig, state: Dict[str, Any]) -> None:
+    """Re-apply captured ``to_dict()`` state onto a freshly loaded config without downgrading
+    typed sub-configs.
+
+    ``to_dict()`` serializes sub-configs (``vision_config`` / ``text_config`` / ...) to plain
+    dicts; assigning those verbatim would replace the reloaded typed sub-config object with a
+    dict, and attribute readers downstream die (vLLM's PaddleOCR-VL reads
+    ``config.vision_config.hidden_size`` -> "'dict' object has no attribute 'hidden_size'").
+    Merge dict state into the existing typed sub-config instead, recursively.
+    """
+    for key, value in state.items():
+        current = getattr(config, key, None)
+        if isinstance(current, PretrainedConfig) and isinstance(value, dict):
+            _reapply_config_state(current, value)
+        else:
+            setattr(config, key, value)
 
 
 def make_remote_code_config_picklable(config: PretrainedConfig,
