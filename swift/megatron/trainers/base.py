@@ -1030,13 +1030,19 @@ class BaseMegatronTrainer(ABC):
         if args.streaming:
             consumed_samples = self.state.consumed_train_samples
             dp_world_size = mpu.get_data_parallel_world_size()
+            # Checkpoints count generated samples for GRPO/GKD; the stream
+            # iterates unrepeated prompts, like the non-streaming path below.
+            num_generations = args.num_generations if args.rlhf_type in {'grpo', 'gkd'} else 1
             samples_per_step = args.micro_batch_size * dp_world_size
-            skip_batches = compute_streaming_skip_batches(consumed_samples, args.micro_batch_size, dp_world_size)
+            skip_batches = compute_streaming_skip_batches(
+                consumed_samples, args.micro_batch_size, dp_world_size, num_generations=num_generations)
             if skip_batches > 0:
-                if consumed_samples % samples_per_step != 0:
+                prompt_samples = consumed_samples // num_generations
+                if prompt_samples % samples_per_step != 0:
                     logger.warning(
-                        f'consumed_train_samples ({consumed_samples}) is not divisible by '
-                        f'micro_batch_size * dp_world_size ({samples_per_step}); the remainder will be replayed.')
+                        f'consumed_train_samples ({consumed_samples}) maps to {prompt_samples} prompt samples, '
+                        f'not divisible by micro_batch_size * dp_world_size ({samples_per_step}); '
+                        f'the remainder will be replayed.')
                 logger.info(
                     f'Streaming resume: skipping {skip_batches} dispatcher batches '
                     f'({consumed_samples} samples consumed before the checkpoint).')
