@@ -870,13 +870,43 @@ class TestThinkingDefaultParity(unittest.TestCase):
 
     # One representative per official default-semantics group. Whenever local snapshots are
     # available these must be verified, otherwise a broken template hides behind a silent skip.
+    # A representative whose official template is not provisioned in this environment is
+    # reported as unavailable instead of failing: without the oracle nothing can be compared.
     REQUIRED = ('qwen3', 'qwen3_5', 'glm4_5', 'glm4_7', 'hunyuan', 'kimi_k25', 'deepseek_v3_1', 'gemma4', 'minicpmv4_6',
                 'ernie_vl', 'spark2_5')
+    NO_ORACLE_MARKERS = ('local snapshot not available', 'no official chat_template', 'tokenizer unavailable')
+
+    def _partition_required(self, verified, skip_reasons, fallback):
+        """Split REQUIRED into (must-fail, no-oracle-here).
+
+        Only a missing *oracle* excuses a representative; any other reason (template raised,
+        official switch indistinguishable, ...) is a real failure.
+        """
+        missing, unavailable = {}, {}
+        for name in self.REQUIRED:
+            if name in verified:
+                continue
+            reason = skip_reasons.get(name, 'not visited')
+            if any(marker in reason for marker in self.NO_ORACLE_MARKERS):
+                unavailable[name] = reason
+            else:
+                missing[name] = fallback.get(name, reason)
+        return missing, unavailable
+
+    def test_partition_required_only_excuses_missing_oracle(self):
+        missing, unavailable = self._partition_required({'qwen3', 'deepseek_v3_1'}, {
+            'glm4_5': '/cache/glm: no official chat_template (tokenizer or processor)',
+            'gemma4': 'RuntimeError: template blew up',
+        }, {})
+        self.assertIn('glm4_5', unavailable)
+        self.assertNotIn('glm4_5', missing)
+        self.assertEqual(missing['gemma4'], 'RuntimeError: template blew up')
 
     def test_default_enable_thinking_matches_official(self):
         seen = set()
         verified = {}
         skips = {}
+        skip_reasons = {}
         for model_type, meta in MODEL_MAPPING.items():
             for group in meta.model_groups:
                 template_type = group.template or meta.template
@@ -888,6 +918,7 @@ class TestThinkingDefaultParity(unittest.TestCase):
                 try:
                     source, config, tokenizer, processor = _load(group.models[0])
                 except unittest.SkipTest as e:
+                    skip_reasons[template_type] = str(e)
                     skips[template_type] = f'load: {str(e)[:80]}'
                     continue
                 key = 'enable_thinking'
@@ -902,6 +933,7 @@ class TestThinkingDefaultParity(unittest.TestCase):
                     as_false = tokenizer.apply_chat_template(
                         messages, tokenize=False, add_generation_prompt=True, **{key: False})
                 except Exception as e:
+                    skip_reasons[template_type] = f'{type(e).__name__}: {e}'
                     skips[template_type] = f'{type(e).__name__}: {str(e)[:80]}'
                     continue
                 if default == as_true and default != as_false:
@@ -915,7 +947,12 @@ class TestThinkingDefaultParity(unittest.TestCase):
                 verified[template_type] = swift
         if not verified:
             self.skipTest(f'no local thinking template could be verified; skips={skips}')
-        missing = {name: skips.get(name, 'not visited') for name in self.REQUIRED if name not in verified}
+        missing, unavailable = self._partition_required(
+            verified, skip_reasons,
+            {name: skips.get(name, skip_reasons.get(name, 'not visited'))
+             for name in self.REQUIRED})
+        if unavailable:
+            print(f'\nrequired representatives without a local oracle (skipped): {unavailable}')
         self.assertFalse(missing, f'representative templates were not verified: {missing}')
         print(f'\nverified {len(verified)} defaults, skipped {len(skips)}: {skips}')
 
