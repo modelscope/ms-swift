@@ -272,13 +272,20 @@ def build_sampler(
         if adapters:
             _enable_lora(kwargs, engine, adapters)
 
-        if engine == "transformers":
-            # AutoModelForCausalLM cannot load a VL checkpoint; hand the family loader's declared
-            # model_cls ('module:ClassName': engine-resolvable, Ray-safe); setdefault keeps overrides.
-            from swift.dev.builders.model import _resolve_model_loader
+        # The loader is the authority on trust_remote_code for every built-in engine: it knows
+        # whether the family's checkpoints ship remote code (auto_map) that must execute, while the
+        # twinkle engine defaults do not (TransformersEngine defaults False, VLLMEngine True).
+        # Without this, a remote-code family (e.g. PaddleOCR-VL-1.5, whose bundled modeling is the
+        # only working implementation) loads the broken in-tree class on the transformers engine.
+        # setdefault keeps an explicit engine_args override.
+        from swift.dev.builders.model import _resolve_model_loader
 
-            loader = _resolve_model_loader(model_config)
-            if loader is not None:
+        loader = _resolve_model_loader(model_config)
+        if loader is not None:
+            kwargs.setdefault("trust_remote_code", loader.trust_remote_code)
+            if engine == "transformers":
+                # AutoModelForCausalLM cannot load a VL checkpoint; hand the family loader's declared
+                # model_cls ('module:ClassName': engine-resolvable, Ray-safe); setdefault keeps overrides.
                 kwargs.setdefault("model_cls", loader.model_cls)
 
     validate_capabilities = getattr(template, "require_capabilities", None)

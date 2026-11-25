@@ -847,10 +847,17 @@ class Template(ProcessorMixin):
             raise ValueError("encode_prompt requires one unsplit prompt feature.")
         prompt_inputs = sample if isinstance(sample, TemplateInputs) else TemplateInputs.from_dict(sample)
         engine_ids = list(engine_feature["input_ids"])
-        # Serving engines retain resized images here. Transformers templates may
-        # use the same key for tensors consumed by the model.
-        engine_images = engine_feature.get("images") if backend in ("vllm", "sglang", "lmdeploy") else None
-        media = MediaBundle.from_sources({"images": engine_images}, sample, feature)
+        # Serving engines retain processed media here: resized images AND the waveforms the
+        # template loaded (vllm mode loads audios to (ndarray, sr)). The raw sample still holds
+        # paths/URLs, which vLLM's audio parser rejects (it accepts ndarrays / (ndarray, sr) only),
+        # so the engine encoding's media must win over the sample's refs for every media kind.
+        # Transformers templates may use the same keys for tensors consumed by the model.
+        if backend in ("vllm", "sglang", "lmdeploy"):
+            engine_media = {key: engine_feature.get(key) for key in ("images", "videos", "audios")}
+        else:
+            engine_media = {"images": None}
+        engine_images = engine_media["images"]
+        media = MediaBundle.from_sources(engine_media, sample, feature)
         processor_kwargs = dict(engine_feature.get("mm_processor_kwargs") or {})
         if backend == "vllm" and media.videos:
             # The rollout uploads the original videos, which vLLM must process.
@@ -863,7 +870,13 @@ class Template(ProcessorMixin):
             if processor_kwargs.get("do_sample_frames") is False:
                 processor_kwargs.pop("do_sample_frames")
             processor_kwargs.pop("video_metadata", None)
-        if self.is_multimodal:
+        if self.is_multimodal and backend in ("vllm", "sglang", "lmdeploy"):
+            # Only serving engines re-expand media placeholders themselves, so only they need the
+            # collapsed one-placeholder-per-image prompt. The transformers engine consumes the
+            # EXPANDED feature ids (the template already matched them to the precomputed media
+            # tensors); for backend='transformers' the engine encoding renders in 'transformers'
+            # mode and legitimately holds the expanded token run, so the collapse check must not
+            # fire (it would reject every expanded multimodal prompt, e.g. PaddleOCR-VL-1.5).
             self._check_engine_placeholders(engine_ids, media)
         state = RolloutState(
             feature=feature,
