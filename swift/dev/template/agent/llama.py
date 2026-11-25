@@ -76,7 +76,7 @@ class Llama3AgentTemplate(BaseAgentTemplate):
         new_user_content = (
             """Given the following functions, please respond with a JSON for a function call with its proper arguments that best answers the given prompt.
 
-Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}. Do not use variables.
+Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.Do not use variables.
 
 """
             + "\n\n".join(tool_descs)
@@ -85,7 +85,10 @@ Respond in the format {"name": function name, "parameters": dictionary of argume
 {user_content}"""
         )  # noqa
         user_message["content"] = new_user_content
-        return system or ""
+        # the jinja prepends 'Environment: ipython\n' to the system content whenever tools are
+        # present ('{%- if builtin_tools is defined or tools is not none %}'); _format_tools only
+        # runs with tools, so the line is unconditional here
+        return "Environment: ipython\n" + (system or "")
 
     def _format_tool_calls(self, tool_call_messages) -> str:
         tool_calls = []

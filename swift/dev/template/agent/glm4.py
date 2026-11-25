@@ -149,8 +149,11 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         tool_descs.append(tool_desc)
         tool_descs = "\n".join(tool_descs)
         if system is not None and system.strip():
-            tool_descs += "<|system|>\n" + system.strip()
-        elif self.model_type in {"glm4_7", "glm5_1"} and not tool_descs.startswith("\n"):
+            # the GLM-4.7/5.1 jinja opens the user system block with '<|system|>' and no newline
+            # ('<|system|>{{ visible_text(m.content) }}'); GLM-4.5 keeps the newline form
+            sep = "" if self.model_type in {"glm4_7", "glm5_1"} else "\n"
+            tool_descs += "<|system|>" + sep + system.strip()
+        if self.model_type in {"glm4_7", "glm5_1"} and not tool_descs.startswith("\n"):
             tool_descs = "\n" + tool_descs
         return tool_descs
 
@@ -176,15 +179,15 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             res.append("<|assistant|>")
         return assistant_content, res
 
-    def _format_tool_user_followup(self, tool_messages, user_messages) -> 'Prompt':
-        _, tool_content = self._format_tool_responses('', tool_messages)
-        prefix, suffix = ''.join(self.template_meta.prompt).split('{{QUERY}}', 1)
-        chat_sep = ''.join(self.template_meta.chat_sep or [])
+    def _format_tool_user_followup(self, tool_messages, user_messages) -> "Prompt":
+        _, tool_content = self._format_tool_responses("", tool_messages)
+        prefix, suffix = "".join(self.template_meta.prompt).split("{{QUERY}}", 1)
+        chat_sep = "".join(self.template_meta.chat_sep or [])
         # the tool block ends with its own turn opener; drop it, the follow-up user turns close the
         # block and the encode loop opens the response turn where the jinja does
         res = tool_content[:-1]
         for i, message in enumerate(user_messages):
-            res.extend([prefix + message['content'], suffix if i == len(user_messages) - 1 else chat_sep])
+            res.extend([prefix + message["content"], suffix if i == len(user_messages) - 1 else chat_sep])
         return res
 
     def _format_tool_calls(self, tool_call_messages) -> str:
@@ -194,6 +197,12 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             tool_calls.append(f"<tool_call>{tool_call['name']}")
             for arg_key, arg_value in tool_call["arguments"].items():
                 tool_calls.append(f"<arg_key>{arg_key}</arg_key>")
+                # the jinja renders '<arg_value>{{ v | tojson(ensure_ascii=False) if v is not string
+                # else v }}</arg_value>': non-strings keep JSON spelling (null/true/{"k": 1}); a
+                # Python f-string writes None/True/{'k': 1} and null parses back as the string
+                # "None" (silent corruption)
+                if not isinstance(arg_value, str):
+                    arg_value = json.dumps(arg_value, ensure_ascii=False)
                 tool_calls.append(f"<arg_value>{arg_value}</arg_value>")
             tool_calls.append("</tool_call>")
         if self.model_type == "glm4_5":
