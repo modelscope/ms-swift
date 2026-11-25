@@ -975,8 +975,16 @@ def _forward_step_helper(model, inputs, dtype=None):
     """Single mcore forward across pipeline stages (legacy ``forward_step_helper``)."""
     import torch
     from megatron.core import mpu
-    from megatron.core.inference.communication_utils import (recv_from_prev_pipeline_rank_,
-                                                             send_to_next_pipeline_rank_)
+    from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_
+    # megatron-core renamed the send helper to ``send_to_next_pipeline_rank`` (no trailing
+    # underscore) in the 0.18 line; older builds only export ``send_to_next_pipeline_rank_``.
+    # Import whichever the installed build provides (matches swift/megatron/utils/utils.py) so the
+    # function-top import does not raise on a version that lacks the other spelling -- the pp=1
+    # path never executes the send branch, but the import still runs.
+    try:
+        from megatron.core.inference.communication_utils import send_to_next_pipeline_rank
+    except ImportError:
+        from megatron.core.inference.communication_utils import send_to_next_pipeline_rank_ as send_to_next_pipeline_rank
 
     config = model.config
     dtype = dtype or config.params_dtype
@@ -989,8 +997,8 @@ def _forward_step_helper(model, inputs, dtype=None):
     output_tensor = model(**inputs)
     if not mpu.is_pipeline_last_stage():
         recv_shape_buffer = torch.tensor(output_tensor.shape, device=torch.cuda.current_device(), dtype=torch.int64)
-        send_to_next_pipeline_rank_(recv_shape_buffer)
-        send_to_next_pipeline_rank_(output_tensor)
+        send_to_next_pipeline_rank(recv_shape_buffer)
+        send_to_next_pipeline_rank(output_tensor)
         output_tensor = None
 
     return output_tensor
