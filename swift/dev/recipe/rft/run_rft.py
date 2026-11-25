@@ -218,7 +218,8 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
 
 
 def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloader, num_samples, window):
-    """Generate and score one round, returning the kept trajectories (references) and row lengths.
+    """Generate and score one round, returning the kept trajectories (references), row lengths and
+    a payload anchor the caller must hold until training consumes the references.
 
     The driver hands each batch out as it travels (references) with its row-aligned score
     column riding the facts; the round collects the references plus the facts' numeric columns
@@ -229,6 +230,7 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
     on every exit.
     """
     import torch
+    from twinkle.infra._ray.ray_helper import RayHelper
 
     from swift.dev.recipe.offload import sleep_for_rollout
     from swift.dev.utils.scoring import weighted_rewards
@@ -237,6 +239,7 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
     driver = build_rft_driver(cluster=cluster, rollout_config=rollout_config, prompt_dataloader=dataloader,
                               num_samples=num_samples, window=window)
     trajs, orm_rows, lengths = [], [], []
+    payload_anchor = None
     try:
         for batch, batch_facts in driver:
             trajs.extend(batch)
@@ -248,6 +251,14 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
             if len(trajs) % (window * num_samples) == 0:
                 logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')
     finally:
+        # defect129/G35: the received payload refs are anchored on the DRIVER's continuous-work
+        # receipt, and closing the driver drains those anchors. RFT trains the kept refs only
+        # AFTER the close (colocated devices must come back first), so without an independent
+        # main-process anchor the owner can free a payload before forward_backward's ray.get
+        # (ReferenceCountingAssertionError). Anchor here, before the drain; skipped on an
+        # in-flight exception so the original error is preserved (no training will follow).
+        if sys.exc_info()[0] is None:
+            payload_anchor = RayHelper.anchor_refs(trajs)
         close_driver_preserving_error(driver)
         if cluster.colocate:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
@@ -267,7 +278,14 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
     selector.accumulate_metric(rewards_matrix, lengths)
     rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
     kept = selector.select(len(trajs), rewards)
-    return [trajs[i] for i in kept], [lengths[i] for i in kept]
+    kept_trajs = [trajs[i] for i in kept]
+    # Narrow the anchor to the kept payloads: the full-rollout anchor only had to bridge the
+    # driver close; holding it through training would pin every discarded payload in the object
+    # store for the whole train pass. The kept anchor is created BEFORE the full one is dropped,
+    # so there is no unanchored gap.
+    kept_anchor = RayHelper.anchor_refs(kept_trajs)
+    del payload_anchor
+    return kept_trajs, [lengths[i] for i in kept], kept_anchor
 
 
 def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, save_steps):
@@ -450,10 +468,15 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         for round_index in range(start_round, rl_config.rft_iterations):
             if state.reached_max():
                 break
-            kept_trajs, kept_lengths = _sample_and_select(
+            kept_trajs, kept_lengths, payload_anchor = _sample_and_select(
                 cluster, rollout_config, reward_config, selector, dataloader, num_samples, generation_batch_size)
-            round_save_due = _train_selected_samples(
-                cluster, state, kept_trajs, kept_lengths, train_batch_size, save_steps)
+            try:
+                round_save_due = _train_selected_samples(
+                    cluster, state, kept_trajs, kept_lengths, train_batch_size, save_steps)
+            finally:
+                # forward_backward has consumed the kept payload refs (or failed trying); drop
+                # the main-process anchor so this round's payloads do not leak into the next.
+                del payload_anchor
             # Commit the round only after its SFT pass has completed (or max_steps deliberately
             # truncated it), then persist at this safe boundary.
             rft_state.next_round = round_index + 1

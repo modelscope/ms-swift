@@ -100,7 +100,7 @@ class ConvertComponent(BaseWeightTransform):
         from twinkle.patch import apply_patch
 
         hf_model, template, processor = self._load_hf_model_template(
-            load_model=True, patch_offload=not self.convert_config.test_convert_precision)
+            load_model=True, patch_offload=True, cpu_load=self.convert_config.test_convert_precision)
         self._set_thread_count(hf_model)
         apply_patch(None, TorchDistSaveThreadCountPatch(self.convert_config.thread_count))
 
@@ -173,7 +173,9 @@ class ConvertComponent(BaseWeightTransform):
                     load_model=True,
                     model=output_dir,
                     model_type=resolved_model_type,
-                    template_type=resolved_template)
+                    template_type=resolved_template,
+                    patch_offload=True,
+                    cpu_load=True)
                 self._run_precision_test(strategy, hf_model, models, template, processor)
         else:
             self._set_thread_count(models[0])
@@ -625,6 +627,7 @@ class ConvertComponent(BaseWeightTransform):
         model_type: Optional[str] = None,
         template_type: Optional[str] = None,
         patch_offload: bool = False,
+        cpu_load: bool = False,
     ) -> Tuple[Any, Any, Any]:
         """Load the HF model (optionally) + template, via dev's own builders.
 
@@ -657,10 +660,19 @@ class ConvertComponent(BaseWeightTransform):
         # holds it next to the CPU-resident mcore model (use_cpu_initialization) -- twice the
         # model in RAM for HF -> mcore. 'auto' spreads the HF side over GPU/CPU/disk like legacy's
         # default placement did; an explicit model_kwargs['device_map'] wins.
+        # cpu_load is the precision-test contract: _model_cpu_forward_context assumes CPU-resident
+        # modules and must be the SOLE device owner during its forward. 'auto' shards across the
+        # visible GPUs and leaves accelerate's AlignDevicesHook moving inputs to each module's
+        # assigned device while the JIT hook moves its weights to the rank's compute device ->
+        # device mismatch on any rank where the two disagree. The host-RAM cost is the documented
+        # trade-off; the per-forward JIT move already bounds GPU memory.
         if load_model and "device_map" not in (model_config.model_kwargs or {}):
-            kwargs["device_map"] = "auto"
-        # patch_offload turns accelerate's align-device hook into a no-op: the bridge only READS
-        # the HF weights, never runs a forward. The precision test is the exception (see caller).
+            kwargs["device_map"] = "cpu" if cpu_load else "auto"
+        # patch_offload turns accelerate's align-device hook into a no-op. The bridge-read path
+        # needs it (it only READS the HF weights, never forwards). The precision-test path needs
+        # it too: with cpu_load every weight is a real CPU tensor (no meta offload stubs), so
+        # skipping the hooks is safe and leaves _model_cpu_forward_context's just-in-time move as
+        # the only placement owner -- accelerate's input-moving pre-hook would otherwise fight it.
         if load_model and patch_offload:
             from swift.dev.patch.accelerate_offload_hook import AccelerateSkipOffloadHookPatch
             from twinkle.patch import apply_context

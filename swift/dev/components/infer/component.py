@@ -211,7 +211,13 @@ class InferComponent(RecipeComponent):
                     sampler_adapters.append(reward_adapter)
             sampler = build_sampler(
                 model_config, backend=self.backend, engine_args=self.engine_args,
-                device_mesh=build_parallel_mesh(distributed_config, none_if_single_rank=True),
+                # Under ray the sampler is a remote actor: twinkle's dispatch REQUIRES a
+                # DeviceMesh (there is no global fallback mesh here), so a dp=1 run must keep
+                # its real 1-rank mesh instead of collapsing to None. nproc_per_node is
+                # mandatory under ray (_initialize_for_sampling), so the mesh is always sized.
+                device_mesh=build_parallel_mesh(
+                    distributed_config,
+                    none_if_single_rank=(distributed_config is None or distributed_config.mode != 'ray')),
                 template=template, adapters=sampler_adapters or None,
                 remote_group=(SAMPLER_GROUP if distributed_config is not None
                               and distributed_config.mode == 'ray' else None),
@@ -1218,7 +1224,11 @@ def _forward_sampler(
         model_config,
         backend=backend,
         engine_args=engine_args,
-        device_mesh=build_parallel_mesh(distributed_config, none_if_single_rank=True),
+        # Same ray contract as the main infer sampler: keep the real dp=1 mesh under ray
+        # (nproc_per_node is mandatory there, see _initialize_for_forward).
+        device_mesh=build_parallel_mesh(
+            distributed_config,
+            none_if_single_rank=(distributed_config is None or distributed_config.mode != 'ray')),
         template=template,
         adapters=adapters,
         quantize_config=quantize_config)
