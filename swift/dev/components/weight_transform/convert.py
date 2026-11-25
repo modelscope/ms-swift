@@ -998,25 +998,15 @@ def _forward_step_helper(model, inputs, dtype=None):
 
 def _get_padding_to(tp_size: int, sequence_parallel: bool, cp_size: int, attention_backend_name: str,
                     fp8_format=None, fp4_format=None, fp8_recipe: Optional[str] = None) -> Optional[int]:
-    """Sequence-length alignment the kernels require (legacy ``get_padding_to``, args -> params)."""
-    padding_to = None
-    if tp_size > 1 and sequence_parallel:
-        padding_to = tp_size
-    if cp_size > 1:
-        padding_to = (padding_to or 1) * cp_size
-    origin_padding_to = padding_to
-    if fp8_recipe == 'blockwise':
-        padding_to = (padding_to or 1) * 128
-    elif fp8_recipe == 'mxfp8':
-        # MXFP8 uses a block size of 32. Under sequence parallel, the sequence is split across
-        # TP ranks, so each per-rank shard (seq_len / TP) must itself be divisible by 32. Pad the
-        # total length to TP * 32 to guarantee this.
-        padding_to = (padding_to or 1) * 32
-    elif fp8_format is not None or fp4_format is not None:
-        padding_to = (padding_to or 1) * 16
-    if attention_backend_name == 'fused':
-        padding_to = max(padding_to or 1, ((origin_padding_to) or 1) * 64)
-    return padding_to
+    """Sequence-length alignment the kernels require (legacy ``get_padding_to``, args -> params).
+
+    Delegates to the training data path's single source of truth so the converter's repartition
+    collation and the fp8 micro-batch padding can never drift apart.
+    """
+    from swift.dev.processor.base import get_sequence_padding_to
+    return get_sequence_padding_to(
+        tp_size, sequence_parallel, cp_size, attention_backend_name,
+        fp8_format=fp8_format, fp4_format=fp4_format, fp8_recipe=fp8_recipe)
 
 
 def _get_batch_on_this_cp_rank(batch: Dict[str, Any], *, is_multimodal: bool, task_type: Optional[str],

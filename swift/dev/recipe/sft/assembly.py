@@ -48,6 +48,35 @@ def _require_task_type(recipe: str, model_config: "ModelConfig", task: str) -> s
     return task_type
 
 
+def _fp8_seq_align_option(model_config: "ModelConfig", distributed_config: "DistributedConfig",
+                          cp_size: int) -> Optional[int]:
+    """The processor's fp8/fp4 token-dimension alignment (legacy ``get_padding_to`` on the data path).
+
+    fp8 GEMMs require the token dimension to be a multiple of 16 (delayed/tensorwise), 32 (mxfp8)
+    or 128 (blockwise); legacy pads every micro-batch through the collator's ``padding_to``. Dev
+    restores it as ``InputProcessor(seq_align_to=...)``. None when fp8/fp4 is off or the backend
+    is not megatron, so bf16 runs keep twinkle's padding untouched.
+    """
+    if distributed_config.backend != 'megatron':
+        return None
+    if model_config.fp8_format is None and model_config.fp4_format is None:
+        return None
+    from swift.dev.builders.model import _mixed_precision_for
+    from swift.dev.processor.base import get_sequence_padding_to
+    from swift.dev.utils.naming import resolve_megatron_attn_backend
+    attn_backend = resolve_megatron_attn_backend(
+        model_config.attn_impl, mixed_precision=_mixed_precision_for(model_config.torch_dtype))
+    seq_align_to = get_sequence_padding_to(
+        distributed_config.tensor_model_parallel_size,
+        distributed_config.sequence_parallel,
+        cp_size,
+        attn_backend.name,
+        fp8_format=model_config.fp8_format,
+        fp4_format=model_config.fp4_format,
+        fp8_recipe=model_config.fp8_recipe)
+    return seq_align_to if seq_align_to and seq_align_to > 1 else None
+
+
 class SupervisedCluster(NamedTuple):
     """Every object the supervised loop drives (a plain handle bundle, not a layer)."""
 
@@ -219,6 +248,9 @@ def build_supervised_objects(
                 and (distributed_config.nproc_per_node or Platform.get_world_size()) > 1
                 and cp_size == 1 and template.multimodal_graph_adapter is not None):
             processor_options['uniform_multimodal_graph'] = True
+        # fp8/fp4 micro-batch token padding (None = off); the processor right-pads token columns
+        # to this alignment before twinkle builds cu_seqlens, reproducing legacy's collator pad.
+        processor_options['seq_align_to'] = _fp8_seq_align_option(model_config, distributed_config, cp_size)
         model.set_processor(
             InputProcessor,
             padding_free=template_config.padding_free,
