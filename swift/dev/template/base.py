@@ -785,7 +785,12 @@ class Template(ProcessorMixin):
         legacy_preference = False
         if getattr(self, "_legacy_mode", None) in ("rlhf", "kto") and intent is None and isinstance(sample, dict):
             legacy_mode = self._legacy_mode
-            if "rejected_response" in sample:
+            # KTO is UNPAIRED: its raw row is ``messages`` + a boolean ``label`` (no rejected turn).
+            # The ``rejected_response`` trigger alone (the KL-batch shape the KTO trainer injects)
+            # missed plain KTO rows, so ``set_mode('kto')`` silently fell through to TRAIN encoding
+            # and dropped the label -- e.g. ``export --template_mode kto --store_encoded true`` wrote
+            # a train-schema cache. A dict carrying ``label`` under kto mode is a KTO row too.
+            if "rejected_response" in sample or (legacy_mode == "kto" and "label" in sample):
                 sample = preference_sample_from_row(sample) if legacy_mode == "rlhf" else kto_sample_from_row(sample)
                 legacy_preference = True
         elif getattr(self, "_legacy_mode", None) in ("infer", "transformers") and intent is None:
