@@ -29,3 +29,12 @@ How it works:
 Use this task type when you need fast, calibrated option scoring (routing,
 judging, System-1 style decisions) rather than free-form generation.
 Implementation: `swift/dev/model/decision_head.py`, `swift/dev/model/loader/decision.py`.
+
+### Remote temperature calibration
+
+With `--mode remote --task_type decision`, supply validation data using `--val_dataset` or
+`--split_dataset_ratio`. For heads that support temperature scaling, Swift fits temperatures on the
+client after successful training and sends them back to the current training handle. Once Twinkle
+acknowledges the update, the final checkpoint stores the temperatures in `task_head.safetensors`.
+Intermediate checkpoints are unchanged. This requires a Twinkle server and SDK that support the
+training handle's task-head temperature operation.

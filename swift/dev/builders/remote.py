@@ -52,6 +52,52 @@ def _remote_forward_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return kwargs
 
 
+def _decode_decision_output(result: Any) -> Dict[str, Any]:
+    """Decode the server's JSON-safe decision scoring output back into the ScoringOutput tensors.
+
+    The server's ``decision_forward_output`` flattens the padded [total_q, max_opt] tensors into
+    lists (padded slots zeroed so the payload stays finite and JSON-safe). The mode-blind
+    consumers (the temperature-calibration callback) read the same tensor face a local
+    forward_only returns, so the decode lives here at the remote boundary with the other
+    response unwraps, instead of at every consumption point.
+    """
+    import math
+
+    import torch
+
+    keys = ('logits', 'option_mask', 'kinds', 'counts')
+    if not isinstance(result, dict) or not all(key in result for key in keys):
+        raise ValueError('A remote decision forward_only with return_logits must return the scoring '
+                         'output (logits/option_mask/kinds/counts); got a different payload.')
+    rows, masks = result['logits'], result['option_mask']
+    kinds, counts = result['kinds'], result['counts']
+    if (not isinstance(rows, list) or not isinstance(masks, list) or len(rows) != len(masks)
+            or not isinstance(kinds, list) or not isinstance(counts, list)):
+        raise ValueError('Remote decision scoring output has malformed outer shapes.')
+    width = 0
+    for row, mask in zip(rows, masks):
+        if (not isinstance(row, list) or not isinstance(mask, list) or len(row) != len(mask)
+                or any(type(bit) is not bool for bit in mask)):
+            raise ValueError('Remote decision option masks must be boolean and align with the logits.')
+        width = max(width, len(row))
+    if (len(rows) != len(kinds) or any(type(k) is not int for k in kinds)
+            or any(type(c) is not int or c < 0 for c in counts) or sum(counts) != len(kinds)):
+        raise ValueError('Remote decision kinds and record counts must match the question rows.')
+    logits = torch.zeros((len(rows), width), dtype=torch.float32)
+    option_mask = torch.zeros((len(rows), width), dtype=torch.bool)
+    for i, (row, mask) in enumerate(zip(rows, masks)):
+        if any(not math.isfinite(value) for value in row):
+            raise ValueError('Remote decision logits must be finite.')
+        logits[i, :len(row)] = torch.as_tensor(row, dtype=torch.float32)
+        option_mask[i, :len(mask)] = torch.as_tensor(mask, dtype=torch.bool)
+    return {
+        'logits': logits,
+        'option_mask': option_mask,
+        'kinds': torch.as_tensor(kinds, dtype=torch.long),
+        'counts': torch.as_tensor(counts, dtype=torch.long),
+    }
+
+
 def build_remote_model(model_config: 'ModelConfig', distributed_config: 'DistributedConfig') -> Any:
     """Connect to the twinkle-server and return the client-side trainable model handle.
 
@@ -108,10 +154,20 @@ class RemoteModel:
 
     def forward_only(self, *args: Any, **kwargs: Any) -> Any:
         response = self._handle.forward_only(*args, **_remote_forward_kwargs(kwargs))
-        return getattr(response, 'result', response)
+        result = getattr(response, 'result', response)
+        # A decision readout that asked for logits crosses the wire as JSON-safe lists (see
+        # _decode_decision_output); every other forward_only payload is already the local shape.
+        if kwargs.get('task') == 'decision' and kwargs.get('return_logits'):
+            return _decode_decision_output(result)
+        return result
 
     def forward_backward(self, *args: Any, **kwargs: Any) -> Any:
         return self._handle.forward_backward(*args, **_remote_forward_kwargs(kwargs))
+
+    def task_head_temperatures(self, *, adapter_name: str = 'default', update: Optional[dict] = None) -> Any:
+        """Translate the temperature response onto the TrainableModel return shape."""
+        response = self._handle.task_head_temperatures(adapter_name=adapter_name, update=update)
+        return {'temperatures': None if response.temperatures is None else response.temperatures.model_dump()}
 
     def wait_async_saves(self, *args: Any, **kwargs: Any) -> None:
         # Remote saves are synchronous (the client blocks to the terminal state), so there are no

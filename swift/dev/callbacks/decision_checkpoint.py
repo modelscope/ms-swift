@@ -46,6 +46,11 @@ class DecisionCheckpointCallback(TrainCallback):
     def on_save(self, state: CallbackState, control: CallbackControl, checkpoint_dir: Optional[str] = None) -> None:
         if self._model is None or not checkpoint_dir:
             return
+        # Capability probe, not a mode branch: a model without the sidecar face (the remote
+        # handle -- the server's own save already persists the head into its checkpoint store)
+        # has nothing for this callback to write, and no local dir to stage into either.
+        if getattr(self._model, "save_scoring_head_sidecar", None) is None:
+            return
         save_weights = self._save_weights
         if save_weights is None:
             save_weights = _is_adapter_model(self._model)

@@ -1930,8 +1930,8 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
 
     def _forward(chunk: list) -> None:
         model.forward_only(**micro_step_kwargs(chunk, micro_batch_size=micro_batch_size))
-        # Megatron's calculate_loss is a no-op returning inf (the loss already came out of
-        # forward_only); transformers' populates the metric state. The return value is unused.
+        # Transformers computes the loss here from the recorded forward; Megatron reports
+        # the loss its fused forward already produced. The return value is unused either way.
         model.calculate_loss()
 
     group: list = []
