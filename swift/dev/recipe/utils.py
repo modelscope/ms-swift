@@ -475,8 +475,16 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
         # loop treats as "the checkpoint dir"), and every local-dir side effect below (converted
         # adapter, hub push, args.json copy) has no directory to act on. save is synchronous on
         # the client (_await_task blocks to the terminal state), so no wait_async_saves either.
-        # No component state rides the call: SaveRequest has no field for it, and the data
-        # position re-seeds from the server's own progress on resume (resume_from_checkpoint).
+        # No component state rides the call: SaveRequest has no field for it. The server keeps
+        # its own step progress, but the CLIENT dataloader position does not survive the round
+        # trip -- a remote resume replays the data from the start (announced below and at resume).
+        if component_states:
+            logger.warning(
+                'remote save does not transmit component_states (SaveRequest has no field for them): '
+                'the dataloader position in %s will NOT be restored on resume, so a resumed remote '
+                'run replays data from the beginning. Use ignore_data_skip semantics knowingly, or '
+                'resume locally, until the remote protocol carries component state.',
+                sorted(component_states))
         response = model.save(
             name,
             save_optimizer=not knobs.no_save_optim,
@@ -608,6 +616,13 @@ def resume_training(model: Any, *, checkpoint_config: Optional['CheckpointConfig
     state = _restore_training(model, checkpoint_config, distributed_config, megatron_config, tuner_config)
     if not state:
         return 0, 0, 0
+    if (distributed_config.mode == 'remote' and dataloader is not None and not ignore_data_skip
+            and 'dataloader' not in (state.get('component_states') or {})):
+        logger.warning(
+            'remote resume restored weights/optimizer/step progress but NOT the client dataloader '
+            'position: component_states did not cross the wire at save (SaveRequest has no field), '
+            'so this run replays data from the beginning while global_step continues. The step '
+            'counter and the data cursor are now out of sync by design of the remote protocol.')
     return _seed_counters(state, dataloader=dataloader, ignore_data_skip=ignore_data_skip)
 
 
