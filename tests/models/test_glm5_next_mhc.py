@@ -127,9 +127,8 @@ def test_auto_uses_native_when_post_is_missing(monkeypatch):
     glm = pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
     import sys
 
-    from swift.model.npu_patch import glm5_next_mhc, utils
+    from swift.model.npu_patch import glm5_next_mhc
     monkeypatch.setitem(sys.modules, 'cann_ops_transformer.ops', SimpleNamespace(mhc_pre_sinkhorn=Mock()))
-    monkeypatch.setattr(glm5_next_mhc, 'get_cann_mhc_ops', utils.get_cann_mhc_ops.__wrapped__)
     assert glm5_next_mhc.get_glm5_next_mhc_patches(glm) == {}
 
 
