@@ -646,12 +646,17 @@ class D3ModelLoader(ScoringModelLoader):
         self.attn_impl = 'sdpa'
         self.auto_config_cls = Qwen3_5Config
         config = super().get_config(model_dir)
-        if config.model_type != 'qwen3_5' or config.architectures != ['Qwen3_5Model']:
-            raise ValueError('D3 requires the native Qwen3_5Model release backbone.')
         if getattr(config, 'quantization_config', None):
             raise ValueError('D3 quantized backbones are not supported.')
-        load_d3_config(model_dir)
-        self._d3_shapes = validate_d3_weights(model_dir, config.text_config.hidden_size)
+        saved_meta = D3ReadoutHead._read_saved_meta(model_dir)
+        self._d3_shapes = None
+        if saved_meta is None:
+            if config.model_type != 'qwen3_5' or config.architectures != ['Qwen3_5Model']:
+                raise ValueError('D3 requires the native Qwen3_5Model release backbone.')
+            load_d3_config(model_dir)
+            self._d3_shapes = validate_d3_weights(model_dir, config.text_config.hidden_size)
+        else:
+            config.d3_decision_config = saved_meta['decision_config']
         config.use_cache = config.text_config.use_cache = False
         # Reuse the release embeddings for the generation wrapper's unused vocabulary head.
         config.tie_word_embeddings = config.text_config.tie_word_embeddings = True
@@ -665,7 +670,10 @@ class D3ModelLoader(ScoringModelLoader):
         self.auto_tokenizer_cls = AutoTokenizer
         tokenizer = super().get_processor(model_dir, config)
         tokenizer.padding_side = 'left'
-        tokenizer.d3_config = load_d3_config(model_dir, tokenizer)
+        if os.path.isfile(os.path.join(model_dir, 'decision_config.json')):
+            tokenizer.d3_config = load_d3_config(model_dir, tokenizer)
+        else:
+            tokenizer.d3_config = config.d3_decision_config
         return tokenizer
 
     def get_model(self, model_dir, config, processor, model_kwargs):
@@ -677,7 +685,7 @@ class D3ModelLoader(ScoringModelLoader):
         if self.return_dummy_model:
             return model
         expected = {name: list(tensor.shape) for name, tensor in model.model.state_dict().items()}
-        if self._d3_shapes != expected:
+        if self._d3_shapes is not None and self._d3_shapes != expected:
             missing = sorted(set(expected) - set(self._d3_shapes))
             extra = sorted(set(self._d3_shapes) - set(expected))
             wrong = [
@@ -685,8 +693,7 @@ class D3ModelLoader(ScoringModelLoader):
             ]
             raise ValueError(f'D3 native backbone tensors differ: missing={missing}, extra={extra}, shape={wrong}.')
         enable_noncausal_full_attention(model.model.language_model)
-        self.attach_scoring_head(model, self.build_head(model, model_dir, config))
-        return model
+        return self._attach_head(model, model_dir, config)
 
     @staticmethod
     def _d3_forward(self, *args, head, origin_forward, **kwargs):

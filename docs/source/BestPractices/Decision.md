@@ -570,6 +570,8 @@ swift sft \
 
 示例运行 4 个优化步，每 2 步评估并保存一次。也可设置 `D3_MODEL_DIR` 和 `D3_OUTPUT_DIR`，运行[训练脚本](../../../examples/train/decision/d3.sh)。
 
+加载已合并的 LoRA 导出模型或全量微调 checkpoint 时，将 `--model` 指向对应目录，并传入 `--model_type d3 --task_type decision`。加载器从 `scoring_head.json` 读取决策配置，并恢复训练后的读出头和校准参数。加载未合并的 LoRA checkpoint 时，将 `--model` 指向发布模型，并传入 `--adapters /path/to/checkpoint`。
+
 ### StartLux
 
 StartLux-Decision v1.1 AutoThink 自带已合并的底座，因此在其上训练全新 LoRA，字母 read-out 联合训练：

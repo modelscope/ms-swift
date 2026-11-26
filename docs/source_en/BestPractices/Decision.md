@@ -574,6 +574,8 @@ swift sft \
 
 The example runs four optimizer steps, evaluating and saving every two steps. You can also set `D3_MODEL_DIR` and `D3_OUTPUT_DIR` and run the [training script](../../../examples/train/decision/d3.sh).
 
+To load a merged LoRA export or a full fine-tuning checkpoint, set `--model` to its directory and pass `--model_type d3 --task_type decision`. The loader reads the decision configuration from `scoring_head.json` and restores the trained readout and calibration. For an unmerged LoRA checkpoint, use the release model with `--adapters /path/to/checkpoint`.
+
 ### StartLux
 
 StartLux-Decision v1.1 AutoThink ships a merged backbone, so a fresh LoRA is trained on top and the letter
