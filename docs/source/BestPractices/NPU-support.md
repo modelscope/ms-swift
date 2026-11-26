@@ -678,7 +678,7 @@ ms-swift 在 NPU 环境下默认会启用模型层 patch，以适配部分 Trans
 swift sft ... --enable_npu_model_patch false
 ```
 
-在支持 CANN mHC 算子的昇腾环境中，`swift pt` 和 `megatron pt` 默认给 GLM-5.3-Flash 的 BF16 计算启用 mHC pre 和 post 融合。缺少任一算子时使用原生 mHC。要在 NPU 上使用原生模型实现，启动时传入 `--enable_npu_model_patch false`。如果只想关闭 mHC，可设 `GLM_MHC=off`。调试时也可用 `pre` 或 `post` 单独指定一项。
+当昇腾环境的 `cann_ops_transformer.ops` 提供 `mhc_pre_sinkhorn` 和 `mhc_post` 时，`swift pt` 和 `megatron pt` 默认给 GLM-5.3-Flash 的 BF16 计算启用 mHC pre 和 post 融合。缺少任一算子时使用原生 mHC。要在 NPU 上使用原生模型实现，启动时传入 `--enable_npu_model_patch false`。
 
 ## 模型保存、Merge LoRA 和断点续训
 

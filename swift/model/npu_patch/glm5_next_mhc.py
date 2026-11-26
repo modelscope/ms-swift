@@ -1,12 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Optional mHC forward and backward fusion for the GLM-5.3-Flash text decoder."""
 import inspect
-import os
-import torch
 from functools import wraps
 
 from swift.utils.logger import get_logger
-from .mhc import get_mhc_ops, supports_auto_mhc
+from .utils import get_cann_mhc_ops, supports_cann_mhc
 
 logger = get_logger()
 
@@ -52,93 +50,52 @@ def with_fused_post(original, merge):
         return merge(residual, comb, hidden_states, post), topk_indices
 
     if inspect.unwrap(original) is not original or original.__closure__:
-        raise RuntimeError('GLM mHC post requires an unwrapped Transformers decoder forward. Use GLM_MHC=pre.')
+        return None
     params = inspect.signature(original).parameters.values()
     native_params = [param.replace(annotation=inspect.Parameter.empty) for param in params]
     if native_params != list(inspect.signature(decoder_forward).parameters.values()):
-        raise RuntimeError('Unsupported GLM-5.3 decoder forward signature for mHC post. Use GLM_MHC=pre.')
+        return None
     return wraps(original)(decoder_forward)
 
 
-def make_pre(cann_pre, original, backend, automatic=False):
-    # CANN releases expose either an autograd wrapper with eight arguments or
-    # a wrapper with an explicit backward-intermediates flag.
-    sig = inspect.signature(cann_pre)
-    flags = {'outflag', 'needbackward'}
-    flag = next((name for name in sig.parameters if name.replace('_', '').lower() in flags), None)
-    if flag:
-        sig.bind(*([None] * 8), **{flag: True})
-    else:
-        sig.bind(*([None] * 8))
+def make_pre(cann_pre, original):
 
     @wraps(original)
     def fused(self, hidden_streams):
         x = hidden_streams
-        if automatic and (self.hc_sinkhorn_iters != 20 or not supports_auto_mhc(x, self.hc_mult, x.shape[-1])):
+        if self.hc_sinkhorn_iters != 20 or not supports_cann_mhc(x, self.hc_mult, x.shape[-1]):
             return original(self, x)
-        if x.device.type != 'npu' or x.dtype != torch.bfloat16:
-            if backend == 'cann':
-                raise ValueError('CANN mHC pre requires BF16 hidden streams on NPU')
-            return original(self, x)
-        batch, seq, streams, _ = x.shape
-        phi, alpha, bias = self.fn.float(), self.scale.float(), self.base.float()
-        kwargs = {}
-        if flag:
-            kwargs[flag] = torch.is_grad_enabled() and any(t.requires_grad for t in (x, phi, alpha, bias))
-        values = cann_pre(x.contiguous(), phi, alpha, bias, self.hc_mult, self.hc_sinkhorn_iters, self.hc_eps,
-                          self.input_norm.eps, **kwargs)
-        h_in, post, comb = values[:3]
-        return post, comb.reshape(batch, seq, streams, streams), h_in
+        h_in, post, comb = cann_pre(x.contiguous(), self.fn.float(), self.scale.float(), self.base.float(),
+                                    self.hc_mult, self.hc_sinkhorn_iters, self.hc_eps, self.input_norm.eps)
+        return post, comb.unflatten(-1, (self.hc_mult, self.hc_mult)), h_in
 
     return fused
 
 
-def selected_backend():
-    backend = os.environ.get('GLM_MHC_BACKEND', 'cann').lower()
-    if backend not in ('auto', 'cann'):
-        raise ValueError('GLM_MHC_BACKEND must be auto or cann')
-    return backend
+def make_post(cann_post):
+
+    def fused(residual, comb, h_out, post):
+        if h_out.dtype != residual.dtype or not supports_cann_mhc(residual, *residual.shape[-2:]):
+            return native_post(residual, comb, h_out, post)
+        return cann_post(residual.contiguous(),
+                         comb.float().contiguous(), h_out.contiguous(),
+                         post.float().contiguous())
+
+    return fused
 
 
-def make_forwards(mode, original, backend):
-    (pre_op, pre_backend), (mhc_post, post_backend) = get_mhc_ops(mode, backend)
-    pre = original
-    if pre_op is not None:
-        pre = make_pre(pre_op, original, backend, automatic=mode == 'auto')
-    if mhc_post is not None:
-
-        def post(residual, comb, h_out, post_weight):
-            if mode == 'auto' and (not supports_auto_mhc(residual, *residual.shape[-2:])
-                                   or h_out.dtype != residual.dtype):
-                return native_post(residual, comb, h_out, post_weight)
-            if residual.device.type != 'npu' or residual.dtype != torch.bfloat16:
-                if backend == 'cann':
-                    raise ValueError('CANN mHC post requires BF16 residuals on NPU')
-                return native_post(residual, comb, h_out, post_weight)
-            return mhc_post(residual.contiguous(),
-                            comb.float().contiguous(), h_out.contiguous(),
-                            post_weight.float().contiguous())
-    else:
-        post = native_post
-
-    return pre, post, pre_backend, post_backend
-
-
-def get_glm5_next_mhc_patches(glm, mode):
-    try:
-        backend = 'cann' if mode == 'auto' else selected_backend()
-        original = glm.Glm5NextTextHyperConnection.forward
-        pre, post, pre_name, post_name = make_forwards(mode, original, backend)
-        patches = {}
-        if pre is not original:
-            patches['Glm5NextTextHyperConnection.forward'] = pre
-        if post is not native_post:
-            patches['Glm5NextTextDecoderLayer.forward'] = with_fused_post(glm.Glm5NextTextDecoderLayer.forward, post)
-    except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
-        if mode != 'auto':
-            raise
-        logger.debug('Using native Transformers GLM mHC: %s', exc)
+def get_glm5_next_mhc_patches(glm):
+    ops = get_cann_mhc_ops()
+    hyper_connection = getattr(glm, 'Glm5NextTextHyperConnection', None)
+    decoder = getattr(glm, 'Glm5NextTextDecoderLayer', None)
+    if ops is None or hyper_connection is None or decoder is None:
         return {}
-    if patches:
-        logger.info(f'[glm-mhc] mode={mode} pre={pre_name} post={post_name}')
-    return patches
+    pre, post = ops
+    forward = with_fused_post(decoder.forward, make_post(post))
+    if forward is None:
+        logger.debug('Skipping CANN mHC for an unsupported GLM-5.3 decoder forward.')
+        return {}
+    return {
+        'Glm5NextTextHyperConnection.forward': make_pre(pre, hyper_connection.forward),
+        'Glm5NextTextDecoderLayer.forward': forward
+    }

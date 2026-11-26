@@ -12,10 +12,11 @@ def check(args):
 
     from swift.model.npu_patch import glm5_next_mhc as mhc
     original = inspect.unwrap(glm.Glm5NextTextHyperConnection.forward)
-    pre, post, _, _ = mhc.make_forwards(args.mode, original, mhc.selected_backend())
-    if args.mode in ('post', 'both'):
-        decoder = inspect.unwrap(glm.Glm5NextTextDecoderLayer.forward)
-        mhc.with_fused_post(decoder, post)
+    ops = mhc.get_cann_mhc_ops()
+    if ops is None:
+        raise RuntimeError('Requires CANN mHC operators')
+    pre = original if args.mode == 'post' else mhc.make_pre(ops[0], original)
+    post = mhc.native_post if args.mode == 'pre' else mhc.make_post(ops[1])
     torch.npu.set_device(args.device)
     torch.manual_seed(1234)
     torch.npu.manual_seed_all(1234)
@@ -124,27 +125,21 @@ def test_auto_uses_native_when_post_is_missing(monkeypatch):
     import pytest
 
     glm = pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
-    from swift.model.npu_patch import glm5_next_mhc, mhc
+    import sys
 
-    def only_pre(package, name, backend):
-        if name == 'mhc_post':
-            raise ImportError(name)
-        return Mock(), 'pre'
-
-    monkeypatch.setattr(mhc, 'cann_package', lambda: object())
-    monkeypatch.setattr(mhc, 'resolve_op', only_pre)
-    monkeypatch.setattr(glm5_next_mhc, 'get_mhc_ops', mhc.get_mhc_ops.__wrapped__)
-    assert glm5_next_mhc.get_glm5_next_mhc_patches(glm, 'auto') == {}
+    from swift.model.npu_patch import glm5_next_mhc, utils
+    monkeypatch.setitem(sys.modules, 'cann_ops_transformer.ops', SimpleNamespace(mhc_pre_sinkhorn=Mock()))
+    monkeypatch.setattr(glm5_next_mhc, 'get_cann_mhc_ops', utils.get_cann_mhc_ops.__wrapped__)
+    assert glm5_next_mhc.get_glm5_next_mhc_patches(glm) == {}
 
 
-def test_auto_uses_native_on_cpu(monkeypatch):
+def test_auto_uses_native_on_cpu():
     import torch
 
     from swift.model.npu_patch import glm5_next_mhc as mhc
     op = Mock(side_effect=AssertionError('CANN received a CPU tensor'))
-    monkeypatch.setattr(mhc, 'get_mhc_ops', lambda mode, backend: ((op, 'pre'), (op, 'post')))
     original = Mock()
-    pre, post, _, _ = mhc.make_forwards('auto', original, 'cann')
+    pre, post = mhc.make_pre(op, original), mhc.make_post(op)
     x = torch.randn(1, 2, 4, 8)
     layer = SimpleNamespace(hc_mult=4, hc_sinkhorn_iters=20)
     assert pre(layer, x) is original.return_value
@@ -154,18 +149,16 @@ def test_auto_uses_native_on_cpu(monkeypatch):
     op.assert_not_called()
 
 
-def test_cann_full_grad(monkeypatch):
+def test_cann_full_grad():
     import pytest
     from transformers.utils import is_torch_npu_available
 
     if not is_torch_npu_available(check_device=True):
         pytest.skip('Requires an Ascend NPU')
     pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
-    from swift.model.npu_patch import mhc
-    package = mhc.cann_package()
-    if package is None or any(mhc.lookup_op(package, name) is None for name in ('mhc_pre_sinkhorn', 'mhc_post')):
+    from swift.model.npu_patch.utils import get_cann_mhc_ops
+    if get_cann_mhc_ops() is None:
         pytest.skip('Requires CANN mHC operators')
-    monkeypatch.setenv('GLM_MHC_BACKEND', 'cann')
     check(argparse.Namespace(mode='both', device='npu:0', seq_len=1024, norm_eps=1e-5, full_grad=True, max_rel_l2=0.03))
 
 
@@ -188,12 +181,9 @@ def main():
         help='Diagnostic per-tensor relative-L2 threshold, not an end-to-end acceptance criterion')
     args = parser.parse_args()
     if args.probe:
-        from swift.model.npu_patch.glm5_next_mhc import selected_backend
-        from swift.model.npu_patch.mhc import cann_package, resolve_op
-        package = cann_package()
-        for name in ('mhc_pre_sinkhorn', 'mhc_post'):
-            _, implementation = resolve_op(package, name, selected_backend())
-            print(f'{name}: {implementation}')
+        from swift.model.npu_patch.utils import get_cann_mhc_ops
+        ops = get_cann_mhc_ops()
+        print('CANN mHC pre/post available' if ops else 'CANN mHC pre/post unavailable')
     else:
         check(args)
 

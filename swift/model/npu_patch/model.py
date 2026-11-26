@@ -12,7 +12,6 @@ from transformers.models.qwen3_vl import modeling_qwen3_vl
 from transformers.models.qwen3_vl_moe import modeling_qwen3_vl_moe
 
 from swift.utils.logger import get_logger
-from .mhc import get_mhc_mode
 from .utils import apply_patch_map, import_optional_module
 
 logger = get_logger()
@@ -571,16 +570,10 @@ def apply_patch() -> None:
     if modeling_qwen3_5_moe is not None:
         patch_groups.append(('qwen3_5_moe', modeling_qwen3_5_moe, QWEN3_5_MOE_PATCHES, QWEN3_5_MOE_OPTIONAL_PATCHES))
 
-    mhc_mode = get_mhc_mode()
-    if mhc_mode != 'off':
+    modeling_glm5_next = import_optional_module('transformers.models.glm5_next.modeling_glm5_next')
+    if modeling_glm5_next is not None:
         from .glm5_next_mhc import get_glm5_next_mhc_patches
-        if mhc_mode == 'auto':
-            modeling_glm5_next = import_optional_module('transformers.models.glm5_next.modeling_glm5_next')
-        else:
-            from transformers.models.glm5_next import modeling_glm5_next
-        if modeling_glm5_next is not None:
-            patches = get_glm5_next_mhc_patches(modeling_glm5_next, mhc_mode)
-            patch_groups.append(('glm5_next', modeling_glm5_next, patches, {}))
+        patch_groups.append(('glm5_next', modeling_glm5_next, get_glm5_next_mhc_patches(modeling_glm5_next), {}))
 
     for _group_name, module, patches, optional_patches in patch_groups:
         apply_patch_map(module, _build_patch_map(module, patches, optional_patches))
