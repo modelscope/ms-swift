@@ -968,7 +968,10 @@ class Template(ProcessorMixin, TwinkleTemplate):
         if not isinstance(feature, dict):
             raise ValueError('encode_prompt requires one unsplit prompt feature')
         media = MediaBundle.from_sources(feature)
-        if feature_has_media(feature):
+        # Only serving engines re-expand the media placeholders themselves, so only they need the
+        # one-placeholder-per-image prompt; the transformers engine consumes the expanded feature
+        # ids, and the check would reject every expanded multimodal prompt (PaddleOCR-VL infer).
+        if backend != 'transformers' and feature_has_media(feature):
             self._check_engine_placeholders(engine_input_ids(feature), media)
         if backend == 'vllm' and media.videos and feature.get('mm_processor_kwargs'):
             # The rollout hands vLLM the original videos, which it must process itself: drop the processor
