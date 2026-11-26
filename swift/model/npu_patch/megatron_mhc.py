@@ -2,7 +2,7 @@
 """CANN mHC pre/post fusion for the GLM-5.3-Flash Megatron hybrid stack."""
 import os
 import torch
-from functools import partial, wraps
+from functools import cache, partial, wraps
 
 
 def _sequence_first(tensor):
@@ -56,6 +56,13 @@ def patch_megatron_mhc(mode=None):
     if getattr(original_init, '_glm53_cann_mhc', False):
         return
 
+    @cache
+    def get_cann_ops():
+        package = cann_package()
+        pre, _ = resolve_op(package, 'mhc_pre_sinkhorn', 'cann')
+        post, _ = resolve_op(package, 'mhc_post', 'cann')
+        return pre, post
+
     @wraps(original_init)
     def init(self, config, layer_number):
         original_init(self, config, layer_number)
@@ -65,9 +72,7 @@ def patch_megatron_mhc(mode=None):
                 and self.sinkhorn_eps == self.compute_h_eps):
             raise ValueError('CANN GLM mHC requires four streams, FP32 mixing, epsilon inside sqrt '
                              'and matching gate/Sinkhorn epsilons')
-        package = cann_package()
-        pre, _ = resolve_op(package, 'mhc_pre_sinkhorn', 'cann')
-        post, _ = resolve_op(package, 'mhc_post', 'cann')
+        pre, post = get_cann_ops()
         self._forward_normal = partial(_cann_pre, self, self._forward_normal, pre)
         self._h_post_bda_op = partial(_cann_post, self._h_post_bda_op, post)
         get_logger().info_once('Enabled CANN mHC pre/post for Megatron GLM HyperConnectionModule.')

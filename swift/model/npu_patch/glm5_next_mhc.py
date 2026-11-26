@@ -164,11 +164,9 @@ def make_forwards(mode, original, backend):
 
 
 def apply_patch(mode):
-    """Resolve the selected operators and validate both decoder call sites before patching."""
-    if mode == 'off':
-        return
+    """Install an enabled fusion mode after the NPU entry point has handled GLM_MHC=off."""
     if mode not in ('pre', 'post', 'both'):
-        raise ValueError('GLM_MHC must be off, pre, post, or both')
+        raise ValueError(f'Expected an enabled GLM_MHC mode (pre, post, or both), got {mode!r}')
 
     from transformers.models.glm5_next import modeling_glm5_next as glm
 

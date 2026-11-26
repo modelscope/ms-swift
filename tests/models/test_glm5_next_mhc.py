@@ -68,10 +68,9 @@ def check(args):
 
 def test_cann_full_grad(monkeypatch):
     import pytest
-    import torch
     from transformers.utils import is_torch_npu_available
 
-    if not is_torch_npu_available() or not torch.npu.is_available():
+    if not is_torch_npu_available(check_device=True):
         pytest.skip('Requires an Ascend NPU')
     pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
     from swift.model.npu_patch import glm5_next_mhc as mhc
