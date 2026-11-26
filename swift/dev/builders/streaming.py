@@ -218,6 +218,8 @@ def build_cluster_adapter(resource_plan: Any, rollout_config: Any, *, model: Any
         lend_ranks=(list(resource_plan.trainer.ranks) if lend else None),
         spare_ranks=list(resource_plan.flex_ranks),
         warmups={'sampler': checkpoint_manager.warm},
+        before_lend={'sampler': checkpoint_manager.prepare_for_lending},
+        after_reclaim={'sampler': checkpoint_manager.restore_after_lending},
         widths={'sampler': resource_plan.sampler.gpus_per_worker},
         window=rollout_config.resource_window_steps,
         cooldown=rollout_config.resource_min_hold_steps)
