@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
 import shutil
 import torch
@@ -294,6 +295,90 @@ if requires_patch:
     _patch_conv3d()
 
 
+# Files whose contents transformers re-stamps on save, and the keys that must
+# keep the original model's values. transformers 5.x writes
+# `transformers_version: 5.x` into these files and renames the tokenizer class
+# (e.g. to `TokenizersBackend`), which transformers 4.x — and therefore vLLM,
+# which still requires transformers<5 — cannot resolve, so a model fine-tuned
+# under transformers 5.x fails to deploy on vLLM with
+# `ValueError: Tokenizer class TokenizersBackend does not exist`
+# (modelscope/ms-swift#8098).
+_VERSION_STAMP_FILES = {
+    'config.json': ('transformers_version', ),
+    'generation_config.json': ('transformers_version', ),
+    'tokenizer_config.json': ('transformers_version', 'tokenizer_class'),
+}
+
+
+def _restore_original_version_stamps(output_dir: str, source_dirs: List[str]) -> None:
+    """Restore the original model's version stamps in an exported directory.
+
+    After `save_pretrained`, the exported `config.json` / `tokenizer_config.json`
+    / `generation_config.json` carry the stamps of the transformers version
+    used for training. When the original model predates transformers 5.x but
+    training ran under transformers 5.x, those stamps make the export
+    unloadable under transformers 4.x / vLLM. Restore just the stamped keys
+    from the first source directory that has the file, so the export still
+    deploys there.
+
+    Only the stamped keys are restored: freshly generated weights,
+    `model.safetensors.index.json` and every other freshly saved value (added
+    tokens, chat template, `quantization_config`, `tie_word_embeddings`, ...)
+    are kept as saved.
+    """
+    for filename, keys in _VERSION_STAMP_FILES.items():
+        output_path = os.path.join(output_dir, filename)
+        if not os.path.isfile(output_path):
+            continue
+        for source_dir in source_dirs:
+            if not source_dir:
+                continue
+            source_path = os.path.join(source_dir, filename)
+            if not os.path.isfile(source_path):
+                continue
+            try:
+                with open(source_path, encoding='utf-8') as f:
+                    source_data = json.load(f)
+                with open(output_path, encoding='utf-8') as f:
+                    output_data = json.load(f)
+            except (OSError, ValueError) as e:
+                logger.warning(f'Failed to read {filename} for version-stamp restore: {e}')
+                break
+            if not isinstance(source_data, dict) or not isinstance(output_data, dict):
+                break
+            if _is_transformers_5_restamp(source_data.get('transformers_version'),
+                                          output_data.get('transformers_version')):
+                changed = False
+                for key in keys:
+                    if key in source_data and output_data.get(key) != source_data[key]:
+                        output_data[key] = source_data[key]
+                        changed = True
+                if changed:
+                    logger.info(f'Restored original {filename} stamps from {source_dir!r}: '
+                                f'{ {k: output_data[k] for k in keys if k in output_data} }')
+                    with open(output_path, 'w', encoding='utf-8') as f:
+                        json.dump(output_data, f, indent=2, ensure_ascii=False)
+                        f.write('\n')
+            break
+
+
+def _is_transformers_5_restamp(source_version, output_version) -> bool:
+    """Whether the output file was re-stamped by transformers 5.x over a pre-5.x original.
+
+    Restoring is only meaningful when the original model predates transformers 5
+    and the saving transformers is 5.x or newer. When either stamp is missing
+    or unparsable, restore the differing keys: a missing stamp means an old
+    format file, which is exactly the pre-5.x case.
+    """
+    if not isinstance(source_version, str) or not isinstance(output_version, str):
+        return True
+    try:
+        return (version.parse(source_version) < version.parse('5.0.0')
+                <= version.parse(output_version))
+    except Exception:
+        return True
+
+
 def save_checkpoint(model: Optional[PreTrainedModel],
                     processor: Processor,
                     output_dir: str,
@@ -334,6 +419,17 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             elif os.path.isdir(src_path):
                 shutil.copytree(src_path, tgt_path)
                 break
+
+    # The base model directory holds the original non-weight files. Prefer it
+    # over adapter/checkpoint directories, whose own saved files may already
+    # carry the transformers 5.x stamps this restore removes.
+    source_dirs = []
+    if model is not None and getattr(model, 'model_dir', None):
+        source_dirs.append(model.model_dir)
+    for model_dir in model_dirs:
+        if model_dir and model_dir not in source_dirs:
+            source_dirs.append(model_dir)
+    _restore_original_version_stamps(output_dir, source_dirs)
 
 
 def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
