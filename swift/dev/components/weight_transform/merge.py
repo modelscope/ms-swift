@@ -237,6 +237,15 @@ class StreamingMerge(StreamingWeightTransform):
         self._merged_cache = {}
         #: peft adapter names loaded onto the base, in ``self.adapters`` order; passed to ``merge()``.
         self._adapter_names = []
+        self._target_dtype = model_config.torch_dtype
+
+    def _cast(self, tensor):
+        """Match the materialized base dtype without changing adapter computation precision."""
+        import torch
+        dtype = self._target_dtype
+        if isinstance(dtype, str):
+            dtype = getattr(torch, dtype)
+        return tensor.to(dtype) if dtype is not None and torch.is_floating_point(tensor) else tensor
 
     def _clone_for_worker(self):
         """Rebuild an unprepared ``StreamingMerge`` for a Ray worker (the base clone cannot pass adapters)."""
@@ -330,6 +339,8 @@ class StreamingMerge(StreamingWeightTransform):
         weights = load_peft_weights(adapter_dir, device='cpu')
         weights = _insert_adapter_name_into_state_dict(weights, adapter_name, 'lora_')
         peft_model.load_state_dict(weights, strict=False, assign=True)
+        # Assignment bypasses PEFT's load-time autocast; use the same adapter precision policy.
+        peft_model.base_model._cast_adapter_dtype(adapter_name=adapter_name, autocast_adapter_dtype=True)
 
     def source_model_dir(self) -> str:
         return self._base_dir
@@ -359,7 +370,7 @@ class StreamingMerge(StreamingWeightTransform):
                 if not pending[module_path]:
                     self._merged_cache.pop(module_path, None)
             else:
-                yield key, lazy.load()
+                yield key, self._cast(lazy.load())
 
     def _merge_module(self, module_path: str, state: dict) -> dict:
         """Materialize one module's base weight, fold in the LoRA delta via peft, and cache it.
@@ -375,11 +386,12 @@ class StreamingMerge(StreamingWeightTransform):
 
         module = self._lora_modules[module_path]
         base_layer = module.get_base_layer()
-        weight = state[f'{module_path}.weight'].load()
+        # Base precision must match from_pretrained; adapter deltas keep PEFT's own precision.
+        weight = self._cast(state[f'{module_path}.weight'].load())
         base_layer.weight = torch.nn.Parameter(weight, requires_grad=False)
         bias_key = f'{module_path}.bias'
         has_bias = bias_key in state
-        bias = state[bias_key].load() if has_bias else None
+        bias = self._cast(state[bias_key].load()) if has_bias else None
         if has_bias:
             base_layer.bias = torch.nn.Parameter(bias, requires_grad=False)
 
