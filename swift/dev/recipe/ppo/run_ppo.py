@@ -214,7 +214,7 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
             # disable_lora pass when the reference IS the policy object.
             values_out = cluster.value_model.forward_only(
                 inputs=lane_trajs, output_frame='response', output_fields=('values',),
-                task='value', micro_batch_size=micro_batch_size)
+                task='value', micro_batch_size=micro_batch_size, compute_loss=False)
             ref_out = cluster.reference.forward_only(
                 inputs=lane_trajs, output_frame='response', output_fields=('logps',), temperature=temperature,
                 micro_batch_size=micro_batch_size, **({'disable_lora': True} if ref_shared else {}))

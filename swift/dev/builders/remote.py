@@ -27,28 +27,21 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-#: Micro-batching knobs twinkle's forward-only micro-batcher refuses for a readout task whose model
-#: carries an attached head. The remote multi-LoRA host ALWAYS carries per-adapter head slots, so every
-#: remote readout forward (seq_cls / value / reranker / decision) must run whole-batch.
+#: Micro-batching knobs refused for record-level readouts on remote attached-head hosts.
+#: Token-level readouts (value) retain the ordinary sample-level micro-batch path.
 _READOUT_MICRO_BATCH_KEYS = ('micro_batch_size', 'max_tokens_per_micro_batch')
 
 
 def _remote_forward_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize forward kwargs onto what the remote readout host supports.
+    """Normalize record-level readouts onto the remote host's whole-batch path.
 
-    twinkle sample-splits a micro-batched forward, but a readout task's labels/decision_meta are
-    organized per RECORD, so the split desynchronizes them from the logits; the backend raises rather
-    than degrade. The local legacy in-model head (carries_task_head=False) merges per sample and keeps
-    micro-batching, so the mode-blind recipe code legitimately passes micro_batch_size for seq_cls/value
-    eval and the PPO critic. The restriction is a property of the REMOTE attached-head host, so the
-    normalization lives here at the remote boundary -- one place that covers eval, the critic, and any
-    future readout forward -- instead of a per-call-site guard. Whole-batch is the only supported remote
-    readout mode (the recipe's eval chunking still bounds memory), so dropping the knobs is correct, not
-    a silent degradation.
+    Token-level readouts use the shared unpack/merge path and keep the caller's micro-batch knobs;
+    only record-level labels/decision_meta need the attached-head restriction.
     """
     from twinkle.processor.tasks import get_task_spec
 
-    if get_task_spec(kwargs.get('task', 'causal_lm')).readout:
+    spec = get_task_spec(kwargs.get('task', 'causal_lm'))
+    if spec.readout and not spec.token_level_labels:
         return {key: value for key, value in kwargs.items() if key not in _READOUT_MICRO_BATCH_KEYS}
     return kwargs
 

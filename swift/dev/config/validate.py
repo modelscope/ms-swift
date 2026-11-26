@@ -2525,29 +2525,14 @@ def _check_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['Tun
                          'Remove it.')
 
 
-# rl_types verified correct under the packed layout padding_free (and packing) produces: the forward
-# unpacks each packed micro batch to per-sequence rows BEFORE calculate_loss (packing-agnostic).
-_RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd', 'rm')
-
-_RL_PADDING_FREE_REFUSED_REASONS = {
-    'ppo':
-    "PPO's per-token value-head critic does not cover the packed / variable-length layout (run_ppo.py "
-    'module docstring), so the critic would read a flattened row as one sequence.',
-    'opsd':
-    "OPSD's teacher->student per-token logps alignment across two independently-unpacked forwards is not "
-    'verified under variable-length packing.',
-    'mopd':
-    "MOPD fuses K teacher logps channels onto the student frame; that K-way alignment across two "
-    'independently-unpacked forwards is not verified under variable-length packing.',
-}
+# These recipes consume per-sequence outputs restored by the shared processor before loss or
+# response projection; critic values and teacher logps use the same unpacking as policy logps.
+_RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'ppo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd', 'opsd', 'mopd', 'rm')
 
 
 def _check_rl_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
                             rl_config: Optional['RLConfig']) -> None:
-    """Only some RLHF algorithms have a padding-free/packing training path.
-
-    The forward unpacks packed batches before calculate_loss; refused types name the unsafe component.
-    """
+    """Require a recipe wired to the processor's per-sequence padding-free/packing outputs."""
     if rl_config is None:
         return
     if not (template_config.padding_free or dataset_config.packing):
@@ -2556,10 +2541,6 @@ def _check_rl_padding_free(template_config: 'TemplateConfig', dataset_config: 'D
     if rl_type in _RL_PADDING_FREE_WIRED_TYPES:
         return
     feature = 'packing' if dataset_config.packing else 'padding_free'
-    reason = _RL_PADDING_FREE_REFUSED_REASONS.get(rl_type)
-    if reason is not None:
-        raise ValueError(f'rl_type={rl_type!r} does not support {feature}: {reason} '
-                         'Set the corresponding flag to False.')
     raise ValueError(f'rl_type={rl_type!r} does not support {feature}: only '
                      f'{"/".join(_RL_PADDING_FREE_WIRED_TYPES)} implement the variable-length training path it '
                      'produces. Set the corresponding flag to False.')
@@ -2633,7 +2614,7 @@ def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
     rl_type = getattr(rl_config, 'rl_type', None)
     if rl_type == 'ppo':
         raise ValueError(f'rl_type="ppo" does not support sequence_parallel_size={sp}: PPO\'s per-token '
-                         'value-head critic runs without sequence-parallel / packed layouts, so a SP policy '
+                         'value-head critic runs without sequence parallelism, so a SP policy '
                          'and an SP=1 critic would slice_dp each forward_backward at a different '
                          'data_world_size and starve the critic\'s ranks. Set sequence_parallel_size=1 for PPO.')
     if rl_type not in _RL_SP_WIRED_TYPES:
