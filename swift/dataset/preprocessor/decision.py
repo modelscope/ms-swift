@@ -349,6 +349,87 @@ class ScoringPreprocessor(RowPreprocessor):
         return str(key) if key is not None else f'option_{index}'
 
 
+class D3Preprocessor(ScoringPreprocessor):
+    """Expand a D3 request into one standard decision row per question."""
+
+    GOLD_KEYS = ('gold', 'answer', 'label', 'target', 'target_probs')
+    NOUL_OPTIONS = ['No / false', 'Yes / true']
+
+    @staticmethod
+    def _describe(value: Any) -> str:
+        return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, allow_nan=False)
+
+    @classmethod
+    def _state_to_text(cls, state: Any) -> str:
+        return '' if state is None else cls._describe(state)
+
+    def preprocess(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if row.get('messages') is not None and row.get('kinds') is not None:  # Standard decision format.
+            return [row]
+        state, questions = self.parse_record(row)
+        state, questions = self._augment(state, questions)
+        return [self._build_row(row, state, [question]) for question in questions]
+
+    def parse_record(self, row: Dict[str, Any]) -> Tuple[Any, List[Dict[str, Any]]]:
+        raw_questions = row.get('questions')
+        items = self._question_items(raw_questions)
+        if isinstance(raw_questions, dict):
+            # Arrow fills absent question IDs with null when merging object schemas across rows.
+            items = [(qid, q) for qid, q in items if q is not None]
+        if not items:
+            raise ValueError('D3 requires a nonempty questions object or list.')
+        questions = []
+        for qid, question in items:
+            if not isinstance(question, dict):
+                raise ValueError(f'D3 question {qid!r} must be an object.')
+            kind = self._normalize_kind(self._first(question, ('type', 'kind')))
+            keys, options = self._options(kind, question)
+            gold = self._lookup_gold(question, row.get('answers'), qid)
+            if isinstance(gold, str) and gold in keys:
+                gold = keys.index(gold)
+            elif isinstance(gold, str) and gold.isdecimal():
+                gold = int(gold)
+            elif isinstance(gold, bool) and kind != 'noul':
+                raise ValueError(f'D3 question {qid!r} only accepts boolean labels for noul.')
+            elif gold is not None and not isinstance(gold, (int, list, tuple)):
+                raise ValueError(f'D3 question {qid!r} has invalid gold {gold!r}.')
+            instruction = self._first(question, ('instructions', 'question'))
+            questions.append({
+                'kind': kind,
+                'question': self._describe(instruction) if instruction else 'Choose the best matching option.',
+                'options': options,
+                'gold': gold,
+            })
+        return row.get('state'), questions
+
+    def _options(self, kind: str, question: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+        criteria = question.get('criteria')
+        if criteria is None and question.get('options') is not None:  # Unified decision schema, in display order.
+            options = question['options']
+            if not isinstance(options, list) or not options:
+                raise ValueError('D3 options must be a nonempty list.')
+            texts = [self._option_text(option) for option in options]
+            if kind == 'noul':
+                return ['false', 'true'], texts
+            if kind == 'score':
+                return [str(i) for i in range(len(texts))], texts
+            return [self._option_key(option, i) for i, option in enumerate(options)], texts
+        if kind == 'choice':
+            if not isinstance(criteria, dict) or not criteria or not all(isinstance(k, str) and k for k in criteria):
+                raise ValueError('D3 choice criteria must map nonempty option keys to descriptions.')
+            return list(criteria), [k if v is None else f'{k}: {self._describe(v)}' for k, v in criteria.items()]
+        if kind == 'noul':
+            keys = ['false', 'true']
+            if criteria is None:
+                return keys, self.NOUL_OPTIONS
+            if not isinstance(criteria, dict) or set(criteria).difference(keys):
+                raise ValueError('D3 noul criteria may only describe false and true.')
+            return keys, [self._describe(criteria.get(k) or fallback) for k, fallback in zip(keys, self.NOUL_OPTIONS)]
+        if not isinstance(criteria, list) or not criteria:
+            raise ValueError('D3 score criteria must be an ordered list of levels.')
+        return [str(i) for i in range(len(criteria))], [self._describe(level) for level in criteria]
+
+
 class JevPreprocessor(ScoringPreprocessor):
     """JEV distill-corpus preprocessor: fan a record out into ONE row per question.
 

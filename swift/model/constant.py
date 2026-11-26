@@ -175,6 +175,7 @@ class MLLMModelType:
     thx02 = 'thx02'
     startlux = 'startlux'
     h2o = 'h2o'
+    d3 = 'd3'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'

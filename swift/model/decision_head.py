@@ -2306,3 +2306,172 @@ class LayaHead(ScoringHead):
             head_layers=int(head_config.get('head_layers', 2)),
             temperatures=head_config.get('temperature') or (1.0, 1.0, 1.0),
             temperature_by_options=head_config.get('temperature_by_options') or {})
+
+
+def _positive(value, field):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        raise ValueError(f'D3 {field} must be a positive finite number.')
+    return float(value)
+
+
+def validate_d3_config(config, tokenizer=None):
+    expected = {
+        'format_version': 1,
+        'format_id': 'd3-code-readout-v1',
+        'prompt': 'd3',
+        'attention_mode': 'noncausal_full_attention',
+        'pooling': 'last',
+        'readout_dtype': 'float32',
+    }
+    for key, value in expected.items():
+        if config.get(key) != value:
+            raise ValueError(f'D3 decision_config.{key}: expected {value!r}, got {config.get(key)!r}.')
+    codes, ids = config.get('codes'), config.get('token_ids')
+    if not isinstance(codes, list) or len(codes) != 255 or any(not isinstance(c, str) or not c for c in codes):
+        raise ValueError('D3 decision_config.codes must contain 255 nonempty strings.')
+    if len(set(codes)) != 255:
+        raise ValueError('D3 answer codes must be unique.')
+    if not isinstance(ids, list) or len(ids) != 255 or any(type(i) is not int or i < 0 for i in ids):
+        raise ValueError('D3 token_ids must contain 255 nonnegative integers.')
+    if len(set(ids)) != 255:
+        raise ValueError('D3 answer token IDs must be unique.')
+    _positive(config.get('temperature'), 'temperature')
+    maximum = config.get('max_length')
+    if maximum is not None and (type(maximum) is not int or maximum <= 0):
+        raise ValueError('D3 max_length must be null or a positive integer.')
+    if tokenizer is not None:
+        prefix = tokenizer.apply_chat_template([{
+            'role': 'user',
+            'content': 'Choose an option.'
+        }],
+                                               tokenize=False,
+                                               add_generation_prompt=True,
+                                               enable_thinking=False)
+        prefix_ids = tokenizer.encode(prefix, add_special_tokens=False)
+        for code, token_id in zip(codes, ids):
+            if (tokenizer.encode(code, add_special_tokens=False) != [token_id]
+                    or tokenizer.encode(prefix + code, add_special_tokens=False) != prefix_ids + [token_id]):
+                raise ValueError(f'D3 tokenizer does not match answer code {code!r} / token {token_id}.')
+    return config
+
+
+def load_d3_config(model_dir, tokenizer=None):
+    path = os.path.join(model_dir, 'decision_config.json')
+    with open(path, encoding='utf-8') as handle:
+        config = json.load(handle)
+    if not isinstance(config, dict):
+        raise ValueError(f'{path} must contain a D3 configuration object.')
+    return validate_d3_config(config, tokenizer)
+
+
+def validate_d3_weights(model_dir, hidden_size):
+    """Inspect headers before the backbone is allocated; never allow a missing random readout."""
+    from safetensors import safe_open
+    with safe_open(os.path.join(model_dir, 'readout.safetensors'), framework='pt', device='cpu') as handle:
+        if list(handle.keys()) != ['weight']:
+            raise ValueError('D3 readout.safetensors must contain only weight.')
+        tensor = handle.get_slice('weight')
+        if tensor.get_shape() != [255, hidden_size] or tensor.get_dtype() != 'F32':
+            raise ValueError(f'D3 readout must be FP32 [255, {hidden_size}].')
+    index = os.path.join(model_dir, 'model.safetensors.index.json')
+    if os.path.isfile(index):
+        with open(index, encoding='utf-8') as handle:
+            weight_map = json.load(handle)['weight_map']
+        if not weight_map or not any(k.startswith('language_model.') for k in weight_map):
+            raise ValueError('D3 backbone index lacks language_model weights.')
+        if any(not k.startswith(('language_model.', 'visual.')) for k in weight_map):
+            raise ValueError('D3 backbone must use native language_model/visual keys without lm_head.')
+        filenames = set(weight_map.values())
+        for filename in filenames:
+            if os.path.basename(filename) != filename or not os.path.isfile(os.path.join(model_dir, filename)):
+                raise FileNotFoundError(f'D3 missing or invalid backbone shard: {filename!r}.')
+    else:
+        weight_map = None
+        filenames = {'model.safetensors'}
+    shapes = {}
+    for filename in filenames:
+        with safe_open(os.path.join(model_dir, filename), framework='pt', device='cpu') as handle:
+            for key in handle.keys():
+                if key in shapes or not key.startswith(('language_model.', 'visual.')):
+                    raise ValueError(f'D3 unexpected or duplicate backbone tensor: {key}.')
+                if weight_map is not None and weight_map.get(key) != filename:
+                    raise ValueError(f'D3 backbone index does not match shard tensor {key}.')
+                shapes[key] = handle.get_slice(key).get_shape()
+    if weight_map is not None and set(weight_map) != set(shapes):
+        raise ValueError('D3 backbone index references missing tensors.')
+    if not any(key.startswith('language_model.') for key in shapes):
+        raise ValueError('D3 backbone lacks language_model tensors.')
+    return shapes
+
+
+class D3ReadoutHead(ScoringHead):
+    head_type = 'd3'
+    keep_fp32 = True
+    factory_artifacts = (('readout.safetensors', '', None), ('decision_config.json', '', None))
+
+    def __init__(self, hidden_size, decision_config, head_temperature=1., temperatures=None):
+        super().__init__()
+        self.decision_config = validate_d3_config(dict(decision_config))
+        self.readout = nn.Linear(hidden_size, 255, bias=False, dtype=torch.float32)
+        self.temperature = _positive(decision_config['temperature'], 'temperature')
+        self.register_buffer('head_temperature', torch.tensor(1., dtype=torch.float32), persistent=False)
+        self.register_buffer('temperatures', torch.ones(3, dtype=torch.float32), persistent=False)
+        self._apply_calibration_meta({
+            'head_temperature': head_temperature,
+            'temperatures': temperatures or dict.fromkeys(KIND_NAMES, 1.),
+        })
+
+    def forward(self, hidden_states, lm_logits, meta):
+        if not meta.get('left_padding', False):
+            raise ValueError('D3 readout requires left padding metadata.')
+        n_options = meta['n_options']
+        batch, width = hidden_states.shape[:2]
+        if (len(n_options) != batch or meta['record_index'] != list(range(batch)) or meta['counts'] != [1] * batch):
+            raise ValueError('D3 requires exactly one question per sequence.')
+        lengths = meta['seq_lens']
+        if (len(lengths) != batch or any(not 0 < n <= width for n in lengths)
+                or any(not 1 <= n <= 255 for n in n_options)):
+            raise ValueError('D3 invalid sequence length or option count.')
+        if self.readout.weight.dtype != torch.float32:
+            raise ValueError('D3 readout weights must remain FP32; do not cast the entire model.')
+        kinds = torch.as_tensor(meta['kinds'], dtype=torch.long, device=hidden_states.device)
+        # keep_fp32 only protects storage; autocast must also be disabled for the projection.
+        with torch.autocast(device_type=hidden_states.device.type, enabled=False):
+            code_logits = self.readout(hidden_states[:, -1].float())
+            global_temperature = self.head_temperature.to(hidden_states.device)
+            calibration = global_temperature * self.temperatures.to(hidden_states.device)[kinds]
+            code_logits = code_logits / self.temperature / calibration[:, None]
+        logits, mask = pad_option_logits([row[:n] for row, n in zip(code_logits, n_options)])
+        return ScoringOutput(
+            logits=logits,
+            option_mask=mask,
+            kinds=kinds,
+            counts=torch.ones(batch, dtype=torch.long, device=hidden_states.device))
+
+    def extra_state_for_save(self):
+        return {
+            'hidden_size': self.readout.in_features,
+            'decision_config': self.decision_config,
+            'head_temperature': float(self.head_temperature),
+            'temperatures': {
+                kind: float(self.temperatures[i])
+                for i, kind in enumerate(KIND_NAMES)
+            },
+        }
+
+    def _apply_calibration_meta(self, meta):
+        temperature = _positive(meta['head_temperature'], 'head_temperature')
+        temps = meta['temperatures']
+        if set(temps) != set(KIND_NAMES):
+            raise ValueError('D3 checkpoint requires temperatures for noul, choice and score.')
+        values = [_positive(temps[k], f'temperatures.{k}') for k in KIND_NAMES]
+        self.head_temperature.fill_(temperature)
+        self.temperatures.copy_(self.temperatures.new_tensor(values))
+
+    @classmethod
+    def _from_factory(cls, model_dir, model=None, config=None, **kwargs):
+        from safetensors.torch import load_file
+        hidden_size = config.text_config.hidden_size
+        head = cls(hidden_size, load_d3_config(model_dir))
+        head.readout.load_state_dict(load_file(os.path.join(model_dir, 'readout.safetensors')), strict=True)
+        return head

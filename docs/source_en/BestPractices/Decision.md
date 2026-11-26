@@ -31,6 +31,8 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
    - [ModelScope 4B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink) / [9B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink) / [27B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink)
 8. H2O-4B: Qwen3.5-4B hybrid with the released LoRA already merged + a fixed 255-row label readout, one question per sequence
    - [ModelScope](https://modelscope.cn/models/h2oai/h2o-lightning-4b) / [HuggingFace](https://huggingface.co/h2oai/h2o-lightning-4b)
+9. D3-Flash uses a Qwen3.5 hybrid backbone. Its full-attention layers use bidirectional attention, and its Gated DeltaNet layers use a causal scan. The model scores each option from the hidden state of the final prompt token.
+   - [ModelScope](https://www.modelscope.cn/models/vllm-sr/d3-flash) / [HuggingFace](https://huggingface.co/vllm-sr/d3-flash)
 
 | Model | `--model_type` | Base | Head Artifacts | `--loss_type` |
 |-------|----------------|------|----------------|----------------|
@@ -43,6 +45,7 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 | Laya | `laya` | ModernBERT-large (bidirectional, no adapter) | `model.safetensors` (encoder + head in one file) + `rl_agent_config.json` (architecture + per-kind/per-bucket temperatures) | `ce_rps` |
 | StartLux | `startlux` | Merged Qwen3.5 hybrid (vision tower, causal) | `decision_config.json` (26 letter token ids + per-kind read-out temperatures) | `distill_rps` |
 | H2O-4B | `h2o` | Qwen3.5-4B hybrid with the released LoRA already merged | `label_rows.safetensors` (fixed 255×hidden readout) + `serve_config.json` (255 labels + per-kind temperatures) | `scoring` |
+| D3-Flash | `d3` | Qwen3.5 hybrid | `readout.safetensors` (trainable 255-row FP32 readout) + `decision_config.json` | `scoring` |
 
 Developers can convert any CausalLM into a decision model by specifying:
 
@@ -367,6 +370,16 @@ fixed 255-row label matrix.
   `A) name: description`, where the letter is presentation only and the 255 readout rows follow the
   `criteria` order; each record renders exactly one question.
 
+### D3-Flash
+
+D3-Flash uses the standard JSONL loader. Each row contains a `state` and a list of `questions`. `D3Preprocessor` expands this list into one example per question.
+
+```json lines
+{"state":"The order is paid and awaiting shipment.","questions":[{"kind":"choice","question":"Select the order status.","options":["paid: Paid","shipped: Shipped"],"gold":[1,0]},{"kind":"noul","question":"Has the order shipped?","gold":[1,0]}]}
+```
+
+For `choice`, list 1–255 option texts in display order. For `noul`, the default order is false, then true. For `score`, list 2–10 distinct ordered levels. Use a zero-based index or a distribution in option order for `gold`. Keep field types consistent within each file. When mixing hard and soft labels, use one-hot arrays for hard labels. Serialize structured states as JSON strings when mixing them with plain text. Split the source records into training and validation sets before expanding them into individual questions.
+
 ## Training
 
 ms-swift ships a training script per integrated model at `examples/train/decision/<model_type>.sh` (using **local mini datasets** — no download needed), loading local data via `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision`; **remote datasets** (`--dataset open_jev_<model_type>:all`, requiring online download of the Open-Jev corpus) are also supported. The two methods differ only in data source; all other parameters are identical. See the [Datasets](#datasets) section for details. Each model's complete runnable command (including `--adapters` path resolution and head-artifact env exports) is in its script.
@@ -529,6 +542,37 @@ Key parameters:
   come from `two_way.temperature` and the top-level `temperature` respectively -- never mix them
 - The output dir contains the adapter, `scoring_head.safetensors` (255-row readout) and `scoring_head.json`
   (`head_temperature` + per-kind `temperatures`)
+
+### D3-Flash
+
+D3-Flash loads the Qwen3.5 backbone and `readout.safetensors` from the release directory. The example uses the Qwen3.5 multimodal architecture mapping to select LoRA target layers in the language backbone and also trains the 255-row FP32 readout. With `transformers>=5.13.1`, run the following command from the repository root using your local model directory for `--model`.
+
+```bash
+swift sft \
+    --model /path/to/d3-flash \
+    --model_type d3 --task_type decision \
+    --external_plugins examples/train/decision/dataset.py \
+    --dataset d3_decision --val_dataset d3_decision_val --split_dataset_ratio 0 \
+    --tuner_type lora --tuner_backend peft \
+    --lora_rank 8 --lora_alpha 16 --lora_dropout 0 \
+    --loss_type scoring --padding_side left --attn_impl sdpa \
+    --torch_dtype bfloat16 --max_length 2048 \
+    --gradient_checkpointing true \
+    --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
+    --per_device_train_batch_size 1 --per_device_eval_batch_size 1 \
+    --learning_rate 1e-4 --gradient_accumulation_steps 1 --max_steps 4 \
+    --eval_strategy steps --eval_steps 2 --save_steps 2 --logging_steps 1 \
+    --output_dir output/d3
+```
+
+**Key parameters**
+
+- The plugin registers both splits with `D3Preprocessor`. Set `D3_TRAIN_FILE` and `D3_VAL_FILE` to use your own JSONL files.
+- `--loss_type scoring` computes cross-entropy over each question’s valid options using the target distribution in `target_probs`.
+- `--padding_side left` aligns each question’s final prompt token at the end of the sequence for the readout. With `--attn_impl sdpa`, full-attention layers use bidirectional attention and Gated DeltaNet layers retain their causal scan.
+- D3-Flash processes one text question per sequence. Keep packing and padding-free mode disabled. Prompts over the length limit raise `MaxLengthError`.
+
+The example runs four optimizer steps, evaluating and saving every two steps. You can also set `D3_MODEL_DIR` and `D3_OUTPUT_DIR` and run the [training script](../../../examples/train/decision/d3.sh).
 
 ### StartLux
 

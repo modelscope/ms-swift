@@ -1,0 +1,1 @@
+{"state": "The parcel arrived this morning.", "questions": [{"kind": "noul", "question": "Has the parcel arrived?", "gold": [0.0, 1.0]}, {"kind": "choice", "options": ["pending", "delivered: Arrived"], "gold": [0.0, 1.0]}]}

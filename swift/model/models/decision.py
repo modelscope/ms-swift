@@ -10,9 +10,10 @@ from typing import Any, Dict, Optional
 from swift.model.decision_branch import (OPT_CLOSE, OPT_OPEN, add_option_tokens, branch_questions, find_rope_owner,
                                          is_hybrid, kev_branch_enabled, kev_forward_branch, prefix_inputs,
                                          rope_positions, rows_from_ids)
-from swift.model.decision_head import (ClefJointSchemaHead, H2OReadoutHead, JevVerbalizerHead, KevPointerHead, LayaHead,
-                                       OmniJevHead, ScoringHead, StartLuxLetterHead, Thx02ReadoutHead, load_h2o_labels,
-                                       load_thx02_decision_config, resolve_h2o_two_way)
+from swift.model.decision_head import (ClefJointSchemaHead, D3ReadoutHead, H2OReadoutHead, JevVerbalizerHead,
+                                       KevPointerHead, LayaHead, OmniJevHead, ScoringHead, StartLuxLetterHead,
+                                       Thx02ReadoutHead, load_d3_config, load_h2o_labels, load_thx02_decision_config,
+                                       resolve_h2o_two_way, validate_d3_weights)
 from swift.model.patcher import get_original_forward, patch_module_forward
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
@@ -20,7 +21,7 @@ from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model
-from .qwen import Qwen3_5Loader
+from .qwen import Qwen3_5Loader, _get_qwen3_5_keep_in_fp32_modules, _patch_qwen3_5_keep_in_fp32_modules
 
 logger = get_logger()
 
@@ -621,6 +622,108 @@ register_model(
         architectures=[],
         requires=['transformers>=5.13.0', 'qwen_vl_utils>=0.0.14'],
         tags=['vision', 'decision']))
+
+# The release records 5.17.0, but training also works on the user's 5.13.1 environment.
+D3_TRANSFORMERS_REQUIREMENT = 'transformers>=5.13.1'
+
+
+class D3ModelLoader(ScoringModelLoader):
+    head_cls = D3ReadoutHead
+    default_trust_remote_code = False
+
+    def get_config(self, model_dir):
+        from transformers.utils.versions import require_version
+        require_version(D3_TRANSFORMERS_REQUIREMENT)
+        from transformers import Qwen3_5Config
+        if self.model_info.task_type != 'decision':
+            raise ValueError('D3 requires task_type=decision.')
+        if self.attn_impl not in (None, 'sdpa'):
+            raise ValueError('D3 currently requires attn_impl=sdpa.')
+        if self.model_info.quant_method:
+            raise ValueError('D3 quantization is not supported.')
+        if self.new_special_tokens or self.init_strategy is not None or self.rope_scaling:
+            raise ValueError('D3 does not support changing release tokens, weights or RoPE configuration.')
+        self.attn_impl = 'sdpa'
+        self.auto_config_cls = Qwen3_5Config
+        config = super().get_config(model_dir)
+        if config.model_type != 'qwen3_5' or config.architectures != ['Qwen3_5Model']:
+            raise ValueError('D3 requires the native Qwen3_5Model release backbone.')
+        if getattr(config, 'quantization_config', None):
+            raise ValueError('D3 quantized backbones are not supported.')
+        load_d3_config(model_dir)
+        self._d3_shapes = validate_d3_weights(model_dir, config.text_config.hidden_size)
+        config.use_cache = config.text_config.use_cache = False
+        # Reuse the release embeddings for the generation wrapper's unused vocabulary head.
+        config.tie_word_embeddings = config.text_config.tie_word_embeddings = True
+        # Do not propagate the inference-only AutoModel mapping into saved training artifacts.
+        if hasattr(config, 'auto_map'):
+            del config.auto_map
+        return config
+
+    def get_processor(self, model_dir, config):
+        from transformers import AutoTokenizer
+        self.auto_tokenizer_cls = AutoTokenizer
+        tokenizer = super().get_processor(model_dir, config)
+        tokenizer.padding_side = 'left'
+        tokenizer.d3_config = load_d3_config(model_dir, tokenizer)
+        return tokenizer
+
+    def get_model(self, model_dir, config, processor, model_kwargs):
+        from transformers import Qwen3_5ForConditionalGeneration, Qwen3_5PreTrainedModel
+        self.auto_model_cls = Qwen3_5ForConditionalGeneration
+        keep = _get_qwen3_5_keep_in_fp32_modules(model_dir, config, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel, keep):
+            model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        if self.return_dummy_model:
+            return model
+        expected = {name: list(tensor.shape) for name, tensor in model.model.state_dict().items()}
+        if self._d3_shapes != expected:
+            missing = sorted(set(expected) - set(self._d3_shapes))
+            extra = sorted(set(self._d3_shapes) - set(expected))
+            wrong = [
+                name for name in expected.keys() & self._d3_shapes.keys() if expected[name] != self._d3_shapes[name]
+            ]
+            raise ValueError(f'D3 native backbone tensors differ: missing={missing}, extra={extra}, shape={wrong}.')
+        enable_noncausal_full_attention(model.model.language_model)
+        self.attach_scoring_head(model, self.build_head(model, model_dir, config))
+        return model
+
+    @staticmethod
+    def _d3_forward(self, *args, head, origin_forward, **kwargs):
+        meta = kwargs.pop('decision_meta', None)
+        if meta is None:
+            raise ValueError('D3 forward requires decision_meta from D3Template.')
+        if args:
+            raise ValueError('D3 forward requires named text inputs.')
+        for key in ('pixel_values', 'pixel_values_videos', 'image_grid_thw', 'video_grid_thw'):
+            if kwargs.pop(key, None) is not None:
+                raise ValueError('D3 currently supports text only.')
+        if kwargs.pop('past_key_values', None) is not None or kwargs.pop('use_cache', False):
+            raise ValueError('D3 does not support a KV cache.')
+        for key in ('labels', 'logits_to_keep', 'num_items_in_batch', 'output_hidden_states', 'return_dict',
+                    'text_position_ids', 'mm_token_type_ids'):
+            kwargs.pop(key, None)
+        # The release counts left padding in positions; the shared training collator does not.
+        inputs = kwargs.get('input_ids')
+        if inputs is None:
+            inputs = kwargs['inputs_embeds']
+        batch, width = inputs.shape[:2]
+        kwargs['position_ids'] = torch.arange(width, device=inputs.device).expand(batch, -1)
+        output = self.model.language_model(**kwargs, use_cache=False, return_dict=True)
+        return head(output.last_hidden_state, None, meta)
+
+    _scoring_dispatcher = staticmethod(_d3_forward)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.d3, [ModelGroup([Model(hf_model_id='vllm-sr/d3-flash')], TemplateType.d3)],
+        D3ModelLoader,
+        model_arch=ModelArch.qwen3_5,
+        task_type='decision',
+        architectures=[],
+        requires=[D3_TRANSFORMERS_REQUIREMENT],
+        tags=['decision']))
 
 
 class StartLuxModelLoader(ScoringModelLoader, Qwen3_5Loader):
