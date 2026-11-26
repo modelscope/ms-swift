@@ -8,6 +8,9 @@ guard would silently break -- without launching anything. ``build_server_config`
 (a template lookup by string), so no weights are touched here.
 """
 
+import importlib
+from unittest.mock import Mock
+
 import pytest
 
 from swift.dev.builders.sampler import _derive_sampler_type
@@ -19,6 +22,7 @@ from swift.dev.recipe.infer.run_deploy import (
     _url_scheme,
     _validate,
     build_server_config,
+    run_deploy,
 )
 
 MODEL = "Qwen/Qwen3.5-4B"
@@ -113,9 +117,39 @@ def test_build_server_config_gateway_and_sampler():
     assert sampler.route_prefix == "/v1/sampler/policy"
     assert sampler.args.sampler_type == "vllm"
     assert sampler.args.model_id == MODEL
+    assert sampler.args.api_key == "EMPTY"
     assert sampler.args.data_plane_url is None
     # the template is pinned at construction, resolved by name from the model id
     assert sampler.args.template["template_cls"] == "Qwen3_5Template"
+
+
+def test_sampler_app_names_distinguish_slash_and_underscore():
+    samplers = []
+    for model in ("team/model", "team_model"):
+        cfg = build_server_config(
+            _model_config(), TemplateConfig(template="qwen3_5"), deploy_config=DeployConfig(served_model_name=model)
+        )
+        sampler = next(app for app in cfg.applications if app.import_path == "sampler")
+        assert sampler.route_prefix == f"/v1/sampler/{model}"
+        samplers.append(sampler.name)
+    assert samplers[0] != samplers[1]
+
+
+def test_run_deploy_rejects_duplicate_public_model_on_legacy_route(monkeypatch):
+    import twinkle.server
+    from twinkle.server import launcher
+
+    deployment = importlib.import_module("swift.dev.recipe.infer.run_deploy")
+    monkeypatch.setattr(launcher, "ensure_ray_cluster", Mock())
+    monkeypatch.setattr(twinkle.server, "launch_server", Mock())
+    monkeypatch.setattr(deployment, "_serve_routes", lambda: {"sampler-team_model": "/v1/sampler/team/model"})
+    with pytest.raises(ValueError, match="Model 'team/model' is already deployed"):
+        run_deploy(
+            _model_config(),
+            TemplateConfig(template="qwen3_5"),
+            deploy_config=DeployConfig(served_model_name="team/model"),
+        )
+    twinkle.server.launch_server.assert_not_called()
 
 
 def test_build_server_config_data_plane_adds_app_and_async_sampler():

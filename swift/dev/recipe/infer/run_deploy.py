@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
+import hashlib
 import os
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
@@ -42,6 +43,7 @@ def run_deploy(
     behind one shared gateway (the registry widens per deployment).
     """
     from twinkle.server import launch_server
+    from twinkle.server.launcher import ensure_ray_cluster
 
     from swift.dev.config import DeployConfig as _DeployConfig
     from swift.dev.config import DistributedConfig as _DistributedConfig
@@ -58,6 +60,23 @@ def run_deploy(
         )
 
     public_name = _public_name(deploy_config, model_config)
+    address = deploy_config.ray_address
+    if address is None and distributed_config.mode == "ray":
+        address = "auto"
+    ensure_ray_cluster(namespace=deploy_config.ray_namespace, address=address, persistent=deploy_config.detach)
+
+    routes = _serve_routes()
+    route_prefix = deploy_config.route_prefix.rstrip("/")
+    sampler_prefix = f"{route_prefix}/sampler/"
+    sampler_models = [route[len(sampler_prefix) :] for route in routes.values() if route.startswith(sampler_prefix)]
+    if public_name in sampler_models:
+        raise ValueError(f"Model {public_name!r} is already deployed. Stop it first or choose another served name.")
+    sampler_app = _sampler_app_name(public_name)
+    if sampler_app in routes:
+        raise ValueError(f"Ray Serve application name {sampler_app!r} is already in use.")
+    if "server" in routes and routes["server"] != route_prefix:
+        raise ValueError("The running gateway uses a different route_prefix.")
+
     config = build_server_config(
         model_config,
         template_config,
@@ -68,17 +87,15 @@ def run_deploy(
         quantize_config=quantize_config,
         distributed_config=distributed_config,
         deploy_config=deploy_config,
+        gateway_supported_models=[public_name, *sampler_models],
+        skip_apps=routes.keys() & {"data-plane"},
     )
-    address = deploy_config.ray_address
-    if address is None and distributed_config.mode == "ray":
-        address = "auto"
     launch_server(
         config=config,
         ray_namespace=deploy_config.ray_namespace,
         blocking=not deploy_config.detach,
         ray_address=address,
         persistent_cluster=deploy_config.detach,
-        model_name=public_name,
     )
     if deploy_config.detach:
         scheme = _url_scheme(deploy_config)
@@ -166,12 +183,12 @@ def build_server_config(
     )
 
     supported_models: List[Any] = list(gateway_supported_models or [public_name])
+    if conflicting_names := adapter_mapping.keys() & supported_models:
+        raise ValueError(f"Adapter names conflict with base models: {', '.join(sorted(conflicting_names))}")
     # Adapter names join the registry as dict entries carrying base_model (str entries stay
     # plain base models) -- GatewayServer._normalize_models accepts both shapes, and
-    # _resolve_base_model routes an adapter's name to this deployment's sampler through it.
-    supported_models += [
-        {"model_name": name, "base_model": public_name} for name in adapter_mapping if name not in supported_models
-    ]
+    # the gateway routes an adapter's name to this deployment's sampler through it.
+    supported_models += [{"model_name": name, "base_model": public_name} for name in adapter_mapping]
     skip = set(skip_apps or ())
     applications: List[Any] = []
     if "server" not in skip:
@@ -190,7 +207,7 @@ def build_server_config(
         )
     applications.append(
         ApplicationSpec(
-            name=f"sampler-{public_name.replace('/', '_')}",
+            name=_sampler_app_name(public_name),
             route_prefix=f"{route_prefix}/sampler/{public_name}",
             import_path="sampler",
             args=SamplerArgs(
@@ -232,9 +249,28 @@ def _public_name(deploy_config: DeployConfig, model_config: ModelConfig) -> str:
     return deploy_config.served_model_name or os.path.basename(str(model_config.model).rstrip("/"))
 
 
-def _gateway_app_spec(deploy_config: DeployConfig, supported_models: List[str]) -> Any:
-    """The gateway application spec -- shared by build_server_config and stop_deployment (the
-    latter re-runs it to re-register the surviving models after removing one)."""
+def _sampler_app_name(public_name: str) -> str:
+    """Keep slash and underscore variants distinct in Ray Serve's app names."""
+    if "/" not in public_name:
+        return f"sampler-{public_name}"
+    digest = hashlib.sha256(public_name.encode()).hexdigest()[:12]
+    return f"sampler-{public_name.replace('/', '_')}-{digest}"
+
+
+def _serve_routes() -> Dict[str, str]:
+    from ray.serve.context import _get_global_client
+
+    client = _get_global_client(raise_if_no_controller_running=False)
+    if client is None:
+        return {}
+    return {
+        name: (app.get("route_prefix") or "").rstrip("/")
+        for name, app in client.get_serve_details()["applications"].items()
+    }
+
+
+def _gateway_app_spec(deploy_config: DeployConfig, supported_models: List[Any]) -> Any:
+    """The shared gateway application specification for launch and stop."""
     from twinkle.server.config import ApplicationSpec, ServerArgs
 
     route_prefix = deploy_config.route_prefix
@@ -271,7 +307,7 @@ def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelCon
 
 
 def _server_config_with(gateway_spec: Any, deploy_config: DeployConfig) -> Any:
-    """A minimal ServerConfig carrying just the gateway application (stop's re-registration)."""
+    """Build the gateway configuration Twinkle needs to locate the deployment."""
     from twinkle.server.config import HttpOptions, PersistenceConfig, ServerConfig
 
     return ServerConfig(
