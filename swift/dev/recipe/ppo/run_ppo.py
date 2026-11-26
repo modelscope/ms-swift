@@ -59,8 +59,17 @@ def _check_policy_value_step_alignment(global_step: int, value_state: Optional[D
     policy state, ``value_state`` the critic's reloaded state -- None when there is no value component to
     cross-check (a policy-only resume), so the guard is skipped then. Pure and dependency-free so the
     invariant stays testable without a GPU / Ray build.
+
+    Both completed-step records are cross-checked: ``consumed_train_samples`` alone is not enough --
+    the critic's optimizer/scheduler restore is driven by ``cur_step``, so a state whose ``cur_step``
+    disagrees with ``global_step`` (a corrupted or partially rewritten trainer_state) would resume the
+    critic a step off-phase while the sample count still matched, and the dual save at the horizon
+    would land misaligned (policy N, critic N-1). States without ``cur_step`` (legacy/megatron shapes)
+    keep the sample-count check only.
     """
-    if value_state is not None and int(value_state.get('consumed_train_samples', 0)) != global_step:
+    if value_state is not None and (
+            int(value_state.get('consumed_train_samples', 0)) != global_step
+            or ('cur_step' in value_state and int(value_state['cur_step']) != global_step)):
         raise ValueError('PPO policy and value checkpoints contain different completed-step counts.')
 
 
