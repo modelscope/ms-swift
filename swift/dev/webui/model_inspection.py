@@ -23,6 +23,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.hub import safe_snapshot_download
 
 SCHEMA_VERSION = 1
@@ -303,7 +304,7 @@ def _cache_key(fingerprint: str, detail: str, expand: Optional[str], training: b
         'detail': detail,
         'expand': expand,
         'training': training,
-        'tuner': asdict(tuner_config) if tuner_config is not None else None,
+        'tuner': asdict(tuner_config) if has_adapter(tuner_config) else None,
         'train': asdict(train_config) if train_config is not None else None,
         'frozen': frozen,
         'backend': backend,
@@ -353,7 +354,7 @@ def _normalize_parallel(value: Any) -> dict:
 
 
 def _is_full(tuner_config) -> bool:
-    return tuner_config is None or tuner_config.tuner == 'full'
+    return not has_adapter(tuner_config)
 
 
 def _has_full_freeze_rules(train_config) -> bool:

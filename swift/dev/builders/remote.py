@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -208,9 +209,8 @@ def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
     """
     from peft import LoraConfig
 
-    if tuner_config is None:
-        return
-    if tuner_config.tuner == 'full':
+    if not has_adapter(tuner_config):
+        # No adapter to install: full-parameter training (None or tuner='full').
         return
     if tuner_config.tuner != 'lora':
         raise ValueError(

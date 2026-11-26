@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.sft.assembly import build_supervised_objects
@@ -326,7 +327,7 @@ def run_decision(
         _bind_temperature_calibration(
             handler, cluster.template, cluster.model, cluster.eval_dataloader, micro_step_fn, train_config.eval_iters
         )
-        _bind_decision_checkpoint(handler, cluster.model, tuner_config is not None)
+        _bind_decision_checkpoint(handler, cluster.model, has_adapter(tuner_config))
 
     return run_supervised(
         cluster,

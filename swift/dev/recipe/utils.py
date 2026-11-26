@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTupl
 
 import json
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 from swift.dev.utils.scoring import collect  # noqa: F401 -- the recipes import it from here
 
@@ -294,7 +295,7 @@ def initial_adapter_dir(tuner_config: Optional['TunerConfig'], distributed_confi
     from swift.dev.builders import is_megatron_backend
     from swift.dev.builders.adapter import is_base_modifying_init
 
-    if tuner_config is None or not is_base_modifying_init(tuner_config.init_weights):
+    if not has_adapter(tuner_config) or not is_base_modifying_init(tuner_config.init_weights):
         return None
     if distributed_config.mode == 'remote':
         # The client handle has no save_initial_adapter (the snapshot lives in the server's
@@ -400,7 +401,9 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
     configs = {
         'model_config': model_config,
         'quantize_config': quantize_config,
-        'tuner_config': tuner_config,
+        # A full-parameter run (None or tuner='full') writes no tuner_config: exactly what a
+        # full-parameter checkpoint must read back as, whichever surface spelled the setting.
+        'tuner_config': tuner_config if has_adapter(tuner_config) else None,
         'template_config': template_config,
     }
     args: Dict[str, Any] = {
@@ -541,7 +544,7 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
         # A twinkle:// URI names a checkpoint in the SERVER's store; the handle restores weights,
         # optimizer, scheduler and progress state in one call, so the local trainer_state.json
         # probe below (and the megatron kwargs) do not apply.
-        if tuner_config is not None:
+        if has_adapter(tuner_config):
             resume_kwargs['adapter_name'] = 'default'
         return model.resume_from_checkpoint(path, **resume_kwargs)
     if checkpoint_config is not None and is_megatron_backend(distributed_config):
@@ -549,7 +552,7 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
             no_load_optim=checkpoint_config.no_load_optim,
             no_load_rng=checkpoint_config.no_load_rng,
             data_parallel_random_init=bool(megatron_config and megatron_config.data_parallel_random_init))
-    adapter_name = 'default' if tuner_config is not None else None
+    adapter_name = 'default' if has_adapter(tuner_config) else None
     if adapter_name is not None:
         resume_kwargs['adapter_name'] = adapter_name
 

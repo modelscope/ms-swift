@@ -4,6 +4,7 @@ import dataclasses
 import os
 from typing import TYPE_CHECKING, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -261,7 +262,7 @@ def split_served_name(adapter: str) -> tuple:
 
 
 def _resolve_adapters(tuner_config: Optional['TunerConfig'], dataset_config: Optional['DatasetConfig']) -> None:
-    if tuner_config is None or not tuner_config.adapters:
+    if not has_adapter(tuner_config) or not tuner_config.adapters:
         return
     from swift.dev.utils.hub import safe_snapshot_download
 
@@ -611,7 +612,7 @@ def _derive_rl_teacher(model_config: 'ModelConfig', tuner_config: Optional['Tune
         if isinstance(value, str):
             setattr(rl_config, field, [value])
     # teacher_model is a list (shared with MOPD); self-distillation is when the one teacher IS the student.
-    if (rl_config.teacher_model == [model_config.model] and tuner_config is not None
+    if (rl_config.teacher_model == [model_config.model] and has_adapter(tuner_config)
             and not rl_config.teacher_adapters):
         rl_config._teacher_use_disable_adapter = True
         rl_config.teacher_model = None

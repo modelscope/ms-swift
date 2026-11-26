@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from .adapter_config import TunerConfig
+from .adapter_config import TunerConfig, has_adapter
 from .checkpoint_config import CheckpointConfig
 from .convert_config import ConvertConfig
 from .dataset_config import DatasetConfig
@@ -45,6 +45,7 @@ __all__ = [
     'TemplateConfig',
     'TrainConfig',
     'TunerConfig',
+    'has_adapter',
     'bootstrap_run',
     'process_and_validate_configs',
     'process_configs',

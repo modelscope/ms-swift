@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import torch
 from twinkle.perf import span as perf_span
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.batching import balance_lanes, balance_update
 from swift.dev.recipe.grpo.assembly import build_driver, grpo_group_requests, initialize_cluster
 from swift.dev.recipe.utils import (
@@ -725,7 +726,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         # export back to the source's packed format so the artifact is loadable by the
         # quantized rollout engine; LoRA saves deltas and has nothing to re-quantize.
         requantize_source = (model_config.model
-                             if (tuner_config is None or tuner_config.tuner == 'full') else None)
+                             if not has_adapter(tuner_config) else None)
         component_states = {"training": {"micro_step": state.micro_step}}
         return save_training_step(cluster.model, state.handler, name, save_knobs,
             consumed_train_samples=state.global_step,

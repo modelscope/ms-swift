@@ -37,7 +37,7 @@ class DecisionCheckpointCallback(TrainCallback):
         """Attach the model (head discovery); ``save_weights`` forces the adapter/full choice.
 
         ``None`` (the default) auto-detects from the live module (PEFT wrap -> weights, else
-        meta-only); the recipe passes ``save_weights=tuner_config is not None`` so the choice
+        meta-only); the recipe passes ``save_weights=has_adapter(tuner_config)`` so the choice
         follows the run's own configuration.
         """
         self._model = model

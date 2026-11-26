@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.utils import (
     REF_GROUP,
     TEACHER_GROUP,
@@ -87,7 +88,7 @@ def grpo_group_requests(
 
     requests: List[Tuple[str, Optional[str]]] = []
     if rl_config.beta and rl_config.calculate_KL is not False:
-        disable = tuner_config is not None and not rl_config.ref_adapters and not rl_config.sync_ref_model
+        disable = has_adapter(tuner_config) and not rl_config.ref_adapters and not rl_config.sync_ref_model
         if rl_config.ref_model and not disable:
             spec = (
                 (rl_config.reference_parallel_spec or distributed_config.parallel_spec)
@@ -256,7 +257,7 @@ def initialize_cluster(
     )
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None and not remote_run:
+    if resume_dir and not has_adapter(tuner_config) and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
         policy_config = copy.copy(model_config)
@@ -278,7 +279,7 @@ def initialize_cluster(
         enable_router_replay=rl_config.router_replay_mode != "disabled",
         torch_dtype="float32",
     )
-    if tuner_config is not None:
+    if has_adapter(tuner_config):
         apply_tuner(
             model,
             tuner_config,
@@ -377,7 +378,7 @@ def initialize_cluster(
             parallel_spec=ref_spec,
             adapters=tuple(rl_config.ref_adapters or ()),
             policy_model=model,
-            disable_adapter=(tuner_config is not None and not rl_config.ref_adapters and not rl_config.sync_ref_model),
+            disable_adapter=(has_adapter(tuner_config) and not rl_config.ref_adapters and not rl_config.sync_ref_model),
             model_type=rl_config.ref_model_type,
             model_revision=rl_config.ref_model_revision,
         )

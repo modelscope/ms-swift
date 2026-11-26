@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.utils import (
     fp8_seq_align_option as _fp8_seq_align_option,
     initialize_supervised_twinkle,
@@ -165,7 +166,7 @@ def build_supervised_objects(
     # resume_from_checkpoint on the handle, not by re-addressing the build.
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     build_config = model_config
-    if resume_dir and tuner_config is None and not remote:
+    if resume_dir and not has_adapter(tuner_config) and not remote:
         build_config = copy.copy(model_config)
         build_config.model = resume_dir
     # The model / tuner / freeze ride the ONE builders entry in every mode (mode='remote'
@@ -181,7 +182,7 @@ def build_supervised_objects(
         megatron_config=megatron_config,
         moe_config=moe_config,
     )
-    if tuner_config is not None:
+    if has_adapter(tuner_config):
         # task_type threads the seq_cls/reranker head into modules_to_save: LoRA trains/saves
         # target_modules only, so without it the head is neither trained nor persisted.
         apply_tuner(

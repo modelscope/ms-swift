@@ -6,6 +6,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.utils import (
     StepState,
     build_generative_eval,
@@ -311,7 +312,7 @@ def run_supervised(
         else not bool(metric_for_best_model and "loss" in metric_for_best_model.lower())
     )
     load_best_model_at_end = train_config.load_best_model_at_end
-    best_model_adapter_name = None if tuner_config is None else "default"
+    best_model_adapter_name = None if not has_adapter(tuner_config) else "default"
     save_knobs = build_save_knobs(
         checkpoint_config, dataset_config, distributed_config, tuner_config, output_dir=output_dir
     )
