@@ -678,6 +678,19 @@ ms-swift 在 NPU 环境下默认会启用模型层 patch，以适配部分 Trans
 swift sft ... --enable_npu_model_patch false
 ```
 
+### GLM-5.3-Flash mHC 融合
+
+在昇腾上使用 BF16 训练 GLM-5.3-Flash 时，启动 Swift 前设置 `GLM_MHC=both` 可同时融合文本模型的 pre-Sinkhorn 和 post 运算。`pre` 和 `post` 可分别启用单项融合，默认值 `off` 使用 Transformers 原生实现。该适配也受 `--enable_npu_model_patch` 开关控制。
+
+CANN 后端需要当前模式对应的 Python 接口和 NPU 算子。本例在 910B2C 上验证了 CANN Toolkit 和 910B ops 9.1.0、PyTorch 2.9.0、torch-npu 2.9.0.post6、Transformers 5.20.1 的组合。在 ms-swift 源码目录运行单卡数值校验：
+
+```shell
+GLM_MHC_BACKEND=cann python tests/models/test_glm5_next_mhc.py --mode both --full-grad
+export GLM_MHC=both GLM_MHC_BACKEND=cann
+```
+
+然后运行原有的 `swift pt` 或 `swift sft` 命令。启动日志会显示两项运算各自的实现来源。
+
 ## 模型保存、Merge LoRA 和断点续训
 
 训练时通过 `--output_dir` 指定输出目录，通过 `--save_steps` 控制 checkpoint 保存间隔，通过 `--save_total_limit` 控制最多保留多少个 checkpoint。LoRA 训练结束后，checkpoint 目录中会保存 adapter 权重、训练参数和 trainer 状态；常见目录形态如下：

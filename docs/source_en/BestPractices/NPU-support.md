@@ -675,6 +675,19 @@ ms-swift enables model-level patches by default in NPU environments to adapt som
 swift sft ... --enable_npu_model_patch false
 ```
 
+### GLM-5.3-Flash mHC fusion
+
+For BF16 training on Ascend, set `GLM_MHC=both` before starting Swift to fuse the GLM-5.3-Flash text model's pre-Sinkhorn and post operations. Use `pre` or `post` to enable one operation, or `off` (the default) for the Transformers implementation. The `--enable_npu_model_patch` switch also controls this patch.
+
+The CANN backend requires the selected Python wrappers and NPU kernels. On 910B2C we validated CANN Toolkit and 910B ops 9.1.0, PyTorch 2.9.0, torch-npu 2.9.0.post6 and Transformers 5.20.1. From the ms-swift checkout, run the numerical check before training:
+
+```shell
+GLM_MHC_BACKEND=cann python tests/models/test_glm5_next_mhc.py --mode both --full-grad
+export GLM_MHC=both GLM_MHC_BACKEND=cann
+```
+
+Then run your usual `swift pt` or `swift sft` command. The startup log reports the implementation of each operation.
+
 ## Model Saving, Merge LoRA, and Resume Training
 
 Use `--output_dir` to set the output directory, `--save_steps` to control checkpoint save intervals, and `--save_total_limit` to control how many checkpoints to keep. After LoRA training, the checkpoint directory contains adapter weights, training arguments, and trainer state. A typical directory layout is:

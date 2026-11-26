@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import os
 import torch
 import torch.nn.functional as F
 import torch_npu
@@ -572,5 +573,10 @@ def apply_patch() -> None:
 
     for _group_name, module, patches, optional_patches in patch_groups:
         apply_patch_map(module, _build_patch_map(module, patches, optional_patches))
+
+    mhc_mode = os.environ.get('GLM_MHC', 'off').lower()
+    if mhc_mode != 'off':
+        from . import glm5_next_mhc
+        glm5_next_mhc.apply_patch(mhc_mode)
 
     _APPLIED = True
