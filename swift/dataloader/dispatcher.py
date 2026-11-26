@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import logging
-
 import torch.distributed as dist
 from tqdm import tqdm
 
@@ -32,9 +31,8 @@ def compute_streaming_skip_batches(
     """
     if num_generations > 1:
         if consumed_samples % num_generations:
-            raise RuntimeError(
-                f'consumed_train_samples ({consumed_samples}) must be divisible by '
-                f'num_generations ({num_generations})')
+            raise RuntimeError(f'consumed_train_samples ({consumed_samples}) must be divisible by '
+                               f'num_generations ({num_generations})')
         consumed_samples //= num_generations
     samples_per_step = micro_batch_size * dp_world_size
     if consumed_samples <= 0 or samples_per_step <= 0:
@@ -43,6 +41,14 @@ def compute_streaming_skip_batches(
 
 
 class DataLoaderDispatcher:
+    """Scatter base batches from rank 0 and apply a resume offset to the first pass.
+
+    Exact continuation requires the dispatcher to reach the offset within that
+    pass. If a finite stream ends before the full offset is consumed, every rank
+    ends the pass and the dispatcher discards the remaining offset. A cyclic
+    caller then starts at the beginning of its next pass and can replay samples
+    already consumed before the checkpoint.
+    """
 
     def __init__(self, base_dataloader, device=None, skip_batches: int = 0):
         self.base_dataloader = base_dataloader
@@ -80,9 +86,8 @@ class DataLoaderDispatcher:
                     # for their first scatter. Consume what is left and let
                     # the main loop terminate every rank via the regular
                     # end-of-iteration path instead.
-                    logger.warning(
-                        f'skip_batches ({self.skip_batches}) exceeds the batches available in this pass; '
-                        'the remaining offset is dropped and this pass yields no data.')
+                    logger.warning(f'skip_batches ({self.skip_batches}) exceeds the batches available in this pass; '
+                                   'the remaining offset is dropped and this pass yields no data.')
                     break
             # The resume offset applies once: a cyclic/restarted iterator must
             # read its later epochs in full instead of skipping again.

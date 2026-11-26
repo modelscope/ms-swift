@@ -1,7 +1,70 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import pytest
+import time
+import torch
+import torch.distributed as dist
 import unittest
+from datetime import timedelta
+from torch.utils.data import DataLoader, IterableDataset
 
 from swift.dataloader.dispatcher import DataLoaderDispatcher, compute_streaming_skip_batches
+
+
+class _FiniteEpochStream(IterableDataset):
+
+    def __init__(self):
+        self.epoch = 0
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
+    def __iter__(self):
+        yield from range(100 * self.epoch, 100 * self.epoch + 8)
+
+
+def _gloo_resume_worker(rank, init_method):
+    dist.init_process_group('gloo', init_method=init_method, rank=rank, world_size=2, timeout=timedelta(seconds=20))
+    try:
+        uninterrupted = DataLoaderDispatcher(DataLoader(_FiniteEpochStream(), batch_size=None))
+        epoch_zero = list(uninterrupted)
+        uninterrupted.set_epoch(1)
+        epoch_one = list(uninterrupted)
+        assert epoch_zero == list(range(rank, 8, 2))
+        assert epoch_one == list(range(100 + rank, 108, 2))
+
+        # Adapted from AlkaidLu's two-rank regression test linked in PR #10520.
+        # Each pass holds four logical batches across the two ranks.
+        for offset in (2, 4, 5, 9):
+            resumed = DataLoaderDispatcher(DataLoader(_FiniteEpochStream(), batch_size=None), skip_batches=offset)
+            first_pass = list(resumed)
+            resumed.set_epoch(1)
+            second_pass = list(resumed)
+            assert first_pass == epoch_zero[offset:]
+            assert second_pass == epoch_one
+            if offset <= 4:
+                assert first_pass + second_pass == (epoch_zero + epoch_one)[offset:]
+    finally:
+        dist.destroy_process_group()
+
+
+@pytest.mark.skipif(not dist.is_available() or not dist.is_gloo_available(), reason='requires PyTorch Gloo')
+def test_two_rank_gloo_streaming_resume(tmp_path):
+    """Check both ranks at, within and beyond the first finite pass."""
+    init_method = (tmp_path / 'gloo_init').as_uri()
+    workers = torch.multiprocessing.spawn(_gloo_resume_worker, args=(init_method, ), nprocs=2, join=False)
+    deadline = time.monotonic() + 90
+    try:
+        while not workers.join(timeout=max(0.0, deadline - time.monotonic())):
+            if time.monotonic() >= deadline:
+                pytest.fail('The two Gloo ranks did not finish within 90 seconds')
+    finally:
+        for process in workers.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=5)
+            if process.is_alive():
+                process.kill()
+                process.join()
 
 
 class _FakeStreamingDataLoader:
