@@ -3,6 +3,7 @@
 import argparse
 import inspect
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 
 def check(args):
@@ -66,6 +67,93 @@ def check(args):
     print('PASS: one BF16 mHC block and low-rank branch on the selected NPU')
 
 
+def _check_decoder_post(block_type):
+    import pytest
+    import torch
+
+    glm = pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
+    from swift.model.npu_patch.glm5_next_mhc import native_post, with_fused_post
+
+    def hc(x):
+        # Non-uniform weights exercise stream order and both residual merges.
+        return x[..., 0].sigmoid(), x @ x.transpose(-1, -2), x.mean(-2)
+
+    def attend(hidden_states, **kwargs):
+        calls.append(kwargs)
+        output = hidden_states.sin()
+        return output if block_type == 'linear_attention' else (output, None, topk)
+
+    topk = torch.tensor([1])
+    layer = SimpleNamespace(
+        block_type=block_type,
+        attn_hc=hc,
+        ffn_hc=hc,
+        self_attn=attend,
+        input_layernorm=torch.tanh,
+        post_attention_layernorm=torch.sigmoid,
+        mlp=torch.cos)
+    kwargs = dict(
+        attention_mask=object(),
+        position_ids=object(),
+        past_key_values=object(),
+        use_cache=True,
+        position_embeddings=object(),
+        prev_topk_indices=object(),
+        custom_arg=object())
+    calls = []
+    x = torch.linspace(-0.5, 0.5, 24).reshape(1, 2, 4, 3).requires_grad_()
+    original = inspect.unwrap(glm.Glm5NextTextDecoderLayer.forward)
+    expected, indices = original(layer, x, **kwargs)
+    merge = Mock(wraps=native_post)
+    actual, actual_indices = with_fused_post(original, merge)(layer, x, **kwargs)
+    assert merge.call_count == 2 and actual_indices is indices
+    assert len(calls) == 2 and calls[0] == calls[1]
+    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(torch.autograd.grad(actual.sum(), x)[0], torch.autograd.grad(expected.sum(), x)[0])
+
+
+def test_linear_attention_decoder_post():
+    _check_decoder_post('linear_attention')
+
+
+def test_indexed_attention_decoder_post():
+    _check_decoder_post('indexed_attention')
+
+
+def test_auto_uses_native_when_post_is_missing(monkeypatch):
+    import pytest
+
+    glm = pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
+    from swift.model.npu_patch import glm5_next_mhc, mhc
+
+    def only_pre(package, name, backend):
+        if name == 'mhc_post':
+            raise ImportError(name)
+        return Mock(), 'pre'
+
+    monkeypatch.setattr(mhc, 'cann_package', lambda: object())
+    monkeypatch.setattr(mhc, 'resolve_op', only_pre)
+    monkeypatch.setattr(glm5_next_mhc, 'get_mhc_ops', mhc.get_mhc_ops.__wrapped__)
+    assert glm5_next_mhc.get_glm5_next_mhc_patches(glm, 'auto') == {}
+
+
+def test_auto_uses_native_on_cpu(monkeypatch):
+    import torch
+
+    from swift.model.npu_patch import glm5_next_mhc as mhc
+    op = Mock(side_effect=AssertionError('CANN received a CPU tensor'))
+    monkeypatch.setattr(mhc, 'get_mhc_ops', lambda mode, backend: ((op, 'pre'), (op, 'post')))
+    original = Mock()
+    pre, post, _, _ = mhc.make_forwards('auto', original, 'cann')
+    x = torch.randn(1, 2, 4, 8)
+    layer = SimpleNamespace(hc_mult=4, hc_sinkhorn_iters=20)
+    assert pre(layer, x) is original.return_value
+    original.assert_called_once_with(layer, x)
+    args = (x, torch.randn(1, 2, 4, 4), x.mean(-2), torch.randn(1, 2, 4))
+    torch.testing.assert_close(post(*args), mhc.native_post(*args))
+    op.assert_not_called()
+
+
 def test_cann_full_grad(monkeypatch):
     import pytest
     from transformers.utils import is_torch_npu_available
@@ -73,7 +161,7 @@ def test_cann_full_grad(monkeypatch):
     if not is_torch_npu_available(check_device=True):
         pytest.skip('Requires an Ascend NPU')
     pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
-    from swift.model.npu_patch import glm5_next_mhc as mhc
+    from swift.model.npu_patch import mhc
     package = mhc.cann_package()
     if package is None or any(mhc.lookup_op(package, name) is None for name in ('mhc_pre_sinkhorn', 'mhc_post')):
         pytest.skip('Requires CANN mHC operators')
@@ -100,11 +188,11 @@ def main():
         help='Diagnostic per-tensor relative-L2 threshold, not an end-to-end acceptance criterion')
     args = parser.parse_args()
     if args.probe:
-        from swift.model.npu_patch import glm5_next_mhc as mhc
-        backend = mhc.selected_backend()
-        package = mhc.cann_package()
+        from swift.model.npu_patch.glm5_next_mhc import selected_backend
+        from swift.model.npu_patch.mhc import cann_package, resolve_op
+        package = cann_package()
         for name in ('mhc_pre_sinkhorn', 'mhc_post'):
-            _, implementation = mhc.resolve_op(package, name, backend)
+            _, implementation = resolve_op(package, name, selected_backend())
             print(f'{name}: {implementation}')
     else:
         check(args)

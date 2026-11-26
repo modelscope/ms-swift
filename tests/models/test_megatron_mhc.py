@@ -1,23 +1,25 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import pytest
+import sys
 import torch
 from types import SimpleNamespace
 
 
-def test_glm_cann_mhc_matches_megatron(monkeypatch):
+@pytest.mark.parametrize('mode', [None, 'pre', 'post', 'both'])
+def test_glm_cann_mhc_matches_megatron(monkeypatch, mode):
     pytest.importorskip('torch_npu')
     if not torch.npu.is_available():
         pytest.skip('Requires an Ascend NPU')
     pytest.importorskip('megatron_adaptor')
-    monkeypatch.setenv('GLM_MEGATRON_MHC', 'off')
+    monkeypatch.setenv('GLM_MHC', 'off')
     import swift.megatron  # Apply the Ascend adaptations before constructing MCore modules.
-    from swift.model.npu_patch import glm5_next_mhc, megatron_mhc
+    from swift.model.npu_patch import megatron_mhc, mhc
     hyper_connection = pytest.importorskip('megatron.core.transformer.hyper_connection')
     if not hasattr(hyper_connection, 'native_h_post_bda_fp32'):
         pytest.skip('Requires Megatron-Core with the GLM-5.3 mcore-bridge patch')
     hc = hyper_connection.HyperConnectionModule
-    package = glm5_next_mhc.cann_package()
-    if package is None or any(glm5_next_mhc.lookup_op(package, op) is None for op in ('mhc_pre_sinkhorn', 'mhc_post')):
+    package = mhc.cann_package()
+    if package is None or any(mhc.lookup_op(package, op) is None for op in ('mhc_pre_sinkhorn', 'mhc_post')):
         pytest.skip('Requires CANN mHC pre/post kernels')
 
     config = SimpleNamespace(
@@ -36,17 +38,38 @@ def test_glm_cann_mhc_matches_megatron(monkeypatch):
     # Other tests may also initialize Swift in this process. Restore the class after this test.
     monkeypatch.setattr(hc, '__init__',
                         hc.__init__.__wrapped__ if getattr(hc.__init__, '_glm53_cann_mhc', False) else hc.__init__)
+    native_init = hc.__init__
+    megatron_mhc.patch_megatron_mhc()
+    assert hc.__init__ is native_init
     native = hc(config, 1).to('npu')
     generator = torch.Generator(device='npu').manual_seed(139)
     with torch.no_grad():
         native.mapping_proj.weight.uniform_(-1 / 128, 1 / 128, generator=generator)
         native.bias.uniform_(-0.6, 0.6, generator=generator)
-    monkeypatch.setenv('GLM_MEGATRON_MHC', 'cann')
+    if mode is None:
+        monkeypatch.delenv('GLM_MHC')
+        # A partial installation must leave both native methods intact.
+        with monkeypatch.context() as patch:
+            patch.setattr(megatron_mhc, 'get_mhc_ops', lambda mode: ((None, 'native'), (None, 'native')))
+            patch.setattr(hc, '__init__', native_init)
+            megatron_mhc.patch_megatron_mhc()
+            fallback = hc(config, 1)
+            assert fallback._forward_normal.__func__ is native._forward_normal.__func__
+            assert fallback._h_post_bda_op is native._h_post_bda_op
+    else:
+        monkeypatch.setenv('GLM_MHC', mode)
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, 'argv', ['megatron', 'pt', '--enable_npu_model_patch', 'false'])
+        megatron_mhc.patch_megatron_mhc()
+        assert hc.__init__ is native_init
     megatron_mhc.patch_megatron_mhc()
     init = hc.__init__
     megatron_mhc.patch_megatron_mhc()
     assert hc.__init__ is init
     fused = hc(config, 1).to('npu')
+    pre_patched = getattr(fused._forward_normal, 'func', None) is megatron_mhc._cann_pre
+    post_patched = getattr(fused._h_post_bda_op, 'func', None) is megatron_mhc._cann_post
+    assert (pre_patched, post_patched) == (mode in (None, 'pre', 'both'), mode in (None, 'post', 'both'))
     fused.load_state_dict(native.state_dict())
 
     # Batch > 1 catches mistakes in the sequence-major to batch-major conversion.

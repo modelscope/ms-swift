@@ -1,18 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Optional mHC forward and backward fusion for the GLM-5.3-Flash text decoder."""
-import ast
-import importlib
-import importlib.util
 import inspect
-import linecache
 import os
-import textwrap
 import torch
 from functools import wraps
-from types import ModuleType
 
 from swift.utils.logger import get_logger
-from .utils import apply_patch_map
+from .mhc import get_mhc_ops, supports_auto_mhc
 
 logger = get_logger()
 
@@ -24,36 +18,49 @@ def native_post(residual, comb, h_out, post):
     return post.to(dtype).unsqueeze(-1) * h_out.unsqueeze(-2) + mixed
 
 
-def with_fused_post(forward, merge):
-    """Replace only the two known residual assignments in the installed decoder."""
-    source = textwrap.dedent(inspect.getsource(forward))
-    tree = ast.parse(source)
-    fn = tree.body[0]
-    if not isinstance(fn, ast.FunctionDef) or fn.decorator_list or forward.__closure__:
-        raise RuntimeError('Unexpected decoder wrapper. Inspect the loaded decoder forward first.')
-    reference = ast.parse('hidden_states = post.to(dtype).unsqueeze(-1) * hidden_states.unsqueeze(-2)'
-                          ' + torch.matmul(comb.to(dtype).transpose(-1, -2), residual)').body[0]
-    matches = [node for node in fn.body if ast.dump(node) == ast.dump(reference)]
-    if len(matches) != 2:
-        raise RuntimeError(f'Expected two HF residual assignments in {inspect.getfile(forward)}, found {len(matches)}. '
-                           'Use GLM_MHC=pre to enable only pre fusion.')
-    # Splice the original lines so all attention branches, FFN, and return values
-    # come directly from the installed implementation.
-    lines = source.splitlines(keepends=True)
-    for node in reversed(matches):
-        lines[node.lineno - 1:node.end_lineno] = [
-            ' ' * node.col_offset + 'hidden_states = _glm_mhc_merge(residual, comb, hidden_states, post)\n'
-        ]
-    source = ''.join(lines)
-    filename = f'<GLM mHC post patch of {inspect.getfile(forward)}>'
-    linecache.cache[filename] = (len(source), None, source.splitlines(True), filename)
-    namespace = dict(forward.__globals__, _glm_mhc_merge=merge)
-    exec(compile(source, filename, 'exec'), namespace)
-    patched = namespace[fn.name]
-    return wraps(forward)(patched)
+def with_fused_post(original, merge):
+    # Transformers inlines both residual merges in this method.
+    def decoder_forward(self,
+                        hidden_states,
+                        attention_mask=None,
+                        position_ids=None,
+                        past_key_values=None,
+                        use_cache=False,
+                        position_embeddings=None,
+                        prev_topk_indices=None,
+                        **kwargs):
+        residual = hidden_states
+        post, comb, hidden_states = self.attn_hc(hidden_states)
+        hidden_states = self.input_layernorm(hidden_states)
+        topk_indices = None
+        if self.block_type == 'linear_attention':
+            hidden_states = self.self_attn(
+                hidden_states=hidden_states, cache_params=past_key_values, attention_mask=attention_mask, **kwargs)
+        else:
+            hidden_states, _, topk_indices = self.self_attn(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                use_cache=use_cache,
+                position_embeddings=position_embeddings,
+                prev_topk_indices=prev_topk_indices,
+                **kwargs)
+        residual = merge(residual, comb, hidden_states, post)
+        post, comb, hidden_states = self.ffn_hc(residual)
+        hidden_states = self.mlp(self.post_attention_layernorm(hidden_states))
+        return merge(residual, comb, hidden_states, post), topk_indices
+
+    if inspect.unwrap(original) is not original or original.__closure__:
+        raise RuntimeError('GLM mHC post requires an unwrapped Transformers decoder forward. Use GLM_MHC=pre.')
+    params = inspect.signature(original).parameters.values()
+    native_params = [param.replace(annotation=inspect.Parameter.empty) for param in params]
+    if native_params != list(inspect.signature(decoder_forward).parameters.values()):
+        raise RuntimeError('Unsupported GLM-5.3 decoder forward signature for mHC post. Use GLM_MHC=pre.')
+    return wraps(original)(decoder_forward)
 
 
-def make_pre(cann_pre, original, backend):
+def make_pre(cann_pre, original, backend, automatic=False):
     # CANN releases expose either an autograd wrapper with eight arguments or
     # a wrapper with an explicit backward-intermediates flag.
     sig = inspect.signature(cann_pre)
@@ -67,6 +74,8 @@ def make_pre(cann_pre, original, backend):
     @wraps(original)
     def fused(self, hidden_streams):
         x = hidden_streams
+        if automatic and (self.hc_sinkhorn_iters != 20 or not supports_auto_mhc(x, self.hc_mult, x.shape[-1])):
+            return original(self, x)
         if x.device.type != 'npu' or x.dtype != torch.bfloat16:
             if backend == 'cann':
                 raise ValueError('CANN mHC pre requires BF16 hidden streams on NPU')
@@ -84,39 +93,6 @@ def make_pre(cann_pre, original, backend):
     return fused
 
 
-def cann_package():
-    import torch_npu  # Register the NPU backend before importing either provider.
-    for name in ('cann_ops_transformer', 'npu_ops_transformer'):
-        if importlib.util.find_spec(name) is not None:
-            return importlib.import_module(name)
-    return None
-
-
-def lookup_op(package, name):
-    """Find a named Python wrapper. Keep errors from its own dependencies visible."""
-    ops_path = package.__name__ + '.ops'
-    exports = getattr(package, 'ops', None)
-    if exports is None:
-        try:
-            exports = importlib.import_module(ops_path)
-        except ModuleNotFoundError as exc:
-            if exc.name != ops_path:
-                raise
-    for namespace in (exports, package):
-        op = getattr(namespace, name, None)
-        if isinstance(op, ModuleType):
-            op = getattr(op, name, None)
-        if callable(op):
-            return op
-    if exports is not None and hasattr(exports, '__path__'):
-        module_name = ops_path + '.' + name
-        if importlib.util.find_spec(module_name) is not None:
-            op = getattr(importlib.import_module(module_name), name, None)
-            if callable(op):
-                return op
-    return None
-
-
 def selected_backend():
     backend = os.environ.get('GLM_MHC_BACKEND', 'cann').lower()
     if backend not in ('auto', 'cann'):
@@ -124,32 +100,17 @@ def selected_backend():
     return backend
 
 
-def resolve_op(package, name, backend):
-    op = lookup_op(package, name) if package is not None else None
-    if op is not None:
-        return op, f'{package.__name__}.{name}'
-    if backend == 'cann':
-        provider = package.__file__ if package is not None else 'no installed CANN transformer package'
-        raise ImportError(f'GLM_MHC_BACKEND=cann requires {name}, unavailable in {provider}')
-    # An explicitly selected auto backend can use a separately supplied Triton implementation.
-    glm_mhc_triton = importlib.import_module('glm_mhc_triton')
-
-    if name == 'mhc_pre_sinkhorn':
-        return glm_mhc_triton.pre_sinkhorn, 'Triton Ascend Sinkhorn + PyTorch projection'
-    return glm_mhc_triton.mhc_post, 'Triton Ascend mHC post'
-
-
 def make_forwards(mode, original, backend):
-    package = cann_package()
+    (pre_op, pre_backend), (mhc_post, post_backend) = get_mhc_ops(mode, backend)
     pre = original
-    pre_backend = post_backend = 'HF'
-    if mode in ('pre', 'both'):
-        pre_op, pre_backend = resolve_op(package, 'mhc_pre_sinkhorn', backend)
-        pre = make_pre(pre_op, original, backend)
-    if mode in ('post', 'both'):
-        mhc_post, post_backend = resolve_op(package, 'mhc_post', backend)
+    if pre_op is not None:
+        pre = make_pre(pre_op, original, backend, automatic=mode == 'auto')
+    if mhc_post is not None:
 
         def post(residual, comb, h_out, post_weight):
+            if mode == 'auto' and (not supports_auto_mhc(residual, *residual.shape[-2:])
+                                   or h_out.dtype != residual.dtype):
+                return native_post(residual, comb, h_out, post_weight)
             if residual.device.type != 'npu' or residual.dtype != torch.bfloat16:
                 if backend == 'cann':
                     raise ValueError('CANN mHC post requires BF16 residuals on NPU')
@@ -163,27 +124,21 @@ def make_forwards(mode, original, backend):
     return pre, post, pre_backend, post_backend
 
 
-def apply_patch(mode):
-    """Install an enabled fusion mode after the NPU entry point has handled GLM_MHC=off."""
-    if mode not in ('pre', 'post', 'both'):
-        raise ValueError(f'Expected an enabled GLM_MHC mode (pre, post, or both), got {mode!r}')
-
-    from transformers.models.glm5_next import modeling_glm5_next as glm
-
-    backend = selected_backend()
-    installed = getattr(glm, '_glm_mhc_swift_mode', None)
-    if installed == mode and getattr(glm, '_glm_mhc_swift_backend', None) == backend:
-        return
-    if installed:
-        raise RuntimeError(f'GLM mHC is already installed in mode {installed}. Restart to change mode or backend.')
-
-    pre, post, pre_name, post_name = make_forwards(mode, glm.Glm5NextTextHyperConnection.forward, backend)
-    patches = {}
-    if mode in ('post', 'both'):
-        patches['Glm5NextTextDecoderLayer.forward'] = with_fused_post(glm.Glm5NextTextDecoderLayer.forward, post)
-    if mode in ('pre', 'both'):
-        patches['Glm5NextTextHyperConnection.forward'] = pre
-    apply_patch_map(glm, patches)
-    glm._glm_mhc_swift_mode = mode
-    glm._glm_mhc_swift_backend = backend
-    logger.info(f'[glm-mhc] mode={mode} pre={pre_name} post={post_name}')
+def get_glm5_next_mhc_patches(glm, mode):
+    try:
+        backend = 'cann' if mode == 'auto' else selected_backend()
+        original = glm.Glm5NextTextHyperConnection.forward
+        pre, post, pre_name, post_name = make_forwards(mode, original, backend)
+        patches = {}
+        if pre is not original:
+            patches['Glm5NextTextHyperConnection.forward'] = pre
+        if post is not native_post:
+            patches['Glm5NextTextDecoderLayer.forward'] = with_fused_post(glm.Glm5NextTextDecoderLayer.forward, post)
+    except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
+        if mode != 'auto':
+            raise
+        logger.debug('Using native Transformers GLM mHC: %s', exc)
+        return {}
+    if patches:
+        logger.info(f'[glm-mhc] mode={mode} pre={pre_name} post={post_name}')
+    return patches

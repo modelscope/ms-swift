@@ -675,6 +675,8 @@ ms-swift enables model-level patches by default in NPU environments to adapt som
 swift sft ... --enable_npu_model_patch false
 ```
 
+On supported Ascend devices, `swift pt` and `megatron pt` automatically use CANN mHC pre and post fusion for GLM-5.3-Flash BF16 computations. Both stages use native mHC if either operator is unavailable. Pass `--enable_npu_model_patch false` at startup to use the native model implementation on NPU. To disable only mHC fusion, set `GLM_MHC=off`. For debugging, select `pre` or `post` individually.
+
 ## Model Saving, Merge LoRA, and Resume Training
 
 Use `--output_dir` to set the output directory, `--save_steps` to control checkpoint save intervals, and `--save_total_limit` to control how many checkpoints to keep. After LoRA training, the checkpoint directory contains adapter weights, training arguments, and trainer state. A typical directory layout is:

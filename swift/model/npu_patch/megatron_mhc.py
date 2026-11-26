@@ -1,8 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """CANN mHC pre/post fusion for the GLM-5.3-Flash Megatron hybrid stack."""
-import os
 import torch
-from functools import cache, partial, wraps
+from functools import partial, wraps
+
+from . import _is_model_patch_enabled_from_argv
+from .mhc import get_mhc_mode, get_mhc_ops, supports_auto_mhc
+from .utils import import_optional_module
 
 
 def _sequence_first(tensor):
@@ -13,7 +16,9 @@ def _sequence_first(tensor):
     return tensor.transpose(0, 1).contiguous()
 
 
-def _cann_pre(module, native, op, hidden_states):
+def _cann_pre(module, native, op, hidden_states, *, automatic=False):
+    if automatic and not supports_auto_mhc(hidden_states, module.n, module.hidden_size):
+        return native(hidden_states)
     if hidden_states.device.type != 'npu' or hidden_states.dtype != torch.bfloat16:
         return native(hidden_states)
 
@@ -26,7 +31,9 @@ def _cann_pre(module, native, op, hidden_states):
     return _sequence_first(aggregated), _sequence_first(h_res), _sequence_first(h_post), hidden_states
 
 
-def _cann_post(native, op, h_res, residual, h_post, output, bias):
+def _cann_post(native, op, h_res, residual, h_post, output, bias, *, automatic=False):
+    if automatic and not supports_auto_mhc(residual, *residual.shape[-2:]):
+        return native(h_res, residual, h_post, output, bias)
     if (residual.device.type != 'npu' or residual.dtype != torch.bfloat16 or output.dtype != torch.bfloat16
             or bias is not None):
         return native(h_res, residual, h_post, output, bias)
@@ -39,43 +46,51 @@ def _cann_post(native, op, h_res, residual, h_post, output, bias):
 
 
 def patch_megatron_mhc(mode=None):
-    """Install once per process. MCore 0.18 and the default mode need no CANN mHC imports."""
-    if mode is None:
-        mode = os.environ.get('GLM_MEGATRON_MHC', 'off')
+    """Choose the mHC operators once, when a compatible GLM layer is constructed."""
+    if not _is_model_patch_enabled_from_argv():
+        return
+    # Older Python callers passed 'cann' to install both operators.
+    mode = get_mhc_mode('both' if mode == 'cann' else mode)
     if mode == 'off':
         return
-    if mode != 'cann':
-        raise ValueError('GLM_MEGATRON_MHC must be off or cann')
 
-    from megatron.core.transformer.hyper_connection import HyperConnectionModule
+    automatic = mode == 'auto'
+    if automatic:
+        module = import_optional_module('megatron.core.transformer.hyper_connection')
+        HyperConnectionModule = getattr(module, 'HyperConnectionModule', None)
+        if not hasattr(HyperConnectionModule, '_forward_normal'):
+            return
+    else:
+        from megatron.core.transformer.hyper_connection import HyperConnectionModule
 
     from swift.utils import get_logger
-    from .glm5_next_mhc import cann_package, resolve_op
 
     original_init = HyperConnectionModule.__init__
     if getattr(original_init, '_glm53_cann_mhc', False):
         return
-
-    @cache
-    def get_cann_ops():
-        package = cann_package()
-        pre, _ = resolve_op(package, 'mhc_pre_sinkhorn', 'cann')
-        post, _ = resolve_op(package, 'mhc_post', 'cann')
-        return pre, post
 
     @wraps(original_init)
     def init(self, config, layer_number):
         original_init(self, config, layer_number)
         if getattr(config, 'hf_model_type', None) != 'glm5_next':
             return
-        if not (self.n == 4 and config.mhc_norm_eps_inside_sqrt and config.mhc_keep_mappings_in_fp32
-                and self.sinkhorn_eps == self.compute_h_eps):
+        if not (self.n == 4 and getattr(config, 'mhc_norm_eps_inside_sqrt', False)
+                and getattr(config, 'mhc_keep_mappings_in_fp32', False)
+                and self.sinkhorn_eps == getattr(self, 'compute_h_eps', None)):
+            if automatic:
+                return
             raise ValueError('CANN GLM mHC requires four streams, FP32 mixing, epsilon inside sqrt '
                              'and matching gate/Sinkhorn epsilons')
-        pre, post = get_cann_ops()
-        self._forward_normal = partial(_cann_pre, self, self._forward_normal, pre)
-        self._h_post_bda_op = partial(_cann_post, self._h_post_bda_op, post)
-        get_logger().info_once('Enabled CANN mHC pre/post for Megatron GLM HyperConnectionModule.')
+        if automatic and self.sinkhorn_iterations != 20:
+            return
+        (pre, _), (post, _) = get_mhc_ops(mode)
+        if pre is not None:
+            self._forward_normal = partial(_cann_pre, self, self._forward_normal, pre, automatic=automatic)
+        if post is not None:
+            self._h_post_bda_op = partial(_cann_post, self._h_post_bda_op, post, automatic=automatic)
+        if pre is not None or post is not None:
+            stages = 'pre/post' if pre and post else mode
+            get_logger().info_once(f'Enabled CANN mHC {stages} for Megatron GLM HyperConnectionModule.')
 
     init._glm53_cann_mhc = True
     HyperConnectionModule.__init__ = init

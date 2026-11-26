@@ -678,6 +678,8 @@ ms-swift 在 NPU 环境下默认会启用模型层 patch，以适配部分 Trans
 swift sft ... --enable_npu_model_patch false
 ```
 
+在支持 CANN mHC 算子的昇腾环境中，`swift pt` 和 `megatron pt` 默认给 GLM-5.3-Flash 的 BF16 计算启用 mHC pre 和 post 融合。缺少任一算子时使用原生 mHC。要在 NPU 上使用原生模型实现，启动时传入 `--enable_npu_model_patch false`。如果只想关闭 mHC，可设 `GLM_MHC=off`。调试时也可用 `pre` 或 `post` 单独指定一项。
+
 ## 模型保存、Merge LoRA 和断点续训
 
 训练时通过 `--output_dir` 指定输出目录，通过 `--save_steps` 控制 checkpoint 保存间隔，通过 `--save_total_limit` 控制最多保留多少个 checkpoint。LoRA 训练结束后，checkpoint 目录中会保存 adapter 权重、训练参数和 trainer 状态；常见目录形态如下：
