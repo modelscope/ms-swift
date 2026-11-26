@@ -1,18 +1,23 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import inspect
 import torch
 import torch.nn.functional as F
-import torch_npu
+from functools import wraps
 from torch import nn
-from transformers.models.qwen2 import modeling_qwen2
-from transformers.models.qwen3 import modeling_qwen3
-from transformers.models.qwen3_moe import modeling_qwen3_moe
-from transformers.models.qwen3_vl import modeling_qwen3_vl
-from transformers.models.qwen3_vl_moe import modeling_qwen3_vl_moe
+from transformers.utils import is_torch_npu_available
 
 from swift.utils.logger import get_logger
-from .utils import apply_patch_map, import_optional_module
+from .utils import apply_patch_map, get_cann_mhc_ops, import_optional_module, supports_cann_mhc
+
+if is_torch_npu_available():
+    import torch_npu
+    from transformers.models.qwen2 import modeling_qwen2
+    from transformers.models.qwen3 import modeling_qwen3
+    from transformers.models.qwen3_moe import modeling_qwen3_moe
+    from transformers.models.qwen3_vl import modeling_qwen3_vl
+    from transformers.models.qwen3_vl_moe import modeling_qwen3_vl_moe
 
 logger = get_logger()
 
@@ -516,6 +521,103 @@ QWEN3_5_MOE_PATCHES = {
 QWEN3_5_MOE_OPTIONAL_PATCHES = {}
 
 # ---------------------------------------------------------------------------
+# GLM-5.3-Flash mHC patch
+# ---------------------------------------------------------------------------
+
+
+def _glm5_next_native_post(residual, comb, h_out, post):
+    # Preserve the HF rounding points for the reference comparison.
+    dtype = residual.dtype
+    mixed = comb.to(dtype).transpose(-1, -2) @ residual
+    return post.to(dtype).unsqueeze(-1) * h_out.unsqueeze(-2) + mixed
+
+
+def _glm5_next_decoder_forward(original, merge):
+    # Transformers inlines both residual merges in this method.
+    def decoder_forward(self,
+                        hidden_states,
+                        attention_mask=None,
+                        position_ids=None,
+                        past_key_values=None,
+                        use_cache=False,
+                        position_embeddings=None,
+                        prev_topk_indices=None,
+                        **kwargs):
+        residual = hidden_states
+        post, comb, hidden_states = self.attn_hc(hidden_states)
+        hidden_states = self.input_layernorm(hidden_states)
+        topk_indices = None
+        if self.block_type == 'linear_attention':
+            hidden_states = self.self_attn(
+                hidden_states=hidden_states, cache_params=past_key_values, attention_mask=attention_mask, **kwargs)
+        else:
+            hidden_states, _, topk_indices = self.self_attn(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                use_cache=use_cache,
+                position_embeddings=position_embeddings,
+                prev_topk_indices=prev_topk_indices,
+                **kwargs)
+        residual = merge(residual, comb, hidden_states, post)
+        post, comb, hidden_states = self.ffn_hc(residual)
+        hidden_states = self.mlp(self.post_attention_layernorm(hidden_states))
+        return merge(residual, comb, hidden_states, post), topk_indices
+
+    if inspect.unwrap(original) is not original or original.__closure__:
+        return None
+    params = inspect.signature(original).parameters.values()
+    native_params = [param.replace(annotation=inspect.Parameter.empty) for param in params]
+    if native_params != list(inspect.signature(decoder_forward).parameters.values()):
+        return None
+    return wraps(original)(decoder_forward)
+
+
+def _glm5_next_mhc_pre(cann_pre, original):
+
+    @wraps(original)
+    def fused(self, hidden_streams):
+        x = hidden_streams
+        if self.hc_sinkhorn_iters != 20 or not supports_cann_mhc(x, self.hc_mult, x.shape[-1]):
+            return original(self, x)
+        h_in, post, comb = cann_pre(x.contiguous(), self.fn.float(), self.scale.float(), self.base.float(),
+                                    self.hc_mult, self.hc_sinkhorn_iters, self.hc_eps, self.input_norm.eps)
+        return post, comb.unflatten(-1, (self.hc_mult, self.hc_mult)), h_in
+
+    return fused
+
+
+def _glm5_next_mhc_post(cann_post):
+
+    def fused(residual, comb, h_out, post):
+        if h_out.dtype != residual.dtype or not supports_cann_mhc(residual, *residual.shape[-2:]):
+            return _glm5_next_native_post(residual, comb, h_out, post)
+        return cann_post(residual.contiguous(),
+                         comb.float().contiguous(), h_out.contiguous(),
+                         post.float().contiguous())
+
+    return fused
+
+
+def _get_glm5_next_mhc_patches(glm):
+    ops = get_cann_mhc_ops()
+    hyper_connection = getattr(glm, 'Glm5NextTextHyperConnection', None)
+    decoder = getattr(glm, 'Glm5NextTextDecoderLayer', None)
+    if ops is None or hyper_connection is None or decoder is None:
+        return {}
+    pre, post = ops
+    forward = _glm5_next_decoder_forward(decoder.forward, _glm5_next_mhc_post(post))
+    if forward is None:
+        logger.debug('Skipping CANN mHC for an unsupported GLM-5.3 decoder forward.')
+        return {}
+    return {
+        'Glm5NextTextHyperConnection.forward': _glm5_next_mhc_pre(pre, hyper_connection.forward),
+        'Glm5NextTextDecoderLayer.forward': forward
+    }
+
+
+# ---------------------------------------------------------------------------
 # Patch table and apply entry
 # ---------------------------------------------------------------------------
 
@@ -538,7 +640,7 @@ _APPLIED = False
 
 def apply_patch() -> None:
     global _APPLIED
-    if _APPLIED:
+    if _APPLIED or not is_torch_npu_available():
         return
 
     patch_groups = [
@@ -572,8 +674,7 @@ def apply_patch() -> None:
 
     modeling_glm5_next = import_optional_module('transformers.models.glm5_next.modeling_glm5_next')
     if modeling_glm5_next is not None:
-        from .glm5_next_mhc import get_glm5_next_mhc_patches
-        patch_groups.append(('glm5_next', modeling_glm5_next, get_glm5_next_mhc_patches(modeling_glm5_next), {}))
+        patch_groups.append(('glm5_next', modeling_glm5_next, _get_glm5_next_mhc_patches(modeling_glm5_next), {}))
 
     for _group_name, module, patches, optional_patches in patch_groups:
         apply_patch_map(module, _build_patch_map(module, patches, optional_patches))

@@ -10,13 +10,13 @@ def check(args):
     import torch
     from transformers.models.glm5_next import modeling_glm5_next as glm
 
-    from swift.model.npu_patch import glm5_next_mhc as mhc
+    from swift.model.npu_patch import model
     original = inspect.unwrap(glm.Glm5NextTextHyperConnection.forward)
-    ops = mhc.get_cann_mhc_ops()
+    ops = model.get_cann_mhc_ops()
     if ops is None:
         raise RuntimeError('Requires CANN mHC operators')
-    pre = original if args.mode == 'post' else mhc.make_pre(ops[0], original)
-    post = mhc.native_post if args.mode == 'pre' else mhc.make_post(ops[1])
+    pre = original if args.mode == 'post' else model._glm5_next_mhc_pre(ops[0], original)
+    post = model._glm5_next_native_post if args.mode == 'pre' else model._glm5_next_mhc_post(ops[1])
     torch.npu.set_device(args.device)
     torch.manual_seed(1234)
     torch.npu.manual_seed_all(1234)
@@ -49,7 +49,7 @@ def check(args):
         grads = torch.autograd.grad(y, (x0, a0, b0, *params), grad_outputs=upstream)
         return tuple(t.detach() for t in (post_w, comb, collapsed, y, *grads))
 
-    ref = run(original, mhc.native_post)
+    ref = run(original, model._glm5_next_native_post)
     actual = run(pre, post)
     ok = True
     names = ('post', 'comb', 'h_in', 'output', 'dx', 'dA', 'dB')
@@ -73,7 +73,7 @@ def _check_decoder_post(block_type):
     import torch
 
     glm = pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
-    from swift.model.npu_patch.glm5_next_mhc import native_post, with_fused_post
+    from swift.model.npu_patch import model
 
     def hc(x):
         # Non-uniform weights exercise stream order and both residual merges.
@@ -105,8 +105,8 @@ def _check_decoder_post(block_type):
     x = torch.linspace(-0.5, 0.5, 24).reshape(1, 2, 4, 3).requires_grad_()
     original = inspect.unwrap(glm.Glm5NextTextDecoderLayer.forward)
     expected, indices = original(layer, x, **kwargs)
-    merge = Mock(wraps=native_post)
-    actual, actual_indices = with_fused_post(original, merge)(layer, x, **kwargs)
+    merge = Mock(wraps=model._glm5_next_native_post)
+    actual, actual_indices = model._glm5_next_decoder_forward(original, merge)(layer, x, **kwargs)
     assert merge.call_count == 2 and actual_indices is indices
     assert len(calls) == 2 and calls[0] == calls[1]
     torch.testing.assert_close(actual, expected)
@@ -127,24 +127,24 @@ def test_auto_uses_native_when_post_is_missing(monkeypatch):
     glm = pytest.importorskip('transformers.models.glm5_next.modeling_glm5_next')
     import sys
 
-    from swift.model.npu_patch import glm5_next_mhc
+    from swift.model.npu_patch import model
     monkeypatch.setitem(sys.modules, 'cann_ops_transformer.ops', SimpleNamespace(mhc_pre_sinkhorn=Mock()))
-    assert glm5_next_mhc.get_glm5_next_mhc_patches(glm) == {}
+    assert model._get_glm5_next_mhc_patches(glm) == {}
 
 
 def test_auto_uses_native_on_cpu():
     import torch
 
-    from swift.model.npu_patch import glm5_next_mhc as mhc
+    from swift.model.npu_patch import model
     op = Mock(side_effect=AssertionError('CANN received a CPU tensor'))
     original = Mock()
-    pre, post = mhc.make_pre(op, original), mhc.make_post(op)
+    pre, post = model._glm5_next_mhc_pre(op, original), model._glm5_next_mhc_post(op)
     x = torch.randn(1, 2, 4, 8)
     layer = SimpleNamespace(hc_mult=4, hc_sinkhorn_iters=20)
     assert pre(layer, x) is original.return_value
     original.assert_called_once_with(layer, x)
     args = (x, torch.randn(1, 2, 4, 4), x.mean(-2), torch.randn(1, 2, 4))
-    torch.testing.assert_close(post(*args), mhc.native_post(*args))
+    torch.testing.assert_close(post(*args), model._glm5_next_native_post(*args))
     op.assert_not_called()
 
 
