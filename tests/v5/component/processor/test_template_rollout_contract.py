@@ -10,14 +10,7 @@ from pathlib import Path
 import pytest
 
 from swift.dev.template.base import MaxLengthError, Template
-from swift.dev.template.conventions import (
-    APPEND_ROLES,
-    FIELDS,
-    SPLICE_FILL,
-    TOKEN,
-    is_bookkeeping_key,
-    model_payload_keys,
-)
+from swift.dev.template.conventions import is_bookkeeping_key, model_payload_keys
 from swift.dev.template.meta import TemplateMeta
 from swift.dev.template.output import OutputCodec
 from twinkle.template.contract import engine_input_ids
@@ -91,15 +84,6 @@ def test_append_completion_advances_trajectory():
     assert engine_input_ids(result) == [1, 2, 3, 10, 11]
     assert result["reasoning_started"] is False
     assert prompt == _prompt()
-
-
-def test_append_roles_match_twinkle():
-    """demonstration is scored (SFT imitates it) but carries no log-prob (RL skips it)."""
-    assert {name: tuple(role) for name, role in APPEND_ROLES.items()} == {
-        "completion": (True, True),
-        "demonstration": (True, False),
-        "context": (False, False),
-    }
 
 
 def test_unknown_append_role_raises():
@@ -239,15 +223,6 @@ def test_unsupported_system_prompt_fails_explicitly():
 
 
 # ---- field registry ----------------------------------------------------------------------------
-
-
-def test_registered_fields_are_not_bookkeeping():
-    assert not [name for name in FIELDS if is_bookkeeping_key(name)]
-
-
-def test_only_token_fields_follow_a_splice():
-    assert set(SPLICE_FILL) == {"token_type_ids", "mm_token_type_ids"}
-    assert all(FIELDS[name].kind == TOKEN for name in SPLICE_FILL)
 
 
 def test_payload_is_everything_unregistered():

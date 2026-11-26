@@ -9,7 +9,6 @@ from twinkle.template.contract.encoding import (
     render_delta,
     shift,
     shift_values,
-    splice,
     unshift,
     unshift_values,
 )

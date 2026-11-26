@@ -38,46 +38,6 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def fp8_seq_align_option(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
-                         cp_size: int) -> Optional[int]:
-    """The processor's fp8/fp4 token-dimension alignment (legacy ``get_padding_to`` on the data path).
-
-    fp8 GEMMs require the token dimension to be a multiple of 16 (delayed/tensorwise), 32 (mxfp8)
-    or 128 (blockwise); legacy pads every micro-batch through the collator's ``padding_to``. Dev
-    restores it as ``InputProcessor(seq_align_to=...)``. None when fp8/fp4 is off or the backend
-    is not megatron, so bf16 runs keep twinkle's padding untouched. Shared by every recipe that
-    trains locally (SFT and the RL policies alike): the TE GEMM dim assert does not care which
-    loss produced the tokens.
-    """
-    if distributed_config.backend != 'megatron':
-        return None
-    if model_config.fp8_format is None and model_config.fp4_format is None:
-        return None
-    from swift.dev.builders.model import _mixed_precision_for
-    from swift.dev.processor.base import get_sequence_padding_to
-    from swift.dev.utils.naming import resolve_megatron_attn_backend
-    attn_backend = resolve_megatron_attn_backend(
-        model_config.attn_impl, mixed_precision=_mixed_precision_for(model_config.torch_dtype))
-    seq_align_to = get_sequence_padding_to(
-        distributed_config.tensor_model_parallel_size,
-        distributed_config.sequence_parallel,
-        cp_size,
-        attn_backend.name,
-        fp8_format=model_config.fp8_format,
-        fp4_format=model_config.fp4_format,
-        fp8_recipe=model_config.fp8_recipe)
-    return seq_align_to if seq_align_to and seq_align_to > 1 else None
-
-
-def processor_cp_size(distributed_config: 'DistributedConfig') -> int:
-    """The policy's context-parallel width for token padding: explicit knob or parallel_spec."""
-    cp_size = distributed_config.context_parallel_size
-    if distributed_config.parallel_spec:
-        from twinkle import DeviceMesh
-        cp_size = max(cp_size, DeviceMesh.parse_spec(distributed_config.parallel_spec).get('cp_size', 1) or 1)
-    return cp_size
-
-
 def close_driver_preserving_error(driver: Any) -> Dict[str, Any]:
     """Return the driver's terminal statistics while preserving an in-flight training error."""
     primary_error = sys.exc_info()[0]

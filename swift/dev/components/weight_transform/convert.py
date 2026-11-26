@@ -541,10 +541,11 @@ class ConvertComponent(BaseWeightTransform):
         cp_size = mesh.cp_world_size or 1
         cp_partition_mode = (
             self.distributed_config.cp_partition_mode if self.distributed_config is not None else 'zigzag')
+        from swift.dev.processor.base import get_sequence_padding_to
         mg_inputs = to_device(
             template.data_collator(
                 [inputs],
-                padding_to=_get_padding_to(
+                padding_to=get_sequence_padding_to(
                     tp_size,
                     bool(getattr(mesh, 'sequence_parallel', False)),
                     cp_size,
@@ -1002,19 +1003,6 @@ def _forward_step_helper(model, inputs, dtype=None):
         output_tensor = None
 
     return output_tensor
-
-
-def _get_padding_to(tp_size: int, sequence_parallel: bool, cp_size: int, attention_backend_name: str,
-                    fp8_format=None, fp4_format=None, fp8_recipe: Optional[str] = None) -> Optional[int]:
-    """Sequence-length alignment the kernels require (legacy ``get_padding_to``, args -> params).
-
-    Delegates to the training data path's single source of truth so the converter's repartition
-    collation and the fp8 micro-batch padding can never drift apart.
-    """
-    from swift.dev.processor.base import get_sequence_padding_to
-    return get_sequence_padding_to(
-        tp_size, sequence_parallel, cp_size, attention_backend_name,
-        fp8_format=fp8_format, fp4_format=fp4_format, fp8_recipe=fp8_recipe)
 
 
 def _get_batch_on_this_cp_rank(batch: Dict[str, Any], *, is_multimodal: bool, task_type: Optional[str],

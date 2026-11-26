@@ -12,8 +12,6 @@ from swift.dev.recipe.utils import (
     auxiliary_mesh,
     build_rl_sampler,
     effective_colocate,
-    fp8_seq_align_option,
-    processor_cp_size,
     resolve_reward_scorers,
 )
 from swift.dev.utils.logger import get_logger
@@ -234,7 +232,7 @@ def initialize_cluster(
         rollout_sampling_params,
     )
     from swift.dev.loss import configure_rl_loss, configure_rl_metrics
-    from swift.dev.processor import InputProcessor, processor_kwargs
+    from swift.dev.processor import InputProcessor, input_processor_kwargs
     from swift.dev.recipe.utils import single_teacher_id
     from swift.dev.utils.scoring import PrivilegedView
 
@@ -294,17 +292,9 @@ def initialize_cluster(
         # process's row semantics; locally the built Template is set directly.
         configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
-        # fp8/fp4 micro-batch token padding, same wire as the supervised assembly: without it a
-        # megatron fp8 policy forward dies on TE's GEMM dim assert (token dim % 16) as soon as a
-        # rollout group's packed length is not aligned. None keeps bf16 runs untouched.
-        seq_align_to = fp8_seq_align_option(model_config, distributed_config, processor_cp_size(distributed_config))
         model.set_processor(
             InputProcessor,
-            padding_free=template_config.padding_free,
-            padding_side=template_config.padding_side,
-            cp_partition_mode=distributed_config.cp_partition_mode,
-            seq_align_to=seq_align_to,
-            **processor_kwargs(template),
+            **input_processor_kwargs(template, template_config, distributed_config, model_config),
         )
         model.set_template(template)
     # The optimizer reads the tuner's param groups and sizes its LR scheduler from the step budget;

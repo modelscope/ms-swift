@@ -97,7 +97,7 @@ def initialize_rft_cluster(
         rollout_sampling_params,
     )
     from swift.dev.loss import configure_loss
-    from swift.dev.processor import InputProcessor, processor_kwargs
+    from swift.dev.processor import InputProcessor, input_processor_kwargs
 
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         raise ValueError(
@@ -156,10 +156,7 @@ def initialize_rft_cluster(
     else:
         model.set_processor(
             InputProcessor,
-            padding_free=template_config.padding_free,
-            padding_side=template_config.padding_side,
-            cp_partition_mode=distributed_config.cp_partition_mode,
-            **processor_kwargs(template),
+            **input_processor_kwargs(template, template_config, distributed_config, model_config),
         )
         model.set_template(template)
         # RFT trains the kept completions with plain cross-entropy SFT -- NOT an RL loss.

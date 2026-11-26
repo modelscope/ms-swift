@@ -18,6 +18,7 @@ import pytest
 from swift.dev.builders.template import build_template
 from swift.dev.config import TemplateConfig
 from swift.dev.template import ENGINE, INFER, SCORE, TRAIN
+from swift.dev.template.inputs import preference_sample_from_row
 from tests.v5.component.processor.test_chat_template_parity import (
     REPRESENTATIVES,
     _CaseSkip,
@@ -104,7 +105,7 @@ def test_preference_sides_match_the_shipped_chat_template(family):
     rejected_messages[-1]["content"] = "5"
     rejected_ids, _ = _official(renderer, rejected_messages, False)
 
-    row = dev.encode_preference({"messages": copy.deepcopy(chosen_messages), "rejected_response": "5"})
+    row = dev.encode(preference_sample_from_row({"messages": copy.deepcopy(chosen_messages), "rejected_response": "5"}))
     for side, expected in (("chosen", chosen_ids), ("rejected", rejected_ids)):
         assert list(row[side]["input_ids"]) == expected, f"{family}: {side} diverged from the jinja"
         _assert_labels_predict_the_next_token(row[side])

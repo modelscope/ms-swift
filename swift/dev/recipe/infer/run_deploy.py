@@ -168,7 +168,8 @@ def build_server_config(
             "sampler_type unset to derive it from the backend."
         )
 
-    sampler_engine_args = _sampler_engine_args(backend, engine_args, adapter_mapping, deploy_config, _enable_lora)
+    sampler_engine_args = _sampler_engine_args(
+        backend, engine_args, adapter_mapping, deploy_config, _enable_lora, model_config=model_config)
     device_group, device_mesh, nproc = _device_spec(distributed_config)
     template_spec = resolve_twinkle_template(template_config, model_config)
 
@@ -406,8 +407,12 @@ def _sampler_engine_args(
     adapter_mapping: Dict[str, str],
     deploy_config: DeployConfig,
     enable_lora,
+    *,
+    model_config: Optional[ModelConfig] = None,
 ) -> Dict[str, Any]:
-    """The engine args for the server sampler: the caller's, plus max_logprobs and LoRA sizing."""
+    """The engine args for the server sampler: the caller's, plus max_logprobs, LoRA sizing and
+    the family loader's ``trust_remote_code`` (same rule as the in-process sampler: sglang defaults
+    it to False, which breaks a remote-code family such as PaddleOCR-VL)."""
     resolved = dict(engine_args or {})
     # max_logprobs is a vLLM engine-startup flag (sglang has no equivalent -- its logprobs are
     # per-request), so vllm-only; LoRA sizing uses the same helper the in-process sampler uses.
@@ -415,6 +420,12 @@ def _sampler_engine_args(
         resolved.setdefault("max_logprobs", deploy_config.max_logprobs)
     if adapter_mapping:
         enable_lora(resolved, backend, list(adapter_mapping.values()))
+    if model_config is not None:
+        from swift.dev.builders.model import _resolve_model_loader
+
+        loader = _resolve_model_loader(model_config)
+        if loader is not None:
+            resolved.setdefault("trust_remote_code", loader.trust_remote_code)
     return resolved
 
 

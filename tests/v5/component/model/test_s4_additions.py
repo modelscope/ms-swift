@@ -222,13 +222,13 @@ def test_sentence_transformers_backend_satisfies_the_trainable_protocol():
 
 
 def test_mixed_precision_follows_torch_dtype():
-    """S4-27: _mixed_precision_for is the single source both backends read -- bf16 stays bf16,
+    """S4-27: mixed_precision_for is the single source both backends read -- bf16 stays bf16,
     fp16 stays fp16, and an unset dtype derives the autocast default bf16."""
-    from swift.dev.builders.model import _mixed_precision_for
+    from swift.dev.utils.naming import mixed_precision_for
 
-    assert _mixed_precision_for('bfloat16') == 'bf16'
-    assert _mixed_precision_for('float16') == 'fp16'
-    assert _mixed_precision_for(None) == 'bf16'  # the unset default
+    assert mixed_precision_for('bfloat16') == 'bf16'
+    assert mixed_precision_for('float16') == 'fp16'
+    assert mixed_precision_for(None) == 'bf16'  # the unset default
 
 
 # --- adapter init / targeting (S4-29 / S4-30 / S4-31 / S4-33) ----------------------------------

@@ -13,7 +13,7 @@ from swift.dev.config import TemplateConfig
 from swift.dev.dataset import EncodePreprocessor
 from swift.dev.template import ENGINE, INFER, SCORE, TRAIN
 from swift.dev.template.base import _rendering
-from swift.dev.template.inputs import TemplateInputs
+from swift.dev.template.inputs import TemplateInputs, kto_sample_from_row, preference_sample_from_row
 from tests.v5.component.processor.test_template_meta_model import _processor
 
 
@@ -157,7 +157,8 @@ def test_preference_split_is_rejected_before_pair_encoding(kto, monkeypatch):
 
     monkeypatch.setattr(template, "_encode_sample", forbidden)
     with pytest.raises(ValueError, match="split"):
-        template.encode_preference({**_conversation(), "rejected_response": "other", "label": True}, kto=kto)
+        row = {**_conversation(), "rejected_response": "other", "label": True}
+        template.encode(kto_sample_from_row(row) if kto else preference_sample_from_row(row))
 
 
 @pytest.mark.parametrize("intent", [INFER, ENGINE, TRAIN, SCORE])

@@ -95,6 +95,7 @@ def test_add_generation_prompt_is_honoured_or_rejected(template):
 def test_encode_routes_preference_by_type(template):
     """Only explicit runtime types select preference encoding; raw dicts stay SFT rows."""
     from swift.dev.template import INFER, KTOSample, PreferenceSample, TemplateInputs
+    from swift.dev.template.inputs import kto_sample_from_row, preference_sample_from_row
 
     row = {"messages": copy.deepcopy(MSGS), "rejected_response": "go away"}
     flat = template.encode(copy.deepcopy(row), return_length=True)
@@ -111,7 +112,7 @@ def test_encode_routes_preference_by_type(template):
         rejected={"messages": copy.deepcopy(MSGS[:-1]) + [{"role": "assistant", "content": "go away"}]},
     )
     pair = template.encode(preference)
-    assert pair == template.encode_preference(copy.deepcopy(row))
+    assert pair == template.encode(preference_sample_from_row(copy.deepcopy(row)))
     assert pair["chosen"]["input_ids"] != pair["rejected"]["input_ids"]
     with pytest.raises(ValueError, match="labelled intent"):
         template.encode(preference, intent=INFER)
@@ -119,7 +120,7 @@ def test_encode_routes_preference_by_type(template):
     kto = template.encode(KTOSample(conversation={"messages": copy.deepcopy(MSGS)}, label=True))
     assert kto["chosen"] is not None and kto["rejected"] is None and kto["label"] is True
     with pytest.raises(ValueError, match="requires a boolean label"):
-        template.encode_preference({"messages": copy.deepcopy(MSGS)}, kto=True)
+        template.encode(kto_sample_from_row({"messages": copy.deepcopy(MSGS)}))
 
 
 def test_encode_accepts_message_list_and_std_inputs(template):

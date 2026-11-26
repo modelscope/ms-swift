@@ -54,7 +54,8 @@ from .inputs import (
     normalize_sample,
     preference_sample_from_row,
 )
-from .intent import INFER, TRAIN, EncodeIntent, EngineBackend, check_generation_prompt, resolve_intent
+from twinkle.template.contract import INFER, TRAIN, EncodeIntent, EngineBackend, resolve_intent
+from twinkle.template.contract.encoding import check_generation_prompt as _check_generation_prompt
 from .media import _check_path, load_audio, load_batch, load_image, rescale_image
 from .output import AgentToolParser, OutputCodec
 from .processor import Processor, ProcessorMixin
@@ -97,6 +98,13 @@ def _rendering(mode: str):
         yield
     finally:
         _RENDER_MODE.reset(token)
+
+
+def check_generation_prompt(sample, add_generation_prompt) -> None:
+    """The shared open/closed-turn check, accepting a dev ``TemplateInputs`` (its chosen turn) too."""
+    if isinstance(sample, TemplateInputs):
+        sample = {'messages': sample.chosen.messages}
+    _check_generation_prompt(sample, add_generation_prompt)
 
 
 from twinkle.template.base import Template as TwinkleTemplate
@@ -796,16 +804,9 @@ class Template(ProcessorMixin, TwinkleTemplate):
             return super().encode(sample, add_generation_prompt, intent=intent, engine=engine,
                                   return_length=return_length, **kwargs)
         check_backend(engine)
-        tokenize = kwargs.pop('tokenize', True)
-        sample = normalize_sample(sample)
         if kwargs:
-            if isinstance(sample, dict):
-                sample = {**sample, 'chat_template_kwargs': {**(sample.get('chat_template_kwargs') or {}), **kwargs}}
-            elif isinstance(sample, TemplateInputs):
-                sample = deepcopy(sample)
-                sample.chosen.chat_template_kwargs.update(kwargs)
-            else:
-                raise TypeError('processor kwargs require a conversation sample')
+            raise TypeError(f'encode accepts no extra keyword arguments, got {sorted(kwargs)}')
+        sample = normalize_sample(sample)
         legacy_preference = False
         if getattr(self, "_legacy_mode", None) in ("rlhf", "kto") and intent is None and isinstance(sample, dict):
             legacy_mode = self._legacy_mode
@@ -820,8 +821,6 @@ class Template(ProcessorMixin, TwinkleTemplate):
                     rejected = {**sample, 'messages': sample['rejected_messages']}
                     self._mask_key_rounds(rejected)
                     sample['rejected_messages'] = rejected['messages']
-                sample = preference_sample_from_row(sample) if legacy_mode == "rlhf" else kto_sample_from_row(sample)
-                legacy_preference = True
                 sample = preference_sample_from_row(sample) if legacy_mode == "rlhf" else kto_sample_from_row(sample)
                 legacy_preference = True
         elif getattr(self, "_legacy_mode", None) in ("infer", "transformers") and intent is None:
@@ -892,15 +891,6 @@ class Template(ProcessorMixin, TwinkleTemplate):
             if (self.use_chat_template and self.task_type not in NO_SHIFT_TASK_TYPES
                     and (intent.with_labels or intent.add_generation_prompt)):
                 check_generation_prompt(sample, intent.add_generation_prompt)
-        if not tokenize:
-            inputs = TemplateInputs.from_dict(sample) if isinstance(sample, dict) else deepcopy(sample)
-            with _rendering(intent.render_mode(engine)):
-                self._preprocess_inputs(inputs.chosen)
-                contexts, _, _ = (self._jinja_encode(inputs.chosen) if self.template_backend == 'jinja'
-                                  else self._swift_encode(inputs.chosen))
-            prompt = ''.join(context if isinstance(context, str) else
-                             self.tokenizer.decode(context, skip_special_tokens=False) for context in contexts)
-            return {**source, 'prompt': prompt}
         if intent.add_generation_prompt:
             self._load_images_in_place(sample)
         with _rendering(intent.render_mode(engine)):
@@ -940,8 +930,15 @@ class Template(ProcessorMixin, TwinkleTemplate):
                     trajectory.pop('engine_input_ids', None)
                 if not intent.with_labels:
                     trajectory['reasoning_started'] = self._reasoning_started(ids)
-            if engine_encoded is not None and engine_encoded.get('mm_processor_kwargs'):
-                trajectory['mm_processor_kwargs'] = engine_encoded['mm_processor_kwargs']
+            if engine_encoded is not None:
+                # Serving engines consume the media the engine encoding loaded (resized images, decoded
+                # waveforms); the raw paths/URLs in the sample are not accepted by them, so they win.
+                if engine != 'transformers':
+                    for key in ('images', 'videos', 'audios'):
+                        if engine_encoded.get(key) is not None:
+                            trajectory[key] = engine_encoded[key]
+                if engine_encoded.get('mm_processor_kwargs'):
+                    trajectory['mm_processor_kwargs'] = engine_encoded['mm_processor_kwargs']
             if not intent.with_labels:
                 for key in ('labels', 'loss_scale', 'completion_mask'):
                     trajectory.pop(key, None)
@@ -989,18 +986,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
             feature['mm_processor_kwargs'] = processor_kwargs
         return feature
 
-    def decode_message(
-        self, token_ids: List[int], *, context: Optional[DecodeContext] = None, structured_calls=None, **kwargs
-    ) -> DecodedResponse:
-        if context is None:
-            context = DecodeContext(
-                parse_tool_calls=kwargs.pop("parse_tool_calls", True),
-                reasoning_started=kwargs.pop("reasoning_started", None),
-                tools=tuple(kwargs.pop("tools", ()) or ()),
-                skip_special_tokens=kwargs.pop("skip_special_tokens", True),
-            )
-        if kwargs:
-            raise TypeError(f"Unsupported decode_message kwargs: {sorted(kwargs)}")
+    def _decode_message(self, token_ids: List[int], context: DecodeContext, structured_calls) -> DecodedResponse:
         return self.output_codec.decode(self, token_ids, context, structured_calls=structured_calls)
 
     def render_delta(
@@ -1170,11 +1156,6 @@ class Template(ProcessorMixin, TwinkleTemplate):
             raise ValueError("preference row did not encode a chosen sequence.")
         result.update({k: v for k, v in encoded.items() if not k.startswith(("chosen_", "rejected_"))})
         return result
-
-    def encode_preference(self, row: Union[Dict[str, Any], TemplateInputs], *, kto: bool = False) -> Dict[str, Any]:
-        """Compatibility wrapper that makes the preference runtime type explicit."""
-        sample = kto_sample_from_row(row) if kto else preference_sample_from_row(row)
-        return self.encode(sample)
 
     def _media_token_ids(self) -> Dict[str, int]:
         ids = {}

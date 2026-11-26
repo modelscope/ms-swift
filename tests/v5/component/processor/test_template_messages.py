@@ -5,8 +5,8 @@ import json
 import pytest
 
 from swift.dev.template.base import Template as FamilyTemplate
+from swift.dev.template.base import check_generation_prompt
 from swift.dev.template.inputs import StdTemplateInputs
-from swift.dev.template.intent import check_generation_prompt
 from swift.dev.template.meta import TemplateMeta
 from swift.dev.template.utils import normalize_messages
 

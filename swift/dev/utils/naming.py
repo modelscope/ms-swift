@@ -390,6 +390,19 @@ def resolve_megatron_decay_style(swift_name: str) -> str:
     return _MEGATRON_DECAY_STYLE_MAP[key]
 
 
+def mixed_precision_for(torch_dtype: Optional[str]) -> str:
+    """torch_dtype -> twinkle's mixed_precision mode. Shared by both backends so they cannot drift.
+
+    float32 -> 'no' is a DELIBERATE divergence: legacy sets fp16=True for a float32 run, so "full
+    precision" there still autocasts to fp16; dev takes float32 at face value instead.
+    """
+    if torch_dtype == "float32":
+        return "no"
+    if torch_dtype == "float16":
+        return "fp16"
+    return "bf16"
+
+
 def resolve_megatron_attn_backend(attn_impl: Optional[str], mixed_precision: Optional[str] = None):
     """ModelConfig.attn_impl -> a Megatron AttnBackend ENUM member (never a string).
 

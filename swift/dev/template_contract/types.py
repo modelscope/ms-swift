@@ -5,10 +5,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from twinkle.template.contract.types import (
-    ConversationSample, DecodeContext, DecodedResponse, EncodedRow,
-    InputOrderCompletionMask, InputOrderLabels, InputOrderLossScale, InputOrderRow,
-    KTOSample, MediaBundle, Message, OutputOrderCompletionMask, OutputOrderLabels,
-    OutputOrderLossScale, PreferenceSample, PreparedRow, Tool,
+    ConversationSample, DecodeContext, DecodedResponse, EncodedRow, InputOrderRow,
+    KTOSample, MediaBundle, Message, PreferenceSample, Tool,
 )
 
 @dataclass(frozen=True)

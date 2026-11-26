@@ -246,7 +246,7 @@ def test_frozen_auxiliary_config_inherits_identity_only():
 
 def test_build_ref_model_three_branches(monkeypatch):
     from swift.dev.builders import model as model_module
-    from swift.dev.config import DistributedConfig, ModelConfig
+    from swift.dev.config import DistributedConfig, ModelConfig, TemplateConfig
 
     # disable_adapter without the policy model is a hard error (the shared-weights view IS the ref)
     with pytest.raises(ValueError, match='needs the policy model'):
@@ -286,7 +286,8 @@ def test_build_ref_model_three_branches(monkeypatch):
     monkeypatch.setattr(model_module, 'build_model', fake_build_model)
     frozen = model_module.build_ref_model(
         name='teacher', model_id='teacher-id', model_config=ModelConfig(model='policy-id'), template='T',
-        distributed_config=DistributedConfig(backend='megatron'), adapters=['/tmp/a'], model_type='qwen2')
+        distributed_config=DistributedConfig(backend='megatron'), adapters=['/tmp/a'], model_type='qwen2',
+        template_config=TemplateConfig())
     assert isinstance(frozen, _Frozen)
     assert calls['config'].model == 'teacher-id' and calls['config'].model_type == 'qwen2'
     assert calls['dist'].mode == 'ray' and calls['dist'].nproc_per_node == 1

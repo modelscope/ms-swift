@@ -8,6 +8,7 @@ from twinkle.processor import InputProcessor as TwinkleInputProcessor
 
 from swift.dev.data_format import VISION_DUMMY_FLAG, InputFeature
 from swift.dev.template.conventions import is_bookkeeping_key, model_payload_keys
+from swift.dev.utils.naming import mixed_precision_for, resolve_megatron_attn_backend
 
 # Private per-row slot carrying a row's model-specific payload past twinkle's text stages to collate_fn.
 _MEDIA_SLOT = "_media"
@@ -53,6 +54,55 @@ def processor_kwargs(template: Any) -> Dict[str, Any]:
     pad_token_id = getattr(template.tokenizer, "pad_token_id", None)
     if pad_token_id is not None:
         kwargs["pad_token_id"] = pad_token_id
+    return kwargs
+
+
+def processor_cp_size(distributed_config) -> int:
+    """The policy's context-parallel width for token padding: explicit knob or parallel_spec."""
+    cp_size = distributed_config.context_parallel_size
+    if distributed_config.parallel_spec:
+        from twinkle import DeviceMesh
+        cp_size = max(cp_size, DeviceMesh.parse_spec(distributed_config.parallel_spec).get('cp_size', 1) or 1)
+    return cp_size
+
+
+def fp8_seq_align_option(model_config, distributed_config) -> Optional[int]:
+    """The processor's fp8/fp4 token-dimension alignment (legacy ``get_padding_to`` on the data path).
+
+    None when fp8/fp4 is off or the backend is not megatron, so bf16 runs keep twinkle's padding
+    untouched.
+    """
+    if distributed_config.backend != 'megatron':
+        return None
+    if model_config.fp8_format is None and model_config.fp4_format is None:
+        return None
+    attn_backend = resolve_megatron_attn_backend(
+        model_config.attn_impl, mixed_precision=mixed_precision_for(model_config.torch_dtype))
+    seq_align_to = get_sequence_padding_to(
+        distributed_config.tensor_model_parallel_size,
+        distributed_config.sequence_parallel,
+        processor_cp_size(distributed_config),
+        attn_backend.name,
+        fp8_format=model_config.fp8_format,
+        fp4_format=model_config.fp4_format,
+        fp8_recipe=model_config.fp8_recipe)
+    return seq_align_to if seq_align_to and seq_align_to > 1 else None
+
+
+def input_processor_kwargs(template, template_config, distributed_config, model_config) -> Dict[str, Any]:
+    """Every ``set_processor(InputProcessor, ...)`` option of a model that trains on this process's rows.
+
+    ``seq_align_to`` pads each micro-batch's token columns to the kernel alignment fp8/fp4 and
+    sequence parallel require; every local recipe and auxiliary model goes through here so none of
+    them misses it.
+    """
+    kwargs = processor_kwargs(template)
+    kwargs["padding_free"] = template_config.padding_free
+    # The collator must pad on the same side as the Template (builders/template.py forwards
+    # padding_side to it), or a training-time --padding_side left reaches the Template only.
+    kwargs["padding_side"] = template_config.padding_side
+    kwargs["cp_partition_mode"] = distributed_config.cp_partition_mode
+    kwargs["seq_align_to"] = fp8_seq_align_option(model_config, distributed_config)
     return kwargs
 
 

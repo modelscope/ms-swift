@@ -496,7 +496,11 @@ class InferComponent(RecipeComponent):
         # label columns ride the trajectory as packed user_data (build_prompt_dataloader), so the
         # row index is read back from there, not from the trajectory's top level
         def row_index(group):
-            return user_data_get(group[0].get('user_data'), _ROW_INDEX)
+            index = user_data_get(group[0].get('user_data'), _ROW_INDEX)
+            if index is None:
+                raise ValueError(f'a sampled group came back without {_ROW_INDEX!r} in its user_data; '
+                                 'it cannot be matched to its prompt row')
+            return index
 
         dataloader = build_prompt_dataloader(
             [trajectories[index]["messages"] for index in pending],
@@ -1310,29 +1314,6 @@ class _CandidateCache:
         return cached[:wanted] if len(cached) >= wanted else None
 
 
-def _media_reference_digest(value: Any) -> bytes:
-    """Digest of a media REFERENCE: an HF ``{'bytes': ..., 'path': ...}`` dict or a path/URL string.
-
-    Bytes win over path (the path may be transient); a path-only reference is digested by the
-    file's content, so the same media at another location keeps its identity. An unreadable path
-    falls back to its string form (still deterministic), and a dict with neither field falls back
-    to its canonical json.
-    """
-    if isinstance(value, dict):
-        if value.get("bytes") is not None:
-            return _media_content_digest(value["bytes"])
-        if value.get("path") is not None:
-            return _media_content_digest(value["path"])
-        return hashlib.md5(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).digest()
-    try:
-        if os.path.isfile(value):
-            with open(value, "rb") as f:
-                return hashlib.md5(f.read()).digest()
-    except OSError:
-        pass
-    return hashlib.md5(value.encode("utf-8")).digest()
-
-
 def _media_content_digest(value: Any) -> bytes:
     """A 16-byte content digest of one media value, stable across runs and reload formats.
 
@@ -1346,8 +1327,22 @@ def _media_content_digest(value: Any) -> bytes:
         return hashlib.md5(b"none").digest()
     if isinstance(value, (bytes, bytearray, memoryview)):
         return hashlib.md5(bytes(value)).digest()
-    if isinstance(value, (dict, str)):
-        return _media_reference_digest(value)
+    if isinstance(value, dict):
+        # An HF media reference: bytes win over the (possibly transient) path; a path is digested by
+        # the file's content so the same media at another location keeps its identity.
+        if value.get("bytes") is not None:
+            return _media_content_digest(value["bytes"])
+        if value.get("path") is not None:
+            return _media_content_digest(value["path"])
+        return hashlib.md5(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).digest()
+    if isinstance(value, str):
+        try:
+            if os.path.isfile(value):
+                with open(value, "rb") as f:
+                    return hashlib.md5(f.read()).digest()
+        except OSError:
+            pass
+        return hashlib.md5(value.encode("utf-8")).digest()
     if isinstance(value, (list, tuple)):
         return hashlib.md5(b"".join(_media_content_digest(item) for item in value)).digest()
     tobytes = getattr(value, "tobytes", None)
@@ -1661,7 +1656,7 @@ def _decision_via_transformers(
     """
     from swift.dev.builders import build_model, build_template, load_model_processor
     from swift.dev.config import DistributedConfig
-    from swift.dev.processor import InputProcessor, processor_kwargs
+    from swift.dev.processor import InputProcessor, fp8_seq_align_option, processor_kwargs
 
     # 'decision' is a first-class forward task in twinkle's task registry
     # (twinkle.processor.tasks); no runtime patching is needed.
@@ -1669,13 +1664,15 @@ def _decision_via_transformers(
     _, processor = load_model_processor(model_config)
     template = build_template(template_config, processor, task_type="decision")
     template.set_mode("transformers")
-    model = build_model(model_config, distributed_config or DistributedConfig(), quantize_config=quantize_config)
+    dist = distributed_config or DistributedConfig()
+    model = build_model(model_config, dist, quantize_config=quantize_config)
     if adapters:
         # add_adapter_to_model takes a checkpoint directory as well as a PeftConfig, so a trained
         # adapter (LoRA + its sidecar scoring_head) is loaded here rather than built.
         for index, adapter in enumerate(adapters):
             model.add_adapter_to_model(f"adapter_{index}" if index else "default", adapter)
-    model.set_processor(InputProcessor, **processor_kwargs(template))
+    model.set_processor(
+        InputProcessor, seq_align_to=fp8_seq_align_option(model_config, dist), **processor_kwargs(template))
     model.set_template(template)
 
     batch_size = max_batch_size or len(rows) or 1

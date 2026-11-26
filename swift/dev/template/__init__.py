@@ -22,7 +22,7 @@ from .base import MaxLengthError, Template
 from .constant import TemplateCapability
 from .conventions import NO_SHIFT_TASK_TYPES, is_bookkeeping_key
 from .inputs import SampleInput, StdTemplateInputs, TemplateInputs
-from .intent import ENGINE, INFER, SCORE, TRAIN, EncodeIntent
+from twinkle.template.contract import ENGINE, INFER, SCORE, TRAIN, EncodeIntent
 from .media import load_file
 from .meta import TemplateMeta
 from .register import register_template
