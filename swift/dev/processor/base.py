@@ -106,10 +106,10 @@ class InputProcessor(TwinkleInputProcessor):
             else:
                 self.template.prepare_row(row)
                 media = self.template.pop_media(row)
+            row = super().prepare_inputs([row], **kwargs)[0]
             if media:
                 row[_MEDIA_SLOT] = media
             rows.append(row)
-        rows = super().prepare_inputs(rows, **kwargs)
         self._fill_optional_sequence_fields(rows)
         return rows
 

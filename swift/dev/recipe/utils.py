@@ -1433,7 +1433,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
 
         sampler = ClientSampler(model_config.model)
         spec = build_template_spec(template_config, model_config)
-        sampler.set_template('swift.dev.template.Template', **{'template_spec': spec})
+        sampler.set_template('SwiftTemplate', template_spec=spec)
         # The rollout drives the served engine through the HTTPSampler: it carries the episode's
         # complete Trajectory, stamps the synced adapter per call, and returns the twinkle
         # SampleResponse the rollout's type guards require (the bare handle speaks protocol models).
@@ -1566,12 +1566,26 @@ def spec_world_size(parallel_spec: Optional[str], default: int = 1) -> int:
     return DeviceMesh.from_spec(parallel_spec).world_size
 
 
-def prompt_rows_from_dataset(dataset_config: 'DatasetConfig') -> Tuple[List[Dict[str, Any]], List[List[dict]], List[Dict[str, Any]]]:
+def _messages_under_system(messages: List[dict], system: Optional[str]) -> List[dict]:
+    """``messages`` with ``system`` as their system turn -- it REPLACES one the row already has, the
+    ``to_trajectory`` rule (two system messages is not a supported prompt shape for most templates).
+    """
+    if not system:
+        return messages
+    return [{'role': 'system', 'content': system}] + [m for m in messages if m.get('role') != 'system']
+
+
+def prompt_rows_from_dataset(
+    dataset_config: 'DatasetConfig', system: Optional[str] = None
+) -> Tuple[List[Dict[str, Any]], List[List[dict]], List[Dict[str, Any]]]:
     """Load prompt rows, the prompt message views, and the non-message columns for the rollout.
 
     Returns ``(rows, prompts, extras)``: ``rows`` is the raw loaded rows (the resource estimator
     reads the prompt lengths from them), ``prompts`` the message lists with any trailing assistant
     turn stripped, ``extras`` everything else (solution/target/teacher_prompt/...) keyed per prompt.
+
+    ``system`` (``TemplateConfig.system``) is written into the messages of both ``rows`` and
+    ``prompts``, so a prompt carries its system turn itself whichever sampler or template encodes it.
     """
     from swift.dev.builders import load_prompt_only_rows
 
@@ -1584,6 +1598,8 @@ def prompt_rows_from_dataset(dataset_config: 'DatasetConfig') -> Tuple[List[Dict
         messages = row.get('messages') if isinstance(row, dict) else None
         if not messages:
             continue
+        messages = _messages_under_system(list(messages), system)
+        row['messages'] = messages
         if messages[-1].get('role') == 'assistant':
             messages = messages[:-1]
         prompts.append(list(messages))

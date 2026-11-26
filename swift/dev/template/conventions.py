@@ -59,19 +59,5 @@ APPEND_ROLES: Mapping[str, AppendRole] = MappingProxyType({
 })
 
 
-def extend_spliced_fields(feature: Dict[str, Any]) -> Dict[str, Any]:
-    """Right-pad token type companions to the actual sequence width."""
-    length = len(feature.get('input_ids', []))
-    for key, fill in SPLICE_FILL.items():
-        value = feature.get(key)
-        if value is None:
-            continue
-        values = [int(v) for v in (value.reshape(-1).tolist() if hasattr(value, 'reshape') else value)]
-        if len(values) > length:
-            raise ValueError(f'{key} has {len(values)} entries for {length} input_ids')
-        feature[key] = values + [fill] * (length - len(values))
-    return feature
-
-
 def is_bookkeeping_key(key: str) -> bool:
     return key.startswith('_') or key in LENGTH_KEYS

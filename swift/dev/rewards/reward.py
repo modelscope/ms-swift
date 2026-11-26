@@ -35,7 +35,7 @@ class ORM(SwiftPlugin, Reward):
 
     @staticmethod
     def column(trajectory: Any, key: str, default: Any = None) -> Any:
-        """A row's dataset column: the packed ``user_data`` label first, the flat extra second."""
+        """A row's dataset label, read from its packed ``user_data`` (a flat column only as the fallback)."""
         value = ground_truth(trajectory, key)
         if value is None:
             value = trajectory.get(key)

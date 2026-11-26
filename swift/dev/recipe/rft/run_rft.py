@@ -331,7 +331,7 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     round boundaries only (the round component rides along), so a resume replays whole rounds.
     """
     # segment 1: prompts (the resource estimator reads the prompt lengths off the raw rows).
-    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
+    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config, system=template_config.system)
     # segment 2: devices (configs + template + twinkle + perf; an estimate rewrites the parallel sizes).
     template, resource_plan, _ = initialize_rl_devices(
         model_config=model_config, template_config=template_config, dataset_config=dataset_config,

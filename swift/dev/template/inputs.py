@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 
 import json
 from PIL import Image
+from twinkle.data_format import user_data_get
 
 from twinkle.template.contract import ConversationSample, KTOSample, PreferenceSample
 from .runtime import get_logger
@@ -90,6 +91,14 @@ class StdTemplateInputs:
         chat_template_kwargs = inputs.get("chat_template_kwargs") or {}
         mm_processor_kwargs = inputs.get("mm_processor_kwargs") or {}
 
+        metadata = {**(inputs.get('extra_kwargs') or {}), **inputs}
+        key_rounds = user_data_get(metadata.get('user_data'), 'key_rounds')
+        if isinstance(key_rounds, list) and key_rounds:
+            leading = 0
+            while leading < len(messages) and messages[leading].get('role') == 'system':
+                leading += 1
+            for index, message in enumerate(messages[leading:]):
+                message.setdefault('_swift_turn_index', index)
         messages = normalize_messages(messages)
 
         for message in messages:
@@ -229,10 +238,14 @@ class TemplateInputs:
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any]) -> "TemplateInputs":
+        return cls(**cls._split_inputs(inputs))
+
+    @staticmethod
+    def _split_inputs(inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs = deepcopy(inputs)
 
         has_rejected_messages = inputs.get("rejected_messages") is not None
-        cls._compat_rejected_response(inputs)
+        TemplateInputs._compat_rejected_response(inputs)
         kwargs = {}
         non_chosen_keys = ["rejected", "positive", "negative"]
         for prefix in ["chosen"] + non_chosen_keys:
@@ -254,7 +267,7 @@ class TemplateInputs:
                 if chosen_v is not None and rejected_v is None:
                     rejected[k] = chosen_v
 
-        return cls(**kwargs)
+        return kwargs
 
 
 # A raw row (dict) always encodes as one conversation -- its ``rejected_*`` columns are ignored, as in
@@ -275,11 +288,19 @@ def normalize_sample(sample: SampleInput) -> Union[Dict[str, Any], TemplateInput
 
 
 def preference_sample_from_row(row: Union[Dict[str, Any], TemplateInputs]) -> PreferenceSample:
-    inputs = row if isinstance(row, TemplateInputs) else TemplateInputs.from_dict(row)
-    if inputs.rejected is None:
+    inputs = (
+        {name: asdict(getattr(row, name)) for name in ('chosen', 'rejected') if getattr(row, name) is not None}
+        if isinstance(row, TemplateInputs)
+        else TemplateInputs._split_inputs(row)
+    )
+    if inputs.get('rejected') is None:
         raise ValueError("paired preference data requires a rejected conversation.")
-    chosen = asdict(inputs.chosen)
-    rejected = asdict(inputs.rejected)
+    chosen = inputs['chosen']
+    rejected = inputs['rejected']
+    chosen = {**(chosen.get('extra_kwargs') or {}), **chosen}
+    rejected = {**(rejected.get('extra_kwargs') or {}), **rejected}
+    chosen.pop('extra_kwargs', None)
+    rejected.pop('extra_kwargs', None)
     margin = chosen.pop("margin", None)
     rejected.pop("margin", None)
     return PreferenceSample(
@@ -290,10 +311,19 @@ def preference_sample_from_row(row: Union[Dict[str, Any], TemplateInputs]) -> Pr
 
 
 def kto_sample_from_row(row: Union[Dict[str, Any], TemplateInputs]) -> KTOSample:
-    inputs = row if isinstance(row, TemplateInputs) else TemplateInputs.from_dict(row)
-    if inputs.chosen.label is None:
+    inputs = (
+        {name: asdict(getattr(row, name)) for name in ('chosen', 'rejected') if getattr(row, name) is not None}
+        if isinstance(row, TemplateInputs)
+        else TemplateInputs._split_inputs(row)
+    )
+    conversation = inputs['chosen']
+    if conversation.get('label') is None:
         raise ValueError("KTO data requires a boolean label.")
-    conversation = asdict(inputs.chosen)
+    conversation = {**(conversation.get('extra_kwargs') or {}), **conversation}
+    conversation.pop('extra_kwargs', None)
     label = bool(conversation.pop("label"))
-    rejected = asdict(inputs.rejected) if inputs.rejected is not None else None
+    rejected = inputs.get('rejected')
+    if rejected is not None:
+        rejected = {**(rejected.get('extra_kwargs') or {}), **rejected}
+        rejected.pop('extra_kwargs', None)
     return KTOSample(conversation=cast(ConversationSample, conversation), label=label, rejected=rejected)

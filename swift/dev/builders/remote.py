@@ -387,7 +387,7 @@ def configure_remote_processor(model: Any, template_config: 'TemplateConfig', mo
     # JsonValue on the wire: tuples become lists; TemplateSpec.from_dict accepts either.
     template_spec = json.loads(json.dumps(asdict(spec)))
     model.set_template(
-        'swift.dev.template.Template',
+        'SwiftTemplate',
         template_spec=template_spec,
     )
     model.set_processor(

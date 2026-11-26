@@ -449,9 +449,16 @@ def build_prompt_dataloader(prompts: List[List[dict]],
     No encoding -- the rollout encodes each prompt itself. ``shuffle=False`` preserves input order;
     otherwise ordering follows the loader seed and epoch. One pass per ``iter()``; drop_last stays
     off so a partial batch is never a dropped prompt.
+
+    Row contract (twinkle's): ``messages`` plus the encoder's prompt columns stay top-level, every
+    other dataset column (solution, teacher_prompt, ...) is packed into ``user_data``. A reward reads
+    it with ``twinkle.data_format.ground_truth(row, key)`` under its own column name.
     """
+    from twinkle.data_format import pack_user_data
     from twinkle.dataset import Dataset, DatasetMeta
     from twinkle.dataloader import DataLoader
+
+    from swift.dev.template.conventions import PROMPT_INPUT_KEYS
 
     if not prompts:
         raise ValueError('build_prompt_dataloader needs at least one prompt, got an empty sequence.')
@@ -461,7 +468,15 @@ def build_prompt_dataloader(prompts: List[List[dict]],
         raise ValueError(
             f'prompt_extras must align with prompts ({len(prompts)} rows), got {len(prompt_extras)}.')
     extras = prompt_extras if prompt_extras is not None else [{} for _ in prompts]
-    rows = [{'messages': messages, **extra} for messages, extra in zip(prompts, extras)]
+    rows = []
+    for messages, extra in zip(prompts, extras):
+        row = {'messages': messages}
+        # The encoder reads the prompt columns off the top level; anything else is a label.
+        labels = {key: value for key, value in extra.items() if key not in PROMPT_INPUT_KEYS}
+        row.update({key: value for key, value in extra.items() if key in PROMPT_INPUT_KEYS})
+        if labels:
+            row['user_data'] = pack_user_data(labels)
+        rows.append(row)
     dataset = Dataset(DatasetMeta(data=rows))
     return DataLoader(
         dataset,

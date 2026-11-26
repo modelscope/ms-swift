@@ -167,9 +167,10 @@ def test_build_prompt_dataloader_guards_and_iterates():
         seed=42,
         batch_size=2)
     batch = next(iter(loader))
-    # rows carry messages plus their flattened extras, and a partial batch is never dropped
+    # rows carry messages, their labels packed into user_data, and a partial batch is never dropped
     assert len(batch) == 2
-    assert {row['solution'] for row in batch} == {'4', '5'}
+    assert {user_data_get(row['user_data'], 'solution') for row in batch} == {'4', '5'}
+    assert all('solution' not in row for row in batch)
     assert all(row['messages'][0]['role'] == 'user' for row in batch)
 
 

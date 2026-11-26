@@ -472,7 +472,8 @@ class Template(ProcessorMixin, TwinkleTemplate):
                 agent_template = self.agent_template
                 agent_template.template_meta = self.template_meta  # for hermes
                 i_start = i
-                while i + 1 < len(messages) and messages[i + 1]["role"] == "tool_call":
+                while (i + 1 < len(messages) and messages[i + 1]["role"] == "tool_call"
+                       and messages[i + 1].get('_swift_turn_index') == messages[i_start].get('_swift_turn_index')):
                     i += 1
                 tool_call_msgs = messages[i_start : i + 1]
                 tool_content = agent_template._format_tool_calls(tool_call_msgs)
@@ -481,7 +482,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
                 merged_message = {"role": "assistant", "content": tool_content}
                 # Preserve loss/loss_scale fields from the first tool_call message.
                 for msg in tool_call_msgs:
-                    for key in ["loss", "loss_scale"]:
+                    for key in ["loss", "loss_scale", "_swift_turn_index"]:
                         if key in msg and key not in merged_message:
                             merged_message[key] = msg[key]
                 messages[i_start : i + 1] = [merged_message]
@@ -803,6 +804,12 @@ class Template(ProcessorMixin, TwinkleTemplate):
         if getattr(self, "_legacy_mode", None) in ("rlhf", "kto") and intent is None and isinstance(sample, dict):
             legacy_mode = self._legacy_mode
             if "rejected_response" in sample:
+                sample = copy_trajectory(sample)
+                TemplateInputs._compat_rejected_response(sample)
+                self._mask_key_rounds(sample)
+                rejected = {**sample, 'messages': sample['rejected_messages']}
+                self._mask_key_rounds(rejected)
+                sample['rejected_messages'] = rejected['messages']
                 sample = preference_sample_from_row(sample) if legacy_mode == "rlhf" else kto_sample_from_row(sample)
                 legacy_preference = True
         elif getattr(self, "_legacy_mode", None) in ("infer", "transformers") and intent is None:
@@ -812,25 +819,37 @@ class Template(ProcessorMixin, TwinkleTemplate):
                   else self._public_conversation(sample.chosen) if isinstance(sample, TemplateInputs) else None)
         if isinstance(sample, dict):
             sample = copy_trajectory(source)
+        elif isinstance(sample, TemplateInputs):
+            sample = copy(sample)
+            sample.chosen = copy(sample.chosen)
+            sample.chosen.extra_kwargs = dict(sample.chosen.extra_kwargs)
+        explicit_intent = intent is not None or add_generation_prompt is not None
+        intent = resolve_intent(intent, add_generation_prompt)
         preference_mode = None
         if isinstance(sample, PreferenceSample):
             chosen = copy_trajectory(sample.chosen)
             if sample.margin is not None:
                 chosen["margin"] = sample.margin
-            public = {'chosen': copy_trajectory(chosen), 'rejected': copy_trajectory(sample.rejected)}
-            sample = TemplateInputs(chosen=chosen, rejected=copy_trajectory(sample.rejected))
+            rejected = copy_trajectory(sample.rejected)
+            public = {'chosen': self._public_conversation(chosen), 'rejected': self._public_conversation(rejected)}
+            if not legacy_preference:
+                self._mask_key_rounds(chosen)
+                self._mask_key_rounds(rejected)
+            sample = TemplateInputs(chosen=chosen, rejected=rejected)
             preference_mode = "rlhf"
         elif isinstance(sample, KTOSample):
             conversation = copy_trajectory(sample.conversation)
             conversation["label"] = sample.label
-            public = {'chosen': copy_trajectory(conversation)}
+            public = {'chosen': self._public_conversation(conversation)}
             if sample.rejected is not None:
-                public['rejected'] = copy_trajectory(sample.rejected)
-            sample = TemplateInputs(chosen=conversation,
-                                    rejected=copy_trajectory(sample.rejected) if sample.rejected is not None else None)
+                public['rejected'] = self._public_conversation(sample.rejected)
+            rejected = copy_trajectory(sample.rejected) if sample.rejected is not None else None
+            if not legacy_preference:
+                self._mask_key_rounds(conversation)
+                if rejected is not None:
+                    self._mask_key_rounds(rejected)
+            sample = TemplateInputs(chosen=conversation, rejected=rejected)
             preference_mode = "kto"
-        explicit_intent = intent is not None or add_generation_prompt is not None
-        intent = resolve_intent(intent, add_generation_prompt)
         if preference_mode is not None:
             if not intent.with_labels:
                 raise ValueError(f"A preference sample encodes only under a labelled intent, got {intent}.")
@@ -845,14 +864,22 @@ class Template(ProcessorMixin, TwinkleTemplate):
                 flat.update({key: value for key, value in result.items() if key not in ("chosen", "rejected")})
                 return flat
             return result
+        if intent.with_labels:
+            self._mask_key_rounds(sample.chosen if isinstance(sample, TemplateInputs) else sample)
         if not intent.add_generation_prompt and not intent.expand_media:
             if isinstance(sample, dict):
                 sample = {**sample, "add_eos": True}
             else:
                 sample = deepcopy(sample)
                 sample.chosen.extra_kwargs = {**sample.chosen.extra_kwargs, "add_eos": True}
-        if explicit_intent and self.task_type not in NO_SHIFT_TASK_TYPES:
-            check_generation_prompt(sample, intent.add_generation_prompt)
+        if explicit_intent:
+            if isinstance(sample, dict):
+                sample['add_generation_prompt'] = intent.add_generation_prompt
+            else:
+                sample.chosen.extra_kwargs['add_generation_prompt'] = intent.add_generation_prompt
+            if (self.use_chat_template and self.task_type not in NO_SHIFT_TASK_TYPES
+                    and (intent.with_labels or intent.add_generation_prompt)):
+                check_generation_prompt(sample, intent.add_generation_prompt)
         if not tokenize:
             inputs = TemplateInputs.from_dict(sample) if isinstance(sample, dict) else deepcopy(sample)
             with _rendering(intent.render_mode(engine)):
@@ -1032,6 +1059,29 @@ class Template(ProcessorMixin, TwinkleTemplate):
 
     def tool_call_errors(self, decoded: str) -> List[str]:
         return self.output_codec.tool_call_errors(decoded)
+
+    def _mask_key_rounds(self, sample) -> None:
+        if self.task_type != 'causal_lm':
+            return
+        metadata = {**(sample.get('extra_kwargs') or {}), **sample} if isinstance(sample, dict) else sample.extra_kwargs
+        selected = self._get_train_indices(metadata)
+        if selected is None:
+            return
+        messages = sample['messages'] if isinstance(sample, dict) else sample.messages
+        system = sample.get('system') if isinstance(sample, dict) else sample.system
+        leading = 0
+        while leading < len(messages) and messages[leading].get('role') == 'system':
+            leading += 1
+        offset = int(leading > 0 or system is not None or self.use_chat_template and bool(self.default_system))
+        messages = copy_trajectory({'messages': messages})['messages']
+        for index, message in enumerate(messages[leading:], offset):
+            source_index = message.get('_swift_turn_index', index - offset) + offset
+            if message.get('role') in ('assistant', 'tool_call') and source_index not in selected:
+                message['loss'] = 0
+        if isinstance(sample, dict):
+            sample['messages'] = messages
+        else:
+            sample.messages = messages
 
     @staticmethod
     def _public_conversation(chosen) -> Trajectory:
@@ -1714,7 +1764,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
             if context == "<image>" and inputs.is_multimodal and inputs.image_idx < len(inputs.images):
                 c_list = self.replace_tag("image", inputs.image_idx, inputs)
                 inputs.image_idx += 1
-                loss_scale = 0.0 if self.template_backend == "swift" else 1.0
+                loss_scale = 0.0 if self.template_backend == "swift" else loss_scale
             else:
                 c_list = [context]
             res += c_list
@@ -1806,7 +1856,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
                         "We will only replace the frontmost media_tags while keeping the subsequent media_tags."
                     )
 
-    def _tokenize_run(self, pieces: List[str]) -> Tuple[List[int], List[int]]:
+    def _tokenize_run(self, pieces: List[str], piece_weights: List[float]) -> Tuple[List[int], List[int]]:
         """Tokenize adjacent string contexts as one string and map tokens back to their piece.
 
         Tokenizing each piece on its own inserts a word-start stride at every piece boundary
@@ -1814,7 +1864,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
         no such strides. Running the pieces together, then mapping tokens back through character
         offsets, keeps labels/loss aligned per piece while producing the ids the jinja produces.
 
-        Returns ``(token_ids, piece_index_per_token)``. A piece that overrides ``_tokenize``
+        Returns ``(token_ids, piece_index_per_token)``; -1 masks ambiguous boundary tokens. A piece that overrides ``_tokenize``
         (custom processor kwargs) keeps the per-piece path: its offsets are not ours to assume.
         """
         merged = ''.join(pieces)
@@ -1835,9 +1885,12 @@ class Template(ProcessorMixin, TwinkleTemplate):
             starts.append(position)
             position += len(piece)
         owners = []
-        for start, _ in offsets:
-            index = bisect.bisect_right(starts, start) - 1
-            owners.append(min(max(index, 0), len(pieces) - 1))
+        for start, end in offsets:
+            index = min(max(bisect.bisect_right(starts, start) - 1, 0), len(pieces) - 1)
+            last = min(max(bisect.bisect_right(starts, end - 1) - 1, index), len(pieces) - 1)
+            if end <= start or last > index and any(weight <= 0 for weight in piece_weights[index:last + 1]):
+                index = -1
+            owners.append(index)
         return token_ids, owners
 
     def _tokenize_run_by_prefix(self, merged: str, pieces: List[str]) -> Tuple[List[int], List[int]]:
@@ -1894,8 +1947,8 @@ class Template(ProcessorMixin, TwinkleTemplate):
                     end += 1
                 pieces = context_list[index:end]
                 piece_weights = loss_scale_list[index:end]
-                token_list, owners = self._tokenize_run(pieces)
-                weights = [piece_weights[owner] for owner in owners]
+                token_list, owners = self._tokenize_run(pieces, piece_weights)
+                weights = [piece_weights[owner] if owner >= 0 else 0.0 for owner in owners]
                 index = end
             input_ids += token_list
             for token, weight in zip(token_list, weights):
@@ -1932,7 +1985,8 @@ class Template(ProcessorMixin, TwinkleTemplate):
         # add_generation_prompt=True
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
-        messages = inputs.messages.copy()
+        messages = [{key: value for key, value in message.items() if key != '_swift_turn_index'}
+                    for message in inputs.messages]
         if inputs.system is None:
             # Fix default_system passed from command line being ignored.
             inputs.system = self.template_meta.default_system
@@ -1964,6 +2018,28 @@ class Template(ProcessorMixin, TwinkleTemplate):
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs
         )
+        if (self.is_training and self.task_type == 'causal_lm'
+                and self._get_train_indices(inputs.extra_kwargs) is not None):
+            from twinkle.template.utils import jinja_assistant_ranges
+
+            selected = {index for index, message in enumerate(messages)
+                        if message.get('role') == 'assistant' and message.get('loss', 1) != 0}
+            spans = jinja_assistant_ranges(self.tokenizer, messages, selected, text,
+                                           add_generation_prompt=add_generation_prompt, **kwargs)
+            contexts, weights, cursor = [], [], 0
+            for start, end in spans:
+                start, end = max(cursor, min(start, len(text))), min(end, len(text))
+                if start > cursor:
+                    contexts.append(text[cursor:start])
+                    weights.append(0.0)
+                if end > start:
+                    contexts.append(text[start:end])
+                    weights.append(1.0)
+                cursor = max(start, end)
+            if cursor < len(text):
+                contexts.append(text[cursor:])
+                weights.append(0.0)
+            return contexts or [text], weights or [0.0], len(contexts) or 1
         answer_len = 1 if self.is_training else 0
         return [text], [1.0], answer_len
 
@@ -2154,6 +2230,10 @@ class Template(ProcessorMixin, TwinkleTemplate):
                     "Enable use_chat_template or use a single-round sample."
                 )
             elif pre_role == "assistant" and role == "assistant":
+                if (self.template_backend == 'jinja'
+                        and pre_message.get('_swift_turn_index') != message.get('_swift_turn_index')):
+                    i += 1
+                    continue
                 # Consecutive assistant messages belong to one response; merge them into one turn.
                 if self.template_backend == "swift" and pre_role == "assistant":
                     for key in ["content", "loss", "loss_scale"]:
@@ -2363,6 +2443,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
         result = truncate_rows(row, self.max_length, truncation_strategy,
                                placeholder_tokens=self.placeholder_tokens, multimodal=self.is_multimodal,
                                supervised=self.task_type not in NO_SHIFT_TASK_TYPES)[0]
+        encoded.clear()
         encoded.update(result)
         return result['input_ids'], result.get('labels')
 
@@ -2379,12 +2460,6 @@ class Template(ProcessorMixin, TwinkleTemplate):
 
     def _encode_truncated(self, inputs: StdTemplateInputs):
         self._preprocess_inputs(inputs)
-        selected = self._get_train_indices(inputs.extra_kwargs) if self.is_training else None
-        if selected is not None:
-            offset = int(inputs.system is not None or self.use_chat_template and bool(self.default_system))
-            for index, message in enumerate(inputs.messages, offset):
-                if message.get('role') == 'assistant' and index not in selected:
-                    message['loss'] = 0
         if self.mode in {"vllm", "lmdeploy", "sglang"}:
             # For multi-modal models, images do not need to be pre processed here
             # vllm/lmdeploy/sglang will handle the logic

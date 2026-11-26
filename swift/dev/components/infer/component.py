@@ -411,6 +411,13 @@ class InferComponent(RecipeComponent):
                           if key != 'messages'})
             extra[_ROW_INDEX] = index
             extras.append(extra)
+        from twinkle.data_format import user_data_get
+
+        # label columns ride the trajectory as packed user_data (build_prompt_dataloader), so the
+        # row index is read back from there, not from the trajectory's top level
+        def row_index(group):
+            return user_data_get(group[0].get('user_data'), _ROW_INDEX)
+
         dataloader = build_prompt_dataloader(
             [trajectories[index]['messages'] for index in pending], extras, seed=0, shuffle=False,
             batch_size=_prompt_batch_size(infer_config.batch_size))
@@ -427,7 +434,7 @@ class InferComponent(RecipeComponent):
                 done[int(batch[0]['group_key'])] = batch
                 while next_ordinal in done:
                     group = done.pop(next_ordinal)
-                    emit_group(group[0][_ROW_INDEX], group)
+                    emit_group(row_index(group), group)
                     next_ordinal += 1
         finally:
             close_driver_preserving_error(driver)
@@ -435,7 +442,7 @@ class InferComponent(RecipeComponent):
         # the groups behind it are emitted now, in order.
         for ordinal in range(next_ordinal, max(done, default=next_ordinal - 1) + 1):
             group = done.get(ordinal)
-            emit_group(group[0][_ROW_INDEX] if group else None, group or [])
+            emit_group(row_index(group) if group else None, group or [])
         return results, state['prompts'], state['tokens']
 
     def _forward_pass(self, task_type: str) -> List[Dict[str, Any]]:

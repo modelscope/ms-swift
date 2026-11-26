@@ -60,8 +60,9 @@ class LossScale:
                     # correct when the pairing holds.
                     raise ValueError(
                         f'Loss-scale context pairing broke at turn {i}: rendered {context!r} does not '
-                        f'match the message it was weighed against ({messages[2 * i + 1]["content"]!r}).')
-                previous_loss = loss
+                        f"match the message it was weighed against ({messages[2 * i + 1]['content']!r})."
+                    )
+                previous_loss = loss[-1] if isinstance(loss, list) and loss else loss
                 i += 1
             elif context_type == ContextType.SUFFIX and selective and previous_loss == 0:
                 loss = 0
