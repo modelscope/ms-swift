@@ -51,7 +51,13 @@ DEV_ROUTE_REDIRECTS: Dict[str, str] = {
 
 
 def _use_dev_cli() -> bool:
-    return os.environ.get('USE_SWIFT_V5', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+    # v5 is the default CLI; USE_SWIFT_V5=0 (or false/no/off) opts back into the v4 CLI.
+    value = os.environ.get('USE_SWIFT_V5', '').strip().lower() or '1'
+    if value in {'1', 'true', 'yes', 'on'}:
+        return True
+    if value in {'0', 'false', 'no', 'off'}:
+        return False
+    raise ValueError(f"USE_SWIFT_V5={value!r} is not recognized; use '1' (v5, the default) or '0' (v4).")
 
 
 def resolve_route(method_name: str, route_mapping: Dict[str, str], is_megatron: bool = False) -> str:
@@ -60,16 +66,17 @@ def resolve_route(method_name: str, route_mapping: Dict[str, str], is_megatron: 
     if is_megatron:
         # twinkle unifies the Megatron and Transformers stacks, so v5 has no separate `megatron`
         # command: the backend is a single flag on the shared command. Redirect instead of routing.
-        raise RuntimeError('USE_SWIFT_V5 is enabled, but v5 has no separate `megatron` command. '
-                           f'Use `swift {method_name} --backend megatron` instead.')
+        raise RuntimeError('v5 (the default CLI) has no separate `megatron` command. '
+                           f'Use `swift {method_name} --backend megatron` instead, '
+                           'or set USE_SWIFT_V5=0 for the v4 CLI.')
     if method_name == 'web-ui':
         return route_mapping[method_name]
     if method_name not in DEV_ROUTE_MAPPING:
         redirect = DEV_ROUTE_REDIRECTS.get(method_name)
         if redirect is not None:
-            raise RuntimeError(f'USE_SWIFT_V5 is enabled: the {method_name!r} command no longer exists; '
-                               f'use `swift {redirect}` instead.')
-        raise RuntimeError(f'USE_SWIFT_V5 is enabled but no dev route exists for {method_name!r}.')
+            raise RuntimeError(f'The {method_name!r} command no longer exists in v5 (the default CLI); '
+                               f'use `swift {redirect}` instead, or set USE_SWIFT_V5=0 for the v4 CLI.')
+        raise RuntimeError(f'No v5 route exists for {method_name!r}; set USE_SWIFT_V5=0 to use the v4 CLI.')
     return DEV_ROUTE_MAPPING[method_name]
 
 

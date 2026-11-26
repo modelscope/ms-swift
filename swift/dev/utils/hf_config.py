@@ -4,6 +4,7 @@
 Internalized from ``swift.utils.hf_config`` so the dev stack no longer couples to legacy. The class
 is a self-contained bundle of ``@staticmethod`` config helpers.
 """
+
 import importlib
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -17,20 +18,21 @@ logger = get_logger()
 
 
 class HfConfigFactory:
-    llm_keys = ['language_config', 'llm_config', 'text_config']
-    vision_keys = ['vit_config', 'vision_config', 'audio_config']
+    llm_keys = ["language_config", "llm_config", "text_config"]
+    vision_keys = ["vit_config", "vision_config", "audio_config"]
     """This class is used to read config from config.json(maybe params.json also)"""
 
     @staticmethod
-    def get_torch_dtype(config: Union[PretrainedConfig, Dict[str, Any]],
-                        quant_info: Dict[str, Any]) -> Optional[torch.dtype]:
-        for key in ['torch_dtype', 'params_dtype']:
+    def get_torch_dtype(
+        config: Union[PretrainedConfig, Dict[str, Any]], quant_info: Dict[str, Any]
+    ) -> Optional[torch.dtype]:
+        for key in ["torch_dtype", "params_dtype"]:
             torch_dtype = HfConfigFactory.get_config_attr(config, key)
             if torch_dtype is not None:
                 break
         torch_dtype = HfConfigFactory.to_torch_dtype(torch_dtype)
         if torch_dtype is None:
-            torch_dtype = quant_info.get('torch_dtype')
+            torch_dtype = quant_info.get("torch_dtype")
         return torch_dtype
 
     @staticmethod
@@ -42,10 +44,12 @@ class HfConfigFactory:
         return config
 
     @staticmethod
-    def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
-                          attr_name: str,
-                          include_vit: bool = False,
-                          parent_key: Optional[str] = None) -> List[Tuple[PretrainedConfig, Any]]:
+    def _get_config_attrs(
+        config: Union[PretrainedConfig, Dict[str, Any]],
+        attr_name: str,
+        include_vit: bool = False,
+        parent_key: Optional[str] = None,
+    ) -> List[Tuple[PretrainedConfig, Any]]:
         res = []
         if isinstance(config, dict):
             keys = config.keys()
@@ -60,7 +64,7 @@ class HfConfigFactory:
             res.append((config, deep_getattr(config, attr_name)))
 
         for k in keys:
-            if k.endswith('_config') and k != 'talker_config':
+            if k.endswith("_config") and k != "talker_config":
                 if isinstance(config, dict):
                     v = config[k]
                 else:
@@ -70,9 +74,9 @@ class HfConfigFactory:
 
     @staticmethod
     def is_moe_model(config) -> bool:
-        if 'Moe' in config.__class__.__name__:
+        if "Moe" in config.__class__.__name__:
             return True
-        for key in ['num_experts', 'num_experts_per_tok', 'moe_intermediate_size']:
+        for key in ["num_experts", "num_experts_per_tok", "moe_intermediate_size"]:
             if HfConfigFactory.get_config_attr(config, key):
                 return True
         return False
@@ -86,7 +90,7 @@ class HfConfigFactory:
         else:
             keys = []
         keys = set(keys)
-        for key in (HfConfigFactory.llm_keys + HfConfigFactory.vision_keys + ['thinker_config']):
+        for key in HfConfigFactory.llm_keys + HfConfigFactory.vision_keys + ["thinker_config"]:
             if key in keys:
                 return True
         return False
@@ -95,15 +99,18 @@ class HfConfigFactory:
     def get_native_config_class(model_type: str) -> Optional[type]:
         """Return the Transformers config class, ignoring ``AutoConfig.register`` overrides."""
         from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
+
         cls_name = CONFIG_MAPPING_NAMES.get(model_type)
         if not cls_name:
             return None
         import transformers
+
         cls = getattr(transformers, cls_name, None)
         if cls is None:
             try:
                 from transformers.models.auto.configuration_auto import model_type_to_module_name
-                module = importlib.import_module(f'transformers.models.{model_type_to_module_name(model_type)}')
+
+                module = importlib.import_module(f"transformers.models.{model_type_to_module_name(model_type)}")
             except Exception:
                 return None
             cls = getattr(module, cls_name, None)
@@ -112,40 +119,41 @@ class HfConfigFactory:
         return None
 
     @staticmethod
-    def load_hf_config(model_dir: str,
-                       *,
-                       trust_remote_code: bool = False,
-                       revision: Optional[str] = None) -> Optional[PretrainedConfig]:
+    def load_hf_config(
+        model_dir: str, *, trust_remote_code: bool = False, revision: Optional[str] = None
+    ) -> Optional[PretrainedConfig]:
         """Load with the native config class; return None when AutoConfig fallback is needed."""
         try:
             config_dict, _ = PretrainedConfig.get_config_dict(model_dir, revision=revision)
         except Exception:
             return None
-        if config_dict.get('auto_map'):
+        if config_dict.get("auto_map"):
             return None
-        model_type = config_dict.get('model_type')
+        model_type = config_dict.get("model_type")
         if not isinstance(model_type, str):
             return None
         config_cls = HfConfigFactory.get_native_config_class(model_type)
         if config_cls is None:
             return None
         from transformers.models.auto.configuration_auto import CONFIG_MAPPING
-        registered_cls = getattr(CONFIG_MAPPING, '_extra_content', {}).get(model_type)
+
+        registered_cls = getattr(CONFIG_MAPPING, "_extra_content", {}).get(model_type)
         if registered_cls is not None and registered_cls is not config_cls:
-            logger.info_once(f'{model_type!r} config class is overridden by '
-                             f'{registered_cls.__module__}.{registered_cls.__name__}; loading it with '
-                             f'{config_cls.__module__}.{config_cls.__name__} instead.')
+            logger.info_once(
+                f"{model_type!r} config class is overridden by "
+                f"{registered_cls.__module__}.{registered_cls.__name__}; loading it with "
+                f"{config_cls.__module__}.{config_cls.__name__} instead."
+            )
         try:
-            return config_cls.from_pretrained(
-                model_dir, trust_remote_code=trust_remote_code, revision=revision)
+            return config_cls.from_pretrained(model_dir, trust_remote_code=trust_remote_code, revision=revision)
         except Exception as e:
-            logger.debug(f'Failed to load {model_dir!r} with {config_cls.__name__}: {e}')
+            logger.debug(f"Failed to load {model_dir!r} with {config_cls.__name__}: {e}")
             return None
 
     @staticmethod
-    def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
-                        attr_name: str,
-                        include_vit: bool = False) -> Optional[Any]:
+    def get_config_attr(
+        config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str, include_vit: bool = False
+    ) -> Optional[Any]:
         """Get the value of the attribute named attr_name."""
         attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
         if len(attrs) == 0:
@@ -154,11 +162,13 @@ class HfConfigFactory:
             return attrs[0][1]
 
     @staticmethod
-    def set_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
-                        attr_name: str,
-                        value: Any,
-                        include_vit: bool = False,
-                        ensure_set: bool = True) -> int:
+    def set_config_attr(
+        config: Union[PretrainedConfig, Dict[str, Any]],
+        attr_name: str,
+        value: Any,
+        include_vit: bool = False,
+        ensure_set: bool = True,
+    ) -> int:
         """Set all the attr_name attributes to value."""
         attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
         if ensure_set and len(attrs) == 0:
@@ -171,9 +181,9 @@ class HfConfigFactory:
         return len(attrs)
 
     @staticmethod
-    def del_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
-                        attr_name: str,
-                        include_vit: bool = False) -> int:
+    def del_config_attr(
+        config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str, include_vit: bool = False
+    ) -> int:
         """Remove all the attr_name attributes."""
         attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
         for config, _ in attrs:
@@ -190,15 +200,15 @@ class HfConfigFactory:
         max_model_len = INF
 
         possible_keys = [
-            'seq_length',  # qwen, chatglm
-            'max_position_embeddings',  # qwen1.5, llama2
-            'n_positions',  # polylm, phi-2
-            'model_max_length',  # baichuan2
+            "seq_length",  # qwen, chatglm
+            "max_position_embeddings",  # qwen1.5, llama2
+            "n_positions",  # polylm, phi-2
+            "model_max_length",  # baichuan2
             # others
-            'seq_len',
-            'max_seq_len',
-            'max_sequence_length',
-            'max_seq_length',
+            "seq_len",
+            "max_seq_len",
+            "max_sequence_length",
+            "max_seq_length",
         ]
         for key in possible_keys:
             max_len_key = HfConfigFactory.get_config_attr(config, key)
@@ -213,15 +223,15 @@ class HfConfigFactory:
         """Set the max length supported by the model"""
 
         possible_keys = [
-            'seq_length',  # qwen, chatglm
-            'max_position_embeddings',  # qwen1.5, llama2
-            'n_positions',  # polylm, phi-2
-            'model_max_length',  # baichuan2
+            "seq_length",  # qwen, chatglm
+            "max_position_embeddings",  # qwen1.5, llama2
+            "n_positions",  # polylm, phi-2
+            "model_max_length",  # baichuan2
             # others
-            'seq_len',
-            'max_seq_len',
-            'max_sequence_length',
-            'max_seq_length',
+            "seq_len",
+            "max_seq_len",
+            "max_sequence_length",
+            "max_seq_length",
         ]
         for key in possible_keys:
             max_len_value = HfConfigFactory.get_config_attr(config, key)
@@ -230,7 +240,7 @@ class HfConfigFactory:
 
     @staticmethod
     def compat_zero3(config: PretrainedConfig) -> None:
-        value = HfConfigFactory.get_config_attr(config, 'hidden_size')
+        value = HfConfigFactory.get_config_attr(config, "hidden_size")
         try:
             # AttributeError: can't set attribute 'hidden_size'
             config.hidden_size = value
@@ -242,7 +252,7 @@ class HfConfigFactory:
         if torch_dtype is None:
             return None
         if isinstance(torch_dtype, str):
-            torch_dtype = torch_dtype.replace('torch.', '')
+            torch_dtype = torch_dtype.replace("torch.", "")
             torch_dtype = getattr(torch, torch_dtype)
         return torch_dtype
 
@@ -250,39 +260,39 @@ class HfConfigFactory:
     def get_quant_info(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Get quant_method, quant_bits, dtype. not support hqq/eetq now, support awq/gptq/bnb/aqlm"""
         if isinstance(config, dict):
-            quantization_config = config.get('quantization_config')
+            quantization_config = config.get("quantization_config")
         else:
-            quantization_config = getattr(config, 'quantization_config', None)
+            quantization_config = getattr(config, "quantization_config", None)
         if quantization_config is None:
             return
         quantization_config = dict(quantization_config)
-        quant_method = quantization_config.get('quant_method')
+        quant_method = quantization_config.get("quant_method")
         res = {}
-        if quant_method in {'gptq', 'awq', 'aqlm'}:
-            res['quant_method'] = quant_method
-            res['torch_dtype'] = torch.float16
-            quant_bits = quantization_config.get('bits')
+        if quant_method in {"gptq", "awq", "aqlm"}:
+            res["quant_method"] = quant_method
+            res["torch_dtype"] = torch.float16
+            quant_bits = quantization_config.get("bits")
             if quant_bits is not None:
-                res['quant_bits'] = quant_bits
-        elif quant_method == 'bitsandbytes':
-            res['quant_method'] = 'bnb'
-            load_in_4bit = quantization_config.get('_load_in_4bit')
-            load_in_8bit = quantization_config.get('_load_in_8bit')
-            bnb_4bit_compute_dtype = quantization_config.get('bnb_4bit_compute_dtype')
+                res["quant_bits"] = quant_bits
+        elif quant_method == "bitsandbytes":
+            res["quant_method"] = "bnb"
+            load_in_4bit = quantization_config.get("_load_in_4bit")
+            load_in_8bit = quantization_config.get("_load_in_8bit")
+            bnb_4bit_compute_dtype = quantization_config.get("bnb_4bit_compute_dtype")
             if load_in_4bit:
-                res['quant_bits'] = 4
+                res["quant_bits"] = 4
             elif load_in_8bit:
-                res['quant_bits'] = 8
-            res['torch_dtype'] = HfConfigFactory.to_torch_dtype(bnb_4bit_compute_dtype)
-        elif quant_method == 'hqq':
-            res['quant_method'] = quant_method
-            res['quant_bits'] = quantization_config['quant_config']['weight_quant_params']['nbits']
+                res["quant_bits"] = 8
+            res["torch_dtype"] = HfConfigFactory.to_torch_dtype(bnb_4bit_compute_dtype)
+        elif quant_method == "hqq":
+            res["quant_method"] = quant_method
+            res["quant_bits"] = quantization_config["quant_config"]["weight_quant_params"]["nbits"]
         elif quant_method is not None:
-            res['quant_method'] = quant_method
+            res["quant_method"] = quant_method
         return res or None
 
 
-_REMOTE_CODE_REDUCE_MARKER = '_swift_remote_code_reduce'
+_REMOTE_CODE_REDUCE_MARKER = "_swift_remote_code_reduce"
 
 
 def _rebuild_remote_code_config(model_dir: str, revision: Optional[str], config_dict: Dict[str, Any]):
@@ -292,15 +302,31 @@ def _rebuild_remote_code_config(model_dir: str, revision: Optional[str], config_
     from transformers import AutoConfig
 
     config = AutoConfig.from_pretrained(model_dir, revision=revision, trust_remote_code=True)
-    for key, value in config_dict.items():
-        setattr(config, key, value)
+    _reapply_config_state(config, config_dict)
     return make_remote_code_config_picklable(config, model_dir, revision=revision)
 
 
-def make_remote_code_config_picklable(config: PretrainedConfig,
-                                      model_dir: str,
-                                      *,
-                                      revision: Optional[str] = None) -> PretrainedConfig:
+def _reapply_config_state(config: PretrainedConfig, state: Dict[str, Any]) -> None:
+    """Re-apply captured ``to_dict()`` state onto a freshly loaded config without downgrading
+    typed sub-configs.
+
+    ``to_dict()`` serializes sub-configs (``vision_config`` / ``text_config`` / ...) to plain
+    dicts; assigning those verbatim would replace the reloaded typed sub-config object with a
+    dict, and attribute readers downstream die (vLLM's PaddleOCR-VL reads
+    ``config.vision_config.hidden_size`` -> "'dict' object has no attribute 'hidden_size'").
+    Merge dict state into the existing typed sub-config instead, recursively.
+    """
+    for key, value in state.items():
+        current = getattr(config, key, None)
+        if isinstance(current, PretrainedConfig) and isinstance(value, dict):
+            _reapply_config_state(current, value)
+        else:
+            setattr(config, key, value)
+
+
+def make_remote_code_config_picklable(
+    config: PretrainedConfig, model_dir: str, *, revision: Optional[str] = None
+) -> PretrainedConfig:
     """Make a ``trust_remote_code`` config survive a cross-process pickle boundary (defect122).
 
     Such configs are instances of ``transformers_modules.*`` classes that exist only in the process
@@ -313,7 +339,7 @@ def make_remote_code_config_picklable(config: PretrainedConfig,
     disk round-trip. Native config classes pass through untouched.
     """
     cls = type(config)
-    if not cls.__module__.startswith('transformers_modules'):
+    if not cls.__module__.startswith("transformers_modules"):
         return config
     config._swift_remote_code_dir = model_dir
     config._swift_remote_code_revision = revision
@@ -321,13 +347,13 @@ def make_remote_code_config_picklable(config: PretrainedConfig,
         return config
 
     def __reduce__(self):
-        source = getattr(self, '_swift_remote_code_dir', None) or self._name_or_path
-        state = {k: v for k, v in self.to_dict().items() if not k.startswith('_swift_remote_code_')}
-        return (_rebuild_remote_code_config,
-                (source, getattr(self, '_swift_remote_code_revision', None), state))
+        source = getattr(self, "_swift_remote_code_dir", None) or self._name_or_path
+        state = {k: v for k, v in self.to_dict().items() if not k.startswith("_swift_remote_code_")}
+        return (_rebuild_remote_code_config, (source, getattr(self, "_swift_remote_code_revision", None), state))
 
     def __deepcopy__(self, memo):
         import copy
+
         new = cls.__new__(cls)
         memo[id(self)] = new
         for key, value in self.__dict__.items():
@@ -337,7 +363,7 @@ def make_remote_code_config_picklable(config: PretrainedConfig,
     def to_dict(self):
         # The reduction bookkeeping is transport metadata, not config state: keep it out of the
         # serialized dict (it travels as reduce args) so actor-side configs stay attribute-clean.
-        return {k: v for k, v in orig_to_dict(self).items() if not k.startswith('_swift_remote_code_')}
+        return {k: v for k, v in orig_to_dict(self).items() if not k.startswith("_swift_remote_code_")}
 
     orig_to_dict = cls.to_dict
     cls.__reduce__ = __reduce__

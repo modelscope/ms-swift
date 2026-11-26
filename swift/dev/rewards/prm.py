@@ -5,9 +5,8 @@ The driver's PRM channel scores the trajectory-so-far at every closed segment an
 per-segment scores into the score rows; WHERE those boundaries fall is this module's concern. A
 plugin resolves to a ``prm_segment(sample, traj) -> bool`` predicate -- the one the StreamingDriver
 consults after every step, where ``True`` closes the running segment. ``traj`` arrives in whatever
-form the driver holds it (the in-process dict on local direct calls, the stashed object reference
-under ray), so a content-based plugin resolves it itself via :func:`materialize_traj` -- local
-runs stay zero-cost, ray runs pay one materialization per step for content-based segmentation.
+form the driver holds it. PRMSegmentWorker evaluates content-based predicates at the compute
+boundary; the driver receives only their boolean verdicts.
 """
 from __future__ import annotations
 
@@ -15,28 +14,23 @@ from typing import Any, Callable, Dict, Optional, Type
 
 from swift.dev.utils.plugin import PluginRegistry, SwiftPlugin
 
+from twinkle import remote_class, remote_function
 from twinkle.data_format import last_assistant_text
 
 __all__ = ['PRMSegmentScorer', 'TurnPRMScorer', 'DelimiterPRMScorer', 'prm_scorers',
-           'PRM_STEP_SCORER', 'build_prm_segment', 'materialize_traj']
+           'PRM_STEP_SCORER', 'build_prm_segment']
 
 
-def materialize_traj(traj: Any) -> Any:
-    """The trajectory dict behind whatever the driver hands a segmentation predicate.
+@remote_class(execute='first')
+class PRMSegmentWorker:
+    """Evaluate a segmentation predicate on trajectory data and publish only its boolean verdict."""
 
-    Local direct calls pass the in-process dict (zero cost). Under ray the driver holds the
-    rollout's stashed object reference and never opens it -- a content-based segmentation
-    resolves it here, at its own cost, with ``ray.get`` in the calling process.
-    """
-    if isinstance(traj, dict):
-        return traj
-    if hasattr(traj, 'result'):  # a LazyCollect wrapper
-        traj = traj.result()
-    if isinstance(traj, dict):
-        return traj
-    import ray  # under ray the driver holds the rollout's stashed ObjectRef
+    def __init__(self, predicate: Callable[[Any, Any], bool]):
+        self.predicate = predicate
 
-    return ray.get(traj)
+    @remote_function(dispatch='all', execute='first', collect='first', lazy_collect=False)
+    def __call__(self, sample: Any, traj: Any) -> bool:
+        return bool(self.predicate(sample, traj))
 
 
 class PRMSegmentScorer(SwiftPlugin):
@@ -88,7 +82,7 @@ class DelimiterPRMScorer(PRMSegmentScorer):
         delimiter = self.delimiter
 
         def prm_segment(sample: Any, traj: Any) -> bool:
-            return delimiter in last_assistant_text(materialize_traj(traj))
+            return delimiter in last_assistant_text(traj)
 
         return prm_segment
 
@@ -104,8 +98,8 @@ PRM_STEP_SCORER = PluginRegistry.register_kind(
     'prm_scorer', PRMSegmentScorer, config_field='prm_scorer', entries=prm_scorers)
 
 
-def build_prm_segment(reward_config: Optional[Any], rollout_config: Optional[Any]
-                      ) -> Optional[Callable[[Any, Any], bool]]:
+def build_prm_segment(reward_config: Optional[Any], rollout_config: Optional[Any], *,
+                      remote_group: Optional[str] = None) -> Optional[Callable[[Any, Any], bool]]:
     """The driver's ``prm_segment`` predicate, or ``None`` (the driver default) without --prm.
 
     ``prm_scorer`` unset picks by rollout shape, mirroring the legacy default: 'turn' for a
@@ -125,8 +119,14 @@ def build_prm_segment(reward_config: Optional[Any], rollout_config: Optional[Any
                 f'prm_step_delimiter={reward_config.prm_step_delimiter!r} only shapes the delimiter '
                 "segmentation, but the resolved prm_scorer is 'turn': pass --prm_scorer delimiter "
                 'or drop the delimiter.')
-        return plugin.build()
-    if callable(plugin):
-        return plugin
-    raise ValueError(f'prm_scorer {spec!r} resolved to {plugin!r}: expected a PRMSegmentScorer '
-                     'plugin or a (sample, traj) -> bool callable.')
+        predicate = plugin.build()
+    elif callable(plugin):
+        predicate = plugin
+    else:
+        raise ValueError(f'prm_scorer {spec!r} resolved to {plugin!r}: expected a PRMSegmentScorer '
+                         'plugin or a (sample, traj) -> bool callable.')
+    if predicate is None:
+        return None
+    import uuid
+
+    return PRMSegmentWorker(predicate, remote_group=remote_group, instance_id=uuid.uuid4().hex)

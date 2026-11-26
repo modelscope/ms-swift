@@ -23,8 +23,8 @@ from swift.dev.utils.tags import CONTROLLED_TAGS
 # (language, path). The two files are generated together and carry identical tables; only the
 # surrounding prose differs by language.
 DOC_PATHS: List[Tuple[str, str]] = [
-    ('zh', 'docs/source/Instruction/Supported-models-and-datasets.md'),
-    ('en', 'docs/source_en/Instruction/Supported-models-and-datasets.md'),
+    ('zh', 'docs/v4/source/Instruction/Supported-models-and-datasets.md'),
+    ('en', 'docs/v4/source_en/Instruction/Supported-models-and-datasets.md'),
 ]
 
 # Headings per language. ``datasets`` doubles as the boundary between the two halves, so it must stay

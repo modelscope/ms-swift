@@ -13,6 +13,7 @@ from swift.dev.recipe.utils import (
     StepState,
     build_save_knobs,
     close_driver_preserving_error,
+    finalize_rl_resources,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -216,13 +217,46 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
     return rft_state.next_round
 
 
+def _reown_kept_payloads(payloads):
+    """Materialise the kept trajectories in this (driver) process and re-put them so THIS process
+    owns the training payloads.
+
+    defect129/G35 item7: the rollout actor owns the row objects (its ``stash`` ray.put) and the
+    StreamingDriver actor is only a borrower that forwards the refs to main. Closing the driver
+    ``ray.kill``s that borrowing actor; Ray's distributed reference counting can then erase the
+    rollout owner's entry before the trainer's borrow propagates back to it (the borrower-info race
+    documented in ray PR #63560 / #63557), so ``forward_backward``'s ``ray.get`` hits
+    ``ReferenceCountingAssertionError`` even though main still holds the refs. Anchoring the refs in
+    main does not close the race: the anchor's completion-token task releases its argument refs on
+    completion, and main's local borrow is exactly what the owner fails to learn about in time.
+    Re-owning the kept subset in the surviving consumer process removes the cross-actor borrow chain
+    entirely -- the trainer fetches objects whose owner (this process) outlives training. Only the
+    kept subset is materialised (bounded by rejection sampling), never the full rollout. Outside ray
+    (local mode) the payloads are already plain values and pass through untouched.
+    """
+    from twinkle.infra._ray.ray_helper import RayHelper
+    if not RayHelper.ray_inited() or RayHelper.is_worker():
+        return payloads
+    import ray
+    owned = []
+    for payload in payloads:
+        if isinstance(payload, ray.ObjectRef):
+            payload = ray.get(payload)
+        elif hasattr(payload, 'result'):
+            payload = payload.result()
+        owned.append(ray.put(payload))
+    return owned
+
+
 def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloader, num_samples, window):
-    """Generate and score one round, returning the kept trajectories (references) and row lengths.
+    """Generate and score one round, returning the kept trajectories (this process's own refs) and
+    their row lengths; the third slot is retained for call-site compatibility and is always ``None``.
 
     The driver hands each batch out as it travels (references) with its row-aligned score
     column riding the facts; the round collects the references plus the facts' numeric columns
     (score rows, response lengths), so rejection sampling and the reward metric never materialise
-    a trajectory.
+    a trajectory. Only the KEPT subset is materialised and re-owned here (see
+    :func:`_reown_kept_payloads`) so training never depends on the rollout/driver borrow chain.
     The round's policy is the one the previous round trained: one sync first (colocated, it hands
     the devices to the sampler), then one driver over the whole prompt set; the devices come back
     on every exit.
@@ -236,6 +270,7 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
     driver = build_rft_driver(cluster=cluster, rollout_config=rollout_config, prompt_dataloader=dataloader,
                               num_samples=num_samples, window=window)
     trajs, orm_rows, lengths = [], [], []
+    kept_trajs, kept_lengths = [], []
     try:
         for batch, batch_facts in driver:
             trajs.extend(batch)
@@ -246,27 +281,34 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
             lengths.extend(batch_facts.get('response_lengths') or ())
             if len(trajs) % (window * num_samples) == 0:
                 logger.info(f'[rft] round generation: {len(trajs) // num_samples} prompts done.')
+        if not trajs:
+            raise RuntimeError('the RFT round produced no scored group (every episode failed).')
+        # None (an unparseable judge verdict) rides as nan: the metric fold and the weighted sum below
+        # consume the same nan-normalized sample-major matrix.
+        rewards_matrix = torch.tensor(
+            [[float("nan") if value is None or value != value else float(value) for value in (row or ())]
+             or [float("nan")] for row in orm_rows],
+            dtype=torch.float32,
+        )
+        # Feed the whole generated rollout (before rejection) into the reward metric, so the logged
+        # train/total_reward tracks the policy's improving sample quality -- the SFT loss on the kept
+        # subset alone hides it.
+        selector.accumulate_metric(rewards_matrix, lengths)
+        rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
+        kept = selector.select(len(trajs), rewards)
+        kept_lengths = [lengths[i] for i in kept]
+        # Re-own the kept payloads in THIS process BEFORE the driver close (while the driver's
+        # borrow chain is still intact, so the fetch succeeds). defect129/G35 item7: closing the
+        # driver ray.kills the borrowing actor, and Ray's reference counting can erase the rollout
+        # owner's entry before the trainer's borrow propagates -- anchoring refs in main does not
+        # close that race. Owning the kept objects here removes the cross-actor chain entirely.
+        kept_trajs = _reown_kept_payloads([trajs[i] for i in kept])
     finally:
         close_driver_preserving_error(driver)
         if cluster.colocate:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
-    if not trajs:
-        raise RuntimeError('the RFT round produced no scored group (every episode failed).')
-    # None (an unparseable judge verdict) rides as nan: the metric fold and the weighted sum below
-    # consume the same nan-normalized sample-major matrix.
-    rewards_matrix = torch.tensor(
-        [[float("nan") if value is None or value != value else float(value) for value in (row or ())]
-         or [float("nan")] for row in orm_rows],
-        dtype=torch.float32,
-    )
-    # Feed the whole generated rollout (before rejection) into the reward metric, so the logged
-    # train/total_reward tracks the policy's improving sample quality -- the SFT loss on the kept
-    # subset alone hides it.
-    selector.accumulate_metric(rewards_matrix, lengths)
-    rewards = weighted_rewards(rewards_matrix, reward_config.orm_weights).tolist()
-    kept = selector.select(len(trajs), rewards)
-    return [trajs[i] for i in kept], [lengths[i] for i in kept]
+    return kept_trajs, kept_lengths, None
 
 
 def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, save_steps):
@@ -349,14 +391,10 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     # the rft_iterations rounds generates the whole prompt set and SFTs the kept completions, so the
     # budget sizes those rounds with the per-prompt kept count as the effective num_generations and
     # no replay (num_iterations=1); an explicit --max_steps still overrides.
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builders import resolve_rl_dp_size
 
     remote_run = distributed_config.mode == 'remote'
-    if remote_run:
-        # One client process drives the server: the policy handle's own mesh sizes the batches.
-        dp_size = 1
-    else:
-        dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    dp_size = resolve_rl_dp_size(distributed_config, template_config.sequence_parallel_size)
     train_batch_size = train_config.per_device_train_batch_size * dp_size
     # One resolved value feeds BOTH the step budget and the round's generation chunking: the derived
     # default fills whole optimizer updates on the sampling axis (num_samples per prompt), never the
@@ -453,8 +491,10 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         for round_index in range(start_round, rl_config.rft_iterations):
             if state.reached_max():
                 break
-            kept_trajs, kept_lengths = _sample_and_select(
+            kept_trajs, kept_lengths, _ = _sample_and_select(
                 cluster, rollout_config, reward_config, selector, dataloader, num_samples, generation_batch_size)
+            # kept_trajs are THIS process's own object refs (re-owned in _sample_and_select); they
+            # are released when the name is rebound next round, so this round's payloads never leak.
             round_save_due = _train_selected_samples(
                 cluster, state, kept_trajs, kept_lengths, train_batch_size, save_steps)
             # Commit the round only after its SFT pass has completed (or max_steps deliberately
@@ -474,27 +514,15 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
                 f'{train_batch_size} mini-batch, so nothing was trained and no checkpoint is written. '
                 'Check max_steps > 0, then lower rft_threshold / rft_select, raise rft_num_samples, or enlarge '
                 'the prompt dataset so at least one round fills a mini-batch.')
+        state.handler.on_train_end()
+        save_final_checkpoint(cluster.model, save, enabled=_save_final)
     finally:
-        _failed = sys.exc_info()[0] is not None
-        try:
-            Perf.shutdown()
-        finally:
-            try:
-                # MultiTurnRollout owns only the sandbox env pool; the sampler's GPU memory is the Cluster's
-                # to release (a Ray-deployed rollout is a proxy whose sampler lives worker-side). A served
-                # sampler's lifecycle is the server session's, not this client's.
-                cluster.rollout.close()
-            finally:
-                try:
-                    cluster.sampler.shutdown() if not remote_run else None
-                finally:
-                    try:
-                        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
-                        # record, and close() is what writes the summary.
-                        state.finish_metrics(status='failed' if _failed else 'loop_completed')
-                    finally:
-                        state.tracker.close()
-    state.handler.on_train_end()
-    # The final checkpoint is synchronous; its args.json was written at initialize_rl_devices.
-    save_final_checkpoint(cluster.model, save, enabled=_save_final)
+        # Before the tracker closes: the summary's status only leaves 'running' on a stage='run'
+        # record, and close() is what writes the summary -- so the finish runs first inside the
+        # guarded teardown, and a cleanup error cannot mask the in-flight training exception.
+        finalize_rl_resources(
+            state, cluster, remote_run=remote_run,
+            finish=lambda: state.finish_metrics(
+                status='failed' if sys.exc_info()[0] is not None else 'loop_completed'),
+            recipe='RFT')
     return state.history

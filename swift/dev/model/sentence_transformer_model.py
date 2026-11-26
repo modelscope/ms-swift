@@ -63,6 +63,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
+        self._reject_router_replay(kwargs)
         # Mirror TwinkleTransformersModel.__init__ plumbing, but build a SentenceTransformer instead of
         # an AutoModelFor* backbone. super(PreTrainedModel, self) intentionally skips PreTrainedModel's
         # config-requiring __init__ (same as the parent) and initializes the remaining mixins.
@@ -86,7 +87,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         for _role in ('language_model', 'vision_tower', 'aligner'):
             _value = self.model_arch.get(_role)
             self.model_arch[_role] = [_value] if isinstance(_value, str) else list(_value or [])
-        # Router replay is a MoE-causal-LM concept; irrelevant to sentence encoders.
+        # This pipeline bypasses the causal-LM router replay hooks.
         self._router_replay_enabled = False
         self._router_replay_applied = False
         self._decide_strategy(strategy)
@@ -112,6 +113,16 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         self.active_group = _default_adapter_name
 
     # --- construction helpers -------------------------------------------------
+
+    @staticmethod
+    def _reject_router_replay(kwargs: Dict[str, Any]) -> None:
+        """Reject replay controls that the sentence-transformers forward does not implement."""
+        enabled = kwargs.pop('enable_router_replay', False)
+        mode = kwargs.pop('router_replay_mode', None)
+        action = kwargs.pop('router_replay_action', None)
+        if enabled or mode not in (None, 'disabled') or action is not None:
+            raise ValueError('Routing replay is not implemented for the sentence-transformers pipeline; '
+                             "use router_replay_mode='disabled' and enable_router_replay=False.")
 
     def _build_sentence_transformer(self, model_id: Optional[str], st_kwargs: Dict[str, Any]):
         try:
@@ -212,6 +223,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         return optimizer_config, inputs
 
     def forward(self, *, inputs: Union[InputFeature, List[InputFeature], List[Trajectory]], **kwargs):
+        self._reject_router_replay(kwargs)
         adapter_name = kwargs.pop("adapter_name", self._get_default_group())
         kwargs.pop("task", None)  # a sentence encoder is always the embedding task
         self.model.train()
@@ -237,6 +249,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
     def forward_only(self, *, inputs: Union[InputFeature, List[InputFeature], List[Trajectory]], **kwargs):
         import torch
 
+        self._reject_router_replay(kwargs)
         adapter_name = kwargs.pop("adapter_name", self._get_default_group())
         kwargs.pop("task", None)
         self.model.eval()
@@ -260,6 +273,7 @@ class SentenceTransformerModel(TwinkleTransformersModel):
 
     def _forward_backward_single(self, *, inputs, loss_key, loss_weight, normalize_globally,
                                  sync_gradients, increment_step, **kwargs):
+        self._reject_router_replay(kwargs)
         # ST runs the InputProcessor inside forward (_prepare_forward), so the base micro-batch
         # planner would read input_ids before encoding exists (KeyError). A whole-sentence pooling
         # head also cannot be split at sample level (it rejects sequence parallel / padding-free

@@ -222,15 +222,14 @@ class TrainStepStage(StageComponent):
         # port projection is the flattened lane) or projects its last batch
         # (the streaming driver); the positional batch is the loader shape,
         # whose port value is the resident DataLoader object itself. A LIST
-        # port value wins; a remote handle resolves HERE (the training loop
-        # encodes the rows under the node's own tokenizer); anything else
-        # falls back to the positional batch -- the same port-first
+        # port value wins -- including a stash-delivered list of per-row
+        # handles, which deref resolves member by member HERE (the training
+        # loop encodes the rows under the node's own tokenizer); anything
+        # else falls back to the positional batch -- the same port-first
         # convention score and advantage apply.
         port_batch = inputs.get('batch')
         if port_batch is None:
             data = batch
-        elif isinstance(port_batch, list):
-            data = port_batch
         else:
             data = deref(port_batch)
         features = self._features(data)

@@ -1,0 +1,40 @@
+---
+title: Supported Models & Datasets
+description: Model ids resolve from ModelScope/Hugging Face; datasets use id#slice syntax.
+---
+
+## Models
+
+`--model` takes a hub id (ModelScope by default, Hugging Face with `--use_hf true`)
+or a local path. SWIFT resolves the model family, template and task head from the
+registry — the v5 loader registers 247 model loaders covering the Qwen, DeepSeek,
+GLM, Gemma, Llama, InternLM, MiniCPM, multimodal and embedding/reranker families
+(counted from `@register_model` in `swift/dev/model/loader/`).
+
+```bash
+--model Qwen/Qwen3.5-4B          # multimodal dense
+--model Qwen/Qwen3-30B-A3B       # MoE
+--model Qwen/Qwen3.5-4B-Base     # base weights for pretrain / base-to-chat
+```
+
+Family-specific examples live in
+[`examples/v5/models`](https://github.com/modelscope/ms-swift/tree/main/examples/v5/models).
+If a model id is not registered, loading fails loudly with the unsupported
+model type — it never silently falls back to another family.
+
+## Datasets
+
+`--dataset` accepts hub dataset ids, local jsonl/csv files, and a `#N` slice suffix:
+
+```bash
+--dataset 'swift/self-cognition#600'              # first 600 rows
+--dataset 'AI-MO/NuminaMath-TIR#5000'             # RL prompts
+--dataset /path/to/custom.jsonl                   # local messages-format file
+```
+
+Custom data follows the messages format (`{"messages": [{"role": ..., "content": ...}]}`);
+task-specific formats (embedding pairs, reranker triples, preference pairs,
+classification labels) are documented in the corresponding training pages and in
+[`examples/v5/train/data`](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/data).
+
+Dataset registration and preprocessing plugins: [Code API & Plugins](../interfaces/code-api.mdx).

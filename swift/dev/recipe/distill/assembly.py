@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.distill.worker import DistillWorker
 from swift.dev.recipe.utils import TEACHER_GROUP, auxiliary_mesh, build_rl_sampler, effective_colocate, teacher_group
 from swift.dev.template.conventions import PROMPT_INPUT_KEYS
@@ -39,6 +40,8 @@ def distill_dataset_rows(template: Any, raw_rows: Sequence[Dict[str, Any]]) -> L
     positions) and keeps the conversation plus the raw prompt inputs the teacher view re-encodes --
     the same keys a rollout trajectory carries, so an update never branches on its source.
     """
+    from twinkle.data_format import attach_user_data, ground_truth, pack_value
+
     dataset_rows: List[Dict[str, Any]] = []
     for row in raw_rows:
         messages = row.get("messages") if isinstance(row, dict) else None
@@ -53,6 +56,9 @@ def distill_dataset_rows(template: Any, raw_rows: Sequence[Dict[str, Any]]) -> L
             if row.get(key) is not None:
                 encoded.setdefault(key, copy.deepcopy(row[key]))
         encoded["messages"] = copy.deepcopy(messages)
+        teacher_prompt = ground_truth(row, 'teacher_prompt')
+        if teacher_prompt is not None:
+            encoded = attach_user_data(encoded, teacher_prompt=pack_value(teacher_prompt))
         dataset_rows.append(encoded)
     return dataset_rows
 
@@ -171,7 +177,7 @@ def initialize_distill_cluster(
                else build_dp_mesh(distributed_config, sp))
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None and not remote_run:
+    if resume_dir and not has_adapter(tuner_config) and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_distill).
         policy_config = copy.deepcopy(model_config)
@@ -190,7 +196,7 @@ def initialize_distill_cluster(
         moe_config=moe_config,
         torch_dtype="float32",
     )
-    if tuner_config is not None:
+    if has_adapter(tuner_config):
         apply_tuner(
             model,
             tuner_config,
@@ -255,7 +261,8 @@ def initialize_distill_cluster(
     # client sampler handle.
     rollout = build_rollout(
         sampler, template, rollout_config, sampling_params=params, remote=not remote_run,
-        inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)))
+        inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)),
+        seed=train_config.seed)
 
     teachers, teacher_options = _build_teachers(
         model=model,
@@ -381,7 +388,7 @@ def _build_teachers(
             "forward_only with no offload hook. Leave it off."
         )
     if rl_config._teacher_use_disable_adapter:
-        if tuner_config is None:
+        if not has_adapter(tuner_config):
             raise ValueError(
                 "rl_config._teacher_use_disable_adapter=True requires a LoRA student "
                 "(tuner_config), since it distils from the adapter-disabled base of that "

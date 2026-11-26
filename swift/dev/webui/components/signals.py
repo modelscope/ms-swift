@@ -162,20 +162,7 @@ class PrivilegedViewStage(StageComponent):
 
 
 class AdvantageStage(StageComponent):
-    """advantage: trajectories and forward lanes in, training-target columns out.
-
-    The estimator is twinkle's :class:`Advantage` family member (one remote
-    instance per node, built under the node's knobs -- a knob the estimator
-    does not read is rejected at construction, not silently ignored). It reads
-    the named score columns off the row-aligned ``scores`` argument -- the webui's
-    lanes are row-shaped dicts, so the columns the score stage (or the driver
-    component's admission merge) wrote onto the rows are lifted onto the score
-    entries here -- and the four optional forward lanes (``ref_out`` /
-    ``teacher_out`` / ``old_out`` / ``value_out``, each a whole ModelOutput or its
-    handle), and writes advantages / returns /
-    old_logps / ref_logps / teacher_logps onto copies of the rows: the ``traj``
-    port carries the updated rows for training, the ``metric`` port the light
-    numeric summary. No model is held and no forward runs here."""
+    """Forward trajectories, scores and model lanes to the estimator; retain only light metrics locally."""
 
     type = 'advantage'
 
@@ -221,33 +208,16 @@ class AdvantageStage(StageComponent):
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
         trajs = inputs.get('traj') if inputs.get('traj') is not None else batch
-        if not isinstance(trajs, list) or not trajs:
+        if trajs is None:
             raise ComponentError(f'{self.node_id}: advantage needs a wired traj batch')
         estimator = getattr(self, '_estimator_instance', None)
         if estimator is None:
             estimator = self._estimator_instance = self._estimator()
-        # The score seam: the estimator takes the named reward maps from the row-aligned
-        # ``scores`` argument. The webui's rows are plain dicts (its lanes are row-shaped,
-        # never references), so the columns living on the rows are lifted onto the score
-        # entries here -- orm / baseline off ``rewards``, the PRM segment facts off their
-        # own column.
-        scores = [{'rewards': (row.get('rewards') or {}), 'prm_segments': row.get('prm_segments')}
-                  for row in trajs]
-        result = estimator(trajs, scores=scores,
-                           ref_out=inputs.get('ref_out'), teacher_out=inputs.get('teacher_out'),
-                           old_out=inputs.get('old_out'), value_out=inputs.get('value_out'))
-        # The tuple (new_trajs, summary) resolves HERE: the rows feed the session-local
-        # training loop (train_step encodes them under its own tokenizer), the summary
-        # is the light metric port's payload.
-        new_trajs, summary = deref(result)
-        # The estimator's return declares stash=(0,): the worker lifts the traj list
-        # ELEMENT-WISE to ObjectRefs, and deref resolves only the top-level handle --
-        # every row would still ride as a reference. This port's contract is plain
-        # dicts (the session owns the row bodies: the driver runs in-process), and the
-        # consumers encode locally, so the rows materialise HERE, once, at the seam
-        # where the remote estimator's output enters the row lane.
-        import ray
-        new_trajs = [ray.get(row) if isinstance(row, ray.ObjectRef) else row for row in new_trajs]
+        # The estimator resolves data at its compute boundary; only its summary is materialized here.
+        new_trajs, summary = estimator(
+            trajs, scores=inputs.get('scores'),
+            ref_out=inputs.get('ref_out'), teacher_out=inputs.get('teacher_out'),
+            old_out=inputs.get('old_out'), value_out=inputs.get('value_out'))
         # The summary's nested scalar dicts (rollout_correction's train-vs-sampler
         # logp diagnostics) flatten to prefixed keys: the metric port carries
         # scalars only, and dropping the dict would silently hide the diagnostics.

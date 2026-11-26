@@ -14,6 +14,7 @@ from swift.dev.utils.logger import get_logger
 from swift.dev.utils.storage import is_remote_url
 
 from .legacy_coverage import LEGACY_ALIASES
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.config.checkpoint_config import (
     CHECKPOINT_DATA_FIELDS as _CHECKPOINT_DATA_FIELDS,
     CHECKPOINT_FORCE_LOAD_FIELDS as _CHECKPOINT_FORCE_LOAD_FIELDS,
@@ -179,7 +180,7 @@ def flag_names(argv: Sequence[str]) -> set:
 def select_tuner(tuner):
     """Map ``tuner='full'`` to None so downstream reads a missing TunerConfig as no-adapter; GaLore
     is a full-param optimizer technique whose knobs live on TrainConfig, so no config is kept."""
-    if tuner.tuner == 'full':
+    if not has_adapter(tuner):
         return None
     return tuner
 

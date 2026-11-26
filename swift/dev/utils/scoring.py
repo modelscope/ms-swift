@@ -160,6 +160,10 @@ def response_token_scores(outputs: Any, features: List[Dict[str, Any]],
     """
     outputs = outputs.result() if hasattr(outputs, 'result') else outputs
     values = outputs.get(output_key) if isinstance(outputs, dict) else outputs
+    # The channel itself may be a stashed pending handle (e.g. the distill teacher's
+    # stash=('teacher_logps',...)); materialise it before the tensor conversion below, which would
+    # otherwise probe len() on the remote collected value (the LazyCollect 0-d tensor TypeError).
+    values = values.result() if hasattr(values, 'result') else values
     if values is None:
         raise RuntimeError(f'the forward returned no {output_key!r} channel.')
     if not (isinstance(values, (list, tuple)) and values
@@ -167,6 +171,7 @@ def response_token_scores(outputs: Any, features: List[Dict[str, Any]],
         values = [values]
     rows = []
     for batch in values:
+        batch = batch.result() if hasattr(batch, 'result') else batch
         batch = torch.as_tensor(batch).detach().float().cpu()
         rows.extend(batch.unbind(0) if batch.dim() > 1 else [batch])
     if len(rows) != len(features):

@@ -11,10 +11,10 @@ import torch
 import torch.nn.functional as F
 
 from swift.dev.callbacks.base import CALLBACK, CallbackControl, CallbackState, TrainCallback
-from swift.dev.model.decision_head import KIND_NAMES, get_scoring_head, masked_softmax
+from swift.dev.model.decision_head import KIND_NAMES, masked_softmax
 from swift.dev.utils import get_logger
 from swift.dev.utils.plugin import PluginRegistry
-from swift.dev.utils.scoring import brier_per_question, brier_score, ece_score, nll_per_question
+from swift.dev.utils.scoring import brier_per_question, brier_score, collect, ece_score, nll_per_question
 
 logger = get_logger()
 
@@ -114,12 +114,6 @@ def _stack_items(items: List[Dict]) -> Tuple[torch.Tensor, torch.Tensor, torch.T
     return tuple(padded)
 
 
-def _served_temperatures(head) -> Tuple[float, Dict[int, float]]:
-    head_t = float(head.head_temperature) if hasattr(head, "head_temperature") else 1.0
-    relative = {kind: head.get_temperature(kind) for kind in range(len(KIND_NAMES))}
-    return head_t, relative
-
-
 @PluginRegistry.register(CALLBACK, "temperature_calibration")
 class TemperatureCalibrationCallback(TrainCallback):
     """Two-stage (global head T + per-kind relative T) post-training calibration.
@@ -129,6 +123,13 @@ class TemperatureCalibrationCallback(TrainCallback):
     legacy flow: a pre-training baseline on ``on_train_begin`` (report-only), then on
     ``on_train_end`` the fitted temperatures, per-kind Brier before/after, and 2-fold
     cross-validated accuracy / ECE / Brier / NLL.
+
+    Mode-blind by design: temperature read/write goes through the ONE method face
+    ``model.task_head_temperatures(...)`` -- a direct in-process call locally, a ray proxy
+    call through to the workers, or the HTTP endpoint behind a remote handle; this callback
+    cannot tell the modes apart. Served logits are always collected RAW (scaled back up by the
+    temperature each row was served with), so the fitted temperatures are absolute and correct
+    whatever the buffers held before.
     """
 
     def __init__(self, args=None, loss_name: str = "brier", min_items: Optional[int] = None, **kwargs):
@@ -157,32 +158,42 @@ class TemperatureCalibrationCallback(TrainCallback):
         self._model = model
         self._eval_batches = eval_batches
 
-    def _head(self):
-        if self._model is None:
-            return None
-        return get_scoring_head(self._model)
+    def _served(self) -> Tuple[Optional[float], Optional[Dict[int, float]]]:
+        """(global T or None, per-kind EFFECTIVE temperature) as currently served."""
+        state = self._model.task_head_temperatures()['temperatures']
+        if state is None:
+            return None, None
+        global_t, relative = state['global_temperature'], state['kind_temperatures']
+        if len(relative) != len(KIND_NAMES) or not all(math.isfinite(t) and t > 0 for t in relative) or (
+                global_t is not None and not (math.isfinite(global_t) and global_t > 0)):
+            raise ValueError("The decision head returned invalid temperatures (need positive finite values).")
+        served = {kind: (relative[kind] if global_t is None else global_t * relative[kind])
+                  for kind in range(len(KIND_NAMES))}
+        return global_t, served
 
     # -- events ----------------------------------------------------------------
 
     def on_train_begin(self, state: CallbackState, control: CallbackControl) -> None:
         """Report-only baseline: metrics with the loaded/factory temperatures, nothing fitted."""
-        head = self._head()
-        if head is None or not head.has_kind_temperatures() or self._eval_batches is None:
+        if self._eval_batches is None or self._model is None:
+            return
+        global_t, served = self._served()
+        if served is None:
             return
         logger.info("temperature_calibration: evaluating base model on the eval set (baseline before training)...")
         try:
-            collected = self._collect_logits_and_targets()
+            collected = self._collect_eval(served)
         except Exception as e:
             logger.warning(f"temperature_calibration: failed to evaluate base model ({e}), skipping baseline.")
             return
-        collected = self._gather_collected(collected)
         if not self._is_main_process() or not collected:
             return
         all_items = self._flatten_collected(collected)
         if not all_items:
             return
-        head_t, relative = _served_temperatures(head)
-        self._base_metrics = self._in_sample_metrics(all_items, head_t, relative)
+        # Logits are collected raw; dividing by the served temperature reproduces the
+        # probabilities the loaded/factory buffers actually serve.
+        self._base_metrics = self._metrics_at(all_items, lambda it: served[it["kind"]])
         self._base_items = len(all_items)
         logger.info(
             f"temperature_calibration: base metrics (pre-training, n={self._base_items}): "
@@ -191,10 +202,14 @@ class TemperatureCalibrationCallback(TrainCallback):
         )
 
     def on_train_end(self, state: CallbackState, control: CallbackControl) -> None:  # noqa: C901
-        head = self._head()
-        if head is None:
+        """Fit once and write the temperatures back; a failed run keeps its loaded/factory values."""
+        if state.training_failed:
+            logger.info("temperature_calibration: training failed; keeping the loaded/factory temperatures.")
             return
-        if not head.has_kind_temperatures():
+        if self._model is None:
+            return
+        global_t, served = self._served()
+        if served is None:
             logger.info("temperature_calibration: head has no temperature buffer, skipping.")
             return
         if self._eval_batches is None:
@@ -205,18 +220,12 @@ class TemperatureCalibrationCallback(TrainCallback):
             return
 
         logger.info(f"temperature_calibration: collecting logits on eval set (loss={self.loss_name})...")
-        try:
-            collected = self._collect_logits_and_targets()
-        except Exception as e:
-            logger.warning(
-                f"temperature_calibration: failed to collect logits ({e}); "
-                "temperature stays at its loaded/factory value."
-            )
-            return
-        collected = self._gather_collected(collected)
-        if not self._is_main_process() or not collected:
+        collected = self._collect_eval(served)
+        if not collected:
             logger.info("temperature_calibration: no questions collected from eval set, skipping.")
             return
+        # Every process fits the same collected CPU tensors and calls the same collective
+        # write. Returning early on nonzero ranks would leave their buffers stale (or hang PP).
 
         all_items = self._flatten_collected(collected)
         if len(all_items) < self.min_items:
@@ -227,7 +236,7 @@ class TemperatureCalibrationCallback(TrainCallback):
 
         n_kinds = len(KIND_NAMES)
 
-        # --- Two-stage fit on ALL data (production T) ---
+        # --- Two-stage fit on ALL data (production T), on RAW logits ---
         logits, target, mask = _stack_items(all_items)
         head_t = _fit_one_temperature(logits, target, mask, self.loss_name)
         relative_ts: Dict[int, float] = {}
@@ -246,41 +255,44 @@ class TemperatureCalibrationCallback(TrainCallback):
             relative_ts[kind] = rel_t
             fitted_kinds.append(kind)
 
-        has_head_t_buf = hasattr(head, "head_temperature")
         head_clamped = _clamp_temperature(head_t)
-        if has_head_t_buf:
-            head.head_temperature = torch.as_tensor(head_clamped, dtype=torch.float32)
-        final_ts: Dict[int, float] = {}
-        for kind in range(n_kinds):
-            rel = relative_ts.get(kind, 1.0)
-            if has_head_t_buf:
-                head.set_temperature(kind, rel)
-                final_ts[kind] = _clamp_temperature(head_clamped * rel)
-            else:
-                final_t = _clamp_temperature(head_clamped * rel)
-                head.set_temperature(kind, final_t)
-                final_ts[kind] = final_t
+        cv_metrics = self._cross_validated_metrics(all_items, has_global=global_t is not None)
+        # With a global buffer the kind buffers hold RELATIVE temperatures and the global factor
+        # carries the head T; without one each kind buffer must hold the absolute value.
+        has_global = global_t is not None
+        kind_values = (list(relative_ts.values()) if has_global else
+                       [_clamp_temperature(head_clamped * relative_ts[kind]) for kind in range(n_kinds)])
+        # The write goes through the same mode-blind face; the ack carries the values now in
+        # effect, and persistence rides the final checkpoint (the head-save callback locally,
+        # the server's own save remotely).
+        applied = self._model.task_head_temperatures(update=dict(
+            global_temperature=head_clamped if has_global else None,
+            kind_temperatures=kind_values,
+        ))['temperatures']
+        if (applied is None or (applied['global_temperature'] is not None) != has_global
+                or len(applied['kind_temperatures']) != n_kinds):
+            raise ValueError("The decision head did not acknowledge every fitted temperature.")
+        applied_global = applied['global_temperature']
+        applied_kinds = applied['kind_temperatures']
+        # The effective temperatures now in effect, for reporting.
+        final_ts = {
+            kind: (applied_kinds[kind] if applied_global is None else applied_global * applied_kinds[kind])
+            for kind in range(n_kinds)
+        }
 
-        cv_metrics = self._cross_validated_metrics(all_items, head_t, relative_ts)
+        if not self._is_main_process():
+            return
 
         by_kind_report: Dict[int, Dict] = {}
         for kind in fitted_kinds:
             kind_items = [it for it in all_items if it["kind"] == kind]
             kl, kt, km = _stack_items(kind_items)
-            t = final_ts[kind]
             by_kind_report[kind] = {
-                "brier_before": brier_score(masked_softmax(kl, km), kt, km),
-                "brier_after": brier_score(masked_softmax(kl / t, km), kt, km),
-                "temperature": t,
+                "brier_before": brier_score(masked_softmax(kl / served[kind], km), kt, km),
+                "brier_after": brier_score(masked_softmax(kl / final_ts[kind], km), kt, km),
+                "temperature": final_ts[kind],
                 "count": len(kind_items),
             }
-
-        save_dir = state.output_dir or "output"
-        # The calibrated head is an artifact of the output dir: an oss:// / s3:// one stages and uploads.
-        from swift.dev.utils.storage import write_dir
-
-        with write_dir(save_dir) as local:
-            head.save_pretrained(local, save_weights=False)
 
         parts = []
         for kind in range(n_kinds):
@@ -291,6 +303,9 @@ class TemperatureCalibrationCallback(TrainCallback):
                     f"(Brier {d['brier_before']:.4f} -> {d['brier_after']:.4f}, n={d['count']})"
                 )
         logger.info(f"temperature_calibration done (loss={self.loss_name}, head_T={head_t:.3f}): {'; '.join(parts)}")
+        if cv_metrics is None:
+            logger.info('temperature_calibration: insufficient records for out-of-fold metrics.')
+            return
         logger.info(
             f"temperature_calibration CV (out-of-fold): accuracy={cv_metrics['accuracy']:.4f}, "
             f"ece={cv_metrics['ece']:.4f}, brier={cv_metrics['brier']:.4f}, "
@@ -305,18 +320,54 @@ class TemperatureCalibrationCallback(TrainCallback):
                 f"brier {base['brier']:.4f} -> {cv_metrics['brier']:.4f}, "
                 f"nll {base['nll']:.4f} -> {cv_metrics['nll']:.4f}"
             )
-        logger.info(f"temperature_calibration: written to {os.path.join(save_dir, head.HEAD_META_NAME)}")
 
     # -- collection ---------------------------------------------------------
 
-    def _collect_logits_and_targets(self) -> Dict[int, Dict]:  # noqa: C901
-        """Run the bound eval batches and collect per-kind (logits, target, mask, record_ids)."""
+    @staticmethod
+    def _check_batch_alignment(meta, kinds, counts, logits, option_mask, target) -> None:
+        """Fail loudly when the scored batch desyncs from the client-side records.
+
+        counts / kinds come back from the (possibly remote) forward while the records' meta
+        stayed with the batch; equality is the alignment invariant the fit depends on.
+        """
+        if meta is None:
+            raise ValueError("Decision calibration batches must carry decision_meta (n_options/counts/kinds).")
+        n_options = [int(n) for n in meta["n_options"]]
+        if len(n_options) != len(kinds) or [int(k) for k in meta["kinds"]] != [int(k) for k in kinds]:
+            raise ValueError("Decision kinds do not match the client batch.")
+        if any(not 0 <= k < len(KIND_NAMES) for k in kinds):
+            raise ValueError(f"Decision kinds must be within [0, {len(KIND_NAMES)}), got {sorted(set(kinds))}.")
+        if counts is None:
+            raise ValueError("Decision calibration batches must carry per-record question counts.")
+        counts_list = counts.tolist() if isinstance(counts, torch.Tensor) else [int(c) for c in counts]
+        if counts_list != [int(c) for c in meta["counts"]]:
+            raise ValueError("Decision record counts do not match the client batch.")
+        if sum(counts_list) != len(kinds) or logits.shape[0] != len(kinds):
+            raise ValueError("Decision logits do not match the client question count.")
+        if n_options and logits.shape[1] < max(n_options):
+            raise ValueError("Decision logits are narrower than the records' option counts.")
+        for i, n in enumerate(n_options):
+            if not option_mask[i, :n].all() or option_mask[i, n:].any():
+                raise ValueError("Decision option mask does not match the record's option count.")
+        if target.shape[0] != logits.shape[0] or target.shape[1] < logits.shape[1]:
+            raise ValueError("Decision targets must have one row per question and cover the option width.")
+        if not target.isfinite().all() or (target < 0).any() or (target[~option_mask] != 0).any():
+            raise ValueError("Decision targets must be finite, nonnegative, and zero outside real option slots.")
+
+    def _collect_logits_and_targets(self, served: Dict[int, float]) -> Dict[int, Dict]:  # noqa: C901
+        """Run the bound eval batches and collect per-kind (RAW logits, target, mask, record_ids).
+
+        The head serves logits already divided by its temperature buffers, so each row is scaled
+        back up by the per-kind effective temperature first: the fits then see the raw scores and
+        every applied temperature is absolute, correct whatever the buffers held before.
+        """
         kind_collected: Dict[int, Dict[str, List[torch.Tensor]]] = {}
         global_record_counter = 0
         for inputs, outputs in self._eval_batches():
-            logits = outputs["logits"]
+            outputs = collect(outputs)
+            logits = outputs.get("logits")
             if logits is None:
-                continue
+                continue  # PP stages without readout still participate in every eval forward.
             logits = logits.detach().float().cpu()
             option_mask = outputs.get("option_mask")
             if option_mask is None:
@@ -333,21 +384,34 @@ class TemperatureCalibrationCallback(TrainCallback):
             labels = inputs.get("labels")
             if labels is None:
                 continue  # no labels -> cannot calibrate
-            target = labels.detach().float().cpu()
+            target = labels.detach().cpu()
             if target.dim() == 1:
-                target = F.one_hot(target, num_classes=logits.shape[1]).float()
+                target = F.one_hot(target.long(), num_classes=logits.shape[1])
+            target = target.float()
+            if (logits.dim() != 2 or option_mask.shape != logits.shape or target.dim() != 2):
+                raise ValueError('Decision logits, masks and targets must be aligned two-dimensional tensors.')
 
-            if counts is not None:
-                counts_list = counts.tolist() if isinstance(counts, torch.Tensor) else [int(c) for c in counts]
-                record_ids_batch = []
-                for c in counts_list:
-                    record_ids_batch.extend([global_record_counter] * c)
-                    global_record_counter += 1
-            else:
-                record_ids_batch = list(range(global_record_counter, global_record_counter + len(kinds)))
-                global_record_counter += len(kinds)
+            # The labels may be padded wider than the batch's own max option count (the wire
+            # width); align the logits/mask to the target width so every check below sees one.
+            if logits.shape[1] < target.shape[1]:
+                pad = target.shape[1] - logits.shape[1]
+                logits = F.pad(logits, (0, pad))
+                option_mask = F.pad(option_mask, (0, pad))
+            self._check_batch_alignment(inputs.get("decision_meta"), kinds, counts, logits, option_mask, target)
+            # Unscale by the per-row served temperature, then verify the real slots are finite.
+            logits = logits * torch.tensor([served[k] for k in kinds], dtype=torch.float32).unsqueeze(1)
+            if not logits.masked_select(option_mask).isfinite().all():
+                raise ValueError("Decision logits must be finite on real option slots.")
+
+            counts_list = counts.tolist() if isinstance(counts, torch.Tensor) else [int(c) for c in counts]
+            record_ids_batch = []
+            for c in counts_list:
+                record_ids_batch.extend([global_record_counter] * c)
+                global_record_counter += 1
 
             for i, kind in enumerate(kinds):
+                if not target[i].any():
+                    continue  # unlabeled row (the loss's positive-mass rule) -> nothing to fit against
                 slot = kind_collected.setdefault(kind, {"logits": [], "target": [], "mask": [], "record_ids": []})
                 slot["logits"].append(logits[i])
                 slot["target"].append(target[i])
@@ -380,13 +444,28 @@ class TemperatureCalibrationCallback(TrainCallback):
             return torch.distributed.get_rank() == 0
         return True
 
-    @staticmethod
-    def _gather_collected(collected: Dict[int, Dict]) -> Dict[int, Dict]:
-        """Merge the per-rank sharded collections into the FULL eval set (no-op single-process)."""
+    def _collect_eval(self, served: Dict[int, float]) -> Dict[int, Dict]:
+        """Propagate collection errors to every process before collective fitting/writing."""
+        error, collected = None, {}
+        try:
+            collected = self._collect_logits_and_targets(served)
+        except Exception as exc:
+            error = str(exc)
+        return self._gather_collected(collected, error)
+
+    def _gather_collected(self, collected: Dict[int, Dict], error: Optional[str] = None) -> Dict[int, Dict]:
+        """Merge one representative per data shard, preserving records for cross-validation."""
         if not (torch.distributed.is_available() and torch.distributed.is_initialized()):
+            if error is not None:
+                raise ValueError(f'Decision calibration collection failed: {error}')
             return collected
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
+        mesh = self._model.device_mesh
+        # TP/CP/PP peers saw the same records. The mesh selects one last-PP representative
+        # per data rank, exactly as the Ray forward collector does.
+        if rank not in mesh.get_collect_ranks():
+            collected = {}
         payload = {}
         for kind, d in collected.items():
             payload[kind] = {
@@ -395,11 +474,14 @@ class TemperatureCalibrationCallback(TrainCallback):
                 "mask": d["mask"].detach().cpu().tolist(),
                 "record_ids": [int(rid) + rank * 1_000_000_000 for rid in d["record_ids"]],
             }
-        shards: List[Optional[Dict]] = [None for _ in range(world_size)]
-        torch.distributed.all_gather_object(shards, payload)
+        shards = [None for _ in range(world_size)]
+        torch.distributed.all_gather_object(shards, (error, payload))
+        errors = [message for message, _ in shards if message is not None]
+        if errors:
+            raise ValueError(f'Decision calibration collection failed: {errors[0]}')
 
         merged: Dict[int, Dict[str, list]] = {}
-        for shard in shards:
+        for _, shard in shards:
             for kind, d in shard.items():
                 slot = merged.setdefault(kind, {"logits": [], "target": [], "mask": [], "record_ids": []})
                 for key in ("logits", "target", "mask", "record_ids"):
@@ -442,13 +524,13 @@ class TemperatureCalibrationCallback(TrainCallback):
     # -- cross-validated metrics -----------------------------------------------
 
     def _cross_validated_metrics(
-        self, all_items: List[Dict], head_t: float, relative_ts: Dict[int, float]
-    ) -> Dict[str, float]:
-        """2-fold CV: split records in half, fit on the opposite half, evaluate out-of-fold."""
+        self, all_items: List[Dict], *, has_global: bool
+    ) -> Optional[Dict[str, float]]:
+        """Fit on the opposite record fold; never substitute an in-sample fit for CV."""
         n_kinds = len(KIND_NAMES)
         record_ids = sorted({it["record_id"] for it in all_items})
         if len(record_ids) < 2:
-            return self._in_sample_metrics(all_items, head_t, relative_ts)
+            return None
         half = {rid: (i % 2) for i, rid in enumerate(record_ids)}
 
         fold_head_t: Dict[int, float] = {}
@@ -456,10 +538,7 @@ class TemperatureCalibrationCallback(TrainCallback):
         for fold in (0, 1):
             train_items = [it for it in all_items if half[it["record_id"]] != fold]
             if len(train_items) < self.min_items:
-                fold_head_t[fold] = head_t
-                for kind in range(n_kinds):
-                    fold_relative[fold][kind] = relative_ts.get(kind, 1.0)
-                continue
+                return None
             tr_logits, tr_target, tr_mask = _stack_items(train_items)
             fh = _fit_one_temperature(tr_logits, tr_target, tr_mask, self.loss_name)
             fold_head_t[fold] = fh
@@ -474,18 +553,14 @@ class TemperatureCalibrationCallback(TrainCallback):
                     fold_relative[fold][kind] = 1.0
 
         def cv_t(it: Dict) -> float:
-            eval_fold = 1 - half[it["record_id"]]
-            return _clamp_temperature(fold_head_t[eval_fold] * fold_relative[eval_fold].get(it["kind"], 1.0))
+            eval_fold = half[it["record_id"]]
+            t = fold_head_t[eval_fold] * fold_relative[eval_fold].get(it["kind"], 1.0)
+            return t if has_global else _clamp_temperature(t)
 
         return self._metrics_at(all_items, cv_t)
 
     def _metrics_at(self, all_items: List[Dict], t_of_item: Callable[[Dict], float]) -> Dict[str, float]:
-        """Shared metric body: apply each item's temperature, then acc / ece / brier / nll.
-
-        Rows are grouped by their temperature so each group stacks into ONE padded batch: the math
-        runs as a handful of vectorised ops per distinct T instead of one op per question. ECE and
-        the means are order-independent, so grouping does not change the numbers.
-        """
+        """Evaluate item-specific temperatures in vectorized groups without changing metric means."""
         groups: Dict[float, List[Dict]] = {}
         for it in all_items:
             groups.setdefault(t_of_item(it), []).append(it)
@@ -506,9 +581,3 @@ class TemperatureCalibrationCallback(TrainCallback):
             "brier": float(np.mean(briers)) if briers else 0.0,
             "nll": float(np.mean(nlls)) if nlls else 0.0,
         }
-
-    def _in_sample_metrics(
-        self, all_items: List[Dict], head_t: float, relative_ts: Dict[int, float]
-    ) -> Dict[str, float]:
-        """Fallback: in-sample metrics using the final T (no CV)."""
-        return self._metrics_at(all_items, lambda it: _clamp_temperature(head_t * relative_ts.get(it["kind"], 1.0)))

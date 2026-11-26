@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, get_args
 
 from swift.dev.utils.logger import get_logger
+from .adapter_config import has_adapter
 from .rl_config import F_DIVERGENCE_TYPE
 
 if TYPE_CHECKING:
@@ -203,12 +204,12 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
     # backend under remote names the SERVER-side model app's engine (hf or megatron): both are
     # legal, because configure_optimizer's two branches are already descriptions that cross HTTP
     # ('AdamW' for the transformers app, 'MegatronOptimizer' + its kwargs for the megatron one).
-    if tuner_config is not None and tuner_config.tuner not in ('full', 'lora'):
+    if has_adapter(tuner_config) and tuner_config.tuner != 'lora':
         raise ValueError(
             f"--mode remote does not support tuner={tuner_config.tuner!r}: the server-side "
             "adapter mechanism is LoRA on the resident base. Use --tuner lora, or none for "
             "full-parameter remote training.")
-    if tuner_config is not None and tuner_config.tuner == 'lora':
+    if has_adapter(tuner_config) and tuner_config.tuner == 'lora':
         from swift.dev.builders.adapter import is_base_modifying_init
 
         if is_base_modifying_init(tuner_config.init_weights):
@@ -218,7 +219,7 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
                 f"--mode remote does not support the base-modifying LoRA init "
                 f"{tuner_config.init_weights!r}: its initial-adapter snapshot lives in-process. "
                 "Use a plain init remotely.")
-    if tuner_config is not None and tuner_config.tuner == 'lora':
+    if has_adapter(tuner_config) and tuner_config.tuner == 'lora':
         # The freeze_llm/vit/aligner partitioning steers the LOCAL all-linear expansion against the
         # in-process module graph; the remote LoraConfig carries none of it, so an explicit freeze
         # would be silently dropped.
@@ -236,7 +237,7 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             '--mode remote does not support quant_method: the server owns model loading, so the '
             'client-side quantization request would be silently ignored. Quantize on the server, or '
             'run with mode=local/ray.')
-    if train_config is not None and tuner_config is None and (
+    if train_config is not None and not has_adapter(tuner_config) and (
             train_config.freeze_parameters or train_config.freeze_parameters_regex
             or train_config.freeze_parameters_ratio or train_config.trainable_parameters
             or train_config.trainable_parameters_regex):
@@ -265,16 +266,18 @@ def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutCon
     multi-tenant server hosts as many served models as the run needs), the rollout rides the
     HTTPSampler face over the served engine, and the weight channel is the save -> adapter_uri
     hand-off. Refused here is only what genuinely lives in the LOCAL actor fabric with no client
-    port: the colocate / elastic devices, the delta weight transports, the in-process
-    routing-replay and sampling-replay engines, and the EMA reference sync. The multi-turn
+    port: the colocate / elastic devices, the delta weight transports, the R2 recording
+    workflow, the sampling-replay engine, and the EMA reference sync. R3 transports the
+    sampler-exported routing through the protocol for replay on the served model. The multi-turn
     rollout / tools / harness need no refusal: the rollout, its sandbox env and the driver all
     run in-process in this client, sampling each turn through the HTTPSampler face.
     """
-    if rl_config.router_replay_mode != 'disabled':
+    if rl_config.router_replay_mode == 'R2':
         raise ValueError(
-            f"--mode remote does not support router_replay_mode={rl_config.router_replay_mode!r}: "
-            "the recording forward replays the training model's own expert routing in-process. "
-            "Use the default 'disabled', or mode=ray.")
+            "--mode remote does not support router_replay_mode='R2': "
+            'the training-model routing capture and collection workflow is not implemented remotely. '
+            "Use 'R3' with a sampler that exports routed_experts and a replay-enabled server model, "
+            "use 'disabled', or run mode=ray for R2.")
     if rl_config.enable_sampling_replay:
         raise ValueError(
             '--mode remote does not support --enable_sampling_replay (the replay engine is a '
@@ -316,7 +319,7 @@ def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutCon
                 f"--mode remote does not support weight_sync_backend={rollout_config.weight_sync_backend!r}: "
                 'the remote weight channel is the saved twinkle:// adapter_uri. Use the default '
                 "'full' (via save), or run mode=ray.")
-        if tuner_config is not None and tuner_config.tuner == 'full':
+        if not has_adapter(tuner_config):
             # RemoteWeightSync.sync_weights publishes by handing the served sampler a twinkle://
             # adapter_uri, which the server loads as an adapter on top of its own base weights. A
             # full-parameter run saves no adapter, so the sampler would keep serving its base
@@ -1095,6 +1098,10 @@ def _check_router_replay(cfg: 'RLConfig') -> None:
         raise ValueError(f'router_replay_mode={mode!r} is GRPO-only: R2/R3 routing replay is driven by '
                          'the GRPO assembler, and the other recipes build their own forward_backward kwargs '
                          'without it. Use rl_type=grpo, or router_replay_mode=disabled.')
+    if cfg.chord_sft_dataset:
+        raise ValueError(f'router_replay_mode={mode!r} is incompatible with CHORD (--chord_sft_dataset): '
+                         'CHORD auxiliary SFT rows carry no expert routing and cannot share the replay '
+                         'forward. Use router_replay_mode=disabled with CHORD, or drop --chord_sft_dataset.')
 
 
 def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'] = None) -> None:
@@ -1357,12 +1364,12 @@ def _check_galore(train_config: 'TrainConfig', tuner_config: Optional['TunerConf
     """
     if not train_config.use_galore:
         return
-    if tuner_config is not None:
+    if has_adapter(tuner_config):
         raise ValueError(
             f'use_galore cannot be combined with tuner={tuner_config.tuner!r}: GaLore projects the '
             'full-parameter gradient into a low-rank subspace, a different low-rank approximation than '
-            'the adapter. Train full-param with GaLore (--tuner full --use_galore true), or use the '
-            'adapter without GaLore.')
+            'the adapter. Train full-param with GaLore (--tuner full --use_galore true, or '
+            'TunerConfig(tuner=\'full\') on the component API), or use the adapter without GaLore.')
     unsupported = [name for name in _GALORE_UNSUPPORTED if name in _changed_fields(train_config)]
     if unsupported:
         raise NotImplementedError(
@@ -1392,7 +1399,7 @@ def _check_param_groups(tuner_config: Optional['TunerConfig']) -> None:
 
     LoRA+ needs a LoRA-family adapter; freeze_llm/aligner steer only the 'all-linear' MM expansion.
     """
-    if tuner_config is None:
+    if not has_adapter(tuner_config):
         return
     if tuner_config.lorap_lr_ratio is not None and tuner_config.tuner != 'lora':
         raise ValueError(
@@ -1415,7 +1422,7 @@ def _check_trainable_tokens_head(tuner_config: Optional['TunerConfig'], model_co
     slices and the checkpoint format has no slot for the classification head, so the reloaded model
     would score with a random head. Refuse the combination until the head-save closes.
     """
-    if tuner_config is None or tuner_config.tuner != 'trainable_tokens':
+    if not has_adapter(tuner_config) or tuner_config.tuner != 'trainable_tokens':
         return
     if model_config.task_type in ('seq_cls', 'reranker'):
         raise ValueError(
@@ -1496,7 +1503,7 @@ def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
             f'backend="unsloth" cannot run under sequence_parallel_size='
             f'{template_config.sequence_parallel_size}: unsloth\'s fused kernels assume a whole sequence per '
             'rank. Set sequence_parallel_size=1, or use the default backend.')
-    if tuner_config is not None:
+    if has_adapter(tuner_config):
         from swift.dev.builders.adapter import is_base_modifying_init
 
         if is_base_modifying_init(tuner_config.init_weights):
@@ -1830,8 +1837,7 @@ def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Opt
         raise ValueError('ModelConfig.mtp_decoder_input_detach describes where the MTP gradient stops, so it needs '
                          'ModelConfig.enable_mtp_training=True to mean anything.')
 
-    if (model_config.enable_mtp_training and tuner_config is not None
-            and getattr(tuner_config, 'tuner', 'full') != 'full'):
+    if (model_config.enable_mtp_training and has_adapter(tuner_config)):
         # Not an error: trainable if the adapter targets the MTP modules, which target_modules alone
         # cannot decide. twinkle re-checks against the built model and warns if nothing ended up trainable.
         logger.warning('enable_mtp_training with tuner=%r: the MTP layers are base parameters, so they only '
@@ -2343,7 +2349,7 @@ def _check_freeze_ratio_pp(train_config: 'TrainConfig', distributed_config: 'Dis
 
     Under PP>1 each rank holds different layers, so "the first N%" is a meaningless per-stage slice.
     """
-    if not is_megatron or tuner_config is not None:
+    if not is_megatron or has_adapter(tuner_config):
         return
     if train_config.freeze_parameters_ratio and distributed_config.pipeline_model_parallel_size > 1:
         raise ValueError(
@@ -2519,29 +2525,14 @@ def _check_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['Tun
                          'Remove it.')
 
 
-# rl_types verified correct under the packed layout padding_free (and packing) produces: the forward
-# unpacks each packed micro batch to per-sequence rows BEFORE calculate_loss (packing-agnostic).
-_RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd', 'rm')
-
-_RL_PADDING_FREE_REFUSED_REASONS = {
-    'ppo':
-    "PPO's per-token value-head critic does not cover the packed / variable-length layout (run_ppo.py "
-    'module docstring), so the critic would read a flattened row as one sequence.',
-    'opsd':
-    "OPSD's teacher->student per-token logps alignment across two independently-unpacked forwards is not "
-    'verified under variable-length packing.',
-    'mopd':
-    "MOPD fuses K teacher logps channels onto the student frame; that K-way alignment across two "
-    'independently-unpacked forwards is not verified under variable-length packing.',
-}
+# These recipes consume per-sequence outputs restored by the shared processor before loss or
+# response projection; critic values and teacher logps use the same unpacking as policy logps.
+_RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'ppo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd', 'opsd', 'mopd', 'rm')
 
 
 def _check_rl_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
                             rl_config: Optional['RLConfig']) -> None:
-    """Only some RLHF algorithms have a padding-free/packing training path.
-
-    The forward unpacks packed batches before calculate_loss; refused types name the unsafe component.
-    """
+    """Require a recipe wired to the processor's per-sequence padding-free/packing outputs."""
     if rl_config is None:
         return
     if not (template_config.padding_free or dataset_config.packing):
@@ -2550,10 +2541,6 @@ def _check_rl_padding_free(template_config: 'TemplateConfig', dataset_config: 'D
     if rl_type in _RL_PADDING_FREE_WIRED_TYPES:
         return
     feature = 'packing' if dataset_config.packing else 'padding_free'
-    reason = _RL_PADDING_FREE_REFUSED_REASONS.get(rl_type)
-    if reason is not None:
-        raise ValueError(f'rl_type={rl_type!r} does not support {feature}: {reason} '
-                         'Set the corresponding flag to False.')
     raise ValueError(f'rl_type={rl_type!r} does not support {feature}: only '
                      f'{"/".join(_RL_PADDING_FREE_WIRED_TYPES)} implement the variable-length training path it '
                      'produces. Set the corresponding flag to False.')
@@ -2627,7 +2614,7 @@ def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
     rl_type = getattr(rl_config, 'rl_type', None)
     if rl_type == 'ppo':
         raise ValueError(f'rl_type="ppo" does not support sequence_parallel_size={sp}: PPO\'s per-token '
-                         'value-head critic runs without sequence-parallel / packed layouts, so a SP policy '
+                         'value-head critic runs without sequence parallelism, so a SP policy '
                          'and an SP=1 critic would slice_dp each forward_backward at a different '
                          'data_world_size and starve the critic\'s ranks. Set sequence_parallel_size=1 for PPO.')
     if rl_type not in _RL_SP_WIRED_TYPES:

@@ -1,0 +1,22 @@
+# v5 export: precompute (tokenize) a dataset once and cache it to disk.
+#
+# This is the write half of `--cached_dataset`: it runs the dataset load + encode chain ONCE and saves it
+# with save_to_disk under <output_dir>/train (+ /val when --split_dataset_ratio > 0). Later training points
+# --cached_dataset <output_dir>/train at the SUBDIRECTORY and skips encoding. No model is loaded and no
+# distributed init happens -- it is a single-process CPU job (only the tokenizer is needed).
+#
+# --template_mode selects the encoding objective and IS consumed: 'train' encodes each row to one sample,
+# while 'rlhf' encodes chosen+rejected and 'kto' encodes chosen+label, so the same rows produce a
+# different cache per objective. Match it to the dataset shape and the training run that will read it:
+# an rlhf cache needs rows with `rejected_response`, a kto cache needs a `label`. A cache built for one
+# mode is wrong for the others. (build_template defaults the mode to 'train'; this step overrides it.)
+# MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, export smoke, 1 card(s), 2026-11-24)
+swift export \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
+    --dataset_num_proc 64 \
+    --split_dataset_ratio 0.01 \
+    --to_cached_dataset true \
+    --template_mode train \
+    --output_dir ./qwen3_5_cached_dataset

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTupl
 
 import json
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 from swift.dev.utils.scoring import collect  # noqa: F401 -- the recipes import it from here
 
@@ -37,15 +38,117 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def close_driver_preserving_error(driver: Any) -> None:
-    """Preserve an in-flight exception while still attempting driver cleanup."""
+def fp8_seq_align_option(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
+                         cp_size: int) -> Optional[int]:
+    """The processor's fp8/fp4 token-dimension alignment (legacy ``get_padding_to`` on the data path).
+
+    fp8 GEMMs require the token dimension to be a multiple of 16 (delayed/tensorwise), 32 (mxfp8)
+    or 128 (blockwise); legacy pads every micro-batch through the collator's ``padding_to``. Dev
+    restores it as ``InputProcessor(seq_align_to=...)``. None when fp8/fp4 is off or the backend
+    is not megatron, so bf16 runs keep twinkle's padding untouched. Shared by every recipe that
+    trains locally (SFT and the RL policies alike): the TE GEMM dim assert does not care which
+    loss produced the tokens.
+    """
+    if distributed_config.backend != 'megatron':
+        return None
+    if model_config.fp8_format is None and model_config.fp4_format is None:
+        return None
+    from swift.dev.builders.model import _mixed_precision_for
+    from swift.dev.processor.base import get_sequence_padding_to
+    from swift.dev.utils.naming import resolve_megatron_attn_backend
+    attn_backend = resolve_megatron_attn_backend(
+        model_config.attn_impl, mixed_precision=_mixed_precision_for(model_config.torch_dtype))
+    seq_align_to = get_sequence_padding_to(
+        distributed_config.tensor_model_parallel_size,
+        distributed_config.sequence_parallel,
+        cp_size,
+        attn_backend.name,
+        fp8_format=model_config.fp8_format,
+        fp4_format=model_config.fp4_format,
+        fp8_recipe=model_config.fp8_recipe)
+    return seq_align_to if seq_align_to and seq_align_to > 1 else None
+
+
+def processor_cp_size(distributed_config: 'DistributedConfig') -> int:
+    """The policy's context-parallel width for token padding: explicit knob or parallel_spec."""
+    cp_size = distributed_config.context_parallel_size
+    if distributed_config.parallel_spec:
+        from twinkle import DeviceMesh
+        cp_size = max(cp_size, DeviceMesh.parse_spec(distributed_config.parallel_spec).get('cp_size', 1) or 1)
+    return cp_size
+
+
+def close_driver_preserving_error(driver: Any) -> Dict[str, Any]:
+    """Return the driver's terminal statistics while preserving an in-flight training error."""
     primary_error = sys.exc_info()[0]
     try:
-        driver.close()
+        return driver.close()
     except BaseException:
         if primary_error is None:
             raise
         logger.exception('Streaming driver close failed while preserving the original exception.')
+        return {}
+
+
+def finalize_rl_resources(state: Any, cluster: Any, *, remote_run: bool,
+                          finish: Optional[Callable[[], Any]] = None,
+                          driver: Any = None, companions: Sequence[Any] = (),
+                          recipe: str = 'rl') -> None:
+    """Teardown in fixed order; a cleanup error must not mask the in-flight training exception.
+
+    ``finish`` is the recipe's terminal metric record (it reads sys.exc_info() itself for the
+    run status); it runs first so a later cleanup failure cannot skip it. On the success path a
+    real teardown failure still surfaces; while a training exception is in flight it wins and
+    cleanup errors stay logged.
+    """
+    from twinkle.perf import Perf
+
+    orig = sys.exc_info()
+    errors = []
+
+    def _guard(label, fn):
+        try:
+            fn()
+        except BaseException as e:
+            logger.warning('%s cleanup %s failed: %s', recipe, label, e, exc_info=True)
+            errors.append(e)
+
+    closed = set()
+
+    def _close(label, resource):
+        if isinstance(resource, (list, tuple)):
+            for index, item in enumerate(resource):
+                _close(f'{label}[{index}]', item)
+            return
+        if resource is None or id(resource) in closed:
+            return
+        close = getattr(resource, 'close', None)
+        if callable(close):
+            closed.add(id(resource))
+            _guard(f'{label}.close', close)
+
+    if finish is not None:
+        _guard('finish_metrics', finish)
+    _close('driver', driver)
+    _guard('Perf.shutdown', Perf.shutdown)
+    _close('companions', companions)
+    _close('engine', cluster.engine)
+    _close('rollout', cluster.rollout)
+    # The bundle contains owned resource handles and scalar configuration. Close methods
+    # enforce replica/binding ownership; aliases are visited only once.
+    for label, resource in cluster._asdict().items():
+        if label not in ('model', 'value_model', 'sampler', 'engine', 'rollout'):
+            _close(label, resource)
+    _close('value_model', getattr(cluster, 'value_model', None))
+    _close('model', cluster.model)
+    # An HTTP sampler is server-owned; closing a training binding never stops that server.
+    if not remote_run:
+        _close('sampler', cluster.sampler)
+    _guard('tracker.close', state.tracker.close)
+    if orig[0] is None and errors:
+        # Every failure was logged by _guard; the raise carries them ALL -- a plain
+        # errors[0] would silently drop the rest of the teardown failures.
+        raise BaseExceptionGroup(f'{recipe} teardown is incomplete', errors)
 
 
 MODEL_GROUP = 'model'
@@ -192,7 +295,7 @@ def initial_adapter_dir(tuner_config: Optional['TunerConfig'], distributed_confi
     from swift.dev.builders import is_megatron_backend
     from swift.dev.builders.adapter import is_base_modifying_init
 
-    if tuner_config is None or not is_base_modifying_init(tuner_config.init_weights):
+    if not has_adapter(tuner_config) or not is_base_modifying_init(tuner_config.init_weights):
         return None
     if distributed_config.mode == 'remote':
         # The client handle has no save_initial_adapter (the snapshot lives in the server's
@@ -298,7 +401,9 @@ def write_ckpt_args_json(ckpt_dir: str, processor: Any, model_config: 'ModelConf
     configs = {
         'model_config': model_config,
         'quantize_config': quantize_config,
-        'tuner_config': tuner_config,
+        # A full-parameter run (None or tuner='full') writes no tuner_config: exactly what a
+        # full-parameter checkpoint must read back as, whichever surface spelled the setting.
+        'tuner_config': tuner_config if has_adapter(tuner_config) else None,
         'template_config': template_config,
     }
     args: Dict[str, Any] = {
@@ -370,8 +475,16 @@ def save_training_step(model: Any, handler: Any, name: str, knobs: SaveKnobs, *,
         # loop treats as "the checkpoint dir"), and every local-dir side effect below (converted
         # adapter, hub push, args.json copy) has no directory to act on. save is synchronous on
         # the client (_await_task blocks to the terminal state), so no wait_async_saves either.
-        # No component state rides the call: SaveRequest has no field for it, and the data
-        # position re-seeds from the server's own progress on resume (resume_from_checkpoint).
+        # No component state rides the call: SaveRequest has no field for it. The server keeps
+        # its own step progress, but the CLIENT dataloader position does not survive the round
+        # trip -- a remote resume replays the data from the start (announced below and at resume).
+        if component_states:
+            logger.warning(
+                'remote save does not transmit component_states (SaveRequest has no field for them): '
+                'the dataloader position in %s will NOT be restored on resume, so a resumed remote '
+                'run replays data from the beginning. Use ignore_data_skip semantics knowingly, or '
+                'resume locally, until the remote protocol carries component state.',
+                sorted(component_states))
         response = model.save(
             name,
             save_optimizer=not knobs.no_save_optim,
@@ -439,7 +552,7 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
         # A twinkle:// URI names a checkpoint in the SERVER's store; the handle restores weights,
         # optimizer, scheduler and progress state in one call, so the local trainer_state.json
         # probe below (and the megatron kwargs) do not apply.
-        if tuner_config is not None:
+        if has_adapter(tuner_config):
             resume_kwargs['adapter_name'] = 'default'
         return model.resume_from_checkpoint(path, **resume_kwargs)
     if checkpoint_config is not None and is_megatron_backend(distributed_config):
@@ -447,7 +560,7 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
             no_load_optim=checkpoint_config.no_load_optim,
             no_load_rng=checkpoint_config.no_load_rng,
             data_parallel_random_init=bool(megatron_config and megatron_config.data_parallel_random_init))
-    adapter_name = 'default' if tuner_config is not None else None
+    adapter_name = 'default' if has_adapter(tuner_config) else None
     if adapter_name is not None:
         resume_kwargs['adapter_name'] = adapter_name
 
@@ -503,6 +616,13 @@ def resume_training(model: Any, *, checkpoint_config: Optional['CheckpointConfig
     state = _restore_training(model, checkpoint_config, distributed_config, megatron_config, tuner_config)
     if not state:
         return 0, 0, 0
+    if (distributed_config.mode == 'remote' and dataloader is not None and not ignore_data_skip
+            and 'dataloader' not in (state.get('component_states') or {})):
+        logger.warning(
+            'remote resume restored weights/optimizer/step progress but NOT the client dataloader '
+            'position: component_states did not cross the wire at save (SaveRequest has no field), '
+            'so this run replays data from the beginning while global_step continues. The step '
+            'counter and the data cursor are now out of sync by design of the remote protocol.')
     return _seed_counters(state, dataloader=dataloader, ignore_data_skip=ignore_data_skip)
 
 
@@ -602,6 +722,7 @@ class StepState:
         self.epoch = 0
         self.best_metric: Optional[float] = None
         self.history: List[dict] = []
+        self.stream_stats: Dict[str, Any] = {}
         # Run-level logs (metrics_raw / summary / metrics.jsonl, reporter dirs) are appended in
         # place, so an oss:// / s3:// output_dir keeps them on local disk; checkpoint callbacks
         # still get the real output_dir.
@@ -1827,8 +1948,8 @@ def evaluate_loss(model: Any, eval_dataloader: Any, *, eval_iters: int, manual_g
 
     def _forward(chunk: list) -> None:
         model.forward_only(**micro_step_kwargs(chunk, micro_batch_size=micro_batch_size))
-        # Megatron's calculate_loss is a no-op returning inf (the loss already came out of
-        # forward_only); transformers' populates the metric state. The return value is unused.
+        # Transformers computes the loss here from the recorded forward; Megatron reports
+        # the loss its fused forward already produced. The return value is unused either way.
         model.calculate_loss()
 
     group: list = []

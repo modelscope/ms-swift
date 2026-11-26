@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 from typing import Any, Callable, Dict, List, Optional
 
 import torch
@@ -10,6 +11,35 @@ from swift.dev.template.conventions import is_bookkeeping_key, model_payload_key
 
 # Private per-row slot carrying a row's model-specific payload past twinkle's text stages to collate_fn.
 _MEDIA_SLOT = "_media"
+
+
+def get_sequence_padding_to(tp_size: int, sequence_parallel: bool, cp_size: int, attention_backend_name: Optional[str],
+                            fp8_format=None, fp4_format=None, fp8_recipe: Optional[str] = None) -> Optional[int]:
+    """Sequence-length alignment the kernels require (legacy ``get_padding_to``, args -> params).
+
+    Single source of truth shared by the training data path (``InputProcessor``'s ``seq_align_to``)
+    and the weight converter's repartition collation. TE's fp8 GEMM asserts the token dimension is
+    a multiple of 8 and Megatron's fp8 alignment is 16 (delayed/tensorwise), 32 (mxfp8) or 128
+    (blockwise); every micro-batch's token count must reach it.
+    """
+    padding_to = None
+    if tp_size > 1 and sequence_parallel:
+        padding_to = tp_size
+    if cp_size > 1:
+        padding_to = (padding_to or 1) * cp_size
+    origin_padding_to = padding_to
+    if fp8_recipe == 'blockwise':
+        padding_to = (padding_to or 1) * 128
+    elif fp8_recipe == 'mxfp8':
+        # MXFP8 uses a block size of 32. Under sequence parallel, the sequence is split across
+        # TP ranks, so each per-rank shard (seq_len / TP) must itself be divisible by 32. Pad the
+        # total length to TP * 32 to guarantee this.
+        padding_to = (padding_to or 1) * 32
+    elif fp8_format is not None or fp4_format is not None:
+        padding_to = (padding_to or 1) * 16
+    if attention_backend_name == 'fused':
+        padding_to = max(padding_to or 1, ((origin_padding_to) or 1) * 64)
+    return padding_to
 
 
 def processor_kwargs(template: Any) -> Dict[str, Any]:
@@ -38,6 +68,11 @@ class InputProcessor(TwinkleInputProcessor):
     # Zero-padded text fields absent from twinkle's CP field lists (not media payloads).
     _EXTRA_SEQUENCE_FIELDS = ("replay_mask", "token_type_ids")
     _MODEL_CONTROL_FIELDS = (VISION_DUMMY_FLAG,)
+    # Token columns right-padded to the fp8 sequence alignment: twinkle's CP field list plus the
+    # dev extra zero-padded fields. Pad values come from ``padding_map`` (labels -100, loss_scale 0,
+    # position_ids -1 keeps the pad inside the last cu_seqlens segment -- all loss-neutral).
+    _SEQ_ALIGN_FIELDS = ("input_ids", "position_ids", "attention_mask", "labels", "completion_mask", "loss_scale",
+                         "mm_token_type_ids") + _EXTRA_SEQUENCE_FIELDS
 
     def __init__(
         self,
@@ -49,10 +84,13 @@ class InputProcessor(TwinkleInputProcessor):
         task_type: Optional[str] = None,
         multimodal_graph_adapter: Any = None,
         uniform_multimodal_graph: bool = False,
+        seq_align_to: Optional[int] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.template = template
+        # fp8/fp4 token-dimension alignment (legacy get_padding_to); None/1 disables the pad.
+        self._seq_align_to = int(seq_align_to) if seq_align_to and seq_align_to > 1 else None
         # Gemma's token types share completion_mask's zero-padding rule. Keep upstream defaults.
         self.padding_map = dict(self.padding_map)
         self.padding_map.setdefault("token_type_ids", self.padding_map["completion_mask"])
@@ -334,8 +372,103 @@ class InputProcessor(TwinkleInputProcessor):
             results[index][key] = mask["completion_mask"]
         return results
 
+    def _seq_align_segments(self, row: InputFeature, seq_len: int) -> List[tuple]:
+        """(start, end) token segments of a row: cu_seqlens segments under CP, else the whole row."""
+        cp_size = self.device_mesh.cp_world_size if self.device_mesh is not None else 1
+        position_ids = row.get("position_ids")
+        if cp_size <= 1 or position_ids is None:
+            return [(0, seq_len)]
+        pos = position_ids[:1] if position_ids.dim() >= 2 and position_ids.shape[0] > 1 else position_ids
+        pos_f = pos.flatten()
+        indices = torch.arange(pos_f.shape[0], device=pos_f.device, dtype=torch.int32)
+        cu_seqlens = torch.cat(
+            [indices[pos_f == 0],
+             torch.tensor(pos_f.shape, device=pos_f.device, dtype=torch.int32)])
+        bounds = cu_seqlens.tolist()
+        return list(zip(bounds[:-1], bounds[1:]))
+
+    def _pad_4d_mask_to_seq_align(self, value: torch.Tensor, segments: List[tuple], divisor: int) -> torch.Tensor:
+        if len(segments) > 1:
+            raise ValueError("a 4D attention_mask cannot ride the packed fp8 sequence padding; "
+                             "the collator should have dropped it for the packed batch.")
+        length = segments[0][1] - segments[0][0]
+        if length % divisor != 0:
+            pad_len = divisor - length % divisor
+            pad_value = self.padding_map.get("attention_mask", 0)
+            value = torch.nn.functional.pad(value, (0, pad_len, 0, pad_len), value=pad_value)
+        return value
+
+    @staticmethod
+    def _pad_token_column(value: torch.Tensor, segments: List[tuple], divisor: int, pad_value) -> torch.Tensor:
+        pieces = []
+        changed = False
+        for start, end in segments:
+            piece = value[..., start:end]
+            length = end - start
+            if length % divisor != 0:
+                pad_len = divisor - length % divisor
+                piece = torch.nn.functional.pad(piece, (0, pad_len), value=pad_value)
+                changed = True
+            pieces.append(piece)
+        if not changed:
+            return value
+        return torch.cat(pieces, dim=-1) if len(pieces) > 1 else pieces[0]
+
+    def _pad_row_to_seq_align(self, row: InputFeature, divisor: int) -> InputFeature:
+        ref = row.get("input_ids")
+        if ref is None:
+            ref = row.get("position_ids")
+        if ref is None or not torch.is_tensor(ref):
+            return row
+        seq_len = ref.shape[-1]
+        segments = self._seq_align_segments(row, seq_len)
+        for key in self._SEQ_ALIGN_FIELDS:
+            value = row.get(key)
+            # Scalar labels (seq_cls/embedding) and media payloads are not token columns.
+            if value is None or not torch.is_tensor(value) or value.shape[-1] != seq_len:
+                continue
+            if key == "attention_mask" and value.dim() == 4:
+                row[key] = self._pad_4d_mask_to_seq_align(value, segments, divisor)
+            else:
+                row[key] = self._pad_token_column(value, segments, divisor, self.padding_map.get(key, 0))
+        return row
+
+    def _pad_to_seq_align(self, inputs: List[InputFeature]) -> List[InputFeature]:
+        """Right-pad token columns to the fp8 sequence alignment (legacy collator ``padding_to``).
+
+        Runs for every megatron micro-batch BEFORE twinkle derives cu_seqlens
+        (``add_extra_padding_free_args``), so the packed params describe the padded layout.
+        Unlike twinkle's ``pad_cp`` this also runs when ``device_mesh is None`` (single process)
+        and on the non-padding_free ``[B, S]`` rows: each row's sequence dim is padded, packed
+        rows are padded per cu_seqlens segment when CP > 1 so the zigzag split stays legal.
+        Padded tokens carry labels -100 / loss_scale 0 and contribute no loss.
+        """
+        align = self._seq_align_to
+        if not align or self.framework != "megatron":
+            return inputs
+        mesh = self.device_mesh
+        cp_size = mesh.cp_world_size if mesh is not None else 1
+        tp_size = mesh.tp_world_size if mesh is not None else 1
+        divisor = align
+        if cp_size > 1:
+            # Each segment must stay divisible by 2*cp for the zigzag CP split; the total then
+            # remains a multiple of ``align`` (which already carries the cp factor).
+            divisor = math.lcm(divisor, 2 * cp_size)
+        elif getattr(mesh, "sequence_parallel", False) and tp_size > 1:
+            divisor = math.lcm(divisor, tp_size)
+        if divisor <= 1:
+            return inputs
+        return [self._pad_row_to_seq_align(row, divisor) for row in inputs]
+
     def pad_cp(self, inputs, **kwargs):
-        return self._process_extra_sequence_fields(inputs, super().pad_cp, **kwargs)
+        def process(rows, **kw):
+            # twinkle's CP/SP padding first (per-segment 2*cp / total tp), then the fp8 alignment
+            # top-up; the extra zero-padded fields ride the SAME composed transform so they stay
+            # token-aligned even when twinkle's pad_cp early-returns (device_mesh is None).
+            rows = TwinkleInputProcessor.pad_cp(self, rows, **kw)
+            return self._pad_to_seq_align(rows)
+
+        return self._process_extra_sequence_fields(inputs, process, **kwargs)
 
     def split_cp(self, inputs, **kwargs):
         return self._process_extra_sequence_fields(inputs, super().split_cp, **kwargs)

@@ -1,0 +1,4 @@
+# generation args
+max_new_tokens: 1024
+temperature: 0
+stream: true

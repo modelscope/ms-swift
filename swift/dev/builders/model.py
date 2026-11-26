@@ -8,6 +8,7 @@ import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, List, Optional, Sequence
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -533,13 +534,16 @@ def build_model(
     """
     if distributed_config.mode == 'remote':
         from .remote import build_remote_model
+        from swift.dev.config.validate import _changed_fields
 
         if quantize_config is not None and quantize_config.quant_method is None:
             quantize_config = None
         for name, value in (('quantize_config', quantize_config),
                             ('megatron_config', megatron_config),
                             ('moe_config', moe_config)):
-            if value is not None:
+            # The CLI always hands down default-empty Config objects; only EXPLICITLY set knobs
+            # would silently die server-side, so refuse those -- a default-empty config carries none.
+            if value is not None and _changed_fields(value):
                 raise ValueError(
                     f'--mode remote ignores {name}: the served engine (quantization, the '
                     'megatron/moe layout) is configured server-side by its deployment, not by '
@@ -828,7 +832,7 @@ def _apply_unsloth_kwargs(
             f'backend="unsloth" supports causal_lm only; task_type='
             f"{model_config.task_type!r} needs a head unsloth does not build."
         )
-    kwargs["full_finetuning"] = tuner_config is None
+    kwargs["full_finetuning"] = not has_adapter(tuner_config)
     if quantize_config is not None and quantize_config.quant_method is not None:
         if quantize_config.quant_method != "bnb":
             raise NotImplementedError(
@@ -1180,7 +1184,7 @@ def _build_transformers_model(
     # a full run with gradient checkpointing turns it off.
     find_unused = distributed_config.ddp_find_unused_parameters
     if find_unused is None:
-        is_peft = tuner_config is not None
+        is_peft = has_adapter(tuner_config)
         if is_peft:
             find_unused = True
         else:
@@ -1574,6 +1578,26 @@ def build_parallel_mesh(distributed_config: Optional[DistributedConfig], *, none
     if none_if_single_rank and getattr(mesh, "data_world_size", 1) <= 1:
         return None
     return mesh
+
+
+def resolve_rl_dp_size(distributed_config: DistributedConfig, sequence_parallel_size: int = 1) -> int:
+    """The data-parallel width an RL recipe sizes its batches by, per deployment mode.
+
+    remote: one client process drives the server, whose own sharding splits the batch it
+    receives (the policy handle carries a dp=1 mesh). megatron: DP is the ranks LEFT OVER
+    after tp*pp*cp -- build_dp_mesh would count every rank as data parallel. transformers:
+    the dp x ulysses mesh (SP peers share one data rank).
+    """
+    if distributed_config.mode == 'remote':
+        return 1
+    if is_megatron_backend(distributed_config):
+        return build_parallel_mesh(distributed_config).data_world_size
+    mesh = build_dp_mesh(distributed_config, sequence_parallel_size)
+    if mesh is None:
+        # Local, sp=1, no spec: no explicit mesh exists, but dp still spans every rank.
+        from twinkle import Platform
+        return Platform.get_world_size()
+    return mesh.data_world_size
 
 
 _NON_MODEL_MEGATRON_FIELDS = {

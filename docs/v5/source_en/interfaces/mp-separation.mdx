@@ -1,0 +1,40 @@
+---
+title: Components & M/P Separation
+description: Mechanism/Policy separation — infrastructure mechanisms stay invisible to training policy.
+---
+
+## The idea
+
+SWIFT v5 separates **Mechanism** (how distributed execution, transport, placement
+and weight movement work) from **Policy** (what the training algorithm does:
+loss, advantage, reward, sampling schedule). The term follows the classic
+mechanism/policy separation from operating-system design.
+
+The consequence for users is *distribution transparency*: a component author
+writes single-machine logic; the same code runs on one GPU, a Ray cluster, or a
+remote twinkle-server without edits.
+
+## Where the boundary sits
+
+| Layer | Owns | Does not own |
+|---|---|---|
+| twinkle infra (Mechanism) | Ray actors, device mesh, transport, weight sync channels, checkpoint IO | algorithm semantics |
+| components (Policy) | model forward/backward, loss, sampler logic, reward, advantage | cluster topology, process placement |
+| SWIFT recipes | assembling components into a training run | re-implementing mechanisms |
+
+Two contact points only: `initialize` (bring up the runtime) and function
+annotations (mark what may run remotely). Everything else crosses the boundary
+as serializable specs, registered names and scalars.
+
+## What this buys you
+
+- **Swap without rewrites**: change the loss or the reward function without
+  touching distribution code; change placement without touching the algorithm.
+- **Backend neutrality**: transformers, Megatron and remote backends expose the
+  same component surface.
+- **Scale neutrality**: one code path from a single card to 1000B+ models;
+  placement is driven by configuration, not hardcoded branches.
+
+Read the component-level examples (`examples/v5/**/*.py`) to see the boundary in
+practice: assembly and loops are policy; every distributed call is a mechanism
+delegated to twinkle.

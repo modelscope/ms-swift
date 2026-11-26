@@ -1,0 +1,4 @@
+{
+  "title": "Get Started",
+  "pages": ["index", "quick-start", "installation", "scaling", "docker", "models-and-datasets"]
+}

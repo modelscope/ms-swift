@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -26,30 +27,69 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-#: Micro-batching knobs twinkle's forward-only micro-batcher refuses for a readout task whose model
-#: carries an attached head. The remote multi-LoRA host ALWAYS carries per-adapter head slots, so every
-#: remote readout forward (seq_cls / value / reranker / decision) must run whole-batch.
+#: Micro-batching knobs refused for record-level readouts on remote attached-head hosts.
+#: Token-level readouts (value) retain the ordinary sample-level micro-batch path.
 _READOUT_MICRO_BATCH_KEYS = ('micro_batch_size', 'max_tokens_per_micro_batch')
 
 
 def _remote_forward_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize forward kwargs onto what the remote readout host supports.
+    """Normalize record-level readouts onto the remote host's whole-batch path.
 
-    twinkle sample-splits a micro-batched forward, but a readout task's labels/decision_meta are
-    organized per RECORD, so the split desynchronizes them from the logits; the backend raises rather
-    than degrade. The local legacy in-model head (carries_task_head=False) merges per sample and keeps
-    micro-batching, so the mode-blind recipe code legitimately passes micro_batch_size for seq_cls/value
-    eval and the PPO critic. The restriction is a property of the REMOTE attached-head host, so the
-    normalization lives here at the remote boundary -- one place that covers eval, the critic, and any
-    future readout forward -- instead of a per-call-site guard. Whole-batch is the only supported remote
-    readout mode (the recipe's eval chunking still bounds memory), so dropping the knobs is correct, not
-    a silent degradation.
+    Token-level readouts use the shared unpack/merge path and keep the caller's micro-batch knobs;
+    only record-level labels/decision_meta need the attached-head restriction.
     """
     from twinkle.processor.tasks import get_task_spec
 
-    if get_task_spec(kwargs.get('task', 'causal_lm')).readout:
+    spec = get_task_spec(kwargs.get('task', 'causal_lm'))
+    if spec.readout and not spec.token_level_labels:
         return {key: value for key, value in kwargs.items() if key not in _READOUT_MICRO_BATCH_KEYS}
     return kwargs
+
+
+def _decode_decision_output(result: Any) -> Dict[str, Any]:
+    """Decode the server's JSON-safe decision scoring output back into the ScoringOutput tensors.
+
+    The server's ``decision_forward_output`` flattens the padded [total_q, max_opt] tensors into
+    lists (padded slots zeroed so the payload stays finite and JSON-safe). The mode-blind
+    consumers (the temperature-calibration callback) read the same tensor face a local
+    forward_only returns, so the decode lives here at the remote boundary with the other
+    response unwraps, instead of at every consumption point.
+    """
+    import math
+
+    import torch
+
+    keys = ('logits', 'option_mask', 'kinds', 'counts')
+    if not isinstance(result, dict) or not all(key in result for key in keys):
+        raise ValueError('A remote decision forward_only with return_logits must return the scoring '
+                         'output (logits/option_mask/kinds/counts); got a different payload.')
+    rows, masks = result['logits'], result['option_mask']
+    kinds, counts = result['kinds'], result['counts']
+    if (not isinstance(rows, list) or not isinstance(masks, list) or len(rows) != len(masks)
+            or not isinstance(kinds, list) or not isinstance(counts, list)):
+        raise ValueError('Remote decision scoring output has malformed outer shapes.')
+    width = 0
+    for row, mask in zip(rows, masks):
+        if (not isinstance(row, list) or not isinstance(mask, list) or len(row) != len(mask)
+                or any(type(bit) is not bool for bit in mask)):
+            raise ValueError('Remote decision option masks must be boolean and align with the logits.')
+        width = max(width, len(row))
+    if (len(rows) != len(kinds) or any(type(k) is not int for k in kinds)
+            or any(type(c) is not int or c < 0 for c in counts) or sum(counts) != len(kinds)):
+        raise ValueError('Remote decision kinds and record counts must match the question rows.')
+    logits = torch.zeros((len(rows), width), dtype=torch.float32)
+    option_mask = torch.zeros((len(rows), width), dtype=torch.bool)
+    for i, (row, mask) in enumerate(zip(rows, masks)):
+        if any(not math.isfinite(value) for value in row):
+            raise ValueError('Remote decision logits must be finite.')
+        logits[i, :len(row)] = torch.as_tensor(row, dtype=torch.float32)
+        option_mask[i, :len(mask)] = torch.as_tensor(mask, dtype=torch.bool)
+    return {
+        'logits': logits,
+        'option_mask': option_mask,
+        'kinds': torch.as_tensor(kinds, dtype=torch.long),
+        'counts': torch.as_tensor(counts, dtype=torch.long),
+    }
 
 
 def build_remote_model(model_config: 'ModelConfig', distributed_config: 'DistributedConfig') -> Any:
@@ -108,10 +148,20 @@ class RemoteModel:
 
     def forward_only(self, *args: Any, **kwargs: Any) -> Any:
         response = self._handle.forward_only(*args, **_remote_forward_kwargs(kwargs))
-        return getattr(response, 'result', response)
+        result = getattr(response, 'result', response)
+        # A decision readout that asked for logits crosses the wire as JSON-safe lists (see
+        # _decode_decision_output); every other forward_only payload is already the local shape.
+        if kwargs.get('task') == 'decision' and kwargs.get('return_logits'):
+            return _decode_decision_output(result)
+        return result
 
     def forward_backward(self, *args: Any, **kwargs: Any) -> Any:
         return self._handle.forward_backward(*args, **_remote_forward_kwargs(kwargs))
+
+    def task_head_temperatures(self, *, adapter_name: str = 'default', update: Optional[dict] = None) -> Any:
+        """Translate the temperature response onto the TrainableModel return shape."""
+        response = self._handle.task_head_temperatures(adapter_name=adapter_name, update=update)
+        return {'temperatures': None if response.temperatures is None else response.temperatures.model_dump()}
 
     def wait_async_saves(self, *args: Any, **kwargs: Any) -> None:
         # Remote saves are synchronous (the client blocks to the terminal state), so there are no
@@ -152,9 +202,8 @@ def apply_remote_tuner(model: Any, tuner_config: Optional['TunerConfig'],
     """
     from peft import LoraConfig
 
-    if tuner_config is None:
-        return
-    if tuner_config.tuner == 'full':
+    if not has_adapter(tuner_config):
+        # No adapter to install: full-parameter training (None or tuner='full').
         return
     if tuner_config.tuner != 'lora':
         raise ValueError(

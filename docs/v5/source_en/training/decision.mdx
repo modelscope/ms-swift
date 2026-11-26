@@ -1,0 +1,40 @@
+---
+title: Decision Models
+description: Typed System-1 scoring — calibrated probabilities over option sets in one forward.
+---
+
+Decision models answer multiple-choice questions as a **scoring task**, not by
+generating text: one forward pass outputs calibrated probabilities over each
+question's option set.
+
+```bash
+swift sft \
+    --model <decision-family-model> \
+    --task_type decision \
+    --torch_dtype bfloat16 \
+    --dataset <decision-dataset> \
+    --tuner lora \
+    --output_dir output
+```
+
+How it works:
+
+- The template encodes each row into question + option sequences; the collator
+  flattens them into a `[total_questions, max_options]` label tensor.
+- A `ScoringHead` attached to the backbone produces per-option scores; the loss
+  trains them toward the labeled choice.
+- Registered decision families (e.g. H2O / THX-02 style scoring models) load
+  their head configuration automatically from the model spec.
+
+Use this task type when you need fast, calibrated option scoring (routing,
+judging, System-1 style decisions) rather than free-form generation.
+Implementation: `swift/dev/model/decision_head.py`, `swift/dev/model/loader/decision.py`.
+
+### Remote temperature calibration
+
+With `--mode remote --task_type decision`, supply validation data using `--val_dataset` or
+`--split_dataset_ratio`. For heads that support temperature scaling, Swift fits temperatures on the
+client after successful training and sends them back to the current training handle. Once Twinkle
+acknowledges the update, the final checkpoint stores the temperatures in `task_head.safetensors`.
+Intermediate checkpoints are unchanged. This requires a Twinkle server and SDK that support the
+training handle's task-head temperature operation.

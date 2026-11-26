@@ -4,7 +4,8 @@
 Ported from ``swift/model/models/baidu.py``. The causal-LM ERNIE-4.5 families: the dense
 ``ernie4_5`` and the MoE ``ernie4_5_moe`` share the ``ernie`` chat format; the MoE Thinking
 checkpoint uses ``ernie_thinking``, split off as an ``architectures=[]`` template variant. Plus the
-transformers-native ``paddleocr_vl`` (PaddleOCR-VL-1.5/1.6, ``transformers>=5.0``).
+remote-code ``paddleocr_vl`` (PaddleOCR-VL-1.5/1.6, ``transformers>=5.0``; the checkpoints ship
+``modeling_paddleocr_vl.py`` and the in-tree transformers implementation does not match them).
 
 Not migrated here (see MODEL_MIGRATION.md):
   * ``paddle_ocr`` -- the original PaddleOCR-VL is remote-code (``PaddleOCRVLForConditionalGeneration``,
@@ -55,15 +56,22 @@ class Ernie4_5MoeThinkingLoader(Ernie4_5MoeLoader):
 
 @register_model
 class PaddleOCR1_5Loader(ModelLoader):
-    """PaddleOCR-VL-1.5/1.6 (transformers-native, ``transformers>=5.0``). Loads via the generic
-    ``AutoModelForImageTextToText``; no ``architectures`` reverse-lookup entry (legacy declared none,
-    resolution is by checkpoint id)."""
+    """PaddleOCR-VL-1.5/1.6: the checkpoints SHIP remote code (``auto_map`` ->
+    ``modeling_paddleocr_vl.PaddleOCRVLForConditionalGeneration``), and the transformers-native
+    ``paddleocr_vl`` implementation does not match them (native forward dies with "Image features
+    and image tokens do not match", and native-config vLLM decodes degenerate text; the bundled
+    remote code produces correct OCR). So this is a remote-code family: ``trust_remote_code=True``
+    and ``AutoModelForCausalLM`` -- the checkpoint's ``auto_map`` covers ``AutoModel`` /
+    ``AutoModelForCausalLM`` but NOT ``AutoModelForImageTextToText``, which would silently fall back
+    to the broken in-tree class even with the flag set. No ``architectures`` reverse-lookup entry
+    (legacy declared none, resolution is by checkpoint id)."""
 
     model_type = "paddleocr_vl"
-    model_cls = "transformers:AutoModelForImageTextToText"
+    model_cls = "transformers:AutoModelForCausalLM"
     template = "paddle_ocr_1_5"
     requires = ["transformers>=5.0"]
     is_multimodal = True
+    trust_remote_code = True
     models = [
         ("PaddlePaddle/PaddleOCR-VL-1.5", "PaddlePaddle/PaddleOCR-VL-1.5"),
         ("PaddlePaddle/PaddleOCR-VL-1.6", "PaddlePaddle/PaddleOCR-VL-1.6"),
@@ -71,10 +79,12 @@ class PaddleOCR1_5Loader(ModelLoader):
 
     @property
     def model_arch(self) -> ModelArch:
+        # The remote-code layout is flat: ``visual`` / ``mlp_AR`` / ``model`` (Ernie4_5Model) /
+        # ``lm_head`` hang directly off PaddleOCRVLForConditionalGeneration.
         return ModelArch(
-            language_model=["model.language_model", "lm_head"],
-            aligner="model.projector",
-            vision_tower="model.visual",
+            language_model=["model", "lm_head"],
+            aligner="mlp_AR",
+            vision_tower="visual",
         )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.utils import (
     REF_GROUP,
     auxiliary_mesh,
@@ -50,7 +51,7 @@ def ppo_group_requests(
     from swift.dev.rewards.scorer import split_channel
 
     requests: List[Tuple[str, Optional[str]]] = []
-    if not (tuner_config is not None and not rl_config.ref_adapters and not rl_config.sync_ref_model):
+    if not (has_adapter(tuner_config) and not rl_config.ref_adapters and not rl_config.sync_ref_model):
         spec = (
             (rl_config.reference_parallel_spec or distributed_config.parallel_spec)
             if rl_config.sync_ref_model
@@ -88,6 +89,7 @@ class Cluster(NamedTuple):
     colocate: bool
     advantage: Any
     traj_filter: Any
+    prm_segment: Any = None
 
 
 def initialize_ppo_cluster(
@@ -125,6 +127,7 @@ def initialize_ppo_cluster(
     from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.rewards.prm import build_prm_segment
     from swift.dev.builders.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
@@ -150,7 +153,7 @@ def initialize_ppo_cluster(
                else build_dp_mesh(distributed_config, sp))
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None and not remote_run:
+    if resume_dir and not has_adapter(tuner_config) and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_ppo).
         policy_config = copy.deepcopy(model_config)
@@ -171,7 +174,7 @@ def initialize_ppo_cluster(
         moe_config=moe_config,
         torch_dtype="float32",
     )
-    if tuner_config is not None:
+    if has_adapter(tuner_config):
         apply_tuner(
             model,
             tuner_config,
@@ -227,7 +230,7 @@ def initialize_ppo_cluster(
     if remote_run:
         from swift.dev.builders.remote import build_remote_model, configure_remote_processor
 
-        if tuner_config is None or tuner_config.tuner != 'lora':
+        if not has_adapter(tuner_config) or tuner_config.tuner != 'lora':
             raise ValueError(
                 '--mode remote PPO needs --tuner lora: the remote critic is a served-model LoRA '
                 'whose seq_cls value head rides the adapter channel (add_adapter_to_model), so a '
@@ -304,7 +307,8 @@ def initialize_ppo_cluster(
     # object over the client sampler handle.
     rollout = build_rollout(
         sampler, template, rollout_config, sampling_params=params, remote=not remote_run,
-        inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)))
+        inflight=inflight_rows(rollout_config, batch_size, max(1, rl_config.num_generations)),
+        seed=train_config.seed)
 
     # PPO ALWAYS anchors the KL: the full-parameter default is a frozen policy-init copy on the ref
     # group; a LoRA run reuses the policy actor itself with its adapter off (identity-derived).
@@ -332,7 +336,7 @@ def initialize_ppo_cluster(
         ),
         adapters=tuple(rl_config.ref_adapters or ()),
         policy_model=model,
-        disable_adapter=(tuner_config is not None and not rl_config.ref_adapters and not rl_config.sync_ref_model),
+        disable_adapter=(has_adapter(tuner_config) and not rl_config.ref_adapters and not rl_config.sync_ref_model),
         model_type=rl_config.ref_model_type,
         model_revision=rl_config.ref_model_revision,
     )
@@ -387,6 +391,7 @@ def initialize_ppo_cluster(
                                env_reward_weight=float(reward_config.env_reward_weight),
                                **prm_kwargs, **group),
         traj_filter=TrajectoryFilter(**group),
+        prm_segment=build_prm_segment(reward_config, rollout_config, remote_group=group['remote_group']),
     )
 
 
@@ -401,7 +406,6 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
     multi-turn rollout) feeds the process-reward lane the GAE token rewards fuse.
     """
     from swift.dev.builders.streaming import build_streaming_driver
-    from swift.dev.rewards.prm import build_prm_segment
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,
@@ -416,7 +420,7 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
         orm_names=cluster.orm_names,
         prms=cluster.prm_scorers,
         prm_names=cluster.prm_names,
-        prm_segment=build_prm_segment(reward_config, rollout_config),
+        prm_segment=cluster.prm_segment,
         cluster_adapter=cluster.adapter,
         remote=True,
     )

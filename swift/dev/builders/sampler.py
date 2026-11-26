@@ -76,7 +76,8 @@ def _resolve_sampler(spec: Any) -> Tuple[type, Optional[str]]:
         raise ValueError(
             f"sampler={spec!r} (legacy remote generation) is not migrated: v5 samples with the local "
             "vllm/sglang/transformers backends. Serve the remote side with `swift deploy` and point an "
-            "http(s) URL at it (an API-judge reward channel) instead of a client sampler.")
+            "http(s) URL at it (an API-judge reward channel) instead of a client sampler."
+        )
     kind = _sampler_kind()
     sampler_cls = resolve_plugin_class(spec, kind.base, kind.entries, kind="sampler")
     engine = next((name for name, cls in kind.entries.items() if cls is sampler_cls), None)
@@ -119,6 +120,25 @@ def build_engine_args(backend: str, infer_config: "InferConfig", rollout_config:
             if backend == "sglang":
                 key = sglang_rename.get(key, key)
             result[key] = value
+    # Config-mapped defaults (e.g. enable_ep_moe=False, retired in sglang 0.5.x) must be
+    # filtered BEFORE the user's engine_kwargs override: SGLangSampler validates engine_args
+    # fail-loud, and a retired boolean default forwarded by the loop above would raise there
+    # before SGLangEngine's warn-and-drop lane runs. User-set engine_kwargs are NOT filtered
+    # here, so a purpose-set retired knob still raises at the sampler (design intent preserved).
+    if backend == "sglang":
+        try:
+            from twinkle.sampler.sglang_sampler.sglang_engine import _sglang_engine_arg_names
+
+            accepted = _sglang_engine_arg_names()
+        except Exception:
+            accepted = None
+        if accepted is not None:
+            own_params = {"tensor_parallel_size", "data_parallel_size", "enable_memory_saver"}
+            retired = sorted(k for k in result if k not in accepted and k not in own_params)
+            if retired:
+                logger.warning(f"sglang config: dropping retired/unknown engine knobs {retired}")
+                for k in retired:
+                    del result[k]
     result.update(getattr(rollout_config, f"{prefix}engine_kwargs", None) or {})
     return result
 
@@ -253,13 +273,20 @@ def build_sampler(
         if adapters:
             _enable_lora(kwargs, engine, adapters)
 
-        if engine == "transformers":
-            # AutoModelForCausalLM cannot load a VL checkpoint; hand the family loader's declared
-            # model_cls ('module:ClassName': engine-resolvable, Ray-safe); setdefault keeps overrides.
-            from swift.dev.builders.model import _resolve_model_loader
+        # The loader is the authority on trust_remote_code for every built-in engine: it knows
+        # whether the family's checkpoints ship remote code (auto_map) that must execute, while the
+        # twinkle engine defaults do not (TransformersEngine defaults False, VLLMEngine True).
+        # Without this, a remote-code family (e.g. PaddleOCR-VL-1.5, whose bundled modeling is the
+        # only working implementation) loads the broken in-tree class on the transformers engine.
+        # setdefault keeps an explicit engine_args override.
+        from swift.dev.builders.model import _resolve_model_loader
 
-            loader = _resolve_model_loader(model_config)
-            if loader is not None:
+        loader = _resolve_model_loader(model_config)
+        if loader is not None:
+            kwargs.setdefault("trust_remote_code", loader.trust_remote_code)
+            if engine == "transformers":
+                # AutoModelForCausalLM cannot load a VL checkpoint; hand the family loader's declared
+                # model_cls ('module:ClassName': engine-resolvable, Ray-safe); setdefault keeps overrides.
                 kwargs.setdefault("model_cls", loader.model_cls)
 
     validate_capabilities = getattr(template, "require_capabilities", None)
@@ -284,8 +311,9 @@ def build_sampler(
     return sampler_cls(model_config.model, engine_args=kwargs, device_mesh=device_mesh, **extra)
 
 
-def _build_client_sampler(model_config: "ModelConfig", template: Any,
-                          adapters: Optional[List[str]], is_pooling: bool) -> Any:
+def _build_client_sampler(
+    model_config: "ModelConfig", template: Any, adapters: Optional[List[str]], is_pooling: bool
+) -> Any:
     """backend='twinkle': a client-side vLLMSampler handle over a SERVED sampler.
 
     The transport must already be bound (init_twinkle_client, done by the mode='remote'
@@ -299,13 +327,15 @@ def _build_client_sampler(model_config: "ModelConfig", template: Any,
     if is_pooling:
         raise ValueError(
             'backend="twinkle" cannot serve the pooling task: the client sampler face is '
-            'sample()/encode() over a served generation engine. Run pooling locally, or serve it '
-            'through the gateway\'s OpenAI-compatible /embeddings route.')
+            "sample()/encode() over a served generation engine. Run pooling locally, or serve it "
+            "through the gateway's OpenAI-compatible /embeddings route."
+        )
     if adapters:
         raise ValueError(
             f'backend="twinkle" received local adapters {adapters!r}: a local adapter directory '
-            'cannot load into a remote engine. Merge the adapter first (`swift merge`), or wait '
-            'for the adapter_uri wiring (a twinkle:// checkpoint served as a sampler LoRA).')
+            "cannot load into a remote engine. Merge the adapter first (`swift merge`), or wait "
+            "for the adapter_uri wiring (a twinkle:// checkpoint served as a sampler LoRA)."
+        )
     sampler = ClientSampler(model_config.model)
     if template is not None:
         spec = resolve_twinkle_template(None, model_config)
@@ -416,8 +446,9 @@ def _reject_unsupported(generation_config: GenerationConfig) -> None:
     # under it); alone it is silently ignored, so refuse the dead combination here.
     if generation_config.top_logprobs is not None and not generation_config.logprobs:
         raise ValueError(
-            f'top_logprobs={generation_config.top_logprobs} needs --logprobs true: the top-k logprobs '
-            'only ride the logprobs flag, so without it the setting is silently ignored.')
+            f"top_logprobs={generation_config.top_logprobs} needs --logprobs true: the top-k logprobs "
+            "only ride the logprobs flag, so without it the setting is silently ignored."
+        )
     if generation_config.num_beams and generation_config.num_beams > 1:
         raise ValueError(
             f"num_beams={generation_config.num_beams} is not supported: twinkle SamplingParams "

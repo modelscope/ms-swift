@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import torch
 from twinkle.perf import span as perf_span
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.batching import balance_lanes, balance_update
 from swift.dev.recipe.grpo.assembly import build_driver, grpo_group_requests, initialize_cluster
 from swift.dev.recipe.utils import (
@@ -19,6 +20,7 @@ from swift.dev.recipe.utils import (
     close_driver_preserving_error,
     collect,
     effective_colocate,
+    finalize_rl_resources,
     initialize_rl_devices,
     optimizer_batch_slices,
     prompt_rows_from_dataset,
@@ -166,49 +168,6 @@ def _chord_forward_backward(
             if key in forward_kwargs
         },
     )
-
-
-_DP_PAD_REMOTE = None
-
-
-def _dp_pad_rows(template: Any, pad_count: int) -> List[Any]:
-    """Inert DP pad rows (defect73 candidate b), ray-aware.
-
-    Under ray the lane rows are lazy ObjectRefs the driver never materializes; build each pad row in a
-    remote task that opens the template ON A WORKER and returns a marked copy, keeping the controller
-    lazy. Locally the rows are concrete dicts and a plain copy suffices. Each pad row copies a real
-    row's encoded features so the forward lanes can process it; the advantage gives it advantage=0
-    (excluded from group stats) and run_grpo strips it before training.
-    """
-    import ray
-    if ray.is_initialized() and isinstance(template, ray.ObjectRef):
-        global _DP_PAD_REMOTE
-        if _DP_PAD_REMOTE is None:
-            @ray.remote
-            def _pad(template_ref, p):
-                import ray as _ray
-                # ray auto-resolves an ObjectRef argument to its value on the worker, so template_ref
-                # is usually already the materialized dict; ray.get only if it is still a reference.
-                template = _ray.get(template_ref) if isinstance(template_ref, _ray.ObjectRef) else template_ref
-                dummy = dict(template)
-                dummy['episode_id'] = f'__dp_pad_{p}'
-                dummy['group_key'] = f'__dp_pad_{p}'
-                dummy['_dp_pad'] = True
-                dummy.pop('advantages', None)
-                dummy.pop('returns', None)
-                return dummy
-            _DP_PAD_REMOTE = _pad
-        return [_DP_PAD_REMOTE.remote(template, p) for p in range(pad_count)]
-    rows = []
-    for p in range(pad_count):
-        dummy = dict(template)
-        dummy['episode_id'] = f'__dp_pad_{p}'
-        dummy['group_key'] = f'__dp_pad_{p}'
-        dummy['_dp_pad'] = True
-        dummy.pop('advantages', None)
-        dummy.pop('returns', None)
-        rows.append(dummy)
-    return rows
 
 
 def _train_mini_batches(
@@ -411,7 +370,7 @@ def _train_loop(
             pad_count = (-len(lane_trajs)) % data_world_size
             padded = pad_count > 0
             if padded:
-                dummies = _dp_pad_rows(lane_trajs[0], pad_count)
+                dummies = cluster.traj_update.pad_rows(lane_trajs[0], pad_count=pad_count)
                 lane_trajs = list(lane_trajs) + dummies
                 lane_scores = list(lane_scores) + [{} for _ in dummies]
             ref_out = None
@@ -508,8 +467,9 @@ def _train_loop(
                 break
             state.begin_rollout_iteration()
     finally:
-        # Release the driver thread and its episodes before the caller's teardown shuts the rollout.
-        close_driver_preserving_error(driver)
+        # Release the driver thread and its episodes before the caller's teardown shuts the rollout;
+        # its terminal statistics feed the run summary below (the close returns them).
+        state.stream_stats = close_driver_preserving_error(driver)
         if lent:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
@@ -576,34 +536,6 @@ def _grpo_extra_metrics(
             )
     extra.update(reward_metric.calculate())
     return extra
-
-
-def _finalize_grpo_resources(state, driver, cluster, *, remote_run, engine_core_job_id,
-                             perf_shutdown, reap):
-    """Teardown in fixed order; a cleanup error must not mask the in-flight training exception (defect499)."""
-    orig = sys.exc_info()
-    errors = []
-
-    def _guard(label, fn):
-        try:
-            fn()
-        except Exception as e:
-            logger.warning('GRPO cleanup %s failed: %s', label, e, exc_info=True)
-            errors.append(e)
-
-    _guard('finish_rollout_metrics', lambda: state.finish_rollout_metrics(
-        stream_stats=driver.stats(),
-        status='failed' if orig[0] is not None else 'loop_completed') if not remote_run else None)
-    _guard('Perf.shutdown', perf_shutdown)
-    _guard('rollout.close', cluster.rollout.close)
-    _guard('sampler.shutdown', lambda: cluster.sampler.shutdown() if not remote_run else None)
-    _guard('reap_engine_core_orphans',
-           lambda: reap(engine_core_job_id) if (not remote_run and engine_core_job_id) else None)
-    _guard('tracker.close', state.tracker.close)
-    # On the success path a real teardown failure must still surface; while a training
-    # exception is in flight it wins and cleanup errors stay logged above.
-    if orig[0] is None and errors:
-        raise errors[0]
 
 
 def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # noqa: C901
@@ -680,15 +612,6 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         batch_size=batch_size, quantize_config=quantize_config, megatron_config=megatron_config,
         moe_config=moe_config, generation_config=generation_config, resource_plan=resource_plan,
         auxiliary_meshes=auxiliary_meshes, teacher_prompt=teacher_prompt)
-    # defect58 part②: capture the ray job id while ray is healthy so teardown can reap orphan
-    # EngineCore PIDs even after the raylet dies (the runtime context may be unusable by then).
-    _engine_core_job_id = None
-    try:
-        import ray
-        if ray.is_initialized():
-            _engine_core_job_id = str(ray.get_runtime_context().get_job_id())
-    except Exception:  # noqa: BLE001 - reaper is a safety net, never block training
-        _engine_core_job_id = None
     # segment 4: dataloader + driver + the step cadence + the save closure.
     from swift.dev.builders import build_prompt_dataloader
     from swift.dev.builders.optimizer import resolve_max_grad_norm
@@ -786,7 +709,10 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
     # Before any training step: a base-modifying LoRA init (pissa ...) needs its initial snapshot.
     snapshot_initial_adapter(cluster.model, save_knobs.initial_adapter_dir)
 
-    batching_kwargs = {"micro_batch_size": train_config.per_device_train_batch_size}
+    # ``micro_batch_order`` rides the same kwargs the model's MicroBatchConfig pops; leaving it
+    # out would keep the validated config knob dead (it defaults to "none", a no-op).
+    batching_kwargs = {"micro_batch_size": train_config.per_device_train_batch_size,
+                      "micro_batch_order": train_config.micro_batch_order}
     if train_config.dynamic_batching:
         batching_kwargs.update(
             dynamic_batching=True,
@@ -800,7 +726,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         # export back to the source's packed format so the artifact is loadable by the
         # quantized rollout engine; LoRA saves deltas and has nothing to re-quantize.
         requantize_source = (model_config.model
-                             if (tuner_config is None or tuner_config.tuner == 'full') else None)
+                             if not has_adapter(tuner_config) else None)
         component_states = {"training": {"micro_step": state.micro_step}}
         return save_training_step(cluster.model, state.handler, name, save_knobs,
             consumed_train_samples=state.global_step,
@@ -865,18 +791,15 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
                         reward_metric=_reward_metric,
                         completion_log=completion_log,
                         )
+        state.handler.on_train_end()
+        # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices'
+        # copy, and it must be saved BEFORE the teardown below releases the model replicas.
+        save_final_checkpoint(cluster.model, save, enabled=_save_final)
     finally:
-        def _reap_engine_core(job_id):
-            # defect58 part②: a dead raylet leaves the EngineCore OS process orphaned; reap its
-            # recorded PIDs directly, bypassing the dead actor (identity-verified).
-            from twinkle.sampler.vllm_sampler.engine_core_reaper import reap_engine_core_orphans
-            reap_engine_core_orphans(job_id)
-
-        _finalize_grpo_resources(
-            state, driver, cluster, remote_run=remote_run,
-            engine_core_job_id=_engine_core_job_id,
-            perf_shutdown=Perf.shutdown, reap=_reap_engine_core)
-    state.handler.on_train_end()
-    # The final checkpoint is synchronous; its args.json is written by initialize_rl_devices' copy.
-    save_final_checkpoint(cluster.model, save, enabled=_save_final)
+        finalize_rl_resources(
+            state, cluster, remote_run=remote_run,
+            finish=lambda: state.finish_rollout_metrics(
+                stream_stats=state.stream_stats,
+                status='failed' if sys.exc_info()[0] is not None else 'loop_completed') if not remote_run else None,
+            driver=driver, companions=(ema_manager,), recipe='GRPO')
     return state.history
