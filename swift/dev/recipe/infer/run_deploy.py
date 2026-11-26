@@ -56,21 +56,20 @@ def run_deploy(
     # Coexistence gate, straight off ServeController's live list: one sampler app per model
     # name, so a second deployment of the same name is refused instead of silently rolling it.
     public_name = _public_name(deploy_config, model_config)
-    existing = _serve_status()
-    details = _serve_details() if existing else {}
-    samplers = _deployed_sampler_apps(details, deploy_config.route_prefix)
+    routes = _serve_routes()
+    samplers = _deployed_sampler_apps(routes, deploy_config.route_prefix)
     sampler_app = _sampler_app_name(public_name)
     if public_name in samplers:
         raise ValueError(f"Model {public_name!r} is already deployed. Stop it first or choose another served name.")
-    if sampler_app in details:
+    if sampler_app in routes:
         raise ValueError(f"Ray Serve application name {sampler_app!r} is already in use by another deployment.")
 
     # A second deployment shares the running gateway/data-plane instead of re-creating them:
     # the gateway's registry is widened (rolling update) with every live sampler's name, while
     # the data-plane is left untouched -- re-running it would drop in-flight DataRefs.
     gateway_models, gateway_aliases = sorted(samplers), {}
-    if "server" in details:
-        if _app_route(details["server"]) != deploy_config.route_prefix.rstrip("/"):
+    if "server" in routes:
+        if routes["server"] != deploy_config.route_prefix.rstrip("/"):
             raise ValueError("The running gateway uses a different route_prefix.")
         gateway_models, gateway_aliases = _retained_gateway_registry(set(samplers))
     used_names = {entry if isinstance(entry, str) else entry["model_name"] for entry in gateway_models}
@@ -83,7 +82,7 @@ def run_deploy(
     if conflicts:
         raise ValueError(f"Model or adapter names already registered: {', '.join(sorted(conflicts))}")
     gateway_models.append(public_name)
-    skip_apps = {"data-plane"} if "data-plane" in details else set()
+    skip_apps = routes.keys() & {"data-plane"}
 
     config = build_server_config(
         model_config,
@@ -244,33 +243,24 @@ def _sampler_app_name(public_name: str) -> str:
     return f"sampler-{public_name.replace('/', '_')}-{digest}"
 
 
-def _serve_status() -> Dict[str, Any]:
-    """ServeController's live application list, empty before Serve starts."""
-    from ray import serve
-
-    return dict(serve.status().applications)
-
-
-def _serve_details() -> Dict[str, Any]:
+def _serve_routes() -> Dict[str, str]:
     """Read the application routes from the live Serve controller."""
     from ray.serve.context import _get_global_client
 
     client = _get_global_client(raise_if_no_controller_running=False)
-    return dict(client.get_serve_details()["applications"]) if client is not None else {}
+    if client is None:
+        return {}
+    return {name: (app.get("route_prefix") or "").rstrip("/")
+            for name, app in client.get_serve_details()["applications"].items()}
 
 
-def _app_route(details: Any) -> str:
-    route = details.get("route_prefix") if isinstance(details, dict) else getattr(details, "route_prefix", None)
-    return (route or "").rstrip("/")
-
-
-def _deployed_sampler_apps(apps: Dict[str, Any], route_prefix: str) -> Dict[str, str]:
+def _deployed_sampler_apps(routes: Dict[str, str], route_prefix: str) -> Dict[str, str]:
     """Match public names from exact sampler routes, including legacy app names."""
     prefix = f"{route_prefix.rstrip('/')}/sampler/"
     return {
         route[len(prefix) :]: name
-        for name, details in apps.items()
-        if name.startswith("sampler-") and (route := _app_route(details)).startswith(prefix)
+        for name, route in routes.items()
+        if name.startswith("sampler-") and route.startswith(prefix)
     }
 
 
@@ -314,9 +304,11 @@ def _wait_for_application(app_name: str, timeout: float, poll: float = 2.0) -> N
     """Park until Serve reports the app RUNNING; DEPLOY_FAILED/UNHEALTHY fail loudly."""
     import time
 
+    from ray import serve
+
     deadline = time.time() + timeout
     while time.time() < deadline:
-        details = _serve_status().get(app_name)
+        details = serve.status().applications.get(app_name)
         if details is not None:
             # ApplicationStatus is an enum: str() yields 'ApplicationStatus.RUNNING', the
             # value is the plain word -- compare against the value.
@@ -370,37 +362,33 @@ def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelCon
     from ray import serve
     from twinkle.server import launch_server
 
-    apps = _serve_details()
-    samplers = _deployed_sampler_apps(apps, deploy_config.route_prefix)
-    sampler_app = samplers.get(public_name)
+    routes = _serve_routes()
+    route_prefix = deploy_config.route_prefix.rstrip("/")
+    samplers = _deployed_sampler_apps(routes, route_prefix)
+    sampler_app = samplers.pop(public_name, None)
+    gateway_matches = routes.get("server") == route_prefix
+    # Read the catalog before deleting anything, so a failed read leaves the deployment intact.
+    registry = _retained_gateway_registry(set(samplers)) if sampler_app and gateway_matches and samplers else None
+
+    # The controller can outlive its route after a partial teardown.
+    route = f"{route_prefix}/sampler/{public_name}"
+    released = _release_sampler_pool(deploy_config.ray_namespace, route, public_name)
     if sampler_app is None:
-        # The exact controller may outlive its router after a partial teardown.
-        route = f"{deploy_config.route_prefix.rstrip('/')}/sampler/{public_name}"
-        if _release_sampler_pool(deploy_config.ray_namespace, route, public_name):
-            return
-        raise ValueError(f"No deployment found for model {public_name!r}.")
-    gateway_matches = "server" in apps and _app_route(apps["server"]) == deploy_config.route_prefix.rstrip("/")
-    remaining = set(samplers) - {public_name}
-    if gateway_matches and remaining:
-        supported_models, aliases = _retained_gateway_registry(remaining)
+        if not released:
+            raise ValueError(f"No deployment found for model {public_name!r}.")
+        return
 
-    # The detached pool owns its worker deployments and allocations.
-    _release_sampler_pool(deploy_config.ray_namespace, _app_route(apps[sampler_app]), public_name)
-
-    # serve.delete blocks until the app (and its replicas) are gone.
     serve.delete(sampler_app)
-    if gateway_matches:
-        if remaining:
-            logger.info(f"re-registering gateway without {public_name!r}: {sorted(remaining)}")
-            launch_server(
-                config=_server_config_with(_gateway_app_spec(deploy_config, supported_models, aliases), deploy_config),
-                ray_namespace=deploy_config.ray_namespace,
-                blocking=False,
-            )
-        else:
-            serve.delete("server")
-            if "data-plane" in apps:
-                serve.delete("data-plane")
+    if registry is not None:
+        launch_server(
+            config=_server_config_with(_gateway_app_spec(deploy_config, *registry), deploy_config),
+            ray_namespace=deploy_config.ray_namespace,
+            blocking=False,
+        )
+    elif gateway_matches:
+        serve.delete("server")
+        if "data-plane" in routes:
+            serve.delete("data-plane")
     logger.info(f"stopped deployment {sampler_app!r} (model {public_name!r}).")
 
 

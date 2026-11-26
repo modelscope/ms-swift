@@ -127,9 +127,9 @@ def test_stop_does_not_delete_a_different_public_model(monkeypatch):
     monkeypatch.setattr(actor, "stop_sampler_controller", Mock(return_value=False))
     monkeypatch.setattr(
         deployment,
-        "_serve_details",
+        "_serve_routes",
         lambda: {
-            "sampler-team_model": {"route_prefix": "/v1/sampler/team_model"},
+            "sampler-team_model": "/v1/sampler/team_model",
         },
     )
     with pytest.raises(ValueError, match="No deployment found for model 'team/model'"):
@@ -151,11 +151,11 @@ def test_stop_preserves_surviving_adapters_and_aliases(monkeypatch):
     monkeypatch.setattr(twinkle.server, "launch_server", Mock())
     monkeypatch.setattr(
         deployment,
-        "_serve_details",
+        "_serve_routes",
         lambda: {
-            "server": {"route_prefix": "/v1"},
-            "sampler-team_model": {"route_prefix": "/v1/sampler/team/model"},
-            "sampler-survivor": {"route_prefix": "/v1/sampler/survivor"},
+            "server": "/v1",
+            "sampler-team_model": "/v1/sampler/team/model",
+            "sampler-survivor": "/v1/sampler/survivor",
         },
     )
     handle = Mock()
