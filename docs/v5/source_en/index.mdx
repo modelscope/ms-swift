@@ -1,28 +1,28 @@
 ---
 title: SWIFT v5 Documentation
-description: Training, alignment, inference and deployment with SWIFT v5 and twinkle.
+description: Train, infer, run Agentic workflows and use remote compute with SWIFT and twinkle.
 ---
 
-SWIFT is a large-model training framework: complete recipes, a CLI and a code-level
-API for fine-tuning, human alignment, online RL, evaluation, export and deployment.
-[twinkle](https://github.com/modelscope/twinkle) is its component library — the
-training/inference building blocks can also be composed on their own.
+SWIFT trains, serves and deploys language and multimodal models. v5 moves common capabilities into [twinkle](https://github.com/modelscope/twinkle): SWIFT owns model / data adaptation, configuration and algorithm recipes; twinkle supplies models, data, sampling, distributed execution and server / client capabilities.
 
-<Callout type="info">
-This is the **5.0.0.dev** development documentation. v5 is not on PyPI yet; install
-from source as shown in [Quick Start](./get-started/quick-start.mdx).
-</Callout>
+The design principle is “write single-machine code, train at any scale.” Ray manages distributed execution; CLI and Python APIs share configuration and components. Harnesses integrate with Agentic RL, while Transformers, Megatron and remote training reuse the same interface. ModelScope services provide remote model compute, and WebUI combines tasks, automated research and workflow orchestration.
 
-## Where to start
+## Get started
 
-- [Quick Start](./get-started/quick-start.mdx) — first LoRA run in minutes.
-- [Command Line](./interfaces/cli.mdx) — every task from one CLI.
-- [Code API & Plugins](./interfaces/code-api.mdx) — the same training as Python objects.
-- [Online RL](./alignment/online-rl.mdx) — GRPO/PPO/RFT with vLLM rollouts.
-- [Performance & Regression](../../performance) — measured v4/v5 speed and curve comparison; remote training uses the same command with `--mode remote`.
+- [Quick Start](./get-started/quick-start.mdx): SFT, GRPO and server / client training.
+- [Installation](./get-started/installation.mdx) and [Docker](./get-started/docker.mdx): environment setup by use case.
+- [Models and Datasets](./get-started/models-and-datasets.mdx): registries, downloads and data selection.
+- [v4 to v5 Migration](./get-started/migration.mdx): CLI, configuration, Python and plugins.
 
-## Design principle
+## Interfaces and components
 
-Write single-machine code, train at any scale. Distribution (Ray), backends
-(transformers / Megatron / remote) and placement are configuration, not rewrites:
-the same recipe runs on one GPU, a node, or a cluster.
+- [CLI](./interfaces/cli.mdx): commands and parameter groups.
+- [Custom Dataset](./interfaces/custom-dataset.mdx), [Templates](./interfaces/template.mdx) and [Plugins](./interfaces/plugins.mdx): data integration and extensions.
+- [Mechanism / Policy Separation](./interfaces/mp-separation.mdx): architecture, recipes and code-level training.
+- [Server and Client](./interfaces/server-client.mdx): remote services, tenants and checkpoints.
+- [Agentic Training](./training/agentic.mdx): tools, environments, multi-turn rollouts and rewards.
+- [Performance and Regression](./performance.mdx): timing, training curves and reproduction.
+
+## Articles, WebUI and services
+
+[Offline Distillation](/en/blog/offline-distillation) and [Online RL](/en/blog/online-rl) explain algorithms and implementation flows. [WebUI](/en/webui/quick-start) covers setup and tasks; [Benchmarks](/en/webui/benchmarks) describes research evaluation. [Tinker](/en/services/tinker) and [ModelScope](/en/services/modelscope) cover remote service access.

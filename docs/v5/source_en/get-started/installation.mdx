@@ -1,42 +1,99 @@
 ---
 title: Installation & Hardware
-description: Python/CUDA requirements and GPU, NPU, XPU, CPU support.
+description: Prepare SWIFT v5 environments for local training, servers, and clients.
 ---
 
-## Requirements
+## Wheel installation
 
-| Item | Range | Recommended |
-|---|---|---|
-| python | >= 3.10 | 3.12 |
-| cuda | — | 12.8 / 13.0 (not needed for CPU/NPU/MPS) |
-| torch | >= 2.6 | latest stable |
-| transformers | v5 backend | 5.x |
-| vllm | rollouts / inference | recent release |
-| flash-attn | attention kernel | 2.x (`--attn_impl flash_attention_2`) |
+Use an isolated Python 3.12 environment. Run installation commands in the Python environment that will execute training or serving.
 
-Install from source as in [Quick Start](./quick-start.mdx). Optional extras:
+### Local training with SWIFT
+
+Install with pip:
 
 ```bash
-pip install -r requirements/tests.txt   # test/lint tooling
-pip install megatron-core               # Megatron backend (via mcore-bridge)
+pip install 'ms-swift>=5.0.0'
 ```
 
-## Hardware
+twinkle is installed with SWIFT. The [SFT example](./quick-start.mdx) does not require the server or client extras.
 
-- **NVIDIA GPU**: the default path. bf16 training scripts pin
-  `--attn_impl flash_attention_2` — the cuDNN SDPA backward can produce NaNs in
-  bf16 on some model families, FA2 avoids it.
-- **Ascend NPU**: supported through torch_npu; see the twinkle NPU guide in the
-  [twinkle reference](../twinkle/npu-support.mdx).
-- **Other accelerators / CPU**: device selection follows torch; small models run
-  on CPU for smoke tests, large-scale training expects accelerators.
+### Deploy twinkle-server
 
-## Verify the install
+On the machine providing GPU compute, install:
 
 ```bash
-python -c "import swift; print(swift.__version__)"   # 5.0.0.dev (packaging normalizes to 5.0.0.dev0)
-swift sft --help | head
+pip install 'twinkle-kit[server,client]'
 ```
 
-If you work from multiple checkouts, confirm the editable install resolves to
-the intended one: `python -c "import swift; print(swift.__file__)"`.
+The server configures models, samplers, and resources; clients submit training operations. See [Remote Training & twinkle-server](../interfaces/server-client.mdx) for deployment.
+
+### Remote training with a client
+
+On the machine submitting requests, install:
+
+```bash
+pip install 'twinkle-kit[client]'
+```
+
+The client does not need a local GPU. To train remotely through SWIFT commands, install SWIFT in the client environment and select `--mode remote`.
+
+## PyTorch and the compute environment
+
+Choose a [PyTorch](https://pytorch.org/get-started/locally/) build compatible with the device and driver before installing SWIFT. CUDA, ROCm, and NPU installations are not interchangeable.
+
+| Component | Requirement or purpose |
+| --- | --- |
+| Python | 3.12 recommended |
+| PyTorch | twinkle requires `>=2.6.0,<3.0.0`; select a device-compatible build |
+| Transformers | `>=5.8,<6.0` |
+| datasets | `>=4.0,<4.8.5` |
+| Ray | `>=2.55`; a base dependency for distributed execution in Ray mode |
+| FlashAttention | The NVIDIA BF16 examples use FlashAttention 2 |
+
+Install FlashAttention 2 after PyTorch and a working CUDA build environment:
+
+```bash
+pip install packaging ninja
+pip install flash-attn --no-build-isolation
+```
+
+The examples select `--attn_impl flash_attention_2`. On hardware without FlashAttention, choose an implementation supported by the model and platform rather than copying CUDA installation commands.
+
+## Optional capabilities
+
+### Online sampling
+
+Install the engine selected for sampling:
+
+```bash
+pip install vllm
+```
+
+Or use SGLang:
+
+```bash
+pip install 'sglang[all]'
+```
+
+Engine installation can also change PyTorch and Transformers dependencies. Select compatible training and inference versions within the same isolated environment. The extra dependency for the mathematical reward `--orm accuracy` is installed in the [Quick Start GRPO example](./quick-start.mdx); it is not required by every training task.
+
+### Megatron
+
+Install the dependencies for the Megatron backend:
+
+```bash
+pip install 'twinkle-kit[megatron]'
+```
+
+This includes Megatron-Core, Transformer Engine, and mcore-bridge. They must match the CUDA environment.
+
+## Hardware support
+
+SWIFT supports NVIDIA GPUs, AMD GPUs, Ascend NPUs, Apple MPS, and CPUs. Models, inference engines, and parallel backends have different hardware requirements.
+
+- **NVIDIA GPUs**: use CUDA-enabled PyTorch. Quick Start assumes NVIDIA GPUs and BF16.
+- **AMD GPUs**: use ROCm-enabled PyTorch. See [AMD Support](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source_en/BestPractices/AMD-support.md).
+- **Ascend NPUs**: install torch-npu matching CANN and the Ascend extension required by the inference engine. See [NPU Support](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source_en/BestPractices/NPU-support.md).
+- **Apple MPS / CPUs**: use compatible models for local inference or small training jobs; GPU-specific samplers and kernels cannot be reused directly.
+
+[Docker images](./docker.mdx) still require host drivers and a device runtime. Mount persistent model and dataset caches to avoid downloading them again after recreating a container.

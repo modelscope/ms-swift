@@ -1,0 +1,168 @@
+---
+title: 命令行参数
+description: SWIFT v5 命令、参数分组、默认值与示例入口。
+---
+
+## 命令
+
+SWIFT v5 的命令行参数对应 `swift.dev.config` 中的 Config 字段。不同命令组合所需的 Config，再完成参数处理、校验和组件组装。
+
+| 命令 | 用途 | 完整示例 |
+| --- | --- | --- |
+| `swift pt` | 预训练 | [预训练示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| `swift sft` | 指令微调与监督任务 | [SFT](../get-started/quick-start.mdx)、[训练示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| `swift rl` | 偏好学习、在线 RL、蒸馏 | [GRPO 示例](../get-started/quick-start.mdx)、[RL 示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl) |
+| `swift infer` | 交互推理、批量推理与候选数据合成 | [推理示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer) |
+| `swift deploy` | 部署模型推理接口 | [部署示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/deploy) |
+| `swift eval` | 模型评测 | [评测示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
+| `swift export` | 模型导出与量化 | [导出示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
+| `swift merge` | 合并 LoRA | [合并示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
+
+`swift rlhf` 是 `swift rl` 的兼容命令名。新脚本使用上表命令。WebUI 的安装启动见 [WebUI 快速启动](/zh/webui/quick-start)。
+
+完整参数列表可通过对应命令的帮助查看：
+
+```bash
+swift sft --help
+swift rl --help
+swift infer --help
+```
+
+下面的默认值指 Config 声明值。标注“自动”的字段由模型、任务或执行环境处理；推理等命令还可以从 checkpoint 的 `args.json` 恢复设置。
+
+## 参数写法
+
+- 列表传多个值，例如 `--dataset train.jsonl extra.jsonl`。
+- 布尔值显式传入，例如 `--packing true`、`--gradient_checkpointing false`。
+- 字典使用 JSON 字符串或字段支持的 JSON 文件；JSON 字符串应加 shell 引号。
+- Config 字段使用下划线，例如 `--max_length`。不认识的参数会被拒绝，不会静默忽略。
+
+```bash
+--columns '{"question":"query","answer":"response"}'
+--model_kwargs '{"trust_remote_code":true}'
+```
+
+也可以将参数放入 YAML，再传给命令：
+
+```yaml
+model: Qwen/Qwen3.5-4B
+model_type: qwen3_5
+template: qwen3_5
+torch_dtype: bfloat16
+attn_impl: flash_attention_2
+dataset:
+  - swift/self-cognition#600
+tuner: lora
+num_train_epochs: 3
+output_dir: output/sft
+```
+
+保存为 `sft.yaml` 后运行 `swift sft sft.yaml`。
+
+## 模型参数
+
+- `model`: 默认为 `None`。模型 ID 或本地目录；远程模式下是服务端模型 ID。
+- `model_type`、`model_revision`: 默认为 `None`。家族标识与模型版本。
+- `task_type`: 默认为自动；支持 `causal_lm`、`seq_cls`、`embedding`、`reranker`、`generative_reranker`、`decision`。
+- `torch_dtype`: 默认为自动；可选 `bfloat16`、`float16`、`float32`。
+- `attn_impl`: attention 实现，如 `flash_attention_2`、`sdpa`、`eager`；可用值由模型与硬件决定。
+- `vit_attn_impl`: 视觉塔单独的 attention 实现。
+- `model_kwargs`: 额外模型加载参数。
+- `language_model_only`: 默认 `false`；只构建多模态 checkpoint 的语言部分。
+
+更多模型、量化和低精度字段见 [ModelConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/model_config.py) 与 [QuantizeConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/quantize_config.py)。
+
+## 数据参数
+
+- `dataset`、`val_dataset`: 默认空列表。训练与验证数据来源。
+- `split_dataset_ratio`: 默认 `0.0`。从训练数据划分验证集的比例。
+- `data_seed`: 默认 `42`；`dataset_shuffle`: 默认 `true`；`val_dataset_shuffle`: 默认 `false`。
+- `dataset_num_proc`: 默认 `1`。数据预处理并行数。
+- `columns`: 默认 `None`。原列名到标准列名的映射。
+- `custom_dataset_info`: 默认空列表。外接数据集元信息 JSON。
+- `use_hf`: 默认 `false`。选择 Hugging Face，否则使用 ModelScope。
+- `streaming`: 默认 `false`；`shuffle_buffer_size`: 默认 `1000`。
+- `packing`: 默认 `false`；`packing_length`: 默认为自动；`packing_strategy`: 默认 `binpack`。
+- `cached_dataset`、`cached_val_dataset`: 已缓存数据来源，不能与原始文本数据的预处理过程混为一谈。
+
+格式与接入方式见[自定义数据集](./custom-dataset.mdx)。
+
+## 模板参数
+
+- `template`: 默认自动；`system`: 默认使用数据或模板提供的设置。
+- `max_length`: 默认自动。编码后序列上限。
+- `truncation_strategy`: `delete`、`left`、`right`、`split`，默认自动。
+- `padding_side`: 默认 `right`；`padding_free`: 默认 `false`。
+- `loss_scale`: 默认 `default`。按模板策略设置监督 token 的权重。
+- `enable_thinking`、`preserve_thinking`: 默认自动。控制模型支持的 thinking 行为及保留策略。
+- `agent_template`: 工具调用的模型格式适配。
+- `max_pixels`: 多模态输入的像素限制。
+
+这些参数作用于编码，不等于采样器配置。详见[模板](./template.mdx)。
+
+## 微调参数
+
+- `tuner`: 默认 `lora`，可选 `full`、`lora`、`trainable_tokens`。
+- `adapters`: 默认空列表。加载 adapter checkpoint。
+- `target_modules`: 默认 `all-linear`；也可指定模块列表或使用 `target_regex`。
+- `lora_rank`: 默认 `8`；`lora_alpha`: 默认 `32`；`lora_dropout`: 默认 `0.05`。
+- `use_dora`、`use_rslora`: 默认 `false`。LoRA 的变体开关，不是不同的 tuner 名称。
+- `freeze_llm`: 默认 `false`；`freeze_vit`、`freeze_aligner`: 默认 `true`。
+- `modules_to_save`: 需额外训练并保存的模块。
+- `trainable_token_indices`: `trainable_tokens` 训练的 embedding 行。
+
+QLoRA 由 LoRA 和量化配置共同实现；不要将它写成 `tuner=qlora`。
+
+## 训练参数
+
+- `learning_rate`: 默认 `1e-5`；`lr_scheduler`: 默认 `cosine`。
+- `warmup_ratio`: 默认 `0.0`；`warmup_steps`: 默认 `0`。
+- `num_train_epochs`: 默认 `3.0`；`max_steps`: 默认 `-1`。显式最大步数用于限制训练更新次数。
+- `per_device_train_batch_size`、`per_device_eval_batch_size`: 默认 `1`。
+- `gradient_accumulation_steps`: 默认 `1`。
+- `max_grad_norm`: 默认 `1.0`；`gradient_checkpointing`: 默认 `true`。
+- `optim`: 默认 `adamw_torch_fused`，用于 Transformers 优化器；Megatron 的优化器选择使用 `optimizer`。
+- `weight_decay`: 默认 `0.1`；`adam_beta1=0.9`、`adam_beta2=0.95`、`adam_epsilon=1e-8`。
+- `dynamic_batching`: 默认 `false`；`max_tokens_per_micro_batch`: token 预算；`micro_batch_order`: 默认 `none`。
+
+训练、验证、优化器和调度器的其余字段见 [TrainConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/train_config.py)。
+
+## 分布式与服务参数
+
+- `mode`: 默认 `local`；可选 `local`、`ray`、`remote`。本机 RL 入口要求 Ray，不能将默认本地 SFT 形态套在 RL 上。
+- `backend`: 默认为 Transformers，可选 `hf`、`megatron`、`unsloth`。
+- `nproc_per_node`: Ray 训练组的进程数；本地 torchrun 的启动进程数由启动器指定。
+- `parallel_spec`: DeviceMesh 并行布局，如 `dp2`。
+- `deepspeed`、`fsdp`、`fsdp_config`: 对应后端的训练分片配置。
+- `tensor_model_parallel_size`、`pipeline_model_parallel_size`、`context_parallel_size`、`expert_model_parallel_size`: Megatron TP/PP/CP/EP，默认均为 `1`。
+- `server_base_url`、`server_api_key`: 远程服务网关根地址与鉴权。
+
+本地多进程监督训练通过启动器运行，例如 `NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft sft.yaml`；Ray 模式通过 `--mode ray --nproc_per_node 2` 配置训练组。远程部署见[服务端与客户端](./server-client.mdx)。
+
+## 在线学习与生成参数
+
+- `rl_type`: 默认 `dpo`，可选 `dpo`、`orpo`、`simpo`、`kto`、`cpo`、`rm`、`ppo`、`grpo`、`gkd`、`opsd`、`mopd`、`rft`。
+- `rollout_sampler`: 默认 `vllm`，可选 `vllm`、`sglang`。
+- `sampler_mode`: 默认处理为 `disaggregated`；`colocate` 为共卡放置。
+- `generation_batch_size`: 一轮采样的 prompt 数，默认按训练 batch 推导。
+- `num_generations`: GRPO 每个 prompt 的回答数；与 prompt 数不同。
+- `orm`、`prm`: 奖励规则、插件或模型；`orm_weights`、`prm_weights` 与各通道逐项对应。
+- `async_mode`: 默认 `none`；可选 `one_step_off`、`fully_async`。
+- `max_turns`、`max_trajectory_tokens`: 多轮轨迹的轮数与总 token 上限。
+- `tools`、`sandbox_kind`: 工具与环境选择，见 [Agentic 训练](../training/agentic.mdx)。
+
+离线推理使用 `sampler`，默认 `transformers`。`temperature`、`top_k`、`top_p`、`repetition_penalty`、`max_new_tokens` 为解码参数；`vllm_*`、`sglang_*` 为引擎参数。例如 `--vllm_tensor_parallel_size 2` 只配置采样引擎，不改变训练模型的 TP。
+
+`--output_format all|dpo|grpo` 控制离线结果格式；`--num_return_sequences` 默认 `1`；`--result_path` 指定结果文件。奖励插件见[插件](./plugins.mdx)。
+
+## 保存与日志
+
+- `output_dir`: 默认 `output`；`add_version`: 默认 `true`，为每次运行创建版本目录。
+- `save_strategy`: 默认 `steps`；`save_steps`: 默认 `500`；`save_total_limit`: 默认不限制。
+- `resume_from_checkpoint`: 恢复训练；`resume_only_model`: 默认 `false`，启用时只加载权重。
+- `save_only_model`: 默认 `false`；恢复训练还需要优化器、调度器和训练进度状态。
+- `load_args`: 训练默认 `false`；推理及产物命令默认启用，用于恢复 checkpoint 的模型和模板设置。
+- `external_plugins`: 显式加载插件。恢复 checkpoint 所声明的插件代码需信任授权，不会仅因读取 `args.json` 就自动执行。
+- `report_to`: 默认 `tensorboard`；`logging_steps`: 默认 `5`；`logging_nan_inf_filter`: 默认 `false`。
+
+程序化调用与组件级训练见[组件与 MP 分离](./mp-separation.mdx)。

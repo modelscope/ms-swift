@@ -1,0 +1,105 @@
+---
+title: 支持的模型和数据集
+description: 选择模型与数据来源，理解模型类型、模板和任务的对应关系。
+---
+
+## 模型
+
+ms-swift 支持纯文本大模型、多模态大模型和任务专用模型的训练、推理与部署。模型家族包括 Qwen、DeepSeek、Llama、InternLM、GLM 等；多模态模型可以处理文本、图像、视频或音频，具体输入取决于模型自身的能力。
+
+使用其他模型进行训练时，修改 `--model` 即可。模型可以是 ModelScope / Hugging Face 的模型 ID，也可以是本地模型目录。
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model Qwen/Qwen3.5-4B \
+    --model_type qwen3_5 \
+    --template qwen3_5 \
+    --sampler transformers \
+    --torch_dtype bfloat16 \
+    --attn_impl flash_attention_2 \
+    --max_new_tokens 512
+```
+
+本站的普通使用示例统一使用 `Qwen/Qwen3.5-4B`。它属于多模态模型家族，纯文本样本不需要提供图像或视频。完整模型家族及对应 checkpoint 见[模型注册表](https://github.com/modelscope/ms-swift/tree/main/swift/dev/model/loader)。
+
+### 模型、任务与模板
+
+- `model`：模型权重的 ID 或本地路径。
+- `model_type`：SWIFT 的模型家族标识，决定加载和适配方式。通常可自动识别；本地自定义目录或歧义模型可以显式指定。
+- `template`：对话编码模板，决定角色、分隔符、工具调用和多模态输入的编码。
+- `task_type`：任务类型，如 `causal_lm`、`seq_cls`、`embedding`、`reranker`、`generative_reranker`、`decision`。
+
+模型名称、Transformers config 的 `model_type` 和 SWIFT 注册名不应混用。例如本文模型的 SWIFT 注册名与模板名均为 `qwen3_5`。任务专用模型须使用相应任务及输入格式，不能仅改名称就当作普通对话模型使用。
+
+### 下载来源
+
+默认使用 ModelScope 进行模型和数据集下载。如果要使用 Hugging Face，指定 `--use_hf true` 即可：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model Qwen/Qwen3.5-4B \
+    --sampler transformers \
+    --use_hf true \
+    --max_new_tokens 512
+```
+
+SWIFT CLI 的 `--model` 使用不带 scheme 的 ID。`ms://`、`hf://` 是 twinkle 某些 API 的资源表示方式，不应加在这条 CLI 参数前。
+
+缓存和下载由对应 hub 管理。ModelScope 缓存可通过 `MODELSCOPE_CACHE` 配置；本地已有权重时直接传模型目录即可。
+
+## 数据集
+
+SWIFT 内置预训练、指令微调、偏好对齐、多模态及任务专用数据集。内置 ID 和预处理定义见[数据集注册表](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset)。
+
+`--dataset` 可以传入内置数据集、hub 数据集或本地文件，并且支持混合多个数据集：
+
+```bash
+--dataset 'swift/self-cognition#600'
+```
+
+```bash
+--dataset train.jsonl extra.jsonl
+```
+
+`#600` 表示采样 600 条数据，不是训练步数。`--val_dataset` 指定验证数据；没有单独验证集时可用 `--split_dataset_ratio` 从训练数据中划分。
+
+### 示例数据
+
+| 数据 | 用途 | 输入与目标 |
+| --- | --- | --- |
+| `swift/self-cognition` | 模型名称与作者的指令微调 | 完整 user / assistant 对话 |
+| `AI-MO/NuminaMath-TIR` | 数学在线学习 | 问题作为 prompt，solution 留给数学奖励 |
+| 本地 JSONL | 自定义任务 | 按任务提供 messages、标签或奖励参考字段 |
+
+`--model_name`、`--model_author` 只在相关数据预处理读取这些字段时生效。它们不会自动修改所有数据中的回答。
+
+## 自定义格式
+
+自定义数据集的接入方法有三种，对预处理函数的控制能力逐渐加强，但接入难度逐步增加：
+
+1. 直接传文件路径，例如 `--dataset train.jsonl`。标准 messages、query/response、Alpaca 等格式可由自动预处理器处理；`--columns` 可以重命名列。
+2. 使用外接 `dataset_info.json`，通过 `--custom_dataset_info` 定义数据 ID、路径和列映射。
+3. 注册自定义数据集加载器或预处理逻辑，通过 `--external_plugins` 导入后按注册名选择。
+
+标准监督微调样本：
+
+```jsonl
+{"messages": [{"role": "user", "content": "Who are you?"}, {"role": "assistant", "content": "I am swift-robot, developed by swift."}]}
+```
+
+在线学习样本应只包含生成前的对话，并保留奖励所需字段：
+
+```jsonl
+{"messages": [{"role": "user", "content": "What is 1 + 1?"}], "solution": "2"}
+```
+
+预处理、编码和采样是不同步骤。SFT 的 assistant 内容是训练目标；在线学习的回答由采样器生成，`solution` 等字段供奖励函数使用。不要把参考答案放进在线生成 prompt 中。
+
+完整格式、列映射与注册示例见[自定义数据集](../interfaces/custom-dataset.mdx)，模板参数见[模板](../interfaces/template.mdx)。
+
+## 使用建议
+
+- 模型必须具有任务需要的输入模态和输出头；模型支持视觉不意味着纯文本训练需要插入占位图片。
+- 先固定模型、模板与数据预处理，再改变采样器或并行策略；它们属于不同配置维度。
+- 多模态媒体路径必须能被实际读取数据的进程访问；客户端机器可见的文件不一定能被远程 worker 访问。
+- 比较实验时保持数据切分、采样数量和有效 batch 一致。速度与曲线的比较口径见[性能测试与榜单](../performance.mdx)。

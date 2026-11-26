@@ -1,0 +1,143 @@
+---
+title: Server and Client
+description: Deploy twinkle-server, train with component APIs or swift remote, and manage tenants and checkpoints.
+---
+
+Remote training keeps GPUs, model weights and optimizer state on the server. The client supplies data and algorithm steps through HTTP forward/backward, optimizer, sampling and save operations. It does not load base weights, but still needs tokenizer, data processing and entry-point dependencies.
+
+<ArchitectureDiagram src="/images/v5/server-client.en.svg" alt="twinkle-server architecture" />
+
+Blue arrows represent control requests, green arrows training and sampling data, and dashed arrows weights or checkpoint references. The gateway manages sessions and requests, model applications train, sampler applications generate, and optional processor applications encode on CPUs. Server configuration owns GPU placement, not the client's visible devices.
+
+## Installation
+
+Server:
+
+```bash
+pip install 'twinkle-kit[server,client]'
+```
+
+Install `ms-swift>=5.0.0` for the SWIFT model-family loader and `vllm` for a vLLM sampler. A gateway plus training model alone does not need an independent sampler.
+
+Component client:
+
+```bash
+pip install 'twinkle-kit[client]'
+```
+
+A `swift sft --mode remote` client also needs `ms-swift>=5.0.0`. Direct clients install data-encoding dependencies such as `transformers` and `peft` as required.
+
+## Deploy a LoRA model
+
+Save as `server_config.yaml`:
+
+```yaml
+http_options:
+  host: 127.0.0.1
+  port: 8000
+persistence:
+  mode: memory
+applications:
+  - name: server
+    route_prefix: /api/v1
+    import_path: server
+    args:
+      supported_models: [Qwen/Qwen3.5-4B]
+  - name: models-Qwen3.5-4B
+    route_prefix: /api/v1/model/Qwen/Qwen3.5-4B
+    import_path: model
+    args:
+      backend: transformers
+      model_id: ms://Qwen/Qwen3.5-4B
+      model_loader: swift.dev.model.loader:build_model_loader
+      train_mode: lora
+      nproc_per_node: 1
+      max_loras: 2
+      max_r: 32
+      max_length: 2048
+      mixed_precision: bf16
+      gradient_checkpointing: true
+      device_group:
+        name: model
+        ranks: 1
+        device_type: cuda
+      device_mesh:
+        device_type: cuda
+        dp_size: 1
+```
+
+In an isolated serving environment:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 ray start --head --num-gpus=1
+twinkle-server launch --config server_config.yaml
+```
+
+Connect to an existing Ray head rather than creating a second cluster. Wait for all applications to be ready. The public model name, route tail and client ID must agree; server `model_id` can use a Hub prefix, while SWIFT CLI uses the bare ID.
+
+This localhost example does not expose a public endpoint. Configure a trusted network, authentication and TLS before remote access. Memory persistence only covers the current server process. Configure persistent state and checkpoint storage for production; API session persistence is not an optimizer backup.
+
+## Train with SWIFT CLI
+
+```bash
+swift sft \
+    --mode remote \
+    --server_base_url http://127.0.0.1:8000 \
+    --model Qwen/Qwen3.5-4B \
+    --model_type qwen3_5 \
+    --template qwen3_5 \
+    --dataset 'swift/self-cognition#600' \
+    --tuner lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-4 \
+    --max_length 2048 \
+    --max_steps 30 \
+    --output_dir output/remote-sft
+```
+
+`server_base_url` is the gateway root without `/api/v1`. Supply server-issued credentials through `server_api_key` when required, keeping them out of shared scripts. Remote mode is a single-process driver, without torchrun or a client-side DeviceMesh for server resources.
+
+`--backend` must match the server engine and `--model` names an already deployed model. Changing the CLI ID does not provision a new GPU model. Adapter ranks and concurrency must fit server capacity.
+
+## Component client
+
+[Quick Start](../get-started/quick-start.mdx#remote-training) provides the complete single-sample script. Operations follow:
+
+```text
+init_twinkle_client → client.model → add_adapter_to_model
+    → set_processor / set_loss / set_optimizer
+    → forward_backward → clip_grad_and_step → calculate_metric
+    → save → close
+```
+
+Custom loops own token, label and attention-mask alignment. Ensure micro-batch accumulation matches optimizer updates instead of accumulating twice at both data-grouping and model-call levels.
+
+The complete multi-adapter training and sampling example is runnable from a checkout:
+
+```bash
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+# Deploy examples/v5/server/server_config.yaml on the server first.
+# Run on a client with tokenizer and PEFT dependencies installed.
+TWINKLE_SERVER_URL=http://127.0.0.1:8000 \
+    python examples/v5/server/client.py
+```
+
+This four-application configuration includes a training model, vLLM sampler and CPU processor, with separate trainer and sampler GPUs. See [the configuration and script](https://github.com/modelscope/ms-swift/tree/main/examples/v5/server); select the model-family template rather than applying a generic template to every model.
+
+## Checkpoints and tenants
+
+Save returns a `twinkle://` URI for a managed server checkpoint, not a client path. Prefer the server store. A client-provided directory is usable only if the server can access it, for example on a genuinely shared filesystem. Resuming training needs adapter weights, optimizer state and algorithm progress; a sampling-only adapter is not enough.
+
+Multiple named LoRA adapters can share one base model. Sessions / tokens identify callers; `per_token_model_limit` bounds model handles, `max_loras` bounds resident adapters, and queue RPS / TPS settings bound requests. Multi-tenancy is not unlimited concurrency or independent base weights. Define capacity, access and retention policies and close unused handles.
+
+Remote online RL additionally needs a sampler, reward dependencies and weight synchronization. Recipe validation and server capabilities jointly determine supported combinations. An OpenAI inference endpoint is not a training API. See [Tinker compatibility](/en/services/tinker).
+
+## Efficiency and training outcomes
+
+Equivalent objectives do not guarantee equivalent wall clock. HTTP, queues, encoding, server sharding and saving add overhead. Calculate effective batch from actual dispatch and accumulation, not just identical client parameter values.
+
+In the 30-step Qwen3.5-35B-A3B SFT run, v4 / v5-ray / remote steady times were 6.90 / 6.56 / 11.36 s/it. Endpoint loss deviations were 3.416% for v4-ray, 2.308% for v4-remote and 1.071% for ray-remote, within that batch's regression criterion. 4B GRPO records mix full-cycle and trainer-compute timing, so direct speedup ratios are invalid. See [Performance](../performance.mdx) and [charts](/en/performance) for shared protocols, hardware and sources.

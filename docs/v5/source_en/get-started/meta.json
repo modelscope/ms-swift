@@ -1,4 +1,4 @@
 {
   "title": "Get Started",
-  "pages": ["index", "quick-start", "installation", "scaling", "docker", "models-and-datasets"]
+  "pages": ["index", "quick-start", "installation", "docker", "models-and-datasets", "migration"]
 }

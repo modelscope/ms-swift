@@ -1,0 +1,153 @@
+---
+title: Custom Dataset
+description: Load local files, declare dataset metadata, or register a custom row preprocessor.
+---
+
+There are three ways to integrate a custom dataset, with progressively more control over preprocessing:
+
+1. **Recommended:** pass files or snapshot directories through `--dataset`. The loader detects storage and converts rows to the standard format; `--columns` maps unfamiliar field names.
+2. Declare names, paths, subsets and column mappings in an external `dataset_info.json`, loaded with `--custom_dataset_info`. No installed package changes are needed.
+3. Subclass `DatasetLoader` and `Preprocessor` for custom row transformations and import registration code through `--external_plugins`.
+
+Data flows from files or Hub datasets through row preprocessing, standard `messages` and auxiliary columns, [template encoding](./template.mdx), and batches. Preprocessing handles sample structure; templates handle model-specific tokens, media and loss masks. Do not concatenate model-specific special tokens in a row preprocessor.
+
+## Load files directly
+
+Save these two lines as `train.jsonl`. Each line is an independent JSON object, without an outer array:
+
+```jsonl
+{"messages": [{"role": "user", "content": "Who are you?"}, {"role": "assistant", "content": "I am a helpful assistant."}]}
+{"messages": [{"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "2."}]}
+```
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --torch_dtype bfloat16 \
+    --attn_impl flash_attention_2 \
+    --dataset ./train.jsonl \
+    --tuner lora \
+    --learning_rate 1e-4 \
+    --max_length 2048 \
+    --num_train_epochs 3 \
+    --output_dir output/custom-data
+```
+
+Multiple paths are accepted: `--dataset ./a.jsonl ./b.jsonl`. Use `ms://org/dataset` or `hf://org/dataset` for Hub data, `#600` for a 600-row sample, and `dataset:subset` for subset selection. Local paths must exist and must not have a Hub prefix.
+
+See the [storage readers](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset/storage) and [format converters](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset/format_converter) for supported formats. Common JSON, JSONL, CSV and dataset snapshots need no registration.
+
+### Common input formats
+
+These formats are converted to standard `messages`:
+
+```jsonl
+{"query": "Hello", "response": "Hello!", "history": [["Who are you?", "I am an assistant."]]}
+{"instruction": "Translate into English", "input": "你好", "output": "Hello"}
+{"messages": [{"role": "system", "content": "You are a helpful assistant"}, {"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hello!"}]}
+```
+
+Alpaca inputs combine nonempty `instruction` and `input` into a user message. The optional dataset system message takes precedence over `--system`, then the template default. Map nonstandard column names explicitly:
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --dataset ./data.jsonl \
+    --columns '{"question_text":"query","answer_text":"response"}' \
+    --output_dir output/columns
+```
+
+The mapping direction is always **raw column → standard column**.
+
+## Standard formats
+
+### Multi-turn SFT and supervision
+
+```jsonl
+{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hello!", "loss": false}, {"role": "user", "content": "1+1?"}, {"role": "assistant", "content": "2", "loss": true}]}
+```
+
+An assistant message with `loss: false` excludes that response from supervision. User inputs and tool observations are excluded from response loss by default. `--loss_scale last_round` supervises only the final response; see [Templates](./template.mdx) for weighting. Pretraining can use assistant-only text in `messages`.
+
+### Multimodal data
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>What is in this image?"}, {"role": "assistant", "content": "A cat."}], "images": ["/data/cat.png"]}
+```
+
+Use `images`, `videos` and `audios` for media, in the same order as placeholders. The model must support the modality and paths must be accessible to the encoding process. Client paths are not automatically accessible on a remote server.
+
+### Preferences and online sampling
+
+```jsonl
+{"messages": [{"role": "user", "content": "1+1?"}, {"role": "assistant", "content": "2"}], "rejected_response": "3"}
+{"messages": [{"role": "user", "content": "Compute 1+1 and put the answer in \\boxed{}."}], "solution": "2"}
+```
+
+The first row is a preference pair; use `rejected_messages` for a complete rejected trajectory. The second is an online RL prompt without a prefilled assistant response. `solution` is preserved for the mathematical reward, not appended to the user prompt. Preserve reward columns alongside the corresponding prompt. Tool data can include `tools`; see [Agentic](../training/agentic.mdx).
+
+## Declarative registration
+
+Place `data.jsonl` and this `dataset_info.json` in the same directory:
+
+```json
+[
+  {
+    "dataset_type": "my_qa",
+    "dataset_path": "data.jsonl",
+    "columns": {"prompt": "query", "completion": "response"}
+  }
+]
+```
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --custom_dataset_info ./dataset_info.json \
+    --dataset my_qa \
+    --output_dir output/registered-data
+```
+
+Relative paths resolve against the declaration file's directory. `dataset_type` is a registry name, not a storage format. Each entry needs at least one dataset ID or path. Entries can also declare `ms_dataset_id`, `hf_dataset_id`, `subsets`, `split` and `columns`; all use the same downstream pipeline.
+
+## Custom preprocessing
+
+Save as `custom_data.py`:
+
+```python
+from swift.dev.dataset.loader import DatasetLoader, register_dataset
+from swift.dev.dataset.preprocessor import Preprocessor
+
+
+class QAPreprocessor(Preprocessor):
+    def preprocess(self, row):
+        question = row.get('question_text')
+        answer = row.get('answer_text')
+        if not question or not answer:
+            return None
+        return {'messages': [
+            {'role': 'user', 'content': question},
+            {'role': 'assistant', 'content': answer},
+        ]}
+
+
+@register_dataset
+class MyQALoader(DatasetLoader):
+    dataset_type = 'my_custom_qa'
+    dataset_paths = ('/data/my_qa.jsonl',)
+    preprocessor = QAPreprocessor
+```
+
+Set the actual path, then run:
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --external_plugins ./custom_data.py \
+    --dataset my_custom_qa \
+    --output_dir output/preprocessed-data
+```
+
+`preprocess(row)` returns a standard row, `None` to drop it, or a list to expand it. Register the preprocessor class so each load gets a new instance instead of sharing mutable state.
+
+`--strict true` raises on bad rows; the default drops unconvertible rows with diagnostics. Check the effective sample count during initial integration. `--dataset_num_proc`, `--streaming` and `--load_from_cache_file` control multiprocessing, streaming and cache reuse. See [the component example](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/custom/dataset) for a complete training loop.

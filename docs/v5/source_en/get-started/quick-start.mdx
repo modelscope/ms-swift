@@ -1,57 +1,357 @@
 ---
 title: Quick Start
-description: Install SWIFT v5 from source and run your first LoRA fine-tune.
+description: Install SWIFT for your use case, run SFT and GRPO, and deploy twinkle-server for client-side training.
 ---
 
-## Install (development version)
+SWIFT is ModelScope's framework for training, inference, and deployment of large language and multimodal models. v5 splits its underlying capabilities into the twinkle component library: twinkle provides the model, data, sampling, and distributed components, while SWIFT assembles training workflows on top and exposes them through the CLI, Python API, and WebUI. twinkle also provides multi-tenant server/client capabilities, so training and sampling can be deployed as a service and driven from any machine.
 
-v5 is under active development and not published to PyPI. Install from source:
+**Why SWIFT v5?**
+
+- **Write single-machine code, train at any scale**: the same training code scales from one GPU to a cluster, with distribution and rollout scheduling driven by configuration.
+- **Model coverage**: training, inference, and deployment for 600+ text-only and 400+ multimodal models, with Day0 support for trending models.
+- **Training techniques**: lightweight tuning with LoRA/QLoRA/DoRA, SFT/pretraining, preference learning with DPO/KTO/CPO, and online RL and distillation algorithms such as GRPO, PPO, and GKD.
+- **Three training backends**: transformers, Megatron, and remote service (twinkle-server) share one CLI and Python API.
+- **Datasets**: 150+ built-in datasets plus custom JSONL data; templates handle encoding and loss masks.
+- **Hardware support**: NVIDIA GPUs, AMD GPUs, Ascend NPUs, Apple MPS, and CPUs.
+- **Training as a service**: deploy twinkle-server on a compute machine and train large models without a local GPU.
+
+## Installation
+
+Choose packages for your needs; you do not need to install everything on the same machine. An isolated Python 3.12 environment is recommended.
+
+### Local training with SWIFT
+
+Install SWIFT v5 on the training machine. twinkle is installed as a dependency, so no separate installation is needed:
 
 ```bash
-git clone https://github.com/modelscope/ms-swift.git
-cd ms-swift
-pip install -e .
-# twinkle (component library) and mcore-bridge (Megatron weight conversion)
-git clone https://github.com/modelscope/twinkle.git && pip install -e twinkle
-git clone https://github.com/modelscope/mcore-bridge.git && pip install -e mcore-bridge
+pip install 'ms-swift>=5.0.0'
 ```
 
-Requirements: Python >= 3.10 (3.12 recommended), CUDA 12.8/13.0 for GPU training.
-See [Installation & Hardware](./installation.mdx) for NPU/XPU/CPU notes.
+See [Installation](./installation.mdx) for environment requirements, [Docker](./docker.mdx) for containers, and [Models and Datasets](./models-and-datasets.mdx) for selection and data sources.
 
-## First LoRA run
+SWIFT supports the following training modes:
+
+| Training mode | Command | Paper | Examples |
+|---|---|---|---|
+| Pretraining | `swift pt` | — | [pretrain](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/pretrain) |
+| Supervised fine-tuning (`--task_type` selects dialogue generation, sequence classification, embedding, reranker, generative reranker, decision scoring) | `swift sft` | — | [train](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| DPO (Direct Preference Optimization) | `swift rl --rl_type dpo` | [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) | [dpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/dpo) |
+| ORPO (reference-free preference alignment) | `swift rl --rl_type orpo` | [ORPO](https://arxiv.org/abs/2403.07691) | [orpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/orpo) |
+| SimPO (reference-free preference alignment) | `swift rl --rl_type simpo` | [SimPO](https://arxiv.org/abs/2405.14734) | [simpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/simpo) |
+| KTO alignment | `swift rl --rl_type kto` | [KTO](https://arxiv.org/abs/2402.01306) | [kto](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/kto) |
+| CPO (Contrastive Preference Optimization) | `swift rl --rl_type cpo` | [CPO](https://arxiv.org/abs/2401.08417) | [cpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/cpo) |
+| Reward model training | `swift rl --rl_type rm` | [InstructGPT](https://arxiv.org/abs/2203.02155) | [rm](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/rm) |
+| PPO (Proximal Policy Optimization) | `swift rl --rl_type ppo` | [PPO](https://arxiv.org/abs/1707.06347) | [ppo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/ppo) |
+| GRPO (Group Relative Policy Optimization) | `swift rl --rl_type grpo` | [DeepSeekMath](https://arxiv.org/abs/2402.03300) | [grpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/grpo) |
+| RFT (rejection sampling fine-tuning) | `swift rl --rl_type rft` | [RFT](https://arxiv.org/abs/2308.01825) | [rft](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/rft) |
+| GKD (on-policy distillation) | `swift rl --rl_type gkd` | [GKD](https://arxiv.org/abs/2306.13649) | [gkd](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/gkd) |
+| OPSD (on-policy self-distillation) | `swift rl --rl_type opsd` | [OPSD](https://arxiv.org/abs/2601.18734) | [opsd](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/opsd) |
+| MOPD (multi-teacher on-policy distillation) | `swift rl --rl_type mopd` | [MOPD](https://arxiv.org/abs/2606.30406) | [mopd](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/mopd) |
+
+Non-training capabilities:
+
+| Capability | Command | Examples |
+|---|---|---|
+| Inference (interactive / batch, including embedding, reranker, and reward model heads) | `swift infer` | [infer](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer) |
+| LoRA merging | `swift merge` | [merge](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export/merge) |
+| Serve inference endpoints (vLLM / SGLang, etc.) | `swift deploy` | [deploy](https://github.com/modelscope/ms-swift/tree/main/examples/v5/deploy) |
+| Export and quantization (GPTQ / AWQ / FP8, etc.) | `swift export` | [export](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
+| Evaluation | `swift eval` | [eval](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
+
+The local examples use NVIDIA GPUs, BF16, and the FlashAttention 2 kernel. Install PyTorch compatible with your driver and CUDA environment, plus flash-attn (`pip install flash-attn --no-build-isolation`).
 
 ```bash
+# A simple sft example
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \
     --attn_impl flash_attention_2 \
-    --task_type causal_lm \
-    --torch_dtype bfloat16 \
     --dataset 'swift/self-cognition#600' \
-    --tuner lora \
-    --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
-    --num_train_epochs 3 \
-    --per_device_train_batch_size 1 --gradient_accumulation_steps 8 \
-    --learning_rate 1e-4 --lr_scheduler cosine --warmup_ratio 0.05 \
+    --model_name swift-robot \
+    --model_author swift \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-4 \
     --max_length 2048 \
-    --logging_steps 5 --save_steps 100 --save_total_limit 2 \
-    --output_dir output
+    --save_steps 100 \
+    --save_total_limit 2 \
+    --output_dir output/sft
 ```
 
-What to watch:
+```bash
+# A simple grpo example
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rl \
+    --rl_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --sampler_mode disaggregated \
+    --vllm_gpu_memory_utilization 0.8 \
+    --vllm_max_model_len 4096 \
+    --generation_batch_size 8 \
+    --num_generations 4 \
+    --max_length 2048 \
+    --temperature 1.0 \
+    --orm accuracy \
+    --beta 0.04 \
+    --gradient_accumulation_steps 8 \
+    --max_steps 100 \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --output_dir output/grpo
+```
 
-- `loss` should fall clearly on self-cognition (new knowledge the model must fit);
-  on general SFT data an already-instruct model has little headroom and a flat curve is normal.
-- Checkpoints land in `output/` every `--save_steps`; `--save_total_limit` rotates old ones.
-- `--tuner full` switches to full-parameter training; drop `--tuner` for the same effect.
+```python
+# pip install vllm
+import math
 
-The runnable script with measured VRAM notes is
-[`examples/v5/train/lora/train.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/v5/train/lora/train.sh);
-its Python twin `train.py` shows the same run as component-level code.
+from swift.dev.builders import build_prompt_dataloader, resolve_rl_dp_size
+from swift.dev.config import (
+    CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, RLConfig, RewardConfig,
+    RolloutConfig, TemplateConfig, TrainConfig, TunerConfig)
+from swift.dev.recipe.distill.assembly import (
+    DISTILL_SIGNALS, build_distill_driver, distill_group_requests, initialize_distill_cluster)
+from swift.dev.recipe.offload import sleep_for_rollout
+from swift.dev.recipe.utils import (
+    effective_colocate, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
+    stream_batch_size)
+from swift.dev.utils.scoring import copy_inputs
 
-## Next steps
 
-- [Command Line](../interfaces/cli.mdx) — tasks beyond SFT.
-- [Scaling](./scaling.mdx) — the same command on many GPUs via Ray.
-- WebUI — prefer a graphical workbench? Install `ms-webui` (see the WebUI section of this site).
+def main():
+    model_config = ModelConfig(model='Qwen/Qwen3.5-4B', attn_impl='flash_attention_2')
+    template_config = TemplateConfig(max_length=8192)
+    dataset_config = DatasetConfig(dataset=['AI-MO/NuminaMath-TIR#2000'])
+    train_config = TrainConfig(
+        max_steps=20, per_device_train_batch_size=4, learning_rate=2e-5, gradient_checkpointing=True)
+    distributed_config = DistributedConfig(mode='ray', nproc_per_node=2)
+    checkpoint_config = CheckpointConfig(output_dir='output/mopd')
+    generation_batch_size = 16  # prompts rolled out per batch
+    rollout_config = RolloutConfig(
+        sampler_mode='colocate', vllm_gpu_memory_utilization=0.5,
+        generation_batch_size=generation_batch_size)
+    # Two frozen teachers score the student's own rollouts; the weights are normalized to sum 1.
+    rl_config = RLConfig(
+        rl_type='mopd', teacher_model=['Qwen/Qwen3.5-4B', 'Qwen/Qwen3.5-9B'],
+        teacher_weights=[0.7, 0.3], lmbda=1.0, num_generations=1, sampling_temperature=1.0,
+        max_completion_length=2048)
+
+    # 1. Prompts: the rows the student rolls out on.
+    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
+
+    # 2. Devices: the template, the device-group plan and twinkle (Ray) itself.
+    template, resource_plan, teacher_meshes = initialize_rl_devices(
+        model_config=model_config, template_config=template_config, dataset_config=dataset_config,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        reward_config=RewardConfig(), tuner_config=TunerConfig(),
+        output_dir=checkpoint_config.output_dir, prompt_rows=prompt_rows,
+        group_requests=lambda: distill_group_requests(rl_config))
+
+    # 3. Cluster: the student (LoRA), the vLLM sampler, the frozen teachers, and the worker that
+    #    turns each teacher forward into the training signal.
+    train_batch_size = train_config.per_device_train_batch_size * resolve_rl_dp_size(distributed_config)
+    batch_size = stream_batch_size(
+        colocate=effective_colocate(rollout_config, resource_plan),
+        generation_batch_size=generation_batch_size, num_generations=rl_config.num_generations,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+    cluster = initialize_distill_cluster(
+        model_config=model_config, template_config=template_config, template=template,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        tuner_config=TunerConfig(), max_steps=train_config.max_steps,
+        signal=DISTILL_SIGNALS['mopd'], train_batch_size=train_batch_size, batch_size=batch_size,
+        resource_plan=resource_plan, auxiliary_meshes=teacher_meshes)
+
+    # 4. Driver: streams the student's rollouts, `batch_size` rows per batch.
+    dataloader = build_prompt_dataloader(
+        prompts, prompt_extras, seed=dataset_config.data_seed,
+        shuffle=dataset_config.train_dataloader_shuffle, batch_size=generation_batch_size)
+    driver = build_distill_driver(
+        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config,
+        prompt_dataloader=dataloader, batch_size=batch_size,
+        num_train_epochs=math.ceil(train_config.num_train_epochs),
+        max_steps=train_config.max_steps * train_batch_size // batch_size)
+
+    # 5. Loop: roll out, score with the teachers, update, publish the weights to the sampler.
+    cluster.engine.sync_weights()
+    for trajs, _ in driver:
+        if cluster.colocate:  # hand the GPUs back from the sampler
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
+            cluster.model.reload_to_gpu()
+        for lo, hi in optimizer_batch_slices(len(trajs), train_batch_size, 1):
+            update = trajs[lo:hi]
+            signal = dict(cluster.worker.forward_kwargs(update, True))
+            cluster.model.forward_backward(
+                inputs=copy_inputs(update), gradient_accumulation_steps=1,
+                micro_batch_size=train_config.per_device_train_batch_size, **signal)
+            cluster.model.clip_grad_and_step(
+                max_grad_norm=train_config.max_grad_norm, gradient_accumulation_steps=1)
+            print(cluster.model.calculate_metric(is_training=True))
+        cluster.engine.sync_weights()
+    driver.close()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+The examples use the `Qwen/Qwen3.5-4B` model. SWIFT downloads models through ModelScope by default. Add `--use_hf true` to SWIFT commands to use Hugging Face.
+
+### GRPO: reward-based online learning
+
+```bash
+pip install vllm math-verify
+```
+
+See [Online RL](/en/blog/online-rl) for colocation, asynchronous sampling, custom rewards, and batch settings.
+
+### Deploy twinkle-server
+
+Install the server with its dependencies on the machine providing GPU compute:
+
+```bash
+pip install 'twinkle-kit[server,client]'
+```
+
+### Remote training with a client
+
+Install the lightweight client on the machine submitting training work. The server manages model weights and GPU computation; the client does not need a local GPU:
+
+```bash
+pip install 'twinkle-kit[client]'
+```
+
+## Remote training
+
+Deploy a single-GPU LoRA training service, then perform a few SFT updates from a client. The server and client can run on different machines.
+
+### Deploy twinkle-server
+
+On the GPU machine, save the following as `server_config.yaml`:
+
+```yaml
+http_options:
+  host: 127.0.0.1
+  port: 8000
+persistence:
+  mode: memory
+applications:
+  - name: server
+    route_prefix: /api/v1
+    import_path: server
+    args:
+      supported_models:
+        - Qwen/Qwen3.5-4B
+  - name: models-Qwen3.5-4B
+    route_prefix: /api/v1/model/Qwen/Qwen3.5-4B
+    import_path: model
+    args:
+      backend: transformers
+      model_id: ms://Qwen/Qwen3.5-4B
+      model_loader: swift.dev.model.loader:build_model_loader
+      train_mode: lora
+      min_replicas: 1
+      max_replicas: 1
+      nproc_per_node: 1
+      max_loras: 2
+      max_r: 32
+      max_length: 2048
+      mixed_precision: bf16
+      gradient_checkpointing: true
+      device_group:
+        name: model
+        ranks: 1
+        device_type: cuda
+      device_mesh:
+        device_type: cuda
+        dp_size: 1
+```
+
+In a fresh serving environment, start Ray and then the service:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 ray start --head --num-gpus=1
+twinkle-server launch --config server_config.yaml
+```
+
+If a Ray cluster already exists, connect to it instead of starting another head. Wait for the service to become ready, then run the client in another terminal.
+
+This configuration deploys only the training model and gateway, using one training GPU without an independent sampler. `max_loras` limits the number of LoRA adapters per model instance; `max_r` is the maximum permitted rank.
+
+The example listens only on localhost. For access from another machine, configure a protected network entry point and authentication before changing the host to `0.0.0.0`. `/api/v1` is the service prefix used by the client.
+
+### Train from the client
+
+The client encodes text and sends inputs such as tokens and labels to the server. This example additionally uses Transformers and PEFT for tokenizer and LoRA configuration preparation:
+
+```bash
+pip install transformers peft
+```
+
+Save the following as `client_sft.py`:
+
+```python
+import os
+from peft import LoraConfig
+from transformers import AutoTokenizer
+from twinkle_client import init_twinkle_client
+
+model_id = 'Qwen/Qwen3.5-4B'
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+prompt_ids = tokenizer.apply_chat_template(
+    [{'role': 'user', 'content': 'Who are you?'}],
+    tokenize=True,
+    add_generation_prompt=True,
+)
+answer_ids = tokenizer.encode(
+    'I am swift-robot, developed by swift.' + tokenizer.eos_token,
+    add_special_tokens=False,
+)
+tokens = prompt_ids + answer_ids
+inputs = [{
+    'input_ids': tokens[:-1],
+    'labels': [-100] * (len(prompt_ids) - 1) + answer_ids,
+    'attention_mask': [1] * (len(tokens) - 1),
+    'position_ids': list(range(len(tokens) - 1)),
+}]
+
+with init_twinkle_client(
+    base_url=os.environ.get('TWINKLE_SERVER_URL', 'http://127.0.0.1:8000'),
+    api_key=os.environ.get('TWINKLE_SERVER_TOKEN'),
+) as client:
+    model = client.model(model_id)
+    try:
+        model.add_adapter_to_model(
+            'default',
+            LoraConfig(r=8, lora_alpha=32, target_modules='all-linear'),
+            gradient_accumulation_steps=1,
+        )
+        model.set_processor('InputProcessor')
+        model.set_loss('CrossEntropyLoss')
+        model.set_optimizer('Adam', lr=1e-4)
+        for step in range(10):
+            model.forward_backward(inputs=inputs)
+            model.clip_grad_and_step(max_grad_norm=1.0)
+            print(step + 1, model.calculate_metric().result)
+        checkpoint = model.save('quick-start', save_optimizer=True)
+        print(checkpoint.twinkle_path)
+    finally:
+        model.close()
+```
+
+Run:
+
+```bash
+python client_sft.py
+```
+
+This tokenizer example fetches tokenizer files from Hugging Face without downloading base model weights. `labels` are already aligned with the next token; `-100` excludes prompt positions so only the answer is trained. Repeating one sample illustrates the API; use your own dataset and batches for real training.
+
+For access from another machine, set `TWINKLE_SERVER_URL` to the server address. With authentication enabled, provide the server-issued credentials through `TWINKLE_SERVER_TOKEN`. The returned `twinkle://` URI identifies a server-side checkpoint, not a client-side file path.
+
+## Learn more
+
+- [Online RL](/en/blog/online-rl): GRPO, rewards, and rollout scheduling.
+- [Mechanism / Policy separation](../interfaces/mp-separation.mdx): component reuse and custom training loops.

@@ -1,0 +1,128 @@
+---
+title: 模板
+description: 模板选择、messages 编码、多模态输入、thinking 与 loss mask。
+---
+
+同一份 `messages` 在不同模型上需要不同的角色标记、分隔符、结束 token 和媒体处理方式。模板把标准样本转换为模型输入，并决定哪些 token 参与训练损失。数据集格式与模型格式因此可以独立维护。
+
+编码流程是：`messages` 与媒体列 → 模板渲染 → tokenizer / processor → `input_ids`、`labels` 和媒体 tensor → batch padding 或 packing。推理时添加生成前缀，训练时保留目标回复并构造监督范围；二者不是直接复制同一个字符串。
+
+## 选择模板
+
+SWIFT 根据模型注册信息选择默认模板，也可以显式指定：
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --model_type qwen3_5 \
+    --template qwen3_5 \
+    --torch_dtype bfloat16 \
+    --attn_impl flash_attention_2 \
+    --dataset 'swift/self-cognition#600' \
+    --max_length 2048 \
+    --output_dir output/template
+```
+
+`model_type` 选择模型加载器，`template` 选择编码协议，两者不能互相替代。对本地 checkpoint，也需要与原模型一致的模板。注册列表见 [swift/dev/template](https://github.com/modelscope/ms-swift/tree/main/swift/dev/template)。
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `template` | 自动选择 | 使用模型注册的默认模板 |
+| `system` | 模板默认值 | 数据集中的 system 消息优先 |
+| `max_length` | `None` | 总序列长度，包括 prompt、回复及媒体 token |
+| `truncation_strategy` | `None` | 超长样本处理；默认编码报超长，由数据处理环节丢弃 |
+| `padding_side` | `right` | batch 的 padding 方向 |
+| `padding_free` | `false` | 无 padding 输入；需后端和 attention 实现支持 |
+| `template_backend` | `swift` | `swift` 或 `jinja` 渲染路径 |
+| `loss_scale` | `default` | token 监督与权重策略 |
+| `enable_thinking` | `None` | 使用模型默认 thinking 行为 |
+| `preserve_thinking` | `None` | 使用模板默认的历史 thinking 保留行为 |
+
+`jinja` 使用模型的 chat template；`swift` 使用注册模板。切换渲染路径不等于自动获得相同的训练 mask 或多模态能力，应根据模型支持和任务选择。
+
+## 检查编码结果
+
+下面的组件 API 只构建模板及其 processor，不下载基础模型权重：
+
+```python
+from swift.dev.builders.template import build_template_from_spec, build_template_spec
+from swift.dev.config import ModelConfig, TemplateConfig
+
+
+spec = build_template_spec(
+    TemplateConfig(template='qwen3_5', max_length=2048),
+    ModelConfig(model='Qwen/Qwen3.5-4B', model_type='qwen3_5'),
+)
+template = build_template_from_spec(spec)
+template.set_mode('train')
+encoded = template.encode({'messages': [
+    {'role': 'user', 'content': '你是谁？'},
+    {'role': 'assistant', 'content': '我是一个有用的助手。'},
+]})
+print(encoded['input_ids'])
+print(encoded['labels'])
+```
+
+需要联网或已有 tokenizer / processor 缓存，模型相关媒体依赖也须安装。`TemplateSpec` 保存可序列化的模型引用和模板设置，worker 根据它重建本地模板；不用把含可变状态的 tokenizer 或模型实例作为分布式配置。
+
+## 共享组件接口
+
+`swift.dev.template.Template` 继承 `twinkle.template.Template`。SWIFT 保留原有构造链和模型家族注册表，不改用 twinkle 的模型模板。两边的 `encode`、`batch_encode`、`encode_prompt`、`append_completion`、解码和 batch hook 使用一致的参数。
+
+```python
+from twinkle.template.contract import TRAIN
+
+encoded = template.encode(sample, intent=TRAIN)
+rows = template.batch_encode(samples, intent=TRAIN)
+prompt = template.encode_prompt(sample, backend='vllm')
+continued = template.append_completion(prompt, generated_tokens)
+```
+
+`TRAIN/INFER/ENGINE/SCORE` 定义于 `twinkle.template.contract`，也由 `swift.dev.template` 导出。默认或 False 使用 TRAIN，True 使用 INFER；推理和打分不返回训练 labels。因果 labels 只左移一次，末位为 -100。返回轨迹同时保留原始会话、媒体和模型字段；list 批次返回平铺 list，列存批次返回等长列。
+
+`set_template` 接受实例、携带构造参数的子类或注册名称。HTTP 仅传名称和配置；SWIFT 复用现有 TemplateSpec，并通过现有 worker 启动 hook 注册 SwiftTemplate。delete 下单条 encode 抛 MaxLengthError，batch_encode 丢弃整条样本，配对两侧一起处理。文本 split 可以返回多条轨迹，encode_prompt 拒绝多条结果；多模态 payload 不能安全分割。追加生成 token 不截断已记录历史。
+
+## 监督范围与 loss mask
+
+SFT 默认监督 assistant 回复，prompt 和 padding 位置的 `labels` 为 `-100`，不参与交叉熵计算。
+
+- `default`：监督 assistant 回复。
+- `last_round`：只监督最后一轮回复。
+- `all`：扩大监督范围，适合需要训练整段文本的任务。
+- 可组合策略，例如 `default+ignore_empty_think`，避免监督空 thinking 前缀。
+
+样本可覆盖消息级监督：
+
+```jsonl
+{"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好！", "loss": false}, {"role": "user", "content": "1+1？"}, {"role": "assistant", "content": "2", "loss_scale": 2.0}]}
+```
+
+`loss: false` 排除该回复；`loss_scale` 为它设置权重。保留非二值权重时设置 `--is_binary_loss_scale false`，否则不能用 0.5 / 2.0 表达降低或提高权重。loss mask 和 attention mask 含义不同：前者控制监督位置，后者控制可关注位置，不要用删除历史消息代替 loss mask。
+
+## Thinking
+
+`enable_thinking` 控制支持该开关的模型在推理时是否添加 thinking 生成前缀；它不会为没有推理能力的模型增加能力。`preserve_thinking` 决定历史回复中的 thinking 是否保留。训练数据中的推理过程属于目标内容，应与部署时采用的模板约定一致。
+
+```bash
+swift infer --model Qwen/Qwen3.5-4B \
+    --sampler transformers \
+    --enable_thinking false \
+    --max_new_tokens 512
+```
+
+也可以在样本的 `chat_template_kwargs` 中设置 `enable_thinking`，以及模型支持的媒体参数。自动空 thinking mask 可通过 `disable_ignore_empty_think` 关闭；显式写在 `loss_scale` 里的策略仍然生效。
+
+## 多模态与工具消息
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>描述图片"}, {"role": "assistant", "content": "一只猫。"}], "images": ["/data/cat.png"], "chat_template_kwargs": {"max_pixels": 1048576}}
+```
+
+媒体占位符与顶层媒体列表一一对应。processor 决定图像缩放、视频帧读取、音频特征和媒体 token 数量；`max_length` 必须覆盖最终编码长度，不能只按可见文本字数估计。
+
+工具轨迹由 assistant 发出工具调用，工具返回观察，assistant 再继续。标准数据转换器处理工具消息结构，模板负责把工具定义和调用渲染为模型协议。工具观察是上下文，通常不作为模型回复监督；工具调用动作是否监督由训练数据与 loss 策略决定。示例与运行入口见 [Agentic](../training/agentic.mdx)。
+
+## 长度和 batch
+
+超长数据可选择 `delete`、`left`、`right` 或 `split`。删除保留完整样本语义但减少样本数；截断可能移除问题或最终答案；切分可能破坏多轮、媒体或工具关联，需要结合任务确认。先检查有效样本数和回复是否被保留，再调整长度。
+
+packing / padding-free 改变 batch 的组织方式，不改变原始消息协议。序列边界、位置编码和 loss mask 必须随 batch 一起保留，由模板与 dataloader 处理。完整参数见 [CLI](./cli.mdx)，组件分工见 [MP 分离](./mp-separation.mdx)。

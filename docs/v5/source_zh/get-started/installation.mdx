@@ -1,0 +1,99 @@
+---
+title: 环境安装与硬件支持
+description: 按训练、服务端和客户端场景准备 SWIFT v5 环境。
+---
+
+## Wheel 包安装
+
+建议使用独立的 Python 3.12 环境。安装命令应在实际运行训练或服务的 Python 环境中执行。
+
+### SWIFT 本地训练
+
+可以使用 pip 进行安装：
+
+```bash
+pip install 'ms-swift>=5.0.0'
+```
+
+twinkle 随 SWIFT 安装。运行 [SFT 示例](./quick-start.mdx)时不需要再安装服务端或客户端依赖组。
+
+### 部署 twinkle-server
+
+在提供 GPU 算力的机器上安装：
+
+```bash
+pip install 'twinkle-kit[server,client]'
+```
+
+服务端配置模型、采样器和资源；客户端提交训练操作。完整部署步骤见[远程训练与 twinkle-server](../interfaces/server-client.mdx)。
+
+### 客户端远程训练
+
+在提交训练任务的机器上安装：
+
+```bash
+pip install 'twinkle-kit[client]'
+```
+
+客户端不需要本地 GPU。通过 SWIFT 命令发起远程训练时，在客户端环境安装 SWIFT，并使用 `--mode remote`。
+
+## PyTorch 与计算环境
+
+先选择与设备、驱动匹配的 [PyTorch](https://pytorch.org/get-started/locally/) 安装包，再安装 SWIFT。CUDA、ROCm 和 NPU 环境不能互相替代。
+
+| 组件 | 版本要求或用途 |
+| --- | --- |
+| Python | 建议 3.12 |
+| PyTorch | twinkle 要求 `>=2.6.0,<3.0.0`；具体构建匹配设备 |
+| Transformers | `>=5.8,<6.0` |
+| datasets | `>=4.0,<4.8.5` |
+| Ray | `>=2.55`；基础依赖，负责 Ray 模式的分布式执行 |
+| FlashAttention | 本站 NVIDIA BF16 示例使用 FlashAttention 2 |
+
+安装 FlashAttention 2 前，应已有可用的 PyTorch 和 CUDA 编译环境：
+
+```bash
+pip install packaging ninja
+pip install flash-attn --no-build-isolation
+```
+
+这些示例使用 `--attn_impl flash_attention_2`。在不提供 FlashAttention 的硬件环境中，按模型及平台支持选择 attention 实现；不要直接照搬 CUDA 安装命令。
+
+## 按需安装
+
+### 在线采样
+
+根据采样器选择安装相应引擎：
+
+```bash
+pip install vllm
+```
+
+或使用 SGLang：
+
+```bash
+pip install 'sglang[all]'
+```
+
+引擎安装可能同时调整 PyTorch、Transformers 等依赖，因此应在同一个隔离环境中确定训练与推理引擎的版本组合。数学奖励 `--orm accuracy` 的额外依赖在[快速启动的 GRPO 示例](./quick-start.mdx#grpo基于奖励的在线学习)中安装，不属于所有训练任务的依赖。
+
+### Megatron
+
+使用 Megatron 后端时额外安装对应依赖：
+
+```bash
+pip install 'twinkle-kit[megatron]'
+```
+
+其中包括 Megatron-Core、Transformer Engine 和 mcore-bridge；需匹配本机 CUDA 环境。
+
+## 硬件支持
+
+SWIFT 支持 NVIDIA GPU、AMD GPU、昇腾 NPU、Apple MPS 和 CPU。不同模型、推理引擎和并行后端对硬件的要求不同。
+
+- **NVIDIA GPU**：使用 CUDA 版 PyTorch。本站快速启动命令以 NVIDIA GPU、BF16 为例。
+- **AMD GPU**：使用 ROCm 版 PyTorch。安装和引擎要求见[AMD 支持](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source/BestPractices/AMD-support.md)。
+- **昇腾 NPU**：安装与 CANN 匹配的 torch-npu，并按所选推理引擎准备昇腾扩展。见[NPU 支持](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source/BestPractices/NPU-support.md)。
+- **Apple MPS / CPU**：可用于兼容模型的本地推理或小规模训练；GPU 专用采样器及内核不能直接复用。
+
+使用 [Docker 镜像](./docker.mdx)时同样需要宿主机驱动和设备运行时。模型、数据集缓存应挂载到持久目录，避免容器重建后重复下载。

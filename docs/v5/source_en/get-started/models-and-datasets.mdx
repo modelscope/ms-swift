@@ -1,40 +1,105 @@
 ---
 title: Supported Models & Datasets
-description: Model ids resolve from ModelScope/Hugging Face; datasets use id#slice syntax.
+description: Select model and data sources, and match model families, templates, and tasks.
 ---
 
 ## Models
 
-`--model` takes a hub id (ModelScope by default, Hugging Face with `--use_hf true`)
-or a local path. SWIFT resolves the model family, template and task head from the
-registry — the v5 loader registers 247 model loaders covering the Qwen, DeepSeek,
-GLM, Gemma, Llama, InternLM, MiniCPM, multimodal and embedding/reranker families
-(counted from `@register_model` in `swift/dev/model/loader/`).
+ms-swift supports training, inference, and deployment of text-only, multimodal, and task-specific models. Families include Qwen, DeepSeek, Llama, InternLM, and GLM. Multimodal models accept text, images, video, or audio according to their own capabilities.
+
+To train another model, change `--model`. It accepts a ModelScope / Hugging Face model ID or a local model directory.
 
 ```bash
---model Qwen/Qwen3.5-4B          # multimodal dense
---model Qwen/Qwen3-30B-A3B       # MoE
---model Qwen/Qwen3.5-4B-Base     # base weights for pretrain / base-to-chat
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model Qwen/Qwen3.5-4B \
+    --model_type qwen3_5 \
+    --template qwen3_5 \
+    --sampler transformers \
+    --torch_dtype bfloat16 \
+    --attn_impl flash_attention_2 \
+    --max_new_tokens 512
 ```
 
-Family-specific examples live in
-[`examples/v5/models`](https://github.com/modelscope/ms-swift/tree/main/examples/v5/models).
-If a model id is not registered, loading fails loudly with the unsupported
-model type — it never silently falls back to another family.
+General examples use `Qwen/Qwen3.5-4B`, a multimodal model family. Text-only samples do not require images or video. See the [model registry](https://github.com/modelscope/ms-swift/tree/main/swift/dev/model/loader) for the complete families and checkpoint lists.
+
+### Model, task, and template
+
+- `model`: the weight ID or local directory.
+- `model_type`: the SWIFT family identifier selecting loading and adaptation. It is normally inferred; specify it for an ambiguous model or custom local directory.
+- `template`: the conversation encoder for roles, separators, tool calls, and multimodal inputs.
+- `task_type`: the task, such as `causal_lm`, `seq_cls`, `embedding`, `reranker`, `generative_reranker`, or `decision`.
+
+Do not interchange a checkpoint name, a Transformers config's `model_type`, and a SWIFT registry name. The example's SWIFT family and template are both `qwen3_5`. A task-specific model needs the corresponding task and data contract, not just a changed checkpoint name.
+
+### Download sources
+
+SWIFT downloads models and datasets through ModelScope by default. Select Hugging Face with `--use_hf true`:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model Qwen/Qwen3.5-4B \
+    --sampler transformers \
+    --use_hf true \
+    --max_new_tokens 512
+```
+
+Use a bare ID in the SWIFT CLI's `--model`. The `ms://` and `hf://` resource schemes belong to particular twinkle APIs, not this CLI parameter.
+
+The selected hub manages downloads and caching. Set `MODELSCOPE_CACHE` for ModelScope caches; pass a directory to use existing local weights.
 
 ## Datasets
 
-`--dataset` accepts hub dataset ids, local jsonl/csv files, and a `#N` slice suffix:
+SWIFT includes pretraining, instruction, preference, multimodal, and task-specific datasets. See the [dataset registry](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset) for built-in IDs and preprocessors.
+
+`--dataset` accepts registered datasets, hub IDs, or local files, and supports mixing sources:
 
 ```bash
---dataset 'swift/self-cognition#600'              # first 600 rows
---dataset 'AI-MO/NuminaMath-TIR#5000'             # RL prompts
---dataset /path/to/custom.jsonl                   # local messages-format file
+--dataset 'swift/self-cognition#600'
 ```
 
-Custom data follows the messages format (`{"messages": [{"role": ..., "content": ...}]}`);
-task-specific formats (embedding pairs, reranker triples, preference pairs,
-classification labels) are documented in the corresponding training pages and in
-[`examples/v5/train/data`](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/data).
+```bash
+--dataset train.jsonl extra.jsonl
+```
 
-Dataset registration and preprocessing plugins: [Code API & Plugins](../interfaces/code-api.mdx).
+`#600` samples 600 records; it does not mean 600 training steps. Specify validation data with `--val_dataset`, or use `--split_dataset_ratio` to split training data.
+
+### Example data
+
+| Data | Purpose | Input and target |
+| --- | --- | --- |
+| `swift/self-cognition` | Model name and author instruction tuning | Complete user / assistant conversations |
+| `AI-MO/NuminaMath-TIR` | Mathematical online learning | Problem as prompt; solution for the mathematical reward |
+| Local JSONL | Custom tasks | messages, labels, or reward reference fields as required |
+
+`--model_name` and `--model_author` apply only to preprocessors that read them. They do not automatically modify answers in every dataset.
+
+## Custom formats
+
+There are three integration methods, with increasing preprocessing control and implementation effort:
+
+1. Pass a file directly, such as `--dataset train.jsonl`. Automatic preprocessors accept standard messages, query/response, and Alpaca formats; `--columns` renames fields.
+2. Use an external `dataset_info.json` through `--custom_dataset_info` to define an ID, path, and column mapping.
+3. Register a dataset loader or preprocessing logic, import it with `--external_plugins`, and select its registered name.
+
+A supervised sample:
+
+```jsonl
+{"messages": [{"role": "user", "content": "Who are you?"}, {"role": "assistant", "content": "I am swift-robot, developed by swift."}]}
+```
+
+An online sample contains only the pre-generation conversation and reference fields needed by rewards:
+
+```jsonl
+{"messages": [{"role": "user", "content": "What is 1 + 1?"}], "solution": "2"}
+```
+
+Preprocessing, encoding, and sampling are distinct steps. Assistant content is the SFT target; online responses are generated by the sampler, and fields such as `solution` are consumed by rewards. Do not leak reference answers into generation prompts.
+
+See [Custom Datasets](../interfaces/custom-dataset.mdx) for formats, mapping, and registration, and [Templates](../interfaces/template.mdx) for encoding settings.
+
+## Usage notes
+
+- A model must support the task's input modality and output head. Vision support does not require placeholder images for text-only training.
+- Fix the model, template, and preprocessing before changing samplers or parallelism; these are independent configuration dimensions.
+- Media paths must be accessible to the process actually reading them. A client-local file may not be accessible to a remote worker.
+- Compare experiments with the same data split, sample count, and effective batch. See [Performance & Leaderboard](../performance.mdx) for speed and curve comparison protocols.

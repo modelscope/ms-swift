@@ -1,0 +1,98 @@
+---
+title: v5 快速迁移
+description: 从 v4 命令、Python API 和插件迁移到 SWIFT v5。
+---
+
+SWIFT v5 保留 `swift sft`、`swift infer`、`swift rl` 等任务入口，将模型、数据、采样和分布式执行委托给 twinkle 组件。迁移一个实验时，先保留模型、数据、优化参数和有效 batch，再调整接口与执行配置。
+
+## 安装
+
+```bash
+pip install 'ms-swift>=5.0.0'
+```
+
+PyTorch、attention 内核和采样器依赖按[环境安装](./installation.mdx)准备。v5 的 Python API 位于 `swift.dev`；命令行使用安装后的 v5 入口。
+
+## 命令与参数
+
+| v4 使用方式 | v5 使用方式 | 含义 |
+| --- | --- | --- |
+| `swift sft` | `swift sft` | 指令微调及监督任务 |
+| `swift rlhf` | `swift rl` | 偏好学习、在线 RL 与蒸馏 |
+| `--rlhf_type grpo` | `--rl_type grpo` | 算法选择 |
+| `--tuner_type lora` | `--tuner lora` | 训练参数的选择方式 |
+| `--infer_backend vllm` | `--sampler vllm` | 离线推理引擎 |
+| `--vllm_mode colocate` | `--sampler_mode colocate` | 在线采样器与训练器共卡 |
+| rollout server 配置 | `--rollout_sampler vllm` 与采样放置配置 | 由 recipe 组装采样器 |
+
+使用 v5 的规范参数名编写新命令；完整字段与默认值见[命令行参数](../interfaces/cli.mdx)。
+
+### 保留训练语义
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --model_type qwen3_5 \
+    --template qwen3_5 \
+    --torch_dtype bfloat16 \
+    --attn_impl flash_attention_2 \
+    --dataset 'swift/self-cognition#600' \
+    --tuner lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-4 \
+    --num_train_epochs 3 \
+    --max_length 2048 \
+    --output_dir output/migrated-sft
+```
+
+数据并行训练的有效 batch 是每卡 batch、数据并行副本数和梯度累积步数的乘积。切换到远程客户端时，服务端还可能对提交的 batch 分片，应按[远程训练](../interfaces/server-client.mdx)的实际接口对齐，而不是机械复制 `nproc_per_node`。
+
+## 从命令行转成 Python
+
+v5 Config 字段对应命令行参数。调用 recipe 可以保留完整的训练、保存和恢复逻辑：
+
+```python
+from swift.dev.config import (
+    CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    TrainConfig, TunerConfig,
+)
+from swift.dev.recipe.sft.run_sft import run_sft
+
+run_sft(
+    model_config=ModelConfig(
+        model='Qwen/Qwen3.5-4B', model_type='qwen3_5',
+        torch_dtype='bfloat16', attn_impl='flash_attention_2',
+    ),
+    template_config=TemplateConfig(template='qwen3_5', max_length=2048),
+    dataset_config=DatasetConfig(dataset=['swift/self-cognition#600']),
+    train_config=TrainConfig(
+        num_train_epochs=3, per_device_train_batch_size=1,
+        gradient_accumulation_steps=8, learning_rate=1e-4,
+    ),
+    distributed_config=DistributedConfig(mode='local', backend='hf'),
+    tuner_config=TunerConfig(tuner='lora', lora_rank=8, lora_alpha=32),
+    checkpoint_config=CheckpointConfig(output_dir='output/migrated-python'),
+    output_dir='output/migrated-python',
+)
+```
+
+更低一层可以直接调用模型的 `forward_backward`、采样器的生成方法、优化器和保存接口。详见[组件与 MP 分离](../interfaces/mp-separation.mdx)。
+
+## 数据与插件
+
+标准 `messages` 格式仍可直接使用。无需为了迁移改变训练样本的语义；自定义列映射、数据集注册和预处理入口见[自定义数据集](../interfaces/custom-dataset.mdx)。
+
+外部插件仍通过 `--external_plugins` 导入。v5 使用 `PluginRegistry` 和内核类加载机制选择实现；迁移时更新 import、基类和回调签名，不能只保留旧文件路径。[插件文档](../interfaces/plugins.mdx)给出各扩展点的契约。
+
+## 本地、Ray 与远程
+
+- SFT 等监督任务可使用本地执行或 Ray 执行；`--backend` 选择训练后端，与 `--mode` 是不同维度。
+- 本机在线 RL 的训练器、采样器及辅助模型由 Ray 管理。`--nproc_per_node` 是训练组的进程数，不是训练组与采样组 GPU 数的总和。
+- `--sampler_mode disaggregated` 为采样器分配独立 GPU；`colocate` 使用共享 GPU 的阶段调度。
+- `--mode remote` 连接已部署的 twinkle-server，模型与计算留在服务端；服务端放置来自服务配置。
+
+迁移效果应比较 loss/reward、grad_norm、有效更新次数和 checkpoint，而不只确认命令退出成功。已完成的 v4/v5/remote 对比见[性能测试与榜单](../performance.mdx)。

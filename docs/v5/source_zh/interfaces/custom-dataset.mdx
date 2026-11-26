@@ -1,0 +1,153 @@
+---
+title: 自定义数据集
+description: 使用本地文件、dataset_info.json 或自定义预处理器接入训练数据。
+---
+
+自定义数据集的接入方法有三种，对预处理函数的控制能力逐渐加强，但接入难度逐步增加：
+
+1. 【推荐】通过 `--dataset` 直接传入文件或数据集目录。数据加载器识别存储格式，预处理器将原始字段转换为标准格式；字段名不同可以通过 `--columns` 映射。
+2. 使用外接 `dataset_info.json` 声明数据集名称、路径、子集和字段映射，通过 `--custom_dataset_info` 加载。不需要修改安装包。
+3. 继承 `DatasetLoader` 和 `Preprocessor`，用 Python 定制逐行转换，通过 `--external_plugins` 加载注册内容。
+
+数据流为：原始文件或 Hub 数据集 → 行预处理 → 标准 `messages` 与附加列 → [模板编码](./template.mdx) → batch。预处理负责字段与样本结构，模板负责模型所需的 token、媒体输入和 loss mask；不要在数据预处理器里手工拼接模型专用特殊 token。
+
+## 直接传入数据
+
+将以下两行保存为 `train.jsonl`。JSONL 每行是独立 JSON 对象，不在文件外层添加数组：
+
+```jsonl
+{"messages": [{"role": "user", "content": "你是谁？"}, {"role": "assistant", "content": "我是一个有用的助手。"}]}
+{"messages": [{"role": "user", "content": "1+1 等于几？"}, {"role": "assistant", "content": "等于 2。"}]}
+```
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --torch_dtype bfloat16 \
+    --attn_impl flash_attention_2 \
+    --dataset ./train.jsonl \
+    --tuner lora \
+    --learning_rate 1e-4 \
+    --max_length 2048 \
+    --num_train_epochs 3 \
+    --output_dir output/custom-data
+```
+
+可以传入多个路径：`--dataset ./a.jsonl ./b.jsonl`。Hub 数据集使用 `ms://组织/数据集` 或 `hf://组织/数据集`；`#600` 表示采样 600 条。子集选择采用 `数据集:子集`。本地路径必须存在，不要用 Hub 前缀修饰本地文件。
+
+支持的文件读取器与格式转换器分别见 [storage](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset/storage) 和 [format_converter](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset/format_converter)。常用 JSON、JSONL、CSV 和数据集 snapshot 不需要单独注册。
+
+### 兼容常见格式
+
+以下格式会转换为标准 `messages`：
+
+```jsonl
+{"query": "你好", "response": "你好！", "history": [["你是谁？", "我是助手。"]]}
+{"instruction": "翻译为英文", "input": "你好", "output": "Hello"}
+{"messages": [{"role": "system", "content": "你是一个有用的助手"}, {"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好！"}]}
+```
+
+Alpaca 格式中，非空 `instruction` 和 `input` 合并成用户输入。`system` 是可选的；数据里的 system 优先于命令行 `--system`，最后才使用模板默认值。对不常见的列名显式映射，例如：
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --dataset ./data.jsonl \
+    --columns '{"question_text":"query","answer_text":"response"}' \
+    --output_dir output/columns
+```
+
+映射方向始终是“原始列名 → 标准列名”。
+
+## 标准数据格式
+
+### 多轮 SFT 与监督范围
+
+```jsonl
+{"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好！", "loss": false}, {"role": "user", "content": "1+1？"}, {"role": "assistant", "content": "2", "loss": true}]}
+```
+
+assistant 消息上的 `loss: false` 排除这轮回复的监督；用户输入和工具观察默认不参与回复损失。用 `--loss_scale last_round` 只监督最后一轮，更多权重设置见 [模板](./template.mdx)。预训练可使用仅含 assistant 文本的 `messages`。
+
+### 多模态
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>图片中是什么？"}, {"role": "assistant", "content": "一只猫。"}], "images": ["/data/cat.png"]}
+```
+
+图片、视频和音频分别使用 `images`、`videos`、`audios`，占位符与媒体列表保持对应顺序。模型必须支持相应模态，媒体路径必须对实际编码进程可见。远程训练中，客户端路径不自动成为服务端可读路径。
+
+### 偏好数据和在线采样
+
+```jsonl
+{"messages": [{"role": "user", "content": "1+1？"}, {"role": "assistant", "content": "2"}], "rejected_response": "3"}
+{"messages": [{"role": "user", "content": "计算 1+1，将答案写在 \\boxed{} 中。"}], "solution": "2"}
+```
+
+第一行是偏好对；更复杂的拒绝轨迹可使用 `rejected_messages`。第二行是在线 RL 的 prompt：不预填待生成的 assistant 回复，`solution` 保留给数学奖励函数。附加奖励列需要与相应 prompt 一起保留，不能把参考答案拼到用户输入中。工具调用数据还可以带 `tools`，见 [Agentic](../training/agentic.mdx)。
+
+## 声明式注册
+
+在同一目录保存 `data.jsonl` 和 `dataset_info.json`：
+
+```json
+[
+  {
+    "dataset_type": "my_qa",
+    "dataset_path": "data.jsonl",
+    "columns": {"prompt": "query", "completion": "response"}
+  }
+]
+```
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --custom_dataset_info ./dataset_info.json \
+    --dataset my_qa \
+    --output_dir output/registered-data
+```
+
+相对 `dataset_path` 以声明文件所在目录为基准。`dataset_type` 是内部注册名，不是文件格式；每项至少提供一个数据集 ID 或路径。可同时声明 `ms_dataset_id`、`hf_dataset_id`、`subsets`、`split` 和 `columns`，加载时仍走同一数据处理流程。
+
+## 自定义预处理
+
+保存为 `custom_data.py`：
+
+```python
+from swift.dev.dataset.loader import DatasetLoader, register_dataset
+from swift.dev.dataset.preprocessor import Preprocessor
+
+
+class QAPreprocessor(Preprocessor):
+    def preprocess(self, row):
+        question = row.get('question_text')
+        answer = row.get('answer_text')
+        if not question or not answer:
+            return None
+        return {'messages': [
+            {'role': 'user', 'content': question},
+            {'role': 'assistant', 'content': answer},
+        ]}
+
+
+@register_dataset
+class MyQALoader(DatasetLoader):
+    dataset_type = 'my_custom_qa'
+    dataset_paths = ('/data/my_qa.jsonl',)
+    preprocessor = QAPreprocessor
+```
+
+将 `dataset_paths` 改为实际文件，再执行：
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --external_plugins ./custom_data.py \
+    --dataset my_custom_qa \
+    --output_dir output/preprocessed-data
+```
+
+`preprocess(row)` 返回标准行；返回 `None` 丢弃该行，返回行列表可将一行展开为多行。注册中传预处理器类，加载器为每次读取创建实例，避免跨任务共享可变状态。
+
+`--strict true` 让错误行直接报错；默认会丢弃无法转换的行并记录诊断。首次接入应确认加载后的有效样本数，防止字段错误导致大量数据被过滤。多进程 map、流式读取和缓存分别由 `--dataset_num_proc`、`--streaming`、`--load_from_cache_file` 控制。完整组件示例见 [examples/v5/train/custom/dataset](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/custom/dataset)。

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" role="img" aria-labelledby="title desc">
+<title id="title">twinkle-server and client</title><desc id="desc">Client loops call training, sampling and processing applications through a gateway. Server workers own GPU weights; saves return checkpoint URIs. The client does not load base weights.</desc>
+<defs><marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#3566a0"/></marker><marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#277a60"/></marker><style>text{font-family:system-ui,sans-serif;fill:#20354e;font-size:17px}.box{fill:#edf4fb;stroke:#9bb7d0}.c{fill:none;stroke:#3566a0;stroke-width:2;marker-end:url(#b)}.d{fill:none;stroke:#277a60;stroke-width:2;marker-end:url(#g)}.s{fill:none;stroke:#3566a0;stroke-width:2;stroke-dasharray:6 5;marker-end:url(#b)}</style></defs>
+<rect width="1000" height="600" rx="16" fill="#fff"/><text x="35" y="38" font-size="23">Remote training: client algorithms, server compute</text>
+<rect class="box" x="35" y="150" width="230" height="210" rx="10"/><text x="55" y="185">Client (CPU is sufficient)</text><text x="55" y="225">SWIFT recipe / custom loop</text><text x="55" y="265">Data / tokenizer / batches</text><text x="55" y="305">twinkle_client / Tinker SDK</text><text x="55" y="340">Logs, metrics, save URIs</text>
+<rect x="365" y="65" width="600" height="460" rx="12" fill="#f7fafc" stroke="#799ab7" stroke-dasharray="7 4"/><text x="390" y="100">twinkle-server: protected service boundary / Ray Serve</text>
+<rect class="box" x="390" y="150" width="195" height="210" rx="10"/><text x="410" y="185">Gateway /api/v1</text><text x="410" y="225">Sessions / handles</text><text x="410" y="265">Auth / queues / limits</text><text x="410" y="305">Futures / results</text>
+<rect class="box" x="660" y="130" width="270" height="85" rx="8"/><text x="680" y="160">Model app / GPU workers</text><text x="680" y="190">Base + LoRA + optimizer</text>
+<rect class="box" x="660" y="265" width="270" height="75" rx="8"/><text x="680" y="295">Sampler app / GPU workers</text><text x="680" y="322">vLLM / generations / logprobs</text>
+<rect class="box" x="660" y="390" width="270" height="75" rx="8"/><text x="680" y="420">Processor app / CPU</text><text x="680" y="447">Optional encoding</text>
+<path class="c" d="M265 200H390"/><text x="288" y="186">HTTP</text><path class="d" d="M265 285H390"/>
+<path class="c" d="M585 175H660"/><path class="c" d="M585 300H660"/><path class="c" d="M585 335H600V375H795V390"/>
+<path class="s" d="M795 215V265"/><text x="803" y="245">Weights / URI</text>
+<rect class="box" x="390" y="390" width="245" height="105" rx="8"/><text x="410" y="420">Server checkpoint store</text><text x="410" y="447">twinkle:// URI</text><text x="410" y="476">Not a client path</text>
+<path class="s" d="M660 205H645V450H635"/><path class="s" d="M390 475H300V340H265"/>
+<path class="c" d="M40 562H90"/><text x="100" y="568">Control requests</text><path class="d" d="M300 562H350"/><text x="360" y="568">Tokens / batches / results</text><path class="s" d="M620 562H670"/><text x="680" y="568">Weights / checkpoint references</text>
+</svg>

@@ -1,0 +1,98 @@
+---
+title: Quick Migration to v5
+description: Move v4 commands, Python APIs, and plugins to SWIFT v5.
+---
+
+SWIFT v5 retains task entry points such as `swift sft`, `swift infer`, and `swift rl`, while delegating models, data, sampling, and distributed execution to twinkle components. Preserve the model, data, optimizer settings, and effective batch before changing interfaces and execution configuration.
+
+## Installation
+
+```bash
+pip install 'ms-swift>=5.0.0'
+```
+
+Prepare PyTorch, attention kernels, and sampling engines following [Installation](./installation.mdx). Python APIs live under `swift.dev`; CLI commands use the installed v5 entry points.
+
+## Commands and arguments
+
+| v4 usage | v5 usage | Meaning |
+| --- | --- | --- |
+| `swift sft` | `swift sft` | Instruction tuning and supervised tasks |
+| `swift rlhf` | `swift rl` | Preference learning, online RL, and distillation |
+| `--rlhf_type grpo` | `--rl_type grpo` | Algorithm selection |
+| `--tuner_type lora` | `--tuner lora` | Selection of trainable parameters |
+| `--infer_backend vllm` | `--sampler vllm` | Offline inference engine |
+| `--vllm_mode colocate` | `--sampler_mode colocate` | Trainer and online sampler sharing GPUs |
+| Rollout-server configuration | `--rollout_sampler vllm` plus placement configuration | Recipe-assembled sampling |
+
+Use canonical v5 names in new commands. See [CLI Parameters](../interfaces/cli.mdx) for fields and defaults.
+
+### Preserve training semantics
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --model_type qwen3_5 \
+    --template qwen3_5 \
+    --torch_dtype bfloat16 \
+    --attn_impl flash_attention_2 \
+    --dataset 'swift/self-cognition#600' \
+    --tuner lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-4 \
+    --num_train_epochs 3 \
+    --max_length 2048 \
+    --output_dir output/migrated-sft
+```
+
+For data-parallel training, effective batch is per-device batch times the number of data-parallel replicas times gradient accumulation. A remote server can shard submitted batches; align the actual [remote interface](../interfaces/server-client.mdx) rather than blindly copying `nproc_per_node`.
+
+## From CLI to Python
+
+Config fields correspond to CLI arguments. Calling a recipe retains full training, saving, and resumption behavior:
+
+```python
+from swift.dev.config import (
+    CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    TrainConfig, TunerConfig,
+)
+from swift.dev.recipe.sft.run_sft import run_sft
+
+run_sft(
+    model_config=ModelConfig(
+        model='Qwen/Qwen3.5-4B', model_type='qwen3_5',
+        torch_dtype='bfloat16', attn_impl='flash_attention_2',
+    ),
+    template_config=TemplateConfig(template='qwen3_5', max_length=2048),
+    dataset_config=DatasetConfig(dataset=['swift/self-cognition#600']),
+    train_config=TrainConfig(
+        num_train_epochs=3, per_device_train_batch_size=1,
+        gradient_accumulation_steps=8, learning_rate=1e-4,
+    ),
+    distributed_config=DistributedConfig(mode='local', backend='hf'),
+    tuner_config=TunerConfig(tuner='lora', lora_rank=8, lora_alpha=32),
+    checkpoint_config=CheckpointConfig(output_dir='output/migrated-python'),
+    output_dir='output/migrated-python',
+)
+```
+
+At the component level, call `forward_backward`, sampler generation, optimizer, and save operations directly. See [Mechanism / Policy Separation](../interfaces/mp-separation.mdx).
+
+## Data and plugins
+
+Standard `messages` data remains usable. Migration does not require changing sample semantics. See [Custom Datasets](../interfaces/custom-dataset.mdx) for mapping, registration, and preprocessing.
+
+External plugins still load through `--external_plugins`. v5 selects implementations through `PluginRegistry` and kernel-class loading. Update imports, bases, and callback signatures, not just file paths. [Plugins](../interfaces/plugins.mdx) describes the contracts.
+
+## Local, Ray, and remote execution
+
+- Supervised tasks such as SFT can execute locally or through Ray. Training `--backend` and execution `--mode` are separate dimensions.
+- In on-machine online RL, Ray manages trainers, samplers, and auxiliary models. `--nproc_per_node` counts training-group processes, not all trainer and sampler GPUs combined.
+- `--sampler_mode disaggregated` allocates separate sampling GPUs; `colocate` schedules trainer and sampler stages on shared GPUs.
+- `--mode remote` connects to a deployed twinkle-server. Weights and compute stay on the server, whose configuration determines placement.
+
+Compare loss/reward, grad_norm, update counts, and checkpoints rather than checking only that a command exits successfully. See [Performance & Leaderboard](../performance.mdx) for completed v4/v5/remote comparisons.

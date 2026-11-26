@@ -1,0 +1,43 @@
+---
+title: Performance and Training Regression
+description: v4, v5-ray and remote timing, loss / reward curves, stability and reproduction protocols.
+---
+
+Performance comparisons ask both how quickly an identical training task runs and whether training behavior is preserved. This page uses completed `perf_bench_20261124` records for v4 legacy, v5-ray and v5-remote, sharing a snapshot with [the performance charts](/en/performance).
+
+## Protocol
+
+The machine has 8 × NVIDIA H20 96GB. Each run records its actual devices, trainer / sampler placement and sharding; machine capacity is not per-experiment GPU count.
+
+SFT uses Qwen3.5-4B and Qwen3.5-35B-A3B, self-cognition data, LoRA rank 8 / alpha 32, effective batch 16, BF16 and FlashAttention 2 for 30 optimizer updates. Align order, seeds, initial adapters, learning rate, scheduler and integer warmup_steps. Remote effective batch follows server dispatch; aligned ga16 records are not mixed with ga8 controls.
+
+GRPO uses NuminaMath-TIR and mathematical correctness rewards for 15 updates. Align generation count, temperature, output length, sampling engine, rewards and weight publication alongside model and optimizer settings. v4 is colocated and v5 disaggregated; 35B v5 uses FSDP2 and attention-only LoRA. These are not identical resource layouts.
+
+## Timing definitions
+
+- **Steady step:** SFT steps 6–30, excluding initial loading and warmup.
+- **Full-cycle average:** includes sampling and training; some records report runtime / updates.
+- **Trainer / server compute:** only the named segment, not client-observed update wall clock.
+- **Total wall clock:** may include loading, preparation, saving and request waiting.
+
+Some v5 elapsed metrics are integer seconds, adding quantization noise to step differences. The 35B initial network-storage load took approximately 85 minutes, with much shorter subsequent warm-cache loads. Startup and I/O must not become steady-state speedup claims. Missing tokens/s or remote per-step timing remains unrecorded, not estimated or zero-filled.
+
+4B GRPO v4 records approximately 26.71 s/update over the full cycle, while v5-ray 1.12 s and historical remote 2.25 s refer to trainer compute. Dividing these as a twenty-fold speedup is invalid. The latest remote reward rerun is not the historical timing run; sources are kept separate.
+
+## Results and curves
+
+<PerformanceSnapshot lang="en" />
+
+Local v4 and v5-ray SFT steady times are of the same order. The 35B remote record is slower, with HTTP, queues and server sharding relevant to interpretation. Different placements or timing scopes do not support a universal speedup ratio.
+
+4B SFT endpoint deviations are 3.877% for v4-ray, 3.014% for v4-remote ga16 and 0.898% for ray-remote. For 35B they are 3.416%, 2.308% and 1.071%. These satisfy this batch's aligned-initial-loss, endpoint-below-5%, no-monotonic-divergence criterion. The repeated 4B v5-ray run has equal loss on 30/30 steps, evidence for that run rather than universal bitwise reproducibility.
+
+GRPO compares reward trends, plateaus and finite gradients. First / last five-step means are 0.475→0.875 for the latest 4B remote rerun, 0.5625→0.95 for 35B ray and 0.5875→0.9875 for 35B remote. Small prompt counts produce high variance. Random trajectories need not coincide bitwise, and training reward is not a held-out capability score.
+
+JEV decision preserves the task-specific `autotrust/JEV-9B` model; supervised loss decreases in all three forms. Remote has total wall clock but no measured steady-step timing. Router replay R2 ray and R3 remote use different recording mechanisms and are shown separately. Attention-only LoRA controls do not establish replay as universally more stable than recompute.
+
+## Reproduction and sources
+
+The [protocol](https://github.com/tastelikefeet/swift5-regression-exps/blob/main/PERF_BENCH_20261124.md), [starting versions](https://github.com/tastelikefeet/swift5-regression-exps/blob/main/perf_bench_20261124/version_lock.json), [results](https://github.com/tastelikefeet/swift5-regression-exps/tree/main/perf_bench_20261124/results) and [scripts / logs](https://github.com/tastelikefeet/swift5-regression-exps/tree/main/perf_bench_20261124) record models, devices, batches, precision, placement and versions. Chart links pin the results-repository commit; curves use actual JSONL steps, not values inferred from images.
+
+Pin those conditions and provision each form's dependencies and resources before reproduction. See [CLI](./interfaces/cli.mdx), [remote training](./interfaces/server-client.mdx) and [examples/v5](https://github.com/modelscope/ms-swift/tree/main/examples/v5). This batch measures training regression, not AutoResearch quality; see [Benchmarks](/en/webui/benchmarks).
