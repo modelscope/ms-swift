@@ -10,7 +10,7 @@ PLAN (case | input | expected | kills):
  7 success+ok | no E, all ok | no raise, full order | control GREEN
  8 orig+ok | E, cleanups ok | E propagates | clean failure path
  9 order | no E, all ok | stats..tracker order | order regression
-10 remote | remote_run=True | stats/finish/sampler/reap skip | remote branch
+10 remote | remote_run=True | close weight engine instead of sampler | remote branch
 11 no-job-id | engine_core_job_id=None | reap skipped | reap condition
 
 Oracle = Python exception semantics (which type propagates) + recorded call order.
@@ -47,7 +47,7 @@ def _build(raisers=None):
 
     state = NS(finish_rollout_metrics=mk("finish"), tracker=NS(close=mk("tracker")))
     driver = NS(stats=mk("stats", ret={"s": 1}))
-    cluster = NS(rollout=NS(close=mk("rollout")), sampler=NS(shutdown=mk("sampler")))
+    cluster = NS(rollout=NS(close=mk("rollout")), sampler=NS(shutdown=mk("sampler")), engine=NS(close=mk("engine")))
     return state, driver, cluster, mk("perf"), mk("reap"), calls
 
 
@@ -111,7 +111,7 @@ def test_cleanup_order():
 def test_remote_run_skips_local_steps():
     args = _build()
     _finalize(*args[:5], remote_run=True)
-    assert args[5] == ["perf", "rollout", "tracker"]
+    assert args[5] == ["perf", "rollout", "engine", "tracker"]
 
 
 def test_reap_skipped_without_job_id():

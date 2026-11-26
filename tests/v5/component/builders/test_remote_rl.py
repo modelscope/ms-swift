@@ -89,6 +89,128 @@ def test_remote_weight_sync_replaces_the_uri_and_counts_one_version_per_sync():
     assert engine.version() == 2
 
 
+def test_remote_weight_sync_reclaims_previous_snapshot_after_lease():
+    from types import SimpleNamespace
+
+    first = 'twinkle://run/sampler_weights/first'
+    second = 'twinkle://run/sampler_weights/second'
+    model = _SaveModel(first)
+    deleted = []
+    model.client = SimpleNamespace(delete_checkpoint=lambda run, name: deleted.append((run, name)))
+    sampler = SimpleNamespace(adapter_path=None, adapter_lease=None, on_adapter_task_unknown=None)
+    engine = RemoteWeightSync(model, sampler, versioned=True)
+
+    engine.sync_weights()
+    with sampler.adapter_lease(None) as active:
+        model._path = second
+        engine.sync_weights()
+        assert active == first
+        assert sampler.adapter_path == second
+        assert deleted == []
+    engine.close()
+
+    assert model.save_calls[0][0] != model.save_calls[1][0]
+    assert deleted == [('run', 'sampler_weights/first'), ('run', 'sampler_weights/second')]
+
+
+def test_remote_weight_sync_recovers_save_after_wait_timeout():
+    from types import SimpleNamespace
+
+    from twinkle_client.exceptions import TaskWaitTimeoutError
+
+    deleted = []
+
+    class Model:
+        def save_tracked(self, name, *, on_outcome_unknown, **kwargs):
+            self.uri = f'twinkle://run/sampler_weights/{name}'
+            on_outcome_unknown('save-request')
+            raise TaskWaitTimeoutError(request_id='save-request', waited=1)
+
+    model = Model()
+    task = SimpleNamespace(status='running', result=None)
+    model.client = SimpleNamespace(
+        retrieve_task=lambda request_id: task,
+        delete_checkpoint=lambda run, name: deleted.append((run, name)))
+    sampler = SimpleNamespace(adapter_path=None, adapter_lease=None, on_adapter_task_unknown=None)
+    engine = RemoteWeightSync(model, sampler, versioned=True)
+
+    with pytest.raises(TaskWaitTimeoutError):
+        engine.sync_weights()
+    assert sampler.adapter_path is None and engine.version() == 0
+    engine.close(reconcile_timeout=0)
+    assert deleted == []
+    task.status = 'completed'
+    task.result = {'twinkle_path': model.uri}
+    engine.close()
+    assert deleted == [('run', model.uri.split('/', 3)[-1])]
+
+
+@pytest.mark.parametrize('delete_times_out', [False, True])
+def test_remote_weight_sync_rejects_old_uri_during_deletion(delete_times_out):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from types import SimpleNamespace
+
+    first = 'twinkle://run/sampler_weights/first'
+    model = _SaveModel(first)
+    deleting, finish = Event(), Event()
+
+    def delete(*args):
+        deleting.set()
+        assert finish.wait(5)
+        if delete_times_out:
+            raise TimeoutError('delete outcome is unknown')
+
+    model.client = SimpleNamespace(delete_checkpoint=delete)
+    sampler = SimpleNamespace(adapter_path=None, adapter_lease=None, on_adapter_task_unknown=None)
+    engine = RemoteWeightSync(model, sampler, versioned=True)
+    engine.sync_weights()
+    model._path = 'twinkle://run/sampler_weights/second'
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        publish = executor.submit(engine.sync_weights)
+        try:
+            assert deleting.wait(5)
+            with pytest.raises(ValueError, match='being reclaimed'), sampler.adapter_lease(first):
+                pytest.fail('old snapshot was leased during deletion')
+            with sampler.adapter_lease('external') as uri:
+                assert uri == 'external'
+        finally:
+            finish.set()
+        publish.result(timeout=5)
+    if delete_times_out:
+        with pytest.raises(ValueError, match='being reclaimed'), sampler.adapter_lease(first):
+            pytest.fail('old snapshot was leased after an unconfirmed deletion')
+
+
+def test_remote_weight_sync_only_defers_reclamation_for_unresolved_samples():
+    from types import SimpleNamespace
+
+    first = 'twinkle://run/sampler_weights/first'
+    second = 'twinkle://run/sampler_weights/second'
+    model = _SaveModel(first)
+    deleted = []
+    task = SimpleNamespace(status='running')
+    model.client = SimpleNamespace(
+        retrieve_task=lambda request_id: task,
+        delete_checkpoint=lambda run, name: deleted.append(name))
+    sampler = SimpleNamespace(adapter_path=None, adapter_lease=None, on_adapter_task_unknown=None)
+    engine = RemoteWeightSync(model, sampler, versioned=True)
+
+    engine.sync_weights()
+    with pytest.raises(TimeoutError), sampler.adapter_lease(None) as uri:
+        sampler.on_adapter_task_unknown(uri, 'request')
+        raise TimeoutError()
+    model._path = second
+    engine.sync_weights()
+    assert deleted == []
+    with pytest.raises(OSError), sampler.adapter_lease(None):
+        raise OSError('could not open local media')
+    task.status = 'failed'
+    task.execution_finished = True
+    engine.close()
+    assert deleted == ['sampler_weights/first', 'sampler_weights/second']
+
+
 def test_remote_weight_sync_fails_loudly_without_a_twinkle_path():
     save_model = _SaveModel(None)
     sampler = type('Sampler', (), {'adapter_uri': 'twinkle://old'})()
@@ -402,3 +524,101 @@ def test_frozen_reward_model_remote_refuses_an_unreadable_adapter(monkeypatch):
         _build_frozen_reward_model(
             spec, ModelConfig(model='m'), TemplateConfig(), distributed_config=_remote_dist())
     assert handle.adapter_calls == [] and handle.load_calls == []
+
+
+def test_remote_first_sample_reply_lost_preserves_checkpoint_until_execution_finishes(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from types import SimpleNamespace
+
+    import requests
+    from twinkle_client.rollout import HTTPSampler
+    from twinkle_client.sampler.vllm_sampler import vLLMSampler
+
+    entered, lose_reply = Event(), Event()
+    states = {}
+    paths = {}
+    token = 'test-token'
+
+    def post_sample(url, body):
+        request_id = body.tracked_request_id(token)
+        assert request_id and request_id.startswith('req_sample_')
+        states[request_id] = ('queued', False)
+        paths[body.adapter_uri].read_text()
+        entered.set()
+        assert lose_reply.wait(5)
+        raise requests.ReadTimeout('first POST response lost')
+
+    def retrieve(request_id):
+        status, finished = states[request_id]
+        return SimpleNamespace(status=status, execution_finished=finished)
+
+    def delete(run, name):
+        paths[f'twinkle://{run}/{name}'].unlink()
+
+    class Model:
+        client = SimpleNamespace(retrieve_task=retrieve, delete_checkpoint=delete)
+
+        def save(self, name, **kwargs):
+            ref = f'twinkle://run/sampler_weights/{name}'
+            paths[ref] = tmp_path/name
+            paths[ref].write_text(name)
+            return SimpleNamespace(twinkle_path=ref)
+
+    http = vLLMSampler.__new__(vLLMSampler)
+    http.server_url = 'http://example.test/twinkle'
+    http._transport = SimpleNamespace(context=SimpleNamespace(api_key=token), post_model=post_sample)
+    rollout = HTTPSampler(http, None)
+    sync = RemoteWeightSync(Model(), rollout, versioned=True)
+    sync.sync_weights()
+    old = rollout.adapter_path
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        sampling = executor.submit(rollout.sample, {'input_ids': [1, 2]})
+        try:
+            assert entered.wait(5)
+            sync.sync_weights()
+            assert rollout.adapter_path != old
+            assert paths[old].is_file()
+        finally:
+            lose_reply.set()
+        with pytest.raises(requests.ReadTimeout, match='first POST response lost'):
+            sampling.result(timeout=5)
+    request_id, = states
+    states[request_id] = ('running', False)
+    sync.sync_weights()
+    assert paths[old].is_file()
+    states[request_id] = ('failed', False)
+    sync.sync_weights()
+    assert paths[old].is_file()
+    states[request_id] = ('failed', True)
+    sync.sync_weights()
+    assert not paths[old].exists()
+    sync.close()
+    assert all(not path.exists() for path in paths.values())
+
+
+
+def test_remote_close_rechecks_unconfirmed_sampling_before_reclaim():
+    from types import SimpleNamespace
+
+    uri = 'twinkle://run/sampler_weights/old'
+    model = _SaveModel(uri)
+    deleted = []
+    replies = iter([
+        SimpleNamespace(status='running', execution_finished=False),
+        SimpleNamespace(status='failed', execution_finished=False),
+        SimpleNamespace(status='failed', execution_finished=True),
+    ])
+
+    def retrieve(request_id):
+        assert deleted == []
+        return next(replies)
+
+    model.client = SimpleNamespace(retrieve_task=retrieve, delete_checkpoint=lambda run, name: deleted.append(name))
+    sampler = SimpleNamespace(adapter_path=None, adapter_lease=None, on_adapter_task_unknown=None)
+    engine = RemoteWeightSync(model, sampler, versioned=True)
+    engine.sync_weights()
+    with sampler.adapter_lease(None) as active:
+        sampler.on_adapter_task_unknown(active, 'request')
+    engine.close(reconcile_timeout=2)
+    assert deleted == ['sampler_weights/old']

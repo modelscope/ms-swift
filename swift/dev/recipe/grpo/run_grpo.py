@@ -596,6 +596,8 @@ def _finalize_grpo_resources(state, driver, cluster, *, remote_run, engine_core_
         status='failed' if orig[0] is not None else 'loop_completed') if not remote_run else None)
     _guard('Perf.shutdown', perf_shutdown)
     _guard('rollout.close', cluster.rollout.close)
+    if remote_run:
+        _guard('engine.close', lambda: cluster.engine.close())
     _guard('sampler.shutdown', lambda: cluster.sampler.shutdown() if not remote_run else None)
     _guard('reap_engine_core_orphans',
            lambda: reap(engine_core_job_id) if (not remote_run and engine_core_job_id) else None)
