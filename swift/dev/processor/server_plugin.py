@@ -17,7 +17,7 @@ class DevInputProcessor(InputProcessor):
 
     def __init__(self, *, template_spec: Dict[str, Any], **kwargs: Any) -> None:
         from swift.dev.builders.template import build_template_from_spec
-        from swift.dev.template_contract.types import TemplateSpec
+        from twinkle.template.contract.types import TemplateSpec
 
         template = build_template_from_spec(TemplateSpec.from_dict(template_spec))
         super().__init__(**{**processor_kwargs(template), **kwargs})

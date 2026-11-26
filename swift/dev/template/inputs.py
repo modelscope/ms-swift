@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 import json
 from PIL import Image
 
-from swift.dev.template_contract import ConversationSample, KTOSample, PreferenceSample
+from twinkle.template.contract import ConversationSample, KTOSample, PreferenceSample
 from .runtime import get_logger
 from .utils import Messages, Tool, get_last_user_round, messages_to_history, normalize_messages
 

@@ -81,7 +81,7 @@ def build_template():
     """
     if 'template' not in _TEMPLATE_CACHE:
         import twinkle.template
-        from twinkle.server.utils import get_template_for_model
+        from twinkle.template.mapping import get_template_for_model
         from twinkle.template import Template
         from twinkle.utils import construct_class
         _TEMPLATE_CACHE['template'] = construct_class(

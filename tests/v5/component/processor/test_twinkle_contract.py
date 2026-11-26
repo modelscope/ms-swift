@@ -172,7 +172,7 @@ def test_templates_satisfy_shared_runtime_protocol():
     from twinkle.template import Template as TwinkleTemplate
 
     from swift.dev.template import Template as SwiftTemplate
-    from swift.dev.template_contract import TemplateProtocol
+    from twinkle.template.contract import TemplateProtocol
 
     assert isinstance(object.__new__(SwiftTemplate), TemplateProtocol)
     assert isinstance(object.__new__(TwinkleTemplate), TemplateProtocol)

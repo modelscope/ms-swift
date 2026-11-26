@@ -101,7 +101,7 @@ def build_remote_model(model_config: 'ModelConfig', distributed_config: 'Distrib
     """
     from twinkle_client.model import MultiLoraTransformersModel
 
-    from twinkle import init_twinkle_client
+    from twinkle_client import init_twinkle_client
 
     init_twinkle_client(base_url=distributed_config.server_base_url, api_key=distributed_config.server_api_key)
     handle = MultiLoraTransformersModel(model_config.model or '')

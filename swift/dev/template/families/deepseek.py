@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.dev.template_contract import unshift_values
+from twinkle.template.contract import unshift_values
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType, TemplateCapability
 from ..inputs import StdTemplateInputs

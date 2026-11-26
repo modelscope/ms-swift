@@ -7,7 +7,7 @@ description: Python/CUDA 要求与 GPU、NPU、XPU、CPU 支持。
 
 | 项 | 范围 | 推荐 |
 |---|---|---|
-| python | >= 3.10 | 3.12 |
+| python | >= 3.11, < 3.14 | 3.12 |
 | cuda | — | 12.8 / 13.0（CPU/NPU/MPS 无需） |
 | torch | >= 2.6 | 最新稳定版 |
 | transformers | v5 后端 | 5.x |
@@ -19,6 +19,22 @@ description: Python/CUDA 要求与 GPU、NPU、XPU、CPU 支持。
 ```bash
 pip install -r requirements/tests.txt   # 测试/lint 工具
 pip install megatron-core               # Megatron 后端（经 mcore-bridge）
+```
+
+## 远程客户端与服务部署（按需安装）
+
+完成快速启动中的基础安装后，使用安装 ms-swift 的 Python 环境，进入已克隆的 Twinkle 仓库根目录，按用途安装对应的包。
+
+使用 Python SDK 或 `--mode remote` 连接远端服务时，安装 `twinkle-client`：
+
+```bash
+pip install -e ./twinkle_cs/client
+```
+
+使用 `swift deploy` 或 `twinkle-server` 部署服务时，安装 `twinkle-server`：
+
+```bash
+pip install -e ./twinkle_cs/server
 ```
 
 ## 硬件

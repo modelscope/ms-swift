@@ -10,7 +10,7 @@ Public surface:
 
 from __future__ import annotations
 
-from swift.dev.template_contract import (
+from twinkle.template.contract import (
     CompletionEncoding,
     DecodeContext,
     DecodedResponse,

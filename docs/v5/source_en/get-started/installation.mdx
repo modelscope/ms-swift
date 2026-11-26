@@ -7,7 +7,7 @@ description: Python/CUDA requirements and GPU, NPU, XPU, CPU support.
 
 | Item | Range | Recommended |
 |---|---|---|
-| python | >= 3.10 | 3.12 |
+| python | >= 3.11, < 3.14 | 3.12 |
 | cuda | — | 12.8 / 13.0 (not needed for CPU/NPU/MPS) |
 | torch | >= 2.6 | latest stable |
 | transformers | v5 backend | 5.x |
@@ -19,6 +19,22 @@ Install from source as in [Quick Start](./quick-start.mdx). Optional extras:
 ```bash
 pip install -r requirements/tests.txt   # test/lint tooling
 pip install megatron-core               # Megatron backend (via mcore-bridge)
+```
+
+## Remote client and service deployment (optional)
+
+After completing the basic installation in Quick Start, use the Python environment where ms-swift is installed. Enter the root of your cloned Twinkle repository and install the package needed for your use case.
+
+Install `twinkle-client` to connect to a remote service through the Python SDK or `--mode remote`:
+
+```bash
+pip install -e ./twinkle_cs/client
+```
+
+Install `twinkle-server` to deploy a service with `swift deploy` or `twinkle-server`:
+
+```bash
+pip install -e ./twinkle_cs/server
 ```
 
 ## Hardware

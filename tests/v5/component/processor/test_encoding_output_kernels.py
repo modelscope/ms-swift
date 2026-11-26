@@ -7,8 +7,8 @@ Template surface; these tests pin the kernels directly.
 
 Maps to ut_plan S18-01/06/09/14/15.
 """
-from swift.dev.template_contract import encoding as E
-from swift.dev.template_contract import output as O
+from twinkle.template.contract import encoding as E
+from twinkle.template.contract import output as O
 
 OPEN, CLOSE = chr(60) + 'think' + chr(62), chr(60) + '/think' + chr(62)
 

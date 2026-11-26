@@ -13,7 +13,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Any, Dict, Mapping, NamedTuple
 
-from swift.dev.template_contract import TOKEN_FILL
+from twinkle.template.contract import TOKEN_FILL
 
 IGNORE_INDEX = -100
 

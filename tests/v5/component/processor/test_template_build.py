@@ -267,8 +267,6 @@ def test_dev_template_package_import_boundary():  # noqa: C901
             if (
                 module == "swift.dev.template"
                 or module.startswith("swift.dev.template.")
-                or module == "swift.dev.template_contract"
-                or module.startswith("swift.dev.template_contract.")
             ):
                 return
             if module == "swift" or module.startswith("swift."):
@@ -389,7 +387,7 @@ def test_template_contract_is_a_lightweight_leaf_package():
     import ast
     from pathlib import Path
 
-    import swift.dev.template_contract as contract
+    import twinkle.template.contract as contract
 
     root = Path(contract.__file__).parent
     violations = []
@@ -407,7 +405,7 @@ def test_template_contract_is_a_lightweight_leaf_package():
     assert not violations, "\n".join(violations)
 
     code = (
-        "import sys; import swift.dev.template_contract; "
+        "import sys; import twinkle.template.contract; "
         "assert 'swift.dev.template' not in sys.modules; "
         "assert 'librosa' not in sys.modules; assert 'av' not in sys.modules"
     )

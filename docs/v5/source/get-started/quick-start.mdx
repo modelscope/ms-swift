@@ -5,18 +5,33 @@ description: 从源码安装 SWIFT v5，跑通第一个 LoRA 微调。
 
 ## 安装（开发版本）
 
-v5 正在开发中，尚未发布到 PyPI，请从源码安装：
+v5 正在开发中，尚未发布到 PyPI，请从源码安装。各仓库可放在自行选择的位置，使用同一个 Python 环境依次安装。
+
+### Twinkle
+
+克隆 [Twinkle 仓库](https://github.com/modelscope/twinkle)，进入该仓库根目录，安装 `twinkle-kit`：
 
 ```bash
-git clone https://github.com/modelscope/ms-swift.git
-cd ms-swift
 pip install -e .
-# twinkle（组件库）与 mcore-bridge（Megatron 权重转换）
-git clone https://github.com/modelscope/twinkle.git && pip install -e twinkle
-git clone https://github.com/modelscope/mcore-bridge.git && pip install -e mcore-bridge
 ```
 
-环境要求：Python >= 3.10（推荐 3.12），GPU 训练推荐 CUDA 12.8/13.0。
+### ms-swift
+
+克隆 [ms-swift 仓库](https://github.com/modelscope/ms-swift)，进入该仓库根目录，安装 `ms-swift`：
+
+```bash
+pip install -e .
+```
+
+### mcore-bridge（Megatron 后端按需安装）
+
+克隆 [mcore-bridge 仓库](https://github.com/modelscope/mcore-bridge)，进入该仓库根目录，安装 `mcore-bridge`：
+
+```bash
+pip install -e .
+```
+
+环境要求：Python >= 3.11, < 3.14（推荐 3.12），GPU 训练推荐 CUDA 12.8/13.0。
 NPU/XPU/CPU 见[环境安装与硬件支持](./installation.mdx)。
 
 ## 第一个 LoRA 训练

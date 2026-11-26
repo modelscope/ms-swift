@@ -211,7 +211,7 @@ def test_split_reasoning_inverts_the_fold(meta_kwargs):
     ],
 )
 def test_reasoning_state_follows_marker_order(initial, generated, expected):
-    from swift.dev.template_contract import split_reasoning_state
+    from twinkle.template.contract import split_reasoning_state
 
     assert (
         split_reasoning_state(generated, open_marker="<think>", close_marker="</think>", reasoning_started=initial)[2]
@@ -227,7 +227,7 @@ def test_reasoning_state_follows_marker_order(initial, generated, expected):
     ],
 )
 def test_decode_output_uses_same_normalized_markers_for_split_and_state(generated):
-    from swift.dev.template_contract import decode_output
+    from twinkle.template.contract import decode_output
 
     response = decode_output(
         generated,
@@ -242,7 +242,7 @@ def test_decode_output_uses_same_normalized_markers_for_split_and_state(generate
 def test_gemma_decode_splits_special_reasoning_close_before_cleanup():
     from swift.dev.template.families.gemma import Gemma4Template
     from swift.dev.template.output import OutputCodec
-    from swift.dev.template_contract import DecodeContext
+    from twinkle.template.contract import DecodeContext
 
     class Tokenizer:
         all_special_tokens = ["<channel|>"]
@@ -266,7 +266,7 @@ def test_gemma_decode_splits_special_reasoning_close_before_cleanup():
 
 def test_truncated_reasoning_never_becomes_answer_content():
     from swift.dev.template.output import OutputCodec
-    from swift.dev.template_contract import DecodeContext
+    from twinkle.template.contract import DecodeContext
 
     class Tokenizer:
         all_special_tokens = []

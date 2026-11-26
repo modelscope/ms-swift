@@ -25,7 +25,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
 from transformers.utils import strtobool
 
-from swift.dev.template_contract import (
+from twinkle.template.contract import (
     CompletionEncoding,
     DecodeContext,
     DecodedResponse,
@@ -39,11 +39,11 @@ from swift.dev.template_contract import (
     append_and_finalize,
     feature_has_media,
 )
-from swift.dev.template_contract.encoding import refresh as refresh_row
-from swift.dev.template_contract.encoding import render_delta as render_delta_tokens
-from swift.dev.template_contract.encoding import shift as shift_row
-from swift.dev.template_contract.encoding import unshift as unshift_row
-from swift.dev.template_contract.output import _reasoning_is_open, split_reasoning
+from twinkle.template.contract.encoding import refresh as refresh_row
+from twinkle.template.contract.encoding import render_delta as render_delta_tokens
+from twinkle.template.contract.encoding import shift as shift_row
+from twinkle.template.contract.encoding import unshift as unshift_row
+from twinkle.template.contract.output import _reasoning_is_open, split_reasoning
 from .constant import TemplateCapability
 from .conventions import APPEND_ROLES, NO_SHIFT_TASK_TYPES, model_payload_keys
 from .inputs import (

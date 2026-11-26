@@ -6,8 +6,8 @@ from functools import partial
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, FrozenSet, Literal, Optional
 
-from swift.dev.template_contract import ModelInfo as SpecModelInfo
-from swift.dev.template_contract import ModelRef, TemplateSpec
+from twinkle.template.contract import ModelInfo as SpecModelInfo
+from twinkle.template.contract import ModelRef, TemplateSpec
 
 if TYPE_CHECKING:
     from swift.dev.config import TemplateConfig

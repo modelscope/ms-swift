@@ -21,7 +21,7 @@ from swift.dev.template.conventions import (
 )
 from swift.dev.template.meta import TemplateMeta
 from swift.dev.template.output import OutputCodec
-from swift.dev.template_contract import CompletionEncoding, MediaBundle, PromptEncoding, RolloutState
+from twinkle.template.contract import CompletionEncoding, MediaBundle, PromptEncoding, RolloutState
 
 IGNORE = -100
 
@@ -203,13 +203,15 @@ def test_prompt_and_completion_encodings_are_state_only():
 
 
 def test_runtime_order_marker_is_absent_from_production_code():
+    import twinkle.template.contract as contract
+
     dev = Path(__file__).resolve().parents[4] / "swift" / "dev"
     paths = (
         *dev.joinpath("template").rglob("*.py"),
-        *dev.joinpath("template_contract").rglob("*.py"),
+        *Path(contract.__file__).parent.rglob("*.py"),
         *dev.joinpath("rollout").rglob("*.py"),
     )
-    assert not [str(path.relative_to(dev)) for path in paths if "_labels_shifted" in path.read_text()]
+    assert not [str(path) for path in paths if "_labels_shifted" in path.read_text()]
 
 
 def test_unsupported_capabilities_fail_before_silent_fallback():

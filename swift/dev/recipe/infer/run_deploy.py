@@ -42,8 +42,8 @@ def run_deploy(
     deployment keeps living on the Ray cluster; deployments of different model names coexist
     behind one shared gateway (the registry widens per deployment).
     """
-    from twinkle.server import launch_server
-    from twinkle.server.launcher import ensure_ray_cluster
+    from twinkle_server import launch_server
+    from twinkle_server.launcher import ensure_ray_cluster
 
     from swift.dev.config import DeployConfig as _DeployConfig
     from swift.dev.config import DistributedConfig as _DistributedConfig
@@ -132,7 +132,7 @@ def build_server_config(
     ``skip_apps`` drops application names from the assembled config -- callers use it to leave
     an already-running shared app (e.g. the data-plane) untouched.
     """
-    from twinkle.server.config import (
+    from twinkle_server.config import (
         ApplicationSpec,
         DataPlaneArgs,
         HttpOptions,
@@ -271,7 +271,7 @@ def _serve_routes() -> Dict[str, str]:
 
 def _gateway_app_spec(deploy_config: DeployConfig, supported_models: List[Any]) -> Any:
     """The shared gateway application specification for launch and stop."""
-    from twinkle.server.config import ApplicationSpec, ServerArgs
+    from twinkle_server.config import ApplicationSpec, ServerArgs
 
     route_prefix = deploy_config.route_prefix
     return ApplicationSpec(
@@ -290,7 +290,7 @@ def _gateway_app_spec(deploy_config: DeployConfig, supported_models: List[Any]) 
 
 def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelConfig] = None) -> None:
     """Pass model identity and gateway configuration to the server's deployment owner."""
-    from twinkle.server import ServerLauncher
+    from twinkle_server import ServerLauncher
 
     public_name = deploy_config.served_model_name
     if public_name is None and model_config is not None and getattr(model_config, "model", None):
@@ -308,7 +308,7 @@ def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelCon
 
 def _server_config_with(gateway_spec: Any, deploy_config: DeployConfig) -> Any:
     """Build the gateway configuration Twinkle needs to locate the deployment."""
-    from twinkle.server.config import HttpOptions, PersistenceConfig, ServerConfig
+    from twinkle_server.config import HttpOptions, PersistenceConfig, ServerConfig
 
     return ServerConfig(
         ray_namespace=deploy_config.ray_namespace,

@@ -151,7 +151,7 @@ def resolve_twinkle_template(
     Returns ``{'template_cls': <name>, **kwargs}`` -- a class NAME plus kwargs, not the DevMixin
     instance (it cannot cross the actor boundary); the name comes from twinkle's own template map.
     """
-    from twinkle.server.utils import get_template_for_model
+    from twinkle.template.mapping import get_template_for_model
 
     # model_id is left out: the sampler fills it from its own (the same model).
     spec: Dict[str, Any] = {"template_cls": get_template_for_model(str(model_config.model or ""))}

@@ -5,18 +5,33 @@ description: Install SWIFT v5 from source and run your first LoRA fine-tune.
 
 ## Install (development version)
 
-v5 is under active development and not published to PyPI. Install from source:
+v5 is under active development and not published to PyPI. Clone each repository to a location of your choice and install the packages in the following order, using the same Python environment.
+
+### Twinkle
+
+Clone the [Twinkle repository](https://github.com/modelscope/twinkle), enter its root directory, and install `twinkle-kit`:
 
 ```bash
-git clone https://github.com/modelscope/ms-swift.git
-cd ms-swift
 pip install -e .
-# twinkle (component library) and mcore-bridge (Megatron weight conversion)
-git clone https://github.com/modelscope/twinkle.git && pip install -e twinkle
-git clone https://github.com/modelscope/mcore-bridge.git && pip install -e mcore-bridge
 ```
 
-Requirements: Python >= 3.10 (3.12 recommended), CUDA 12.8/13.0 for GPU training.
+### ms-swift
+
+Clone the [ms-swift repository](https://github.com/modelscope/ms-swift), enter its root directory, and install `ms-swift`:
+
+```bash
+pip install -e .
+```
+
+### mcore-bridge (optional, for the Megatron backend)
+
+Clone the [mcore-bridge repository](https://github.com/modelscope/mcore-bridge), enter its root directory, and install `mcore-bridge`:
+
+```bash
+pip install -e .
+```
+
+Requirements: Python >= 3.11, < 3.14 (3.12 recommended), CUDA 12.8/13.0 for GPU training.
 See [Installation & Hardware](./installation.mdx) for NPU/XPU/CPU notes.
 
 ## First LoRA run

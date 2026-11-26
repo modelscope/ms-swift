@@ -5,8 +5,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import json
 
-from swift.dev.template_contract import DecodeContext, DecodedResponse
-from swift.dev.template_contract.output import ToolParser, decode_output
+from twinkle.template.contract import DecodeContext, DecodedResponse
+from twinkle.template.contract.output import ToolParser, decode_output
 
 
 def _arguments(value: Any) -> Any:
