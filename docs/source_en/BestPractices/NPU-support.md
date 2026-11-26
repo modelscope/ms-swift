@@ -688,6 +688,8 @@ export GLM_MHC=both GLM_MHC_BACKEND=cann
 
 Then run your usual `swift pt` or `swift sft` command. The startup log reports the implementation of each operation.
 
+For GLM-5.3-Flash training with `megatron pt`, set `GLM_MEGATRON_MHC=cann` to enable the CANN pre/post operators and their backward kernels in Megatron's `HyperConnectionModule`. Swift registers the adapter during Megatron initialization on NPU. The default value `off` selects native mHC. The verified text-training configuration uses four residual streams, BF16, zero dropout and mHC recomputation disabled. It uses CANN 9.1.0, torch-npu 2.10.0.post7 and Megatron-LM commit `c4220af3` with the mcore-bridge GLM patch applied.
+
 ## Model Saving, Merge LoRA, and Resume Training
 
 Use `--output_dir` to set the output directory, `--save_steps` to control checkpoint save intervals, and `--save_total_limit` to control how many checkpoints to keep. After LoRA training, the checkpoint directory contains adapter weights, training arguments, and trainer state. A typical directory layout is:

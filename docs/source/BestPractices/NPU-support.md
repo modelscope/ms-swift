@@ -691,6 +691,8 @@ export GLM_MHC=both GLM_MHC_BACKEND=cann
 
 然后运行原有的 `swift pt` 或 `swift sft` 命令。启动日志会显示两项运算各自的实现来源。
 
+使用 `megatron pt` 训练 GLM-5.3-Flash 时，设置 `GLM_MEGATRON_MHC=cann` 可在 Megatron 的 `HyperConnectionModule` 中启用 CANN pre/post 及其反向算子。Swift 在 NPU 上初始化 Megatron 时自动注册此适配，默认值 `off` 使用原生 mHC。本机验证覆盖四个残差流、BF16、零 dropout、关闭 mHC 重计算的文本训练。环境使用 CANN 9.1.0、torch-npu 2.10.0.post7 和应用了 mcore-bridge GLM 补丁的 Megatron-LM 提交 `c4220af3`。
+
 ## 模型保存、Merge LoRA 和断点续训
 
 训练时通过 `--output_dir` 指定输出目录，通过 `--save_steps` 控制 checkpoint 保存间隔，通过 `--save_total_limit` 控制最多保留多少个 checkpoint。LoRA 训练结束后，checkpoint 目录中会保存 adapter 权重、训练参数和 trainer 状态；常见目录形态如下：
