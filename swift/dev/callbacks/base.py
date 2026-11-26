@@ -20,6 +20,9 @@ class CallbackState:
     metrics: Dict[str, Any] = field(default_factory=dict)  # last log record / eval metrics
     best_metric: Optional[float] = None  # best metric_for_best_model so far
     output_dir: str = 'output'
+    # Set by the loop right before on_train_end: True while the run unwinds on an exception, so
+    # post-training callbacks (e.g. temperature calibration) skip their write-back on failed runs.
+    training_failed: bool = False
 
 
 @dataclass

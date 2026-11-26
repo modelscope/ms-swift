@@ -24,19 +24,34 @@ export TWINKLE_SERVER_URL=${TWINKLE_SERVER_URL:-http://localhost:8000}
 export TWINKLE_SERVER_TOKEN=${TWINKLE_SERVER_TOKEN:-EMPTY_TOKEN}
 export TWINKLE_MODEL_ID=${TWINKLE_MODEL_ID:-Qwen/Qwen3.5-4B}
 
-# Wait for the gateway to accept connections before firing client calls.
+# Wait for the server to be FULLY ready before firing client calls.
+#
+# Startup race (temporary lengthened wait, NOT an SDK retry change): the gateway
+# (/api/v1/models) goes live BEFORE the launcher finishes deploying the training router
+# and the sampler pool (the launcher blocks on sampler-pool initialize first). An early
+# create_lora_training_client therefore hits a non-retryable 404 even though the gateway
+# already answers. So beyond the gateway poll we also wait for the per-model training +
+# sampler healthz endpoints, with a longer overall budget, to let those routers deploy.
 python - <<'PY'
 import os, time, urllib.request
 url = os.environ['TWINKLE_SERVER_URL'].rstrip('/')
-for _ in range(120):
-    try:
-        urllib.request.urlopen(url + '/api/v1/models', timeout=5)
-        print('gateway ready:', url)
-        break
-    except Exception:
-        time.sleep(5)
-else:
-    raise SystemExit('gateway not ready at ' + url)
+model = os.environ['TWINKLE_MODEL_ID']
+
+def wait(path, attempts, label):
+    for _ in range(attempts):
+        try:
+            urllib.request.urlopen(url + path, timeout=5)
+            print(label, 'ready:', url + path)
+            return
+        except Exception:
+            time.sleep(5)
+    raise SystemExit(label + ' not ready at ' + url + path)
+
+# Gateway first (lengthened budget: 240 x 5s = 20min).
+wait('/api/v1/models', 240, 'gateway')
+# Then the training router + sampler pool, which deploy AFTER the gateway is up.
+wait('/api/v1/model/' + model + '/healthz', 240, 'training router')
+wait('/api/v1/sampler/' + model + '/healthz', 240, 'sampler pool')
 PY
 
 cd /tmp

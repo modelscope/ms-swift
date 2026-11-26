@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.distill.worker import DistillWorker
 from swift.dev.recipe.utils import TEACHER_GROUP, auxiliary_mesh, build_rl_sampler, effective_colocate, teacher_group
 from swift.dev.template.conventions import PROMPT_INPUT_KEYS
@@ -176,7 +177,7 @@ def initialize_distill_cluster(
                else build_dp_mesh(distributed_config, sp))
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None and not remote_run:
+    if resume_dir and not has_adapter(tuner_config) and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_distill).
         policy_config = copy.deepcopy(model_config)
@@ -195,7 +196,7 @@ def initialize_distill_cluster(
         moe_config=moe_config,
         torch_dtype="float32",
     )
-    if tuner_config is not None:
+    if has_adapter(tuner_config):
         apply_tuner(
             model,
             tuner_config,
@@ -387,7 +388,7 @@ def _build_teachers(
             "forward_only with no offload hook. Leave it off."
         )
     if rl_config._teacher_use_disable_adapter:
-        if tuner_config is None:
+        if not has_adapter(tuner_config):
             raise ValueError(
                 "rl_config._teacher_use_disable_adapter=True requires a LoRA student "
                 "(tuner_config), since it distils from the adapter-disabled base of that "

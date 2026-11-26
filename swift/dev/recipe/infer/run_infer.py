@@ -3,6 +3,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -89,7 +90,7 @@ def run_infer(
 def _resolve_adapters(adapters: Optional[List[str]], tuner_config: Optional[TunerConfig]) -> Optional[List[str]]:
     if adapters:
         return list(adapters)
-    if tuner_config is not None and getattr(tuner_config, 'adapters', None):
+    if has_adapter(tuner_config) and getattr(tuner_config, 'adapters', None):
         return list(tuner_config.adapters)
     return None
 

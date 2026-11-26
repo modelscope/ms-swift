@@ -83,8 +83,11 @@ _PROCESS_LOCAL_ATTRS = ("dummy_model", "model")
 #: The slots a prompt block may carry; substituted in one pass so injected payload text is never rescanned.
 _PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY = "{{SYSTEM}}", "{{QUERY}}"
 _PLACEHOLDER_ROUND0, _PLACEHOLDER_ROUND1 = "{{ROUND0}}", "{{ROUND1}}"
-_PLACEHOLDER_RE = re.compile("|".join(
-    re.escape(name) for name in (_PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY, _PLACEHOLDER_ROUND0, _PLACEHOLDER_ROUND1)))
+_PLACEHOLDER_RE = re.compile(
+    "|".join(
+        re.escape(name) for name in (_PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY, _PLACEHOLDER_ROUND0, _PLACEHOLDER_ROUND1)
+    )
+)
 
 
 @contextmanager
@@ -661,9 +664,11 @@ class Template(ProcessorMixin, TwinkleTemplate):
             positive = inputs.positive
             if isinstance(positive, list):
                 if not positive:
-                    raise ValueError('An embedding row has an empty `positive` list: the positive leg '
-                                     'is required (labels default to 1.0 off it), so encoding cannot '
-                                     'proceed. Provide at least one positive message pair.')
+                    raise ValueError(
+                        "An embedding row has an empty `positive` list: the positive leg "
+                        "is required (labels default to 1.0 off it), so encoding cannot "
+                        "proceed. Provide at least one positive message pair."
+                    )
                 positive = positive[0]
             positive_encoded = self._encode_truncated(positive)
             for key in positive_encoded:
@@ -767,8 +772,9 @@ class Template(ProcessorMixin, TwinkleTemplate):
                 # surfaced at loss construction with no pointer back to the data. Reject at encode
                 # time, where the offending row is still identifiable.
                 raise ValueError(
-                    'decision training rows need `target_probs` (the per-question gold '
-                    'distributions); this row carries none. Label the row, or run it as inference.')
+                    "decision training rows need `target_probs` (the per-question gold "
+                    "distributions); this row carries none. Label the row, or run it as inference."
+                )
             encoded["target_probs"] = target_probs
         return encoded
 
@@ -803,13 +809,19 @@ class Template(ProcessorMixin, TwinkleTemplate):
         legacy_preference = False
         if getattr(self, "_legacy_mode", None) in ("rlhf", "kto") and intent is None and isinstance(sample, dict):
             legacy_mode = self._legacy_mode
-            if "rejected_response" in sample:
-                sample = copy_trajectory(sample)
-                TemplateInputs._compat_rejected_response(sample)
-                self._mask_key_rounds(sample)
-                rejected = {**sample, 'messages': sample['rejected_messages']}
-                self._mask_key_rounds(rejected)
-                sample['rejected_messages'] = rejected['messages']
+            # A dict carrying ``label`` under kto mode is a KTO row too (not only the ``rejected_response``
+            # shape the KTO trainer injects), so plain KTO rows encode to the KTO schema instead of
+            # falling through to TRAIN encoding and dropping the label.
+            if "rejected_response" in sample or (legacy_mode == "kto" and "label" in sample):
+                if "rejected_response" in sample:
+                    sample = copy_trajectory(sample)
+                    TemplateInputs._compat_rejected_response(sample)
+                    self._mask_key_rounds(sample)
+                    rejected = {**sample, 'messages': sample['rejected_messages']}
+                    self._mask_key_rounds(rejected)
+                    sample['rejected_messages'] = rejected['messages']
+                sample = preference_sample_from_row(sample) if legacy_mode == "rlhf" else kto_sample_from_row(sample)
+                legacy_preference = True
                 sample = preference_sample_from_row(sample) if legacy_mode == "rlhf" else kto_sample_from_row(sample)
                 legacy_preference = True
         elif getattr(self, "_legacy_mode", None) in ("infer", "transformers") and intent is None:
@@ -958,8 +970,23 @@ class Template(ProcessorMixin, TwinkleTemplate):
         feature = self.encode(sample, intent=intent, engine=backend)
         if not isinstance(feature, dict):
             raise ValueError('encode_prompt requires one unsplit prompt feature')
+        media = MediaBundle.from_sources(feature)
         if feature_has_media(feature):
-            self._check_engine_placeholders(engine_input_ids(feature), MediaBundle.from_sources(feature))
+            self._check_engine_placeholders(engine_input_ids(feature), media)
+        if backend == 'vllm' and media.videos and feature.get('mm_processor_kwargs'):
+            # The rollout hands vLLM the original videos, which it must process itself: drop the processor
+            # flags that describe the template's own pre-processing of them (dev-swift-v5 #10602).
+            processor_kwargs = dict(feature['mm_processor_kwargs'])
+            if processor_kwargs.get('do_resize') is False:
+                processor_kwargs.pop('do_resize')
+                if feature.get('images'):
+                    image_kwargs = dict(processor_kwargs.get('images_kwargs') or {})
+                    image_kwargs.setdefault('do_resize', False)
+                    processor_kwargs['images_kwargs'] = image_kwargs
+            if processor_kwargs.get('do_sample_frames') is False:
+                processor_kwargs.pop('do_sample_frames')
+            processor_kwargs.pop('video_metadata', None)
+            feature['mm_processor_kwargs'] = processor_kwargs
         return feature
 
     def decode_message(
@@ -1599,8 +1626,12 @@ class Template(ProcessorMixin, TwinkleTemplate):
         # rewrite a user's literal '{{RESPONSE}}'.
         replacements = {
             name: value
-            for name, value in ((_PLACEHOLDER_SYSTEM, system), (_PLACEHOLDER_QUERY, query),
-                                (_PLACEHOLDER_ROUND0, round0), (_PLACEHOLDER_ROUND1, round1))
+            for name, value in (
+                (_PLACEHOLDER_SYSTEM, system),
+                (_PLACEHOLDER_QUERY, query),
+                (_PLACEHOLDER_ROUND0, round0),
+                (_PLACEHOLDER_ROUND1, round1),
+            )
             if value is not None
         }
         for context in context_list:
@@ -1611,8 +1642,9 @@ class Template(ProcessorMixin, TwinkleTemplate):
                     res_context_type.append(ContextType.RESPONSE)
                     continue
                 if replacements and "{{" in context:
-                    context = _PLACEHOLDER_RE.sub(lambda match: replacements.get(match.group(0), match.group(0)),
-                                                  context)
+                    context = _PLACEHOLDER_RE.sub(
+                        lambda match: replacements.get(match.group(0), match.group(0)), context
+                    )
             if len(context) == 0:
                 continue
             res_context_list.append(context)
@@ -1867,14 +1899,15 @@ class Template(ProcessorMixin, TwinkleTemplate):
         Returns ``(token_ids, piece_index_per_token)``; -1 masks ambiguous boundary tokens. A piece that overrides ``_tokenize``
         (custom processor kwargs) keeps the per-piece path: its offsets are not ours to assume.
         """
-        merged = ''.join(pieces)
+        merged = "".join(pieces)
         token_ids = offsets = None
         if type(self)._tokenize is Template._tokenize:
             try:
                 encoded = self.tokenizer(
-                    merged, add_special_tokens=False, return_attention_mask=False, return_offsets_mapping=True)
-                token_ids = encoded['input_ids']
-                offsets = encoded['offset_mapping']
+                    merged, add_special_tokens=False, return_attention_mask=False, return_offsets_mapping=True
+                )
+                token_ids = encoded["input_ids"]
+                offsets = encoded["offset_mapping"]
             except Exception:  # noqa: BLE001 -- slow tokenizers expose no offsets
                 token_ids = offsets = None
         if token_ids is None or offsets is None or len(offsets) != len(token_ids):
@@ -1908,7 +1941,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
         for piece in pieces[:-1]:
             position += len(piece)
             prefix = list(self._tokenize(merged[:position]))
-            if prefix != token_ids[:len(prefix)] or (bounds and len(prefix) < bounds[-1]):
+            if prefix != token_ids[: len(prefix)] or (bounds and len(prefix) < bounds[-1]):
                 token_ids, owners = [], []
                 for index, single in enumerate(pieces):
                     ids = self._tokenize(single)
@@ -2066,8 +2099,10 @@ class Template(ProcessorMixin, TwinkleTemplate):
         content = message["content"]
         # After merge, content may be a list; only process the first element.
         if isinstance(content, list):
-            if content and isinstance(content[0], str) and not content[0].startswith(
-                (thinking_prefix, non_thinking_prefix)
+            if (
+                content
+                and isinstance(content[0], str)
+                and not content[0].startswith((thinking_prefix, non_thinking_prefix))
             ):
                 content[0] = non_thinking_prefix + content[0]
         elif isinstance(content, str):
@@ -2311,15 +2346,15 @@ class Template(ProcessorMixin, TwinkleTemplate):
                     # so it is payload: no slot substitution runs over it, or a literal '{{QUERY}}'
                     # or '{{ROUND0}}' inside a tool result or follow-up would be rewritten here.
                     context_list = query.copy() if isinstance(query, list) else [query]
-                    block_slots = dict(system=None, query=None, round0=None)
+                    block_slots = {"system": None, "query": None, "round0": None}
                 elif template_meta.is_post_system and system is not None and last_round and response_message is None:
                     # post-system families render the system block on the trailing generation prompt
                     # only, never on the rounds that carry a response (Mistral-Nemo)
                     context_list = template_meta.system_prompt.copy()
-                    block_slots = dict(system=system, query=query, round0=round_idx)
+                    block_slots = {"system": system, "query": query, "round0": round_idx}
                 else:
                     context_list = template_meta.prompt.copy()
-                    block_slots = dict(system=system, query=query, round0=round_idx)
+                    block_slots = {"system": system, "query": query, "round0": round_idx}
                 self._concat_context_list(
                     context_list,
                     res_context_list,
@@ -2330,9 +2365,13 @@ class Template(ProcessorMixin, TwinkleTemplate):
             # closing markers in some families (DeepSeek V3.1): no turn opener there. A tool block
             # that already carries trailing user content is not that case -- the official jinja
             # resets its `is_tool` flag on the user message and re-opens the turn.
-            opener_suppressed = template_meta.suppress_opener_after_tool and query_messages and all(
-                query_message["role"] == "tool" and not query_message.get("_tool_user_followup")
-                for query_message in query_messages
+            opener_suppressed = (
+                template_meta.suppress_opener_after_tool
+                and query_messages
+                and all(
+                    query_message["role"] == "tool" and not query_message.get("_tool_user_followup")
+                    for query_message in query_messages
+                )
             )
             if template_meta.response_opener and not opener_suppressed:
                 opener = template_meta.response_opener.copy()
@@ -2350,9 +2389,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
                     # generation prompt: drop the single trailing whitespace character the opener keeps
                     # before a response (GLM drops a newline, LLaVA-HF a space, LLaVA-NeXT one of two
                     # newlines) -- only one, the rest belongs to the prompt
-                    opener = [
-                        item[:-1] if isinstance(item, str) and item[-1:].isspace() else item for item in opener
-                    ]
+                    opener = [item[:-1] if isinstance(item, str) and item[-1:].isspace() else item for item in opener]
                 self._concat_context_list(opener, res_context_list, res_context_types)
             response = None if response_message is None else response_message["content"]
             context_list = []
@@ -2746,7 +2783,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
         res = []
         for b in batch:
             if b.get(attr_name) is not None:
-                res.append(b.pop(attr_name))
+                res.append(torch.as_tensor(b.pop(attr_name)))
         return torch.concat(res, dim=dim) if res else None
 
     def _rlhf_data_collator(
@@ -3118,19 +3155,14 @@ class Template(ProcessorMixin, TwinkleTemplate):
         return mm_token_type_ids
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        # multimodal
+        # Encoded media from HTTP arrives as nested lists.
         res = {}
-        pixel_values = [b["pixel_values"] for b in batch if b.get("pixel_values") is not None]
-        if len(pixel_values) > 0:
-            res["pixel_values"] = torch.concat(pixel_values)
-
-            image_sizes = [b["image_sizes"] for b in batch if b.get("image_sizes") is not None]
-            if len(image_sizes) > 0:
-                res["image_sizes"] = torch.concat(image_sizes)
-
-        pixel_values_videos = [b["pixel_values_videos"] for b in batch if b.get("pixel_values_videos") is not None]
-        if len(pixel_values_videos) > 0:
-            res["pixel_values_videos"] = torch.concat(pixel_values_videos)
+        for key in ("pixel_values", "image_sizes", "pixel_values_videos"):
+            if key == "image_sizes" and "pixel_values" not in res:
+                continue
+            values = [torch.as_tensor(row[key]) for row in batch if row.get(key) is not None]
+            if values:
+                res[key] = torch.concat(values)
 
         for media_type in ["image", "video"]:
             grid_thw = self.concat_tensor(batch, f"{media_type}_grid_thw", 0)

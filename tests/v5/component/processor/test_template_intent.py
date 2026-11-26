@@ -50,6 +50,59 @@ def test_encode_prompt_uses_native_engine_intent():
     assert prompt["messages"] == sample["messages"]
 
 
+@pytest.mark.parametrize("backend", ["transformers", "vllm", "sglang", "lmdeploy"])
+def test_encode_prompt_selects_images_for_backend(backend, monkeypatch):
+    import torch
+
+    template = _template()
+    sample = {"messages": [{"role": "user", "content": "question"}], "images": ["original.png"]}
+    tensor = torch.ones(1, 3, 2, 2)
+    engine_image = tensor if backend == "transformers" else "resized.png"
+
+    def encode(_sample, *, intent, engine):
+        assert engine == backend
+        image = tensor if intent.expand_media else engine_image
+        feature = {"input_ids": [1, 2], "images": [image]}
+        if not intent.expand_media and backend == "vllm":
+            feature["mm_processor_kwargs"] = {"do_resize": False}
+        return feature
+
+    monkeypatch.setattr(template, "encode", encode)
+    state = template.encode_prompt(sample, backend=backend).state
+
+    assert state.media.images == (("original.png" if backend == "transformers" else "resized.png"),)
+    assert state.feature["images"][0] is tensor
+    assert state.mm_processor_kwargs == ({"do_resize": False} if backend == "vllm" else {})
+    assert "mm_processor_kwargs" not in state.feature
+
+
+@pytest.mark.parametrize("with_image", [False, True])
+def test_vllm_encode_prompt_keeps_resize_override_only_for_processed_images(with_image, monkeypatch):
+    template = _template()
+    sample = {"messages": [{"role": "user", "content": "question"}], "videos": ["original.mp4"]}
+    engine_kwargs = {"do_resize": False, "do_sample_frames": False, "video_metadata": [], "fps": 2}
+
+    def encode(_sample, *, intent, engine):
+        if intent.expand_media:
+            return {"input_ids": [1, 2]}
+        return {
+            "input_ids": [1, 2],
+            "images": ["resized.png"] if with_image else [],
+            "videos": ["sampled_video"],
+            "mm_processor_kwargs": engine_kwargs,
+        }
+
+    monkeypatch.setattr(template, "encode", encode)
+    state = template.encode_prompt(sample, backend="vllm").state
+    assert state.media.videos == ("original.mp4",)
+    assert state.media.images == (("resized.png",) if with_image else ())
+    expected = {"fps": 2}
+    if with_image:
+        expected["images_kwargs"] = {"do_resize": False}
+    assert state.mm_processor_kwargs == expected
+    assert engine_kwargs["do_resize"] is False and engine_kwargs["do_sample_frames"] is False
+
+
 @pytest.mark.parametrize("intent", [TRAIN, SCORE])
 @pytest.mark.parametrize("return_length", [False, True])
 def test_split_finalizes_every_real_encoder_chunk_once(intent, return_length):

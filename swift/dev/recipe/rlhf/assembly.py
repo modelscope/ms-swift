@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any, NamedTuple, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.utils import (
     REF_GROUP,
     initialize_supervised_twinkle,
@@ -46,7 +47,7 @@ def _reference_needs_group(rl_config: "RLConfig", tuner_config: Optional["TunerC
     """
     if rl_config.rl_type not in _REF_TYPES or rl_config.reference_free:
         return False
-    return not (tuner_config is not None and not rl_config.ref_adapters)
+    return not (has_adapter(tuner_config) and not rl_config.ref_adapters)
 
 
 def _build_reference(
@@ -73,7 +74,7 @@ def _build_reference(
         return None
     from swift.dev.builders import build_ref_model
 
-    if tuner_config is not None and not rl_config.ref_adapters:
+    if has_adapter(tuner_config) and not rl_config.ref_adapters:
         return model
     if rl_config.ref_model is None:
         raise ValueError(
@@ -216,7 +217,7 @@ def build_preference_objects(
     resolve_step_intervals(train_config, checkpoint_config, total_opt_steps)
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     build_config = model_config
-    if resume_dir and tuner_config is None and not remote_run:
+    if resume_dir and not has_adapter(tuner_config) and not remote_run:
         build_config = copy.copy(model_config)
         build_config.model = resume_dir
     if remote_run:
@@ -227,7 +228,7 @@ def build_preference_objects(
         )
 
         model = build_remote_model(model_config, distributed_config)
-        if tuner_config is not None:
+        if has_adapter(tuner_config):
             # rm rides the seq_cls score head through the adapter channel (the same task kwargs
             # the local path threads into modules_to_save).
             apply_remote_tuner(
@@ -249,7 +250,7 @@ def build_preference_objects(
             megatron_config=megatron_config,
             moe_config=moe_config,
         )
-        if tuner_config is not None:
+        if has_adapter(tuner_config):
             apply_tuner(
                 model,
                 tuner_config,

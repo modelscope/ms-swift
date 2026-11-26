@@ -50,7 +50,7 @@ MODEL = D('model', '模型', 'Resource', '唯一参数化函数 f_theta；独立
               doc='仅 backend=megatron 时生效的 MegatronConfig 字段'),
             Q('moe_config', 'MoE 配置', {}, type='dict',
               doc='仅 backend=megatron 时生效的 MoEConfig 字段')),
-    owner_kind='MODEL', surface='resource')
+    owner_kind='MODEL', surface='resource', client_factory='swift.dev.webui.inspection:inspect_model_node')
 
 DATASET = D('dataset', '数据集', 'Resource', '原始数据分布与预处理配置，不进入循环。',
     ports_out=(P('data', 'DATASET', '原生数据来源'),),

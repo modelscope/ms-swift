@@ -37,7 +37,7 @@ class DecisionCheckpointCallback(TrainCallback):
         """Attach the model (head discovery); ``save_weights`` forces the adapter/full choice.
 
         ``None`` (the default) auto-detects from the live module (PEFT wrap -> weights, else
-        meta-only); the recipe passes ``save_weights=tuner_config is not None`` so the choice
+        meta-only); the recipe passes ``save_weights=has_adapter(tuner_config)`` so the choice
         follows the run's own configuration.
         """
         self._model = model
@@ -45,6 +45,11 @@ class DecisionCheckpointCallback(TrainCallback):
 
     def on_save(self, state: CallbackState, control: CallbackControl, checkpoint_dir: Optional[str] = None) -> None:
         if self._model is None or not checkpoint_dir:
+            return
+        # Capability probe, not a mode branch: a model without the sidecar face (the remote
+        # handle -- the server's own save already persists the head into its checkpoint store)
+        # has nothing for this callback to write, and no local dir to stage into either.
+        if getattr(self._model, "save_scoring_head_sidecar", None) is None:
             return
         save_weights = self._save_weights
         if save_weights is None:

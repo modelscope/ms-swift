@@ -263,7 +263,11 @@ def _build_judge_sampler(spec: 'RewardSpec', model_config: 'ModelConfig', templa
         judge_engine_args = dict(engine_args or {})
         judge_engine_args['tensor_parallel_size'] = judge_mesh.tp_world_size or 1
     else:
-        judge_mesh = build_parallel_mesh(distributed_config, none_if_single_rank=True)
+        # Same ray contract as the infer samplers: a remote judge actor needs a real mesh even
+        # at dp=1 (twinkle dispatch raises on device_mesh=None with remote_group set).
+        judge_mesh = build_parallel_mesh(
+            distributed_config,
+            none_if_single_rank=(distributed_config is None or distributed_config.mode != 'ray'))
         judge_engine_args = engine_args
     return build_sampler(
         judge_model_config,

@@ -255,11 +255,16 @@ class RewardModel:
         re-encoded with this model's template from its conversation alone (``conversation``
         drops the policy's token fields).
         """
+        from swift.dev.utils.scoring import collect
         from twinkle.data_format import conversation
 
         features = [self.template.encode(copy.deepcopy(conversation(row))) for row in rows]
         outputs = self.model.forward_only(inputs=features, return_logits=True, task='seq_cls')
-        logits = outputs.get('logits')
+        # Under ray, forward_only hands back a LazyCollect Future and ``.get`` projects a nested
+        # handle; materialise it BEFORE any tensor conversion. torch.as_tensor probes len() on its
+        # argument, which projects onto the remote 0-d collected tensor and raises
+        # "len() of a 0-d tensor" (the PRM/ORM scorer sibling of the KTO z_KL LazyCollect fix).
+        logits = collect(outputs.get('logits'))
         if logits is None:
             raise RuntimeError('reward model forward returned no logits.')
         logits = torch.as_tensor(logits)

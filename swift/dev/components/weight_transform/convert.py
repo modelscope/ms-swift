@@ -100,7 +100,7 @@ class ConvertComponent(BaseWeightTransform):
         from twinkle.patch import apply_patch
 
         hf_model, template, processor = self._load_hf_model_template(
-            load_model=True, patch_offload=not self.convert_config.test_convert_precision)
+            load_model=True, patch_offload=True, cpu_load=self.convert_config.test_convert_precision)
         self._set_thread_count(hf_model)
         apply_patch(None, TorchDistSaveThreadCountPatch(self.convert_config.thread_count))
 
@@ -173,7 +173,9 @@ class ConvertComponent(BaseWeightTransform):
                     load_model=True,
                     model=output_dir,
                     model_type=resolved_model_type,
-                    template_type=resolved_template)
+                    template_type=resolved_template,
+                    patch_offload=True,
+                    cpu_load=True)
                 self._run_precision_test(strategy, hf_model, models, template, processor)
         else:
             self._set_thread_count(models[0])
@@ -625,6 +627,7 @@ class ConvertComponent(BaseWeightTransform):
         model_type: Optional[str] = None,
         template_type: Optional[str] = None,
         patch_offload: bool = False,
+        cpu_load: bool = False,
     ) -> Tuple[Any, Any, Any]:
         """Load the HF model (optionally) + template, via dev's own builders.
 
@@ -657,10 +660,19 @@ class ConvertComponent(BaseWeightTransform):
         # holds it next to the CPU-resident mcore model (use_cpu_initialization) -- twice the
         # model in RAM for HF -> mcore. 'auto' spreads the HF side over GPU/CPU/disk like legacy's
         # default placement did; an explicit model_kwargs['device_map'] wins.
+        # cpu_load is the precision-test contract: _model_cpu_forward_context assumes CPU-resident
+        # modules and must be the SOLE device owner during its forward. 'auto' shards across the
+        # visible GPUs and leaves accelerate's AlignDevicesHook moving inputs to each module's
+        # assigned device while the JIT hook moves its weights to the rank's compute device ->
+        # device mismatch on any rank where the two disagree. The host-RAM cost is the documented
+        # trade-off; the per-forward JIT move already bounds GPU memory.
         if load_model and "device_map" not in (model_config.model_kwargs or {}):
-            kwargs["device_map"] = "auto"
-        # patch_offload turns accelerate's align-device hook into a no-op: the bridge only READS
-        # the HF weights, never runs a forward. The precision test is the exception (see caller).
+            kwargs["device_map"] = "cpu" if cpu_load else "auto"
+        # patch_offload turns accelerate's align-device hook into a no-op. The bridge-read path
+        # needs it (it only READS the HF weights, never forwards). The precision-test path needs
+        # it too: with cpu_load every weight is a real CPU tensor (no meta offload stubs), so
+        # skipping the hooks is safe and leaves _model_cpu_forward_context's just-in-time move as
+        # the only placement owner -- accelerate's input-moving pre-hook would otherwise fight it.
         if load_model and patch_offload:
             from swift.dev.patch.accelerate_offload_hook import AccelerateSkipOffloadHookPatch
             from twinkle.patch import apply_context
@@ -963,8 +975,16 @@ def _forward_step_helper(model, inputs, dtype=None):
     """Single mcore forward across pipeline stages (legacy ``forward_step_helper``)."""
     import torch
     from megatron.core import mpu
-    from megatron.core.inference.communication_utils import (recv_from_prev_pipeline_rank_,
-                                                             send_to_next_pipeline_rank_)
+    from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_
+    # megatron-core renamed the send helper to ``send_to_next_pipeline_rank`` (no trailing
+    # underscore) in the 0.18 line; older builds only export ``send_to_next_pipeline_rank_``.
+    # Import whichever the installed build provides (matches swift/megatron/utils/utils.py) so the
+    # function-top import does not raise on a version that lacks the other spelling -- the pp=1
+    # path never executes the send branch, but the import still runs.
+    try:
+        from megatron.core.inference.communication_utils import send_to_next_pipeline_rank
+    except ImportError:
+        from megatron.core.inference.communication_utils import send_to_next_pipeline_rank_ as send_to_next_pipeline_rank
 
     config = model.config
     dtype = dtype or config.params_dtype
@@ -977,8 +997,8 @@ def _forward_step_helper(model, inputs, dtype=None):
     output_tensor = model(**inputs)
     if not mpu.is_pipeline_last_stage():
         recv_shape_buffer = torch.tensor(output_tensor.shape, device=torch.cuda.current_device(), dtype=torch.int64)
-        send_to_next_pipeline_rank_(recv_shape_buffer)
-        send_to_next_pipeline_rank_(output_tensor)
+        send_to_next_pipeline_rank(recv_shape_buffer)
+        send_to_next_pipeline_rank(output_tensor)
         output_tensor = None
 
     return output_tensor
@@ -986,25 +1006,15 @@ def _forward_step_helper(model, inputs, dtype=None):
 
 def _get_padding_to(tp_size: int, sequence_parallel: bool, cp_size: int, attention_backend_name: str,
                     fp8_format=None, fp4_format=None, fp8_recipe: Optional[str] = None) -> Optional[int]:
-    """Sequence-length alignment the kernels require (legacy ``get_padding_to``, args -> params)."""
-    padding_to = None
-    if tp_size > 1 and sequence_parallel:
-        padding_to = tp_size
-    if cp_size > 1:
-        padding_to = (padding_to or 1) * cp_size
-    origin_padding_to = padding_to
-    if fp8_recipe == 'blockwise':
-        padding_to = (padding_to or 1) * 128
-    elif fp8_recipe == 'mxfp8':
-        # MXFP8 uses a block size of 32. Under sequence parallel, the sequence is split across
-        # TP ranks, so each per-rank shard (seq_len / TP) must itself be divisible by 32. Pad the
-        # total length to TP * 32 to guarantee this.
-        padding_to = (padding_to or 1) * 32
-    elif fp8_format is not None or fp4_format is not None:
-        padding_to = (padding_to or 1) * 16
-    if attention_backend_name == 'fused':
-        padding_to = max(padding_to or 1, ((origin_padding_to) or 1) * 64)
-    return padding_to
+    """Sequence-length alignment the kernels require (legacy ``get_padding_to``, args -> params).
+
+    Delegates to the training data path's single source of truth so the converter's repartition
+    collation and the fp8 micro-batch padding can never drift apart.
+    """
+    from swift.dev.processor.base import get_sequence_padding_to
+    return get_sequence_padding_to(
+        tp_size, sequence_parallel, cp_size, attention_backend_name,
+        fp8_format=fp8_format, fp4_format=fp4_format, fp8_recipe=fp8_recipe)
 
 
 def _get_batch_on_this_cp_rank(batch: Dict[str, Any], *, is_multimodal: bool, task_type: Optional[str],

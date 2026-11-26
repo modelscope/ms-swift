@@ -1170,9 +1170,9 @@ class Qwen3OmniMoeLoader(_QwenOmniLoader):
 
 @register_model
 class Qwen3ASRLoader(ModelLoader):
-    """Qwen3-ASR. ``Qwen3ASRForConditionalGeneration`` comes from the ``qwen-asr`` package, whose
-    ``auto_map`` wiring makes ``AutoModel`` resolve it once the package is imported -- hence the import
-    in ``build_config`` (legacy did the same, purely for its import side effect).
+    """Qwen3-ASR. HF loading uses the ``qwen-asr`` package's thinker-layout class explicitly.
+    ``build_config`` imports the package on transformers versions without native registration;
+    native config/processor resolution is available for sampler setup, not native HF model loading.
 
     **The ``transformers==4.57.6`` pin is relaxed here via a narrow shim.** Root cause of the pin:
     ``modeling_qwen3_asr.py`` decorates with ``@check_model_inputs()`` (called, then applied), but
@@ -1192,7 +1192,9 @@ class Qwen3ASRLoader(ModelLoader):
     """
 
     model_type = "qwen3_asr"
-    model_cls = "transformers:AutoModel"
+    # Pin the declared HF layout for sampler workers too; AutoModel can resolve an incompatible
+    # native class without going through this loader's build_model layout check.
+    model_cls = "qwen_asr.core.transformers_backend.modeling_qwen3_asr:Qwen3ASRForConditionalGeneration"
     architectures = ["Qwen3ASRForConditionalGeneration"]
     template = "qwen3_asr"
     requires = ["qwen-asr"]
@@ -1235,10 +1237,30 @@ class Qwen3ASRLoader(ModelLoader):
         generic.check_model_inputs = check_model_inputs
 
     def build_config(self, model_dir: str, **kwargs):
-        self.compat_check_model_inputs()
-        import qwen_asr  # noqa: F401  # registers Qwen3ASR* into the Auto* mappings
+        from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
 
+        # Native config/processor resolution is sufficient for the vLLM sampler. Avoid importing
+        # a package that re-registers the same model_type against transformers' native mapping.
+        if self.model_type not in CONFIG_MAPPING_NAMES:
+            self.compat_check_model_inputs()
+            import qwen_asr  # noqa: F401
         return super().build_config(model_dir, **kwargs)
+
+    @staticmethod
+    def _check_hf_layout(config):
+        if type(config).__module__.startswith('transformers.'):
+            raise ValueError('Qwen3-ASR native transformers config is available for sampler setup, '
+                             'but this HF loader requires the qwen-asr thinker layout. Use a '
+                             'compatible qwen-asr/transformers environment for HF loading; native '
+                             'model loading needs separate configuration and weight conversion.')
+
+    def build_model(self, model_dir: str, config, processor, **kwargs):
+        self._check_hf_layout(config)
+        return super().build_model(model_dir, config, processor, **kwargs)
+
+    def build_model_from_config(self, config, processor, **kwargs):
+        self._check_hf_layout(config)
+        return super().build_model_from_config(config, processor, **kwargs)
 
     def process_model(self, model):
         self.delegate_to_submodel(model, "thinker")

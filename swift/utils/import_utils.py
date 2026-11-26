@@ -90,7 +90,8 @@ def patch_trl_package_check() -> None:
     trl_import_utils._is_package_available = compatible_package_check
 
 
-patch_trl_package_check()
+if os.environ.get('USE_SWIFT_V5') != '1':
+    patch_trl_package_check()
 
 
 class _LazyModule(ModuleType):

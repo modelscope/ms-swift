@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.naming import parse_optim_args, resolve_galore_target, resolve_optim_target, resolve_scheduler
 from swift.dev.utils import get_logger
 
@@ -130,7 +131,7 @@ def build_param_groups_spec(cfg: TrainConfig,
 
     # LoRA+ -- on only with lorap_lr_ratio (validate rejects it under a non-LoRA tuner, so reaching
     # here implies lora_A/lora_B trainables); lora_A matches no rule and keeps the base lr.
-    if tuner_config is not None and tuner_config.lorap_lr_ratio is not None:
+    if has_adapter(tuner_config) and tuner_config.lorap_lr_ratio is not None:
         ratio = tuner_config.lorap_lr_ratio
         spec.append({'match': {'module_type': 'Embedding'}, 'lr': tuner_config.lorap_emb_lr})
         spec.append({'match': {'name': '*lora_B*'}, 'lr_mult': ratio})

@@ -38,7 +38,7 @@ Honest exclusions (each asserted as a body-level ``pytest.skip`` with its probe 
 | 1 | cpo, orpo per-step loss | dev restores legacy: step-1 rel<1e-3 AND step-1 far from ln2 (data-dependent); later rel<band + both decreasing | dev loss formula / label shift / completion mask / encode drifts from legacy |
 | 2 | dpo deep parity | EXCLUDED: step-1 is the degenerate ln2 (policy==ref cancels to 0 for ANY masking -- cannot catch a shift bug; already anchored in test_algorithms_e2e / test_backends_e2e), and step2+ is chaotic (probe rel 7.3% -> 43.5% -> 41.7%) because the adapter-dominated loss -> 0 divides the gap | mistaking a self-cancelling ln2 for parity signal |
 | 3 | grpo per-step loss (advantage/clip/KL) | EXCLUDED: dev grpo.py and legacy grpo_trainer.py BOTH import ``rl_core.advantage.compute_advantages`` (shared code -> comparing it is a self-consistency round-trip); the policy loss is already unit-anchored vs a hand-computed PPO-clip oracle in test_recipes.py; and each side runs an independent temperature>0 vLLM rollout so the completions -- and every per-step loss -- differ by construction. The comparable face -- the REWARD PATH under the same ORM (baseline -> climb -> saturation, 6/6 seed-grid stable) -- is asserted by ``test_grpo_reward_path_parity_vs_legacy`` with a zero-lr control | a fake "parity" that only proves shared code equals itself |
-| 4 | full-param parity | EXCLUDED: dev raises ``NotImplementedError`` for ``tuner='full'`` (only lora/adalora/trainable_tokens), so there is no dev side to compare | assuming a dev full-param path that does not exist |
+| 4 | full-param parity | EXCLUDED (reason refreshed f695138b3): dev NOW supports ``tuner='full'`` via ``has_adapter`` -- a probe ran the full-param dev cpo side fine (no ``NotImplementedError``). Not a standalone gate: its step-1 anchor is tuner-INDEPENDENT (measured identical to the LoRA cpo/orpo step-1, row 1), and at the shared LoRA-scale parity lr=1e-4 full-param diverges on BOTH sides (loss climbs), so the decreasing+bounded later-step contract is unattainable without full-param lr/band recalibration | a redundant full-param gate whose anchor duplicates row 1 and whose later steps diverge at the shared lr |
 | 5 | rm / seq_cls random head | EXCLUDED: the scalar reward head is freshly initialized, and the two pipelines consume different RNG before that init, so step-1 loss is init-dominated, not data-dominated (same root cause the SFT parity grid excludes seq_cls/reranker for); dev rm training is proven e2e in test_algorithms_e2e / test_backends_e2e | a vacuous "anything goes" band on an init-dominated loss |
 
 Run (offline, single card): ``CUDA_VISIBLE_DEVICES=<c> pytest
@@ -348,18 +348,29 @@ def test_grpo_reward_path_control_zero_lr_stays_flat(tmp_path):
 
 
 
-def test_full_param_parity_excluded_dev_unsupported():
-    """GAP(exclusion): a full-parameter parity cell has no dev side.
+def test_full_param_parity_excluded_redundant_anchor():
+    """GAP(exclusion, reason refreshed f695138b3): full-param parity is redundant, not unsupported.
 
-    dev rejects ``tuner='full'`` outright (``NotImplementedError: tuner='full' is not supported by dev;
-    supported: lora, adalora, trainable_tokens``), confirmed by a reference probe whose dev full-param DPO
-    side raised exactly that while the legacy side trained fine. With no dev full-param path there is
-    nothing to compare, so the cell is excluded rather than stubbed. LoRA parity -- the tuning mode dev
-    actually ships for RL -- is covered by the cpo/orpo cell above.
+    The OLD exclusion ("dev raises ``NotImplementedError`` for ``tuner='full'``, so there is no dev side")
+    is OBSOLETE: ``has_adapter`` (swift/dev/config/adapter_config.py) now treats ``tuner='full'`` as no
+    adapter, so the dev full-param path exists. A measured probe (cpo, 4 steps, lr 1e-4, the same 8
+    preference rows, f695138b3) ran the full-param dev side fine: step-1 dev 2.96172 vs legacy 2.97965
+    (rel 6.0e-3), and that step-1 is IDENTICAL to the LoRA step-1 -- the reference-free step-1 anchor is
+    tuner-INDEPENDENT (it is the base-model forward before any optimizer update, adapter or not).
+
+    A standalone full-param cell is therefore not added, for two measured reasons: (1) its load-bearing
+    step-1 anchor duplicates the cpo/orpo LoRA anchor row 1 already carries (same base-forward signal, no
+    new discriminant); (2) at the shared LoRA-scale parity lr=1e-4 full-param training DIVERGES on BOTH
+    sides (dev loss climbs 2.96->8.53->14.71, legacy 2.98->8.38->15.07), so the later-step "strictly
+    decreasing + bounded band" contract row 1 uses is not attainable for full-param without a
+    full-param-specific lr/band recalibration. This is an honest exclusion, not a stub.
     """
-    pytest.skip("dev raises NotImplementedError for tuner='full' (only lora/adalora/trainable_tokens are "
-                'implemented), so a full-parameter legacy-vs-dev parity cell has no dev side to compare. '
-                'LoRA parity is covered by the cpo/orpo cell.')
+    pytest.skip("dev NOW supports tuner='full' (has_adapter, f695138b3) -- the old NotImplementedError "
+                'exclusion is obsolete; a probe ran the full-param dev cpo side fine (step-1 dev 2.96172 '
+                'vs legacy 2.97965, rel 6.0e-3, identical to the LoRA step-1). No standalone full-param '
+                'gate: its step-1 anchor is tuner-independent (duplicates the cpo/orpo row-1 anchor), and '
+                'at the shared parity lr=1e-4 full-param diverges on both sides (loss climbs), so the '
+                'decreasing+bounded later-step contract needs full-param lr/band recalibration.')
 
 
 def test_reward_model_parity_excluded_random_head():

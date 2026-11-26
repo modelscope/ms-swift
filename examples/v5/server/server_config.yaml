@@ -32,11 +32,14 @@ telemetry:
   enabled: false
   otlp_endpoint: http://localhost:4317
 
-# ServerState (sessions, models, futures) persists to a local file so training runs and
-# checkpoints survive across client reconnects within the same server lifetime.
+# ServerState (sessions, models, futures) is kept in server memory: training runs and
+# checkpoints survive across client reconnects within the same server lifetime, but NOT
+# across a server restart. twinkle's PersistenceConfig accepts only `memory` and `redis`
+# (mode is Literal['memory','redis'], extra='forbid'); the former `mode: file` + `file_path`
+# is rejected by `twinkle-server check-config`. For cross-restart durability switch to
+# `mode: redis` and set `redis_url: redis://<host>:6379/0`.
 persistence:
-  mode: file
-  file_path: /tmp/twinkle_server_examples_state.json
+  mode: memory
 
 applications:
 

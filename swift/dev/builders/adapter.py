@@ -119,6 +119,12 @@ def _build_adapter_config(cfg: TunerConfig, *, task_type: Optional[str] = None):
             kwargs["target_modules"] = _resolve_target_modules(cfg)
         return TrainableTokensConfig(token_indices=cfg.trainable_token_indices, **kwargs)
 
+    if tuner == "full":
+        # The recipes test has_adapter() before calling; reaching here with 'full' is a caller
+        # that still reads a non-None TunerConfig as "has an adapter".
+        raise NotImplementedError(
+            'tuner="full" is full-parameter training and installs no adapter: pass tuner_config=None '
+            'and skip apply_tuner (recipes test swift.dev.config.has_adapter(tuner_config)).')
     raise NotImplementedError(
         f"tuner={tuner!r} is not supported by dev; "
         f"supported: {', '.join(SUPPORTED_TUNER_TYPES)}. "

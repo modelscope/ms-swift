@@ -2,6 +2,8 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
+from swift.dev.config.adapter_config import has_adapter
+
 
 def _adapter_mapping(adapters: List[str]) -> Dict[str, str]:
     from swift.dev.config.process import split_served_name
@@ -84,7 +86,7 @@ def parse_deploy_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
     result['tuner_config'] = select_tuner(result['tuner_config'])
     # Re-attach the served names the parser never saw, onto the (possibly checkpoint-resolved) paths.
     tuner_config = result['tuner_config']
-    if tuner_config is not None and adapter_names and len(adapter_names) == len(tuner_config.adapters):
+    if has_adapter(tuner_config) and adapter_names and len(adapter_names) == len(tuner_config.adapters):
         tuner_config.adapters = [f'{name}={path}' if name else path
                                  for name, path in zip(adapter_names, tuner_config.adapters)]
     normalize_sampler(result['infer_config'])
@@ -104,7 +106,7 @@ def deploy_main(argv: Optional[List[str]] = None) -> None:
         return
     process_and_validate_configs(configs, add_version=False, create_output_dir=False)
     tuner_config = configs['tuner_config']
-    adapters = tuner_config.adapters if tuner_config is not None else []
+    adapters = tuner_config.adapters if has_adapter(tuner_config) else []
     deploy = configs['deploy_config']
     engine_args = build_engine_args(configs['infer_config'].sampler, configs['infer_config'],
                                     configs['rollout_config'])

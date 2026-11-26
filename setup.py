@@ -117,6 +117,12 @@ def parse_requirements(fname='requirements.txt', with_version=True):
 
 
 if __name__ == '__main__':
+    # parse_requirements() silently returns [] for a missing file; fail closed so an sdist
+    # that omitted a requirements file (see MANIFEST.in) cannot ship empty install_requires.
+    for _req_file in ('requirements.txt', 'requirements/megatron.txt', 'requirements/eval.txt',
+                      'requirements/swanlab.txt', 'requirements/ray.txt', 'requirements/tests.txt'):
+        if not os.path.exists(_req_file):
+            raise FileNotFoundError(f'{_req_file} is required to build ms_swift but is missing; check MANIFEST.in')
     install_requires, deps_link = parse_requirements('requirements.txt')
     extra_requires = {}
     all_requires = []

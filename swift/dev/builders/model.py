@@ -8,6 +8,7 @@ import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, List, Optional, Sequence
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -535,6 +536,8 @@ def build_model(
         from .remote import build_remote_model
         from swift.dev.config.validate import _changed_fields
 
+        if quantize_config is not None and quantize_config.quant_method is None:
+            quantize_config = None
         for name, value in (('quantize_config', quantize_config),
                             ('megatron_config', megatron_config),
                             ('moe_config', moe_config)):
@@ -829,7 +832,7 @@ def _apply_unsloth_kwargs(
             f'backend="unsloth" supports causal_lm only; task_type='
             f"{model_config.task_type!r} needs a head unsloth does not build."
         )
-    kwargs["full_finetuning"] = tuner_config is None
+    kwargs["full_finetuning"] = not has_adapter(tuner_config)
     if quantize_config is not None and quantize_config.quant_method is not None:
         if quantize_config.quant_method != "bnb":
             raise NotImplementedError(
@@ -1181,7 +1184,7 @@ def _build_transformers_model(
     # a full run with gradient checkpointing turns it off.
     find_unused = distributed_config.ddp_find_unused_parameters
     if find_unused is None:
-        is_peft = tuner_config is not None
+        is_peft = has_adapter(tuner_config)
         if is_peft:
             find_unused = True
         else:

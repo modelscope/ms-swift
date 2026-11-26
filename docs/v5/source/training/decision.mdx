@@ -26,3 +26,7 @@ swift sft \
 需要快速、校准的选项打分（路由、评判、System-1 式决策）而非自由生成时，
 用这个任务类型。实现见 `swift/dev/model/decision_head.py`、
 `swift/dev/model/loader/decision.py`。
+
+### 远端温度校准
+
+使用 `--mode remote --task_type decision` 时，通过 `--val_dataset` 或 `--split_dataset_ratio` 提供验证集。对于支持温度缩放的 head，训练成功结束后，Swift 在客户端拟合温度，再写回当前训练句柄。Twinkle 服务端确认更新后，最终 checkpoint 将温度保存在 `task_head.safetensors` 中；中间 checkpoint 不变。此功能需要支持 task-head 温度接口的 Twinkle 服务端和 SDK。

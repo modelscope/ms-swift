@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.utils import build_rl_sampler, effective_colocate, resolve_reward_scorers
 from swift.dev.utils.logger import get_logger
 
@@ -113,7 +114,7 @@ def initialize_rft_cluster(
                else build_dp_mesh(distributed_config, sp))
     resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
     policy_config = model_config
-    if resume_dir and tuner_config is None and not remote_run:
+    if resume_dir and not has_adapter(tuner_config) and not remote_run:
         # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
         # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
         policy_config = copy(model_config)
@@ -131,7 +132,7 @@ def initialize_rft_cluster(
         megatron_config=megatron_config,
         moe_config=moe_config,
     )
-    if tuner_config is not None:
+    if has_adapter(tuner_config):
         apply_tuner(
             model,
             tuner_config,

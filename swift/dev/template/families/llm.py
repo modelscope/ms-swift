@@ -9,7 +9,7 @@ from ..inputs import StdTemplateInputs
 from ..register import TemplateMeta, register_template
 from ..runtime import get_env_args
 from ..utils import Prompt
-from .llama import Llama3_2TemplateMeta
+from .llama import Llama3_2Template, Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -153,6 +153,7 @@ register_template(
     )
 )
 
+
 class YuanTemplate(Template):
     def _swift_encode(self, inputs: StdTemplateInputs):
         res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
@@ -200,6 +201,7 @@ register_template(
         LLMTemplateType.skywork_o1,
         # no baked-in default system: the official jinja renders only the date block when the
         # conversation carries no system message, and callers pass their own system otherwise
+        template_cls=Llama3_2Template,
     )
 )
 
@@ -344,20 +346,20 @@ class WizardLM2MoeTemplate(Template):
         # so a run of consecutive users becomes several USER lines under one ASSISTANT opener
         seen_user = False
         for message in inputs.messages:
-            if message['role'] == 'user' and isinstance(message.get('content'), str):
-                prefix = '\nUSER: ' if seen_user else ' USER: '
-                message['content'] = prefix + message['content'].strip()
+            if message["role"] == "user" and isinstance(message.get("content"), str):
+                prefix = "\nUSER: " if seen_user else " USER: "
+                message["content"] = prefix + message["content"].strip()
                 seen_user = True
         return super()._swift_encode(inputs)
 
     def _get_response_prefix(self, inputs=None):
-        explicit = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
+        explicit = None if inputs is None else inputs.chat_template_kwargs.get("response_prefix")
         if explicit is not None:
             return explicit
         if self.response_prefix is not None:
             return self.response_prefix
         # the generation prompt ends with ' ASSISTANT:' (no trailing space)
-        return ' ASSISTANT:'
+        return " ASSISTANT:"
 
 
 register_template(
@@ -476,10 +478,10 @@ class HyV3PreviewTemplate(Template):
         block = self.template_meta.non_thinking_prefix
         if block:
             for message in inputs.messages:
-                if message['role'] == 'assistant':
-                    content = message.get('content')
-                    if isinstance(content, str) and not content.startswith('<think'):
-                        message['content'] = block + content
+                if message["role"] == "assistant":
+                    content = message.get("content")
+                    if isinstance(content, str) and not content.startswith("<think"):
+                        message["content"] = block + content
         return super()._swift_encode(inputs)
 
     def _remove_thinking_content(self, content: str, thinking_suffix="</think>") -> str:
@@ -491,13 +493,13 @@ class HyV3PreviewTemplate(Template):
     def _get_response_prefix(self, inputs=None):
         # the generation prompt carries the same block: the jinja marks it according to
         # reasoning_effort (empty think block for no_think, the bare opener otherwise)
-        explicit = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
+        explicit = None if inputs is None else inputs.chat_template_kwargs.get("response_prefix")
         if explicit is not None:
             return explicit
         if self.response_prefix is not None:
             return self.response_prefix
         if not self.use_chat_template:
-            return ''
+            return ""
         if self._get_enable_thinking(inputs):
             return self.template_meta.thinking_prefix or None
         return self.template_meta.non_thinking_prefix
@@ -628,14 +630,15 @@ class GptOssTemplateMeta(TemplateMeta):
 
 register_template(GptOssTemplateMeta(LLMTemplateType.gpt_oss, template_cls=GptTemplate))
 
+
 class LongchatTemplate(Template):
     def _swift_encode(self, inputs: StdTemplateInputs):
         # the jinja numbers user messages by their position in the conversation, which differs
         # from the round index when several users share one round
         index = 0
         for message in inputs.messages:
-            if message['role'] == 'user' and isinstance(message.get('content'), str):
-                message['content'] = f'[Round {index}] USER:{message["content"]} '
+            if message["role"] == "user" and isinstance(message.get("content"), str):
+                message["content"] = f"[Round {index}] USER:{message['content']} "
                 index += 1
         return super()._swift_encode(inputs)
 

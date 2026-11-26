@@ -12,6 +12,7 @@ import dataclasses
 import os
 from typing import Any, Dict, Optional
 
+from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
 
 from ..component import (ComponentError, ResourceComponent, StageComponent,
@@ -310,7 +311,7 @@ class ModelComponent(ResourceComponent):
         self.obj = build_model(model_config, dist_config, train_config=train_config,
                                tuner_config=tuner_config, megatron_config=megatron_config,
                                moe_config=moe_config, remote_group=self.remote_group or None)
-        if tuner_config is not None:
+        if has_adapter(tuner_config):
             # The adapter install is a SEPARATE step after build_model (the same
             # apply_tuner every recipe runs); without it train_type='lora'
             # silently degrades to a full-parameter run. GA threads the

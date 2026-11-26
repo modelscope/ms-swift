@@ -38,7 +38,7 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
     write_ckpt_args_json,
 )
-# MEASURED: not run — FAIL: tuner='full' not supported (2026-11-24)
+# MEASURED: PASS full-param 16 steps loss 0.0371->0.0173 Δθ≠0 tuner_config=None (2026-11-26, f695138b3)
 
 
 def build_configs() -> dict:
