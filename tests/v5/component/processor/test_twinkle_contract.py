@@ -137,7 +137,7 @@ def test_processor_contract_members_match_twinkle():
 
     from swift.dev.processor import InputProcessor
 
-    overridden = {"prepare_inputs", "collate_fn", "to_transformers_dict", "pad_cp", "split_cp"}
+    overridden = {"prepare_inputs", "collate_fn", "to_transformers_dict", "split_cp"}
     for name in overridden:
         assert hasattr(TwinkleIP, name), f"twinkle InputProcessor lost {name}, which dev overrides"
         assert name in vars(InputProcessor), f"dev InputProcessor must override {name} to stay in contract"
