@@ -97,7 +97,8 @@ class InputProcessor(TwinkleInputProcessor):
         inputs = self._flatten_group_rows(inputs)
         rows = []
         for feat in inputs:
-            row = {k: v for k, v in feat.items() if v is not None and not is_bookkeeping_key(k)}
+            metadata = set(feat.get('_trajectory_columns', ()))
+            row = {k: v for k, v in feat.items() if v is not None and k not in metadata and not is_bookkeeping_key(k)}
             if self.template is None:
                 if row.get("position_ids") is None and row.get("input_ids") is not None:
                     row["position_ids"] = list(range(len(row["input_ids"])))
@@ -143,7 +144,8 @@ class InputProcessor(TwinkleInputProcessor):
         """
         flat: List[InputFeature] = []
         for row in rows:
-            row = dict(row)
+            metadata = set(row.get('_trajectory_columns', ()))
+            row = {key: value for key, value in row.items() if key not in metadata}
             # negative_<field> holds a list over negatives; split it into negative{i}_<field> scalars so
             # every candidate is addressable by a single prefix, mirroring legacy's collator.
             num_negatives = 0
@@ -183,7 +185,8 @@ class InputProcessor(TwinkleInputProcessor):
         max_negative = int(os.environ.get("MAX_NEGATIVE_SAMPLES", 7))
         flat: List[InputFeature] = []
         for row in rows:
-            row = dict(row)
+            metadata = set(row.get('_trajectory_columns', ()))
+            row = {key: value for key, value in row.items() if key not in metadata}
             labels = list(row.pop("labels", []))
             positive_num = int(sum(labels))
             negative_num = len(labels) - positive_num

@@ -57,14 +57,14 @@ class GOT_OCR2Template(Template):
         for i, image in enumerate(images):
             images[i] = image_processor_high(image)[None].to(self.model_info.torch_dtype)
         if images:
-            encoded["images"] = images
+            encoded['pixel_values'] = images
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        images = self.gather_list(batch, "images")
+        images = self.gather_list(batch, 'pixel_values')
         res = super()._data_collator_mm_data(batch)
         if images:
-            res["images"] = images
+            res['images'] = images
         return res
 
 
@@ -89,23 +89,14 @@ class GOT_OCR2HfTemplate(Template):
         assert media_type == "image"
         return ["<img>" + "<imgpad>" * 256 + "</img>\n"]
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:  # 暂时照抄上面
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        images = inputs.images
-        if images:
-            encoded["images"] = images
+        if inputs.images:
+            image_inputs = dict(self.processor(inputs.images, return_tensors='pt'))
+            image_inputs.pop('input_ids', None)
+            image_inputs.pop('attention_mask', None)
+            encoded.update(image_inputs)
         return encoded
-
-    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        res = super()._data_collator_mm_data(batch)
-        images = self.gather_list(batch, "images")
-        if not images:
-            return res
-        image_inputs = self.processor(images, return_tensors="pt")
-        image_inputs.pop("input_ids", None)
-        image_inputs.pop("attention_mask", None)
-        res.update(dict(image_inputs))
-        return res
 
 
 register_template(

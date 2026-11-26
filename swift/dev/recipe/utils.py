@@ -1415,7 +1415,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
     HTTPSampler over the server's served engine, so no engine args or replicas are built locally.
     The same dev TemplateSpec the model's processor was set with rebuilds the server-side
     template; the HTTPSampler wraps the served handle in the exact ``sample`` face
-    MultiTurnRollout drives (RolloutState and media in, twinkle SampleResponse out), so single-
+    MultiTurnRollout drives (the complete Trajectory and media in, twinkle SampleResponse out), so single-
     and multi-turn rollouts stay mode-blind.
     """
     if distributed_config is not None and distributed_config.mode == 'remote':
@@ -1435,7 +1435,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         spec = build_template_spec(template_config, model_config)
         sampler.set_template('swift.dev.template.Template', **{'template_spec': spec})
         # The rollout drives the served engine through the HTTPSampler: it carries the episode's
-        # RolloutState and media, stamps the synced adapter per call, and returns the twinkle
+        # complete Trajectory, stamps the synced adapter per call, and returns the twinkle
         # SampleResponse the rollout's type guards require (the bare handle speaks protocol models).
         return HTTPSampler(sampler, template)
     from twinkle import DeviceMesh

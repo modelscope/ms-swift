@@ -109,7 +109,7 @@ class InternLMXComposer2Template(Template):
             HD_transform = get_class_from_dynamic_module("ixc_utils.HD_transform", model.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
         images = [model.vis_processor(image).to(model.dtype) for image in images]
-        encoded["images"] = images
+        encoded['pixel_values'] = images
         encoded["length"] = len(encoded["input_ids"])
         return encoded
 
@@ -166,8 +166,8 @@ class InternLMXComposer2Template(Template):
         return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = [row.pop('pixel_values') for row in batch if row.get('pixel_values') is not None]
         res = super()._data_collator_mm_data(batch)
-        images = [row.pop("images") for row in batch if row.get("images") is not None]
         lengths = [row.pop("length") for row in batch if row.get("length") is not None]
         if images:
             res["images"] = images

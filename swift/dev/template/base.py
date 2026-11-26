@@ -25,8 +25,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
 from transformers.utils import strtobool
 
-from swift.dev.template_contract import (
-    CompletionEncoding,
+from twinkle.template.contract import (
     DecodeContext,
     DecodedResponse,
     EncodedRow,
@@ -34,16 +33,17 @@ from swift.dev.template_contract import (
     KTOSample,
     MediaBundle,
     PreferenceSample,
-    PromptEncoding,
-    RolloutState,
     append_and_finalize,
     feature_has_media,
 )
-from swift.dev.template_contract.encoding import refresh as refresh_row
-from swift.dev.template_contract.encoding import render_delta as render_delta_tokens
-from swift.dev.template_contract.encoding import shift as shift_row
-from swift.dev.template_contract.encoding import unshift as unshift_row
-from swift.dev.template_contract.output import _reasoning_is_open, split_reasoning
+from twinkle.template.contract.encoding import (engine_input_ids, preserve_trajectory, project_engine_ids,
+                                               project_sliced_messages)
+from twinkle.data_format import Trajectory, copy_trajectory
+from twinkle.template.contract.encoding import refresh as refresh_row
+from twinkle.template.contract.encoding import render_delta as render_delta_tokens
+from twinkle.template.contract.encoding import shift as shift_row
+from twinkle.template.contract.encoding import unshift as unshift_row
+from twinkle.template.contract.output import _reasoning_is_open, split_reasoning
 from .constant import TemplateCapability
 from .conventions import APPEND_ROLES, NO_SHIFT_TASK_TYPES, model_payload_keys
 from .inputs import (
@@ -785,24 +785,34 @@ class Template(ProcessorMixin):
         elif getattr(self, "_legacy_mode", None) in ("infer", "transformers") and intent is None:
             intent = INFER
         sample = normalize_sample(sample)
+        source = (copy_trajectory(sample) if isinstance(sample, dict)
+                  else self._public_conversation(sample.chosen) if isinstance(sample, TemplateInputs) else None)
+        if isinstance(sample, dict):
+            sample = copy_trajectory(source)
         preference_mode = None
         if isinstance(sample, PreferenceSample):
-            chosen = deepcopy(sample.chosen)
+            chosen = copy_trajectory(sample.chosen)
             if sample.margin is not None:
                 chosen["margin"] = sample.margin
-            sample = TemplateInputs(chosen=chosen, rejected=deepcopy(sample.rejected))
+            public = {'chosen': copy_trajectory(chosen), 'rejected': copy_trajectory(sample.rejected)}
+            sample = TemplateInputs(chosen=chosen, rejected=copy_trajectory(sample.rejected))
             preference_mode = "rlhf"
         elif isinstance(sample, KTOSample):
-            conversation = deepcopy(sample.conversation)
+            conversation = copy_trajectory(sample.conversation)
             conversation["label"] = sample.label
-            sample = TemplateInputs(chosen=conversation, rejected=deepcopy(sample.rejected))
+            public = {'chosen': copy_trajectory(conversation)}
+            if sample.rejected is not None:
+                public['rejected'] = copy_trajectory(sample.rejected)
+            sample = TemplateInputs(chosen=conversation,
+                                    rejected=copy_trajectory(sample.rejected) if sample.rejected is not None else None)
             preference_mode = "kto"
         explicit_intent = intent is not None or add_generation_prompt is not None
         intent = resolve_intent(intent, add_generation_prompt)
         if preference_mode is not None:
             if not intent.with_labels:
                 raise ValueError(f"A preference sample encodes only under a labelled intent, got {intent}.")
-            result = self._encode_preference(sample, mode=preference_mode, return_length=return_length)
+            result = self._encode_preference(sample, mode=preference_mode, return_length=return_length,
+                                             public=public, engine=engine)
             if legacy_preference:
                 # Legacy callers (dataset preprocessors, the preference encoder) read flat chosen_*/rejected_* keys.
                 flat = {}
@@ -824,7 +834,39 @@ class Template(ProcessorMixin):
             self._load_images_in_place(sample)
         with _rendering(intent.render_mode(engine)):
             encoded = self._encode_sample(sample, return_length=return_length)
-        return self._finalize(encoded, intent)
+        result = self._finalize(encoded, intent)
+        rows = result if isinstance(result, list) else [result]
+        engine_encoded = None
+        if self.is_multimodal and intent.expand_media and self.task_type == 'causal_lm' and len(rows) == 1:
+            engine_encoded = self._encode_engine(source, engine, intent.add_generation_prompt)
+        outputs = []
+        for row in rows:
+            trajectory = preserve_trajectory(source, row)
+            original_ids = trajectory.pop('_original_input_ids', None)
+            kept = trajectory.pop('_kept_token_indices', None)
+            if original_ids is not None and kept is not None:
+                def render_prefix(messages):
+                    prefix = copy_trajectory(source)
+                    prefix['messages'] = messages
+                    prefix['add_generation_prompt'] = False
+                    renderer = self.replace(max_length=None)
+                    with _rendering(intent.render_mode(engine)):
+                        return renderer._encode_sample(prefix)['input_ids']
+                trajectory['messages'] = project_sliced_messages(
+                    source.get('messages') or [], original_ids, kept,
+                    render_prefix=render_prefix,
+                    decode=lambda values: self.tokenizer.decode(values, skip_special_tokens=True))
+            ids = row.get('input_ids')
+            if ids is not None and (len(ids) == 0 or not isinstance(ids[0], (list, tuple, np.ndarray))):
+                engine_ids = list(engine_encoded['input_ids'] if engine_encoded is not None else ids)
+                if engine_encoded is not None and original_ids is not None and kept is not None:
+                    engine_ids = project_engine_ids(original_ids, engine_ids, kept)
+                trajectory['engine_input_ids'] = engine_ids
+                trajectory['reasoning_started'] = self._reasoning_started(ids)
+            if engine_encoded is not None and engine_encoded.get('mm_processor_kwargs'):
+                trajectory['mm_processor_kwargs'] = engine_encoded['mm_processor_kwargs']
+            outputs.append(trajectory)
+        return outputs if isinstance(result, list) else outputs[0]
 
     def batch_encode(
         self, trajectories: List[SampleInput], add_generation_prompt: bool = False, **kwargs
@@ -833,32 +875,37 @@ class Template(ProcessorMixin):
         if isinstance(trajectories, dict):
             raise NotImplementedError("batch_encode expects a list of trajectories, not a columnar dict.")
         flag = True if add_generation_prompt else None
-        return [self.encode(t, add_generation_prompt=flag, **kwargs) for t in trajectories]
+        output = []
+        for trajectory in trajectories:
+            encoded = self.encode(trajectory, add_generation_prompt=flag, **kwargs)
+            output.extend(encoded if isinstance(encoded, list) else [encoded])
+        return output
+
+    def _encode_engine(self, source: Trajectory, backend: EngineBackend, add_generation_prompt: bool) -> Dict[str, Any]:
+        """Render the serving processor's sequence independently from the model's expanded IDs."""
+        sample = copy_trajectory(source)
+        sample['add_generation_prompt'] = add_generation_prompt
+        if not add_generation_prompt:
+            sample['add_eos'] = True
+        intent = EncodeIntent(add_generation_prompt=add_generation_prompt, with_labels=False, expand_media=False)
+        backend = 'vllm' if backend == 'transformers' else backend
+        with _rendering(intent.render_mode(backend)):
+            encoded = self.replace(max_length=None)._encode_sample(sample, return_length=False)
+        if not isinstance(encoded, dict):
+            raise ValueError('multimodal engine encoding requires one unsplit trajectory')
+        return encoded
 
     def encode_prompt(
-        self, sample: SampleInput, *, backend: EngineBackend = "vllm", add_generation_prompt: bool = True
-    ) -> PromptEncoding:
+        self, sample: SampleInput, *, backend: EngineBackend = 'vllm', add_generation_prompt: bool = True
+    ) -> Trajectory:
         sample = normalize_sample(sample)
-        feature_intent = EncodeIntent(add_generation_prompt=add_generation_prompt, with_labels=False, expand_media=True)
-        engine_intent = EncodeIntent(add_generation_prompt=add_generation_prompt, with_labels=False, expand_media=False)
-        feature = self.encode(deepcopy(sample), intent=feature_intent, engine=backend)
-        engine_feature = self.encode(deepcopy(sample), intent=engine_intent, engine=backend)
-        if not isinstance(feature, dict) or not isinstance(engine_feature, dict):
-            raise ValueError("encode_prompt requires one unsplit prompt feature.")
-        prompt_inputs = sample if isinstance(sample, TemplateInputs) else TemplateInputs.from_dict(sample)
-        engine_ids = list(engine_feature["input_ids"])
-        media = MediaBundle.from_sources(sample, feature)
+        intent = EncodeIntent(add_generation_prompt=add_generation_prompt, with_labels=False, expand_media=True)
+        feature = self.encode(sample, intent=intent, engine=backend)
+        if not isinstance(feature, dict):
+            raise ValueError('encode_prompt requires one unsplit prompt feature')
         if self.is_multimodal:
-            self._check_engine_placeholders(engine_ids, media)
-        state = RolloutState(
-            feature=feature,
-            engine_input_ids=tuple(engine_ids),
-            messages=tuple(deepcopy(prompt_inputs.chosen.messages)),
-            tools=tuple(deepcopy(prompt_inputs.chosen.tools or ())),
-            reasoning_started=self._reasoning_started(feature["input_ids"]),
-            media=media,
-        )
-        return PromptEncoding(state)
+            self._check_engine_placeholders(feature['engine_input_ids'], MediaBundle.from_sources(feature))
+        return feature
 
     def decode_response(
         self, token_ids: List[int], *, context: Optional[DecodeContext] = None, **kwargs
@@ -880,65 +927,37 @@ class Template(ProcessorMixin):
         return self.output_codec.decode(self, token_ids, context, structured_calls=structured_calls)
 
     def append_completion(
-        self,
-        prompt: Union[Dict[str, Any], RolloutState],
-        tokens: List[int],
-        *,
-        appended_as: str = "completion",
+        self, prompt: Trajectory, tokens: List[int], *, appended_as: str = 'completion',
         tool_calls: Optional[List[Dict[str, Any]]] = None,
-    ) -> CompletionEncoding:
-        state = prompt if isinstance(prompt, RolloutState) else None
-        if state is None:
-            feature = dict(prompt)
-            messages = tuple(deepcopy(feature.pop("messages", ())))
-            tools = tuple(deepcopy(feature.pop("tools", ())))
-            if feature_has_media(prompt):
-                raise NotImplementedError("multimodal continuation requires RolloutState.")
-            state = RolloutState(
-                feature=feature,
-                engine_input_ids=tuple(feature["input_ids"]),
-                messages=messages,
-                tools=tools,
-                reasoning_started=self._reasoning_started(feature["input_ids"]),
-                media=MediaBundle(),
-            )
-        prompt_feature = state.feature
+    ) -> Trajectory:
+        prefix = copy_trajectory(prompt)
+        ids = engine_input_ids(prefix)
+        if feature_has_media(prefix) and not MediaBundle.from_sources(prefix):
+            raise ValueError('multimodal continuation requires original media')
         role = APPEND_ROLES.get(appended_as)
         if role is None:
-            raise ValueError(f"appended_as must be one of {sorted(APPEND_ROLES)}, got {appended_as!r}")
+            raise ValueError(f'appended_as must be one of {sorted(APPEND_ROLES)}, got {appended_as!r}')
         feature = append_and_finalize(
-            prompt_feature,
-            tokens,
-            scored=role.scored,
-            sampled=role.sampled,
+            prefix, tokens, scored=role.scored, sampled=role.sampled,
             finalize=self.finalize_appended_features,
         )
         if feature is None:
-            raise MaxLengthError("appended completion exceeds max_length under delete truncation strategy.")
-        response = self.decode_message(
-            tokens,
-            context=DecodeContext(
-                parse_tool_calls=tool_calls is None,
-                reasoning_started=state.reasoning_started,
-                tools=state.tools,
-            ),
-            structured_calls=tool_calls,
-        )
-        parsed = response.tool_calls
-        message: Dict[str, Any] = {"role": "assistant", "content": response.content}
+            raise MaxLengthError('appended completion exceeds max_length under delete truncation strategy')
+        response = self.decode_message(tokens, context=DecodeContext(
+            parse_tool_calls=tool_calls is None,
+            reasoning_started=prefix.get('reasoning_started', self._reasoning_started(prefix['input_ids'])),
+            tools=tuple(prefix.get('tools') or ()),
+        ), structured_calls=tool_calls)
+        message = {'role': 'assistant', 'content': response.content}
         if response.reasoning_content is not None:
-            message["reasoning_content"] = response.reasoning_content
-        if parsed:
-            message["tool_calls"] = list(parsed)
-        next_state = RolloutState(
-            feature=feature,
-            engine_input_ids=state.engine_input_ids + tuple(tokens),
-            messages=state.messages + (deepcopy(message),),
-            tools=state.tools,
-            reasoning_started=bool(response.reasoning_started),
-            media=state.media,
-        )
-        return CompletionEncoding(next_state, response)
+            message['reasoning_content'] = response.reasoning_content
+        if response.tool_calls:
+            message['tool_calls'] = list(response.tool_calls)
+        feature['messages'] = list(prefix.get('messages') or ()) + [message]
+        feature['tools'] = list(prefix.get('tools') or ())
+        feature['engine_input_ids'] = ids + list(tokens)
+        feature['reasoning_started'] = bool(response.reasoning_started)
+        return feature
 
     def render_delta(
         self,
@@ -1036,21 +1055,70 @@ class Template(ProcessorMixin):
     def tool_call_errors(self, decoded: str) -> List[str]:
         return self.output_codec.tool_call_errors(decoded)
 
+    @staticmethod
+    def _public_conversation(chosen) -> Trajectory:
+        """Save raw inputs before renderer-owned message and media normalization."""
+        if isinstance(chosen, dict):
+            return copy_trajectory(chosen)
+        result = copy_trajectory(chosen.extra_kwargs)
+        result['messages'] = copy_trajectory({'messages': chosen.messages})['messages']
+        result['tools'] = copy_trajectory({'tools': chosen.tools or []})['tools']
+        if chosen.system is not None:
+            result['messages'] = [{'role': 'system', 'content': chosen.system}] + result['messages']
+        for key in ('images', 'videos', 'audios', 'objects', 'chat_template_kwargs', 'mm_processor_kwargs', 'channel'):
+            value = getattr(chosen, key, None)
+            if value is not None:
+                result[key] = copy_trajectory({key: value})[key]
+        return result
+
     def _encode_preference(
         self,
         sample: Union[Dict[str, Any], TemplateInputs],
         *,
         mode: Literal["rlhf", "kto"] = "rlhf",
         return_length: bool = False,
+        public: Optional[Dict[str, Trajectory]] = None,
+        engine: EngineBackend = 'vllm',
     ) -> Dict[str, Any]:
         if self.truncation_strategy == "split":
             raise ValueError('preference encoding does not support truncation_strategy="split".')
+        if public is None:
+            public = {name: self._public_conversation(getattr(sample, name))
+                      for name in ('chosen', 'rejected') if getattr(sample, name, None) is not None}
         with _rendering(mode):
             encoded = self._encode_sample(sample, return_length=return_length)
         result: Dict[str, Any] = {}
-        for prefix in ("chosen", "rejected"):
-            side = {k[len(prefix) + 1 :]: v for k, v in encoded.items() if k.startswith(prefix + "_")}
-            result[prefix] = self._finalize(side, TRAIN) if side.get("input_ids") is not None else None
+        for prefix in ('chosen', 'rejected'):
+            side = {k[len(prefix) + 1 :]: v for k, v in encoded.items() if k.startswith(prefix + '_')}
+            if side.get('input_ids') is None:
+                result[prefix] = None
+                continue
+            source = public[prefix]
+            finalized = self._finalize(side, TRAIN)
+            result[prefix] = preserve_trajectory(source, finalized)
+            original_ids = result[prefix].pop('_original_input_ids', None)
+            kept = result[prefix].pop('_kept_token_indices', None)
+            if original_ids is not None:
+                def render_prefix(messages):
+                    row = copy_trajectory(source)
+                    row['messages'] = messages
+                    with _rendering('train'):
+                        return self.replace(max_length=None)._encode_sample(row)['input_ids']
+                result[prefix]['messages'] = project_sliced_messages(
+                    source.get('messages') or [], original_ids, kept,
+                    render_prefix=render_prefix,
+                    decode=lambda values: self.tokenizer.decode(values, skip_special_tokens=True))
+            ids = result[prefix]['input_ids']
+            engine_ids = list(ids)
+            if self.is_multimodal and self.task_type == 'causal_lm':
+                engine_row = self._encode_engine(source, engine, False)
+                engine_ids = list(engine_row['input_ids'])
+                if original_ids is not None and kept is not None:
+                    engine_ids = project_engine_ids(original_ids, engine_ids, kept)
+                if engine_row.get('mm_processor_kwargs'):
+                    result[prefix]['mm_processor_kwargs'] = engine_row['mm_processor_kwargs']
+            result[prefix]['engine_input_ids'] = engine_ids
+            result[prefix]['reasoning_started'] = self._reasoning_started(ids)
         if result["chosen"] is None:
             raise ValueError("preference row did not encode a chosen sequence.")
         result.update({k: v for k, v in encoded.items() if not k.startswith(("chosen_", "rejected_"))})
@@ -1164,6 +1232,9 @@ class Template(ProcessorMixin):
 
     @classmethod
     def from_spec(cls, spec, processor=None):
+        if isinstance(spec, dict):
+            from swift.dev.template_contract import TemplateSpec
+            spec = TemplateSpec.from_dict(spec)
         module = importlib.import_module("swift.dev.builders.template")
         return module.build_template_from_spec(spec, processor)
 
@@ -2299,6 +2370,8 @@ class Template(ProcessorMixin):
             else:
                 idx = non_protected[: self.max_length - n_protected]
             protected[idx] = True
+        encoded['_original_input_ids'] = list(input_ids)
+        encoded['_kept_token_indices'] = protected.nonzero(as_tuple=True)[0].tolist()
         input_ids = input_ids_tensor[protected].tolist()
         if labels is not None:
             labels = torch.tensor(labels)[protected].tolist()
@@ -2368,21 +2441,33 @@ class Template(ProcessorMixin):
                 raise MaxLengthError(
                     f"Current length of row({length}) is larger than the max_length({self.max_length})."
                 )
-            elif self.truncation_strategy == "split":
+            elif self.truncation_strategy == 'split':
+                if self.is_multimodal:
+                    raise ValueError('multimodal token splitting cannot partition its media payload safely')
                 i = 0
                 batched = []
                 while i < length:
-                    splited = {}
-                    for key in ["input_ids", "labels", "loss_scale"]:
+                    splited = dict(encoded)
+                    for key in ('input_ids', 'labels', 'loss_scale', 'completion_mask', 'token_type_ids', 'mm_token_type_ids'):
                         value = encoded.get(key)
-                        if value is not None:
-                            value = value[i : i + self.max_length]
-                            if key == "labels" and len(value) > 0:
-                                value[0] = -100
-                            elif key == "loss_scale" and len(value) > 0:
-                                value[0] = 0
+                        if value is None:
+                            continue
+                        value = value[..., i:i + self.max_length] if hasattr(value, 'shape') else value[i:i + self.max_length]
+                        if key in ('labels', 'loss_scale', 'completion_mask') and len(value) > 0:
+                            fill = -100 if key == 'labels' else 0
+                            if torch.is_tensor(value):
+                                value = value.clone()
+                                value[..., 0] = fill
+                            elif isinstance(value, np.ndarray):
+                                value = value.copy()
+                                value[..., 0] = fill
+                            else:
+                                value = list(value)
+                                value[0] = fill
                         splited[key] = value
-                    splited["length"] = self._get_length(splited.get("input_ids"), splited.get("labels"))
+                    splited['_original_input_ids'] = list(input_ids)
+                    splited['_kept_token_indices'] = list(range(i, min(i + self.max_length, length)))
+                    splited['length'] = self._get_length(splited.get('input_ids'), splited.get('labels'))
                     batched.append(splited)
                     i += self.max_length
                 return batched

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from swift.dev.template_contract import unshift_values
+from twinkle.template.contract import unshift_values
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType, TemplateCapability
 from ..inputs import StdTemplateInputs

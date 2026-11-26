@@ -44,12 +44,12 @@ class YiVLTemplate(Template):
             images[i] = image
         if images:
             image_tensor = image_processor.preprocess(images, return_tensors="pt")["pixel_values"]
-            encoded["images"] = image_tensor.to(model.dtype)
+            encoded['pixel_values'] = image_tensor.to(model.dtype)
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = [row.pop('pixel_values') for row in batch if row.get('pixel_values') is not None]
         res = super()._data_collator_mm_data(batch)
-        images = [b["images"] for b in batch if "images" in b]
         if images:
             res["images"] = torch.concat(images)
         return res

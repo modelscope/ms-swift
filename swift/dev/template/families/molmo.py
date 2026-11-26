@@ -35,7 +35,7 @@ class MolmoTemplate(Template):
         if labels:
             encoded["labels"] = [-100] * idx[0] + labels
         if "images" in images_inputs:
-            images_inputs["images"] = images_inputs["images"].to(self.model_info.torch_dtype)
+            images_inputs["pixel_values"] = images_inputs.pop("images").to(self.model_info.torch_dtype)
         encoded.update(images_inputs)
         return encoded
 
@@ -43,8 +43,11 @@ class MolmoTemplate(Template):
         self.require_capabilities(TemplateCapability.HF_GENERATE)
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = [row.pop('pixel_values') for row in batch if row.get('pixel_values') is not None]
         res = super()._data_collator_mm_data(batch)
-        for key in ["images", "image_input_idx", "image_masks"]:
+        if images:
+            res['images'] = torch.stack(images)
+        for key in ["image_input_idx", "image_masks"]:
             value = [row.pop(key) for row in batch if row.get(key) is not None]
             if value:
                 res[key] = torch.stack(value)

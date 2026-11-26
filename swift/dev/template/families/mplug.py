@@ -40,12 +40,12 @@ class mPlugOwl2Template(Template):
         if images:
             images = process_images(images, processor)
             images = images.to(self.model_info.torch_dtype)
-            res["images"] = images
+            res["pixel_values"] = images
         return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = [row.pop('pixel_values') for row in batch if row.get('pixel_values') is not None]
         res = super()._data_collator_mm_data(batch)
-        images = [b["images"] for b in batch if "images" in b]
         if images:
             res["images"] = torch.concat(images)
         return res
@@ -212,15 +212,15 @@ class DocOwl2Template(Template):
         if inputs.images:
             image_tensor, patch_positions, _ = self.processor._process_image(inputs.images)
             image_tensor = image_tensor.to(self.model_info.torch_dtype)
-            encoded.update({"images": image_tensor, "patch_positions": patch_positions})
+            encoded.update({'pixel_values': image_tensor, 'patch_positions': patch_positions})
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = {}
-        for key in ["images", "patch_positions"]:
-            value = self.concat_tensor(batch, key, 0)
+        for field, argument in (('pixel_values', 'images'), ('patch_positions', 'patch_positions')):
+            value = self.concat_tensor(batch, field, 0)
             if value is not None:
-                res[key] = value
+                res[argument] = value
         res.update(super()._data_collator_mm_data(batch))
         return res
 

@@ -121,7 +121,7 @@ class ValleyTemplate(Template):
         labels = encoded["labels"]
         if images:
             results = self.process_images(inputs, images)
-            encoded["images"] = results["images"]
+            encoded['pixel_values_aux'] = results['images']
             encoded["image_sizes"] = results["image_sizes"]
             encoded["pixel_values"] = results["pixel_values"]
             encoded["image_grid_thw"] = results["image_grid_thw"]
@@ -130,7 +130,7 @@ class ValleyTemplate(Template):
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        images = self.gather_list(batch, "images")
+        images = self.gather_list(batch, 'pixel_values_aux')
         image_sizes = self.concat_tensor(batch, "image_sizes", 0)
         res = super()._data_collator_mm_data(batch)
         if images:

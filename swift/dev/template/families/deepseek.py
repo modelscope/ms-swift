@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.dev.template_contract import unshift_values
+from twinkle.template.contract import unshift_values
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType, TemplateCapability
 from ..inputs import StdTemplateInputs
@@ -380,14 +380,14 @@ class DeepseekOCR(Template):
             encoded["input_ids"] = input_ids
             encoded["labels"] = labels
             encoded["loss_scale"] = loss_scale
-            encoded["images"] = [(images_crop, images_ori)]
+            encoded['pixel_values'] = [(images_crop, images_ori)]
             encoded["images_seq_mask"] = (torch.tensor(input_ids) == image_token[0])[None]
             encoded["images_spatial_crop"] = images_spatial_crop
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = self.gather_list(batch, 'pixel_values')
         res = super()._data_collator_mm_data(batch)
-        images = self.gather_list(batch, "images")
         if images:
             res["images"] = images
         images_seq_mask = [x["images_seq_mask"] for x in batch if x.get("images_seq_mask") is not None]

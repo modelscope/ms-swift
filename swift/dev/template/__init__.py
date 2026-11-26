@@ -10,15 +10,13 @@ Public surface:
 
 from __future__ import annotations
 
-from swift.dev.template_contract import (
-    CompletionEncoding,
+from twinkle.template.contract import (
     DecodeContext,
     DecodedResponse,
     EncodedRow,
     KTOSample,
     MediaBundle,
     PreferenceSample,
-    PromptEncoding,
 )
 from .base import MaxLengthError, Template
 from .constant import TemplateCapability
@@ -41,8 +39,6 @@ __all__ = [
     "NO_SHIFT_TASK_TYPES",
     "is_bookkeeping_key",
     "MediaBundle",
-    "PromptEncoding",
-    "CompletionEncoding",
     "DecodedResponse",
     "DecodeContext",
     "SampleInput",
