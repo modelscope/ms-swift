@@ -265,9 +265,11 @@ def _reward_plugin_path():
 def _run_dev(data, out_dir, tuner, rl_type, steps, lr, seed=42, warmup=0.0, sampler_mode='colocate'):
     """dev ``run_rl`` (Ray run_dpo); per-step loss from the returned history.
 
-    Hyperparameters mirror ``_run_legacy`` exactly (that is the point). ``tuner='full'`` is NOT supported by
-    dev (it raises ``NotImplementedError``: only lora/adalora/trainable_tokens), so a full-param parity cell
-    has no dev side -- ``test_parity_legacy`` records that as an honest exclusion rather than run it here.
+    Hyperparameters mirror ``_run_legacy`` exactly (that is the point). ``tuner='full'`` IS supported by
+    dev since ``has_adapter`` (f695138b3) treats it as no adapter, so this runner CAN drive a full-param
+    dev side (``--tuner full``); ``test_parity_legacy`` excludes a standalone full-param parity gate for a
+    different, measured reason (its step-1 anchor is tuner-independent / duplicates the LoRA cpo/orpo
+    anchor, and full-param diverges at the shared LoRA-scale parity lr) -- not because dev lacks the path.
     """
     from tests.v5.feature.rl.conftest import rl_configs, run_rl
     tuner_over = {'lora_rank': 8, 'lora_alpha': 32, 'target_modules': ['all-linear']} if tuner == 'lora' else {}
