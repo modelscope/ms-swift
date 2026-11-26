@@ -252,13 +252,9 @@ class _ScriptedToolSampler:
     building each continuation through the REAL ``append_completion`` (whose feature the ledger
     re-checks against its own token accounting).
 
-    The reply is chosen by counting assistant turns already on the state, not by mutable sampler
-    state, because the multi-turn engine samples a group's trajectories concurrently on one shared
-    sampler. ``accepts_rollout_state`` makes the engine hand us its RolloutState (the object
-    ``append_completion`` extends); ``sample`` is declared ``_enable_continous_work`` since the
-    engine samples one trajectory per call."""
-
-    accepts_rollout_state = True
+    The reply is chosen by counting assistant turns on the complete trajectory, not mutable sampler
+    state, because the engine samples a group concurrently. ``sample`` is declared
+    ``_enable_continous_work`` since the engine samples one trajectory per call."""
 
     def __init__(self, template, call_text, answer_text):
         self.template = template
@@ -270,7 +266,7 @@ class _ScriptedToolSampler:
             states = [states]
         responses = []
         for state in states:
-            messages = getattr(state, 'messages', None) or []
+            messages = state.get('messages') or []
             turns = sum(1 for m in messages if m.get('role') == 'assistant')
             text = self.call_text if turns == 0 else self.answer_text
             tokens = self.template.tokenizer.encode(text, add_special_tokens=False)
@@ -278,7 +274,7 @@ class _ScriptedToolSampler:
             completion = self.template.append_completion(state, list(tokens))
             seq = SampledSequence(
                 stop_reason='stop', tokens=tokens, logprobs=logprobs, decoded=text,
-                new_input_feature=dict(completion.state.feature))
+                new_input_feature=completion)
             responses.append(SampleResponse(sequences=[seq]))
         return responses
 

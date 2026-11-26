@@ -20,7 +20,6 @@ from twinkle.template.contract import (
     OutputOrderCompletionMask,
     OutputOrderLabels,
     OutputOrderLossScale,
-    PreferencePair,
     PreferenceSample,
     PreparedRow,
     PromptEncoder,

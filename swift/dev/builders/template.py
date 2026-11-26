@@ -225,11 +225,7 @@ def build_template(template_config: TemplateConfig, processor: Any, *, task_type
     """
     from swift.dev.template.register import get_template, get_template_meta
 
-    # ``delete`` is realised dataset-side (EncodePreprocessor drops rows that raise MaxLengthError),
-    # so the encoder itself always raises.
-    truncation_strategy = template_config.truncation_strategy
-    if truncation_strategy in (None, "delete"):
-        truncation_strategy = "raise"
+    truncation_strategy = template_config.truncation_strategy or 'raise'
 
     # None means "use the registry factory's default", not a false chat-template flag.
     kwargs = {}

@@ -35,3 +35,6 @@ def register() -> None:
     import twinkle.processor
 
     twinkle.processor.DevInputProcessor = DevInputProcessor
+    import twinkle.template
+    from swift.dev.template import Template
+    twinkle.template.SwiftTemplate = Template

@@ -82,12 +82,9 @@ class _ScriptedSampler:
     ``template.append_completion`` -- the exact feature the ledger re-checks against its own token
     accounting (the old concat_input_feature seam).
 
-    ``accepts_rollout_state`` makes the engine hand over its RolloutState, and ``sample`` is declared
-    ``_enable_continous_work`` because ``MultiTurnRollout`` samples one trajectory per call. The
-    states it is handed are recorded so a test can read the opening prompt the engine actually baked.
+    ``sample`` receives complete trajectories and is declared ``_enable_continous_work`` because
+    ``MultiTurnRollout`` samples one trajectory per call. The openings are recorded for token assertions.
     """
-
-    accepts_rollout_state = True
 
     def __init__(self, template, replies):
         self.template = template
@@ -109,7 +106,7 @@ class _ScriptedSampler:
             completion = self.template.append_completion(state, list(tokens))
             seq = SampledSequence(
                 stop_reason='stop', tokens=tokens, logprobs=logprobs, decoded=text,
-                new_input_feature=dict(completion.state.feature))
+                new_input_feature=dict(completion))
             responses.append(SampleResponse(sequences=[seq]))
         return responses
 
@@ -164,7 +161,7 @@ def test_tool_schema_is_baked_into_the_opening_prompt(template, tool_manager):
     assert out.get('tools'), 'the resolved tool schemas must ride on the trajectory'
 
     opening = sampler.seen_states[0]
-    prompt_text = template.tokenizer.decode(list(opening.feature['input_ids']), skip_special_tokens=False)
+    prompt_text = template.tokenizer.decode(list(opening['input_ids']), skip_special_tokens=False)
     assert 'run_command' in prompt_text, 'the tool name must be rendered into the prompt tokens'
     assert 'echo the arguments back' in prompt_text, 'the tool description must reach the prompt'
 
@@ -265,8 +262,8 @@ def test_context_appended_turn_is_masked_out_of_the_loss(template):
     opened['messages'] = [{'role': 'user', 'content': 'hi'}]
     tokens = template.tokenizer.encode('remembered history', add_special_tokens=False)
     completion = template.append_completion(opened, tokens, appended_as='context')
-    out = dict(completion.state.feature)
-    assert completion.state.messages[-1] == {'role': 'assistant', 'content': 'remembered history'}
+    out = dict(completion)
+    assert completion['messages'][-1] == {'role': 'assistant', 'content': 'remembered history'}
     assert len(out['input_ids']) == len(out['labels']) == len(out['completion_mask'])
     # The context turn's own tokens are the tail; none of them may be trainable.
     tail = len(tokens)

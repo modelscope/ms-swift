@@ -5,8 +5,8 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Any, Dict, Mapping, NamedTuple
 
-from twinkle.data_format import InputFeature, Trajectory
 from twinkle.template.contract import TOKEN_FILL
+from twinkle.template.contract.encoding import model_payload_keys
 
 IGNORE_INDEX = -100
 NO_SHIFT_TASK_TYPES = frozenset({'embedding', 'reranker', 'generative_reranker', 'seq_cls', 'decision'})
@@ -57,18 +57,6 @@ APPEND_ROLES: Mapping[str, AppendRole] = MappingProxyType({
     'demonstration': AppendRole(scored=True, sampled=False),
     'context': AppendRole(scored=False, sampled=False),
 })
-
-
-def model_payload_keys(feature: Dict[str, Any]) -> frozenset[str]:
-    """Select model-specific payload without forwarding raw conversation or sampling metadata."""
-    metadata = Trajectory.__annotations__.keys() - InputFeature.__annotations__.keys()
-    return frozenset(
-        key for key, value in feature.items()
-        if value is not None and key not in FIELDS and key not in metadata
-        and key not in RENDER_ONLY_INPUT_KEYS and key not in MEDIA_INPUT_KEYS
-        and not is_bookkeeping_key(key)
-        and key not in feature.get('_trajectory_columns', ())
-    )
 
 
 def extend_spliced_fields(feature: Dict[str, Any]) -> Dict[str, Any]:

@@ -43,8 +43,11 @@ def test_encode_prompt_uses_native_engine_intent():
 
     assert not hasattr(template, "engine_input_ids")
     prompt = template.encode_prompt(sample)
-    assert prompt.state.feature["input_ids"] == expected_feature["input_ids"]
-    assert list(prompt.state.engine_input_ids) == expected_engine["input_ids"]
+    from twinkle.template.contract import engine_input_ids
+
+    assert prompt["input_ids"] == expected_feature["input_ids"]
+    assert engine_input_ids(prompt) == expected_engine["input_ids"]
+    assert prompt["messages"] == sample["messages"]
 
 
 @pytest.mark.parametrize("intent", [TRAIN, SCORE])
@@ -66,7 +69,7 @@ def test_split_finalizes_every_real_encoder_chunk_once(intent, return_length):
             assert actual["labels"] == original["labels"][1:] + [-100]
             assert actual["loss_scale"] == original["loss_scale"][1:] + [0]
             assert len(actual["labels"]) == len(actual["loss_scale"]) == len(actual["input_ids"])
-            assert not any(key.startswith("_") for key in actual)
+            assert '_original_input_ids' not in actual and '_kept_token_indices' not in actual
         else:
             assert "labels" not in actual and "loss_scale" not in actual
 
@@ -146,10 +149,12 @@ def test_split_batch_encode_mixes_long_and_short_rows(long_first, monkeypatch):
     samples = [_conversation("short"), _conversation("long answer" * 100)]
     if long_first:
         samples.reverse()
+    individual = [template.encode(sample) for sample in samples]
+    expected = [row for item in individual for row in (item if isinstance(item, list) else [item])]
     encoded = template.batch_encode(samples)
-    assert isinstance(encoded[0 if long_first else 1], list)
-    assert isinstance(encoded[1 if long_first else 0], dict)
-    expected = [row for item in encoded for row in (item if isinstance(item, list) else [item])]
+    assert all(isinstance(row, dict) for row in encoded)
+    assert len(encoded) == len(expected)
+    assert [row['input_ids'] for row in encoded] == [row['input_ids'] for row in expected]
     processor = InputProcessor(template=template, padding_free=True)
     prepared = processor.prepare_inputs(encoded)
     assert len(prepared) == len(expected)

@@ -8,7 +8,7 @@ from twinkle.template.contract.types import (
     ConversationSample, DecodeContext, DecodedResponse, EncodedRow,
     InputOrderCompletionMask, InputOrderLabels, InputOrderLossScale, InputOrderRow,
     KTOSample, MediaBundle, Message, OutputOrderCompletionMask, OutputOrderLabels,
-    OutputOrderLossScale, PreferencePair, PreferenceSample, PreparedRow, Tool,
+    OutputOrderLossScale, PreferenceSample, PreparedRow, Tool,
 )
 
 @dataclass(frozen=True)

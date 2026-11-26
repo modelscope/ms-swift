@@ -69,14 +69,12 @@ class _ScriptedToolSampler:
         self.call_text = call_text
         self.answer_text = answer_text
 
-    accepts_rollout_state = True
-
     def sample(self, states, sampling_params=None, **kwargs):
         if isinstance(states, dict):
             states = [states]
         responses = []
         for state in states:
-            messages = getattr(state, 'messages', None) or []
+            messages = state.get('messages') or []
             turns = sum(1 for m in messages if m.get('role') == 'assistant')
             text = self.call_text if turns == 0 else self.answer_text
             tokens = self.template.tokenizer.encode(text, add_special_tokens=False)
@@ -84,7 +82,7 @@ class _ScriptedToolSampler:
             completion = self.template.append_completion(state, list(tokens))
             seq = SampledSequence(
                 stop_reason='stop', tokens=tokens, logprobs=logprobs, decoded=text,
-                new_input_feature=dict(completion.state.feature))
+                new_input_feature=completion)
             responses.append(SampleResponse(sequences=[seq]))
         return responses
 
