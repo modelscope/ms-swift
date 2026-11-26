@@ -7,6 +7,9 @@ onto a twinkle ``sampler_type``. These pin that translation -- the surface a wro
 guard would silently break -- without launching anything. ``build_server_config`` only *names* the model
 (a template lookup by string), so no weights are touched here.
 """
+import importlib
+from unittest.mock import Mock
+
 import pytest
 
 from swift.dev.builders.sampler import _derive_sampler_type
@@ -106,6 +109,71 @@ def test_build_server_config_gateway_and_sampler():
     assert sampler.args.data_plane_url is None
     # the template is pinned at construction, resolved by name from the model id
     assert sampler.args.template['template_cls'] == 'Qwen3_5Template'
+
+
+def test_sampler_app_names_distinguish_slash_and_underscore():
+    deployment = importlib.import_module("swift.dev.recipe.infer.run_deploy")
+    assert deployment._sampler_app_name("team/model") != deployment._sampler_app_name("team_model")
+
+
+def test_stop_does_not_delete_a_different_public_model(monkeypatch):
+    import ray
+    from ray import serve
+    from twinkle.server.sampler.pool import actor
+
+    deployment = importlib.import_module("swift.dev.recipe.infer.run_deploy")
+    monkeypatch.setattr(ray, "init", Mock())
+    monkeypatch.setattr(serve, "delete", Mock())
+    monkeypatch.setattr(actor, "stop_sampler_controller", Mock(return_value=False))
+    monkeypatch.setattr(
+        deployment,
+        "_serve_details",
+        lambda: {
+            "sampler-team_model": {"route_prefix": "/v1/sampler/team_model"},
+        },
+    )
+    with pytest.raises(ValueError, match="No deployment found for model 'team/model'"):
+        deployment.stop_deployment(DeployConfig(served_model_name="team/model"))
+    serve.delete.assert_not_called()
+    actor.stop_sampler_controller.assert_called_once_with("swift", "/v1/sampler/team/model")
+
+
+def test_stop_preserves_surviving_adapters_and_aliases(monkeypatch):
+    import ray
+    import twinkle.server
+    from ray import serve
+    from twinkle.server.sampler.pool import actor
+
+    deployment = importlib.import_module("swift.dev.recipe.infer.run_deploy")
+    monkeypatch.setattr(ray, "init", Mock())
+    monkeypatch.setattr(serve, "delete", Mock())
+    monkeypatch.setattr(actor, "stop_sampler_controller", Mock(return_value=True))
+    monkeypatch.setattr(twinkle.server, "launch_server", Mock())
+    monkeypatch.setattr(
+        deployment,
+        "_serve_details",
+        lambda: {
+            "server": {"route_prefix": "/v1"},
+            "sampler-team_model": {"route_prefix": "/v1/sampler/team/model"},
+            "sampler-survivor": {"route_prefix": "/v1/sampler/survivor"},
+        },
+    )
+    handle = Mock()
+    handle.get_openai_model_catalog.remote.return_value.result.return_value = {
+        "models": [
+            {"model_name": "leaving-lora", "base_model": "team/model"},
+            {"model_name": "surviving-lora", "base_model": "survivor"},
+        ],
+        "aliases": {"leaving": "team/model", "default": "survivor"},
+    }
+    monkeypatch.setattr(serve, "get_app_handle", Mock(return_value=handle))
+
+    deployment.stop_deployment(DeployConfig(served_model_name="team/model"))
+
+    serve.delete.assert_called_once_with("sampler-team_model")
+    args = twinkle.server.launch_server.call_args.kwargs["config"].applications[0].args
+    assert args.supported_models == ["survivor", {"model_name": "surviving-lora", "base_model": "survivor"}]
+    assert args.openai_model_aliases == {"default": "survivor"}
 
 
 def test_build_server_config_data_plane_adds_app_and_async_sampler():

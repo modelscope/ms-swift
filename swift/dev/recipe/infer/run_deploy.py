@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
@@ -56,21 +57,33 @@ def run_deploy(
     # name, so a second deployment of the same name is refused instead of silently rolling it.
     public_name = _public_name(deploy_config, model_config)
     existing = _serve_status()
+    details = _serve_details() if existing else {}
+    samplers = _deployed_sampler_apps(details, deploy_config.route_prefix)
     sampler_app = _sampler_app_name(public_name)
-    if sampler_app in existing:
-        raise ValueError(f'model {public_name!r} is already deployed: Ray Serve app '
-                         f'{sampler_app!r} is {existing[sampler_app].status}. Run with '
-                         '--stop true to remove it first, or choose another '
-                         '--served_model_name.')
+    if public_name in samplers:
+        raise ValueError(f"Model {public_name!r} is already deployed. Stop it first or choose another served name.")
+    if sampler_app in details:
+        raise ValueError(f"Ray Serve application name {sampler_app!r} is already in use by another deployment.")
 
     # A second deployment shares the running gateway/data-plane instead of re-creating them:
     # the gateway's registry is widened (rolling update) with every live sampler's name, while
     # the data-plane is left untouched -- re-running it would drop in-flight DataRefs.
-    gateway_models, skip_apps = [public_name], set()
-    if existing:
-        gateway_models = sorted(set(_deployed_model_names()) | {public_name})
-        if 'data-plane' in existing:
-            skip_apps.add('data-plane')
+    gateway_models, gateway_aliases = sorted(samplers), {}
+    if "server" in details:
+        if _app_route(details["server"]) != deploy_config.route_prefix.rstrip("/"):
+            raise ValueError("The running gateway uses a different route_prefix.")
+        gateway_models, gateway_aliases = _retained_gateway_registry(set(samplers))
+    used_names = {entry if isinstance(entry, str) else entry["model_name"] for entry in gateway_models}
+    new_names = {public_name}
+    if not deploy_config.merge_lora:
+        if public_name in (adapter_mapping or {}):
+            raise ValueError(f"Adapter name {public_name!r} conflicts with its base model.")
+        new_names.update(adapter_mapping or {})
+    conflicts = new_names & (used_names | gateway_aliases.keys())
+    if conflicts:
+        raise ValueError(f"Model or adapter names already registered: {', '.join(sorted(conflicts))}")
+    gateway_models.append(public_name)
+    skip_apps = {"data-plane"} if "data-plane" in details else set()
 
     config = build_server_config(
         model_config,
@@ -83,6 +96,7 @@ def run_deploy(
         distributed_config=distributed_config,
         deploy_config=deploy_config,
         gateway_supported_models=gateway_models,
+        gateway_model_aliases=gateway_aliases,
         skip_apps=skip_apps,
     )
     launch_server(config=config, ray_namespace=deploy_config.ray_namespace, blocking=not deploy_config.detach)
@@ -108,7 +122,8 @@ def build_server_config(
     quantize_config: Optional[QuantizeConfig] = None,
     distributed_config: Optional[DistributedConfig] = None,
     deploy_config: Optional[DeployConfig] = None,
-    gateway_supported_models: Optional[List[str]] = None,
+    gateway_supported_models: Optional[List[Any]] = None,
+    gateway_model_aliases: Optional[Dict[str, str]] = None,
     skip_apps: Optional[set] = None,
 ) -> Any:
     """dev Configs -> a twinkle-server ``ServerConfig`` (gateway + sampler [+ data plane]).
@@ -171,7 +186,7 @@ def build_server_config(
     skip = set(skip_apps or ())
     applications: List[Any] = []
     if 'server' not in skip:
-        applications.append(_gateway_app_spec(deploy_config, supported_models))
+        applications.append(_gateway_app_spec(deploy_config, supported_models, gateway_model_aliases))
     # Three Ray Serve applications: 'server' (the OpenAI gateway + proxy), optional 'data-plane'
     # (server-side rollout groups via DataRef), and 'sampler-<name>' (the engine replica).
     if deploy_config.enable_data_plane and 'data-plane' not in skip:
@@ -185,7 +200,7 @@ def build_server_config(
             ))
     applications.append(
         ApplicationSpec(
-            name=f'sampler-{public_name.replace("/", "_")}',
+            name=_sampler_app_name(public_name),
             route_prefix=f'{route_prefix}/sampler/{public_name}',
             import_path='sampler',
             args=SamplerArgs(
@@ -223,78 +238,75 @@ def _public_name(deploy_config: DeployConfig, model_config: ModelConfig) -> str:
 
 def _sampler_app_name(public_name: str) -> str:
     """Ray Serve app name of a model's sampler; ``/`` is not legal in an app name."""
-    return f'sampler-{public_name.replace("/", "_")}'
+    if "/" not in public_name:
+        return f"sampler-{public_name}"
+    digest = hashlib.sha256(public_name.encode()).hexdigest()[:12]
+    return f"sampler-{public_name.replace('/', '_')}-{digest}"
 
 
 def _serve_status() -> Dict[str, Any]:
-    """ServeController's live application list; empty when no Serve instance is running.
-
-    This is the single source of truth for what is deployed -- no local registry exists.
-    A failed poll is logged rather than swallowed: a silently broken status reader would
-    present as an endless wait.
-    """
+    """ServeController's live application list, empty before Serve starts."""
     from ray import serve
 
-    try:
-        return dict(serve.status().applications)
-    except Exception:
-        logger.warning(f'serve.status() unavailable; treating as no applications '
-                       f'({__import__("traceback").format_exc().splitlines()[-1]})')
-        return {}
+    return dict(serve.status().applications)
 
 
 def _serve_details() -> Dict[str, Any]:
-    """Per-application detail dicts (route_prefix included), keyed by application name.
-
-    ``serve.status()`` entries carry no route prefix; the controller client's details do, and
-    the route is the only lossless carrier of a model name (app names replace ``/`` with
-    ``_``). A failed read is logged -- callers widen or narrow the gateway registry with it.
-    """
+    """Read the application routes from the live Serve controller."""
     from ray.serve.context import _get_global_client
 
-    try:
-        return dict(_get_global_client().get_serve_details()['applications'])
-    except Exception:
-        logger.warning(f'serve details unavailable; treating as no applications '
-                       f'({__import__("traceback").format_exc().splitlines()[-1]})')
-        return {}
+    client = _get_global_client(raise_if_no_controller_running=False)
+    return dict(client.get_serve_details()["applications"]) if client is not None else {}
 
 
-def _deployed_model_names() -> List[str]:
-    """Model names behind the running sampler apps.
-
-    App names alone are lossy (``/`` became ``_``); the route prefix keeps the original name
-    verbatim in its ``.../sampler/{name}`` tail, so the names are read off the controller's
-    live route table -- ``serve.status()`` entries carry no route prefix, hence the internal
-    ``_serve_details()`` poll rather than any caller-side snapshot.
-    """
-    names = []
-    for name, details in _serve_details().items():
-        if not name.startswith('sampler-'):
-            continue
-        route = (details.get('route_prefix') if isinstance(details, dict) else getattr(details, 'route_prefix', None)) or ''
-        if '/sampler/' in route:
-            names.append(route.split('/sampler/', 1)[1])
-    return names
+def _app_route(details: Any) -> str:
+    route = details.get("route_prefix") if isinstance(details, dict) else getattr(details, "route_prefix", None)
+    return (route or "").rstrip("/")
 
 
-def _gateway_app_spec(deploy_config: DeployConfig, supported_models: List[str]) -> Any:
+def _deployed_sampler_apps(apps: Dict[str, Any], route_prefix: str) -> Dict[str, str]:
+    """Match public names from exact sampler routes, including legacy app names."""
+    prefix = f"{route_prefix.rstrip('/')}/sampler/"
+    return {
+        route[len(prefix) :]: name
+        for name, details in apps.items()
+        if name.startswith("sampler-") and (route := _app_route(details)).startswith(prefix)
+    }
+
+
+def _retained_gateway_registry(base_models: set[str]) -> Tuple[List[Any], Dict[str, str]]:
+    """Preserve live adapter and explicit alias registrations across a gateway rebuild."""
+    from ray import serve
+
+    catalog = serve.get_app_handle("server").get_openai_model_catalog.remote().result(timeout_s=10)
+    models: List[Any] = sorted(base_models)
+    models.extend(entry for entry in catalog["models"] if entry.get("base_model") in base_models)
+    aliases = {name: target for name, target in catalog["aliases"].items() if target in base_models}
+    return models, aliases
+
+
+def _gateway_app_spec(
+    deploy_config: DeployConfig,
+    supported_models: List[Any],
+    aliases: Optional[Dict[str, str]] = None,
+) -> Any:
     """The gateway application spec -- shared by build_server_config and stop_deployment (the
     latter re-runs it to re-register the surviving models after removing one)."""
     from twinkle.server.config import ApplicationSpec, ServerArgs
 
     route_prefix = deploy_config.route_prefix
     return ApplicationSpec(
-        name='server',
+        name="server",
         route_prefix=route_prefix,
-        import_path='server',
+        import_path="server",
         args=ServerArgs(
             supported_models=supported_models,
             route_prefix=route_prefix,
             api_key=deploy_config.api_key,
             owned_by=deploy_config.owned_by,
+            **({"openai_model_aliases": aliases} if aliases else {}),
         ),
-        deployments=[_deployment('GatewayServer', deploy_config)],
+        deployments=[_deployment("GatewayServer", deploy_config)],
     )
 
 
@@ -318,6 +330,19 @@ def _wait_for_application(app_name: str, timeout: float, poll: float = 2.0) -> N
     raise TimeoutError(f'application {app_name!r} did not reach RUNNING within {timeout}s.')
 
 
+def _release_sampler_pool(namespace: str, route: str, model: str) -> bool:
+    from twinkle.server.sampler.pool.actor import stop_sampler_controller
+
+    try:
+        released = stop_sampler_controller(namespace, route)
+    except Exception as error:
+        logger.warning("Sampling pool cleanup for %r failed (%s).", model, error)
+        return False
+    if released:
+        logger.info("Released the sampling pool for %r.", model)
+    return released
+
+
 def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelConfig] = None) -> None:
     """Remove the deployment serving ``deploy_config``'s model name (``--stop``).
 
@@ -330,63 +355,53 @@ def stop_deployment(deploy_config: DeployConfig, model_config: Optional[ModelCon
     import ray
 
     public_name = deploy_config.served_model_name
-    if public_name is None and model_config is not None and getattr(model_config, 'model', None):
-        public_name = os.path.basename(str(model_config.model).rstrip('/'))
+    if public_name is None and model_config is not None and getattr(model_config, "model", None):
+        public_name = os.path.basename(str(model_config.model).rstrip("/"))
     if not public_name:
-        raise ValueError('--stop needs the model name: pass --served_model_name (or --model '
-                         'whose basename serves as the name).')
+        raise ValueError(
+            "--stop needs the model name: pass --served_model_name (or --model whose basename serves as the name)."
+        )
 
     try:
-        ray.init(address='auto', namespace=deploy_config.ray_namespace, ignore_reinit_error=True)
+        ray.init(address="auto", namespace=deploy_config.ray_namespace, ignore_reinit_error=True)
     except ConnectionError as e:
-        raise ValueError(f'no Ray cluster is running, so there is no deployment for model '
-                         f'{public_name!r}.') from e
+        raise ValueError(f"no Ray cluster is running, so there is no deployment for model {public_name!r}.") from e
 
     from ray import serve
-
     from twinkle.server import launch_server
 
-    apps = _serve_status()
-    sampler_app = _sampler_app_name(public_name)
+    apps = _serve_details()
+    samplers = _deployed_sampler_apps(apps, deploy_config.route_prefix)
+    sampler_app = samplers.get(public_name)
+    if sampler_app is None:
+        # The exact controller may outlive its router after a partial teardown.
+        route = f"{deploy_config.route_prefix.rstrip('/')}/sampler/{public_name}"
+        if _release_sampler_pool(deploy_config.ray_namespace, route, public_name):
+            return
+        raise ValueError(f"No deployment found for model {public_name!r}.")
+    gateway_matches = "server" in apps and _app_route(apps["server"]) == deploy_config.route_prefix.rstrip("/")
+    remaining = set(samplers) - {public_name}
+    if gateway_matches and remaining:
+        supported_models, aliases = _retained_gateway_registry(remaining)
 
-    # Detach-mode teardown: serve.delete below only removes the router application. The
-    # pool controller (a detached actor that outlives the deploying driver) owns the
-    # sampling instances, engine deployment and placement group -- release them first,
-    # so devices are free again even if the router app is already gone (torn state).
-    from twinkle.server.sampler.pool.actor import stop_sampler_controller
-    try:
-        released = stop_sampler_controller(deploy_config.ray_namespace,
-                                           f'{deploy_config.route_prefix}/sampler/{public_name}')
-    except Exception as e:
-        # Pool cleanup must not abort teardown: skipping serve.delete below
-        # would leave the router app behind too (double residue).
-        logger.warning(f'sampling pool cleanup for {public_name!r} failed ({e}); '
-                       'continuing to delete the router app.')
-        released = False
-    if released:
-        logger.info(f'released the sampling pool for {public_name!r} (controller shutdown).')
-
-    if sampler_app not in apps:
-        running = sorted(n for n in apps if n.startswith('sampler-'))
-        raise ValueError(f'no deployment found for model {public_name!r} '
-                         f'(running sampler apps: {running or "none"}).')
+    # The detached pool owns its worker deployments and allocations.
+    _release_sampler_pool(deploy_config.ray_namespace, _app_route(apps[sampler_app]), public_name)
 
     # serve.delete blocks until the app (and its replicas) are gone.
     serve.delete(sampler_app)
-    remaining = [name for name in _deployed_model_names() if name != public_name]
-    if 'server' in apps:
+    if gateway_matches:
         if remaining:
-            logger.info(f're-registering gateway without {public_name!r}: {remaining}')
+            logger.info(f"re-registering gateway without {public_name!r}: {sorted(remaining)}")
             launch_server(
-                config=_server_config_with(_gateway_app_spec(deploy_config, remaining), deploy_config),
+                config=_server_config_with(_gateway_app_spec(deploy_config, supported_models, aliases), deploy_config),
                 ray_namespace=deploy_config.ray_namespace,
                 blocking=False,
             )
         else:
-            serve.delete('server')
-            if 'data-plane' in apps:
-                serve.delete('data-plane')
-    logger.info(f'stopped deployment {sampler_app!r} (model {public_name!r}).')
+            serve.delete("server")
+            if "data-plane" in apps:
+                serve.delete("data-plane")
+    logger.info(f"stopped deployment {sampler_app!r} (model {public_name!r}).")
 
 
 def _server_config_with(gateway_spec: Any, deploy_config: DeployConfig) -> Any:
