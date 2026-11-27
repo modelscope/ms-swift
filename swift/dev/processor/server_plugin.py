@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Server-side dev InputProcessor, registered into ``twinkle.processor`` at worker startup."""
 from __future__ import annotations
+
 from typing import Any, Dict
 
 from swift.dev.processor.base import InputProcessor, processor_kwargs
@@ -15,9 +16,8 @@ class DevInputProcessor(InputProcessor):
     """
 
     def __init__(self, *, template_spec: Dict[str, Any], **kwargs: Any) -> None:
-        from twinkle.template.contract.types import TemplateSpec
-
         from swift.dev.builders.template import build_template_from_spec
+        from swift.dev.template_contract.types import TemplateSpec
 
         template = build_template_from_spec(TemplateSpec.from_dict(template_spec))
         super().__init__(**{**processor_kwargs(template), **kwargs})
@@ -31,12 +31,10 @@ def register() -> None:
     path sets a task's loss by CLASS NAME, and the decision losses live in swift.dev -- importing
     the module here runs the registration that makes those names resolvable server-side.
     """
-    import twinkle.processor
-
     import swift.dev.loss.decision  # noqa: F401 -- register_loss exports the classes into twinkle.loss
+    import twinkle.processor
 
     twinkle.processor.DevInputProcessor = DevInputProcessor
     import twinkle.template
-
     from swift.dev.template import Template
     twinkle.template.SwiftTemplate = Template

@@ -171,9 +171,9 @@ def test_phase3_role_method_signatures_match(method):
 
 def test_templates_satisfy_shared_runtime_protocol():
     from twinkle.template import Template as TwinkleTemplate
-    from twinkle.template.contract import TemplateProtocol
 
     from swift.dev.template import Template as SwiftTemplate
+    from swift.dev.template_contract import TemplateProtocol
 
     assert isinstance(object.__new__(SwiftTemplate), TemplateProtocol)
     assert isinstance(object.__new__(TwinkleTemplate), TemplateProtocol)

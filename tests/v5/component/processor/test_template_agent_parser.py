@@ -84,7 +84,7 @@ def test_glm_call_start_ignores_function_name_in_prose(name):
 
 
 def test_xml_arguments_are_coerced_by_tool_schema():
-    from twinkle.template.contract import coerce_tool_call_arguments
+    from swift.dev.template_contract import coerce_tool_call_arguments
 
     parser = AgentToolParser(agent_template_map["qwen3_5"]())
     rendered = _render(parser.agent, [{"name": "search", "arguments": {"limit": 3, "exact": False}}])
@@ -179,7 +179,7 @@ def test_schema_aware_formats_accept_the_tools_argument():
 
 def test_decode_output_threads_tools_into_the_parser():
     """The decode contract carries `tools`; it must reach the parser, not stop at the codec boundary."""
-    from twinkle.template.contract.output import decode_output
+    from swift.dev.template_contract.output import decode_output
 
     tools = _probe_tools(count="string", flag="string", note="string", limit="integer")
     response = decode_output(

@@ -287,6 +287,8 @@ def test_dev_template_package_import_boundary():  # noqa: C901
             if (
                 module == "swift.dev.template"
                 or module.startswith("swift.dev.template.")
+                or module == "swift.dev.template_contract"
+                or module.startswith("swift.dev.template_contract.")
             ):
                 return
             if module == "swift" or module.startswith("swift."):
