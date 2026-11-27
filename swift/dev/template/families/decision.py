@@ -57,7 +57,10 @@ class DecisionBatchMixin:
         targets = inputs.pop("decision_targets", None)
         seq_lens = inputs.pop("decision_seq_lens", None)
         attention_mask = inputs.get("attention_mask")
-        if isinstance(attention_mask, torch.Tensor):
+        # Only a 2D [B, S] padding mask encodes per-row lengths. Megatron's non-padding-free
+        # collate emits a 4D inverted causal mask [B, 1, S, S], whose last-dim sum is a nested
+        # list; keep the pre-padding real lengths recorded by _prepare_media_row for it.
+        if isinstance(attention_mask, torch.Tensor) and attention_mask.dim() == 2:
             seq_lens = attention_mask.sum(dim=-1).tolist()
         seq_lens = [int(s) for s in (seq_lens or [])] or None
 

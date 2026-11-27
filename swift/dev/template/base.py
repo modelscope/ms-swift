@@ -1284,6 +1284,13 @@ class Template(ProcessorMixin, TwinkleTemplate):
         images = sample.get("images") if isinstance(sample, dict) else None
         if not images or not self.is_multimodal:
             return
+        # Hub datasets may hand a single PIL image (not a list) on the raw infer row; the row
+        # contract tolerates that (StdTemplateInputs.__post_init__ wraps it), so normalise here
+        # too before iterating -- and write the list back so samplers reading multi_modal_data
+        # off the same row see the loaded PIL list.
+        if not isinstance(images, list):
+            images = list(images) if isinstance(images, tuple) else [images]
+            sample["images"] = images
         for index, image in enumerate(images):
             images[index] = self._load_image(image, True)
 

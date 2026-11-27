@@ -332,7 +332,10 @@ class InferComponent(RecipeComponent):
                     shutdown()
             if rollout is not None:
                 rollout.close()
-            if self.shutdown and sampler is not None:
+            # Teardown follows engine OWNERSHIP: backend='twinkle' builds a client handle over a
+            # SERVED engine owned by twinkle-server (build_sampler._build_client_sampler), so the
+            # driver must not -- and cannot -- shut it down; the client face has no shutdown().
+            if self.shutdown and sampler is not None and self.backend != "twinkle":
                 sampler.shutdown()
 
         writer.finish(results)
@@ -1540,7 +1543,9 @@ def _forward_sampler(
     try:
         yield sampler, processor, (adapters[0] if adapters else None)
     finally:
-        if shutdown:
+        # Same ownership contract as the main infer teardown: a 'twinkle' client handle rides a
+        # server-owned engine and has no shutdown face; only locally-built engines are released.
+        if shutdown and backend != "twinkle":
             sampler.shutdown()
 
 
@@ -1680,7 +1685,12 @@ def _decision_via_transformers(
     for start in range(0, len(rows), batch_size):
         chunk = rows[start : start + batch_size]
         encoded = [template.encode(row) for row in chunk]
-        outputs = collect(model.forward_only(inputs=encoded, task="decision", return_logits=True))
+        # Decision scoring is a loss-free readout: the transformers forward_only never calls the
+        # loss, and the megatron forward_only must likewise skip it (compute_loss=False). Otherwise
+        # megatron runs its default CrossEntropyLoss over the per-question readout, which has no
+        # token-level labels (labels=None) and crashes. The head readout still produces the logits.
+        outputs = collect(
+            model.forward_only(inputs=encoded, task="decision", return_logits=True, compute_loss=False))
         preds, _logprobs = template.decode_decision(outputs, top_logprobs=1)
         per_row.extend(preds)
     return per_row

@@ -82,6 +82,15 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
         torch_dtype=(getattr(torch, model_config.torch_dtype) if model_config.torch_dtype else None),
     )
     model_dir = info.model_dir
+    # Pin the resolved family onto the config so the DOWNSTREAM sampler/builder re-resolution
+    # (_resolve_model_loader in build_sampler) sees the same family this load used. For a local
+    # full checkpoint the id matches no registered name, so the family comes from the checkpoint's
+    # own args.json/architectures (info.model_type); without pinning, build_sampler falls back to a
+    # generic AutoModelForCausalLM while the template built here is the family's (e.g. qwen3_5,
+    # which emits mm_token_type_ids) -- the engine then rejects those kwargs at generate. Mirrors
+    # the pin build_model already does for aux models.
+    if model_config.model_type is None and info.model_type is not None:
+        model_config.model_type = info.model_type
     loader_cls = resolve_loader_cls(model_config.model_type or info.model_type, model_ref)
     loader = loader_cls(info) if loader_cls is not None else None
 

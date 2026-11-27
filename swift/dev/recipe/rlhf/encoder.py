@@ -114,7 +114,7 @@ class PreferenceBatchEncoder:
         kl_features: List[dict] = []
         labels: List[bool] = []
         for row, kl_completion in zip(rows, rotated):
-            encoded = self.template.encode({**row, 'rejected_response': kl_completion})
+            encoded = self._encode_kto_pair(row, kl_completion)
             completion = self._strip_side(encoded, 'chosen')
             if 'input_ids' not in completion:
                 raise ValueError('KTO row did not encode a completion (no chosen_input_ids).')
@@ -122,6 +122,31 @@ class PreferenceBatchEncoder:
             kl_features.append(self._strip_side(encoded, 'rejected'))
             labels.append(bool(encoded['label']))
         return completion_features, kl_features, labels
+
+    def _encode_kto_pair(self, row: dict, kl_completion: str) -> dict:
+        """Encode one (chosen, mismatched-KL) pair, keeping the KL side within max_length.
+
+        The KL side is SYNTHESIZED by this loop (prompt_i + completion_j from a different row), so
+        even when every user row fits max_length the mismatched pair can exceed it. z_KL is a
+        detached reference point, not a training target -- an over-length synthesized pair must be
+        truncated, not crash the run (TRL's KTO truncates its KL batch the same way). The chosen
+        side keeps the user's truncation contract: it is encoded on its own first, so a genuinely
+        over-length user row still raises/deletes per the configured strategy, and the fallback
+        truncation can only ever touch the synthesized rejected side.
+        """
+        from twinkle.template.contract.types import MaxLengthError
+        pair = {**row, 'rejected_response': kl_completion}
+        try:
+            return self.template.encode(pair)
+        except MaxLengthError:
+            # Raises again under 'raise'/'delete' if the user's OWN row is over-length.
+            self.template.encode(row)
+            strategy = self.template.truncation_strategy
+            self.template.truncation_strategy = 'right'
+            try:
+                return self.template.encode(pair)
+            finally:
+                self.template.truncation_strategy = strategy
 
     def _sequence_logps(self, logps: Any, features: List[dict]) -> Any:
         """Reduce per-token forward logps ``[n, seq_len]`` to one summed sequence logp per feature.

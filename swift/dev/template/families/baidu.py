@@ -181,6 +181,17 @@ class PaddleOCRTemplate(Template):
                 window_size=-1,
             )
             image_embeds = vision_outputs.last_hidden_state
+            # The frozen vision tower runs under autocast (twinkle patch_frozen_module), whose
+            # fp32-policy ops (LayerNorm) can leave the tower output in fp32; the projector
+            # (mlp_AR) is a plain remote-code module called OUTSIDE that autocast and its
+            # nn.LayerNorm (pre_norm) requires input dtype == weight dtype. Cast to the embedding
+            # compute dtype first -- the same dtype contract the checkpoint's own forward enforces
+            # around the projector output. With vision_return_embed_list=True the tower returns a
+            # LIST of per-image tensors (the remote Projector.forward iterates it), so cast each.
+            if isinstance(image_embeds, (list, tuple)):
+                image_embeds = [embed.to(inputs_embeds.dtype) for embed in image_embeds]
+            else:
+                image_embeds = image_embeds.to(inputs_embeds.dtype)
             image_embeds = model.mlp_AR(image_embeds, image_grid_thw)
             n_image_tokens = (input_ids == self.image_token_id).sum().item()
             image_embeds = torch.cat(image_embeds, dim=0)
@@ -310,22 +321,17 @@ class PaddleOCR1_5Template(PaddleOCRTemplate):
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
+        # PaddleOCR1_5Loader deliberately loads the checkpoint's bundled REMOTE code
+        # (trust_remote_code=True; the in-tree transformers implementation does not match the
+        # checkpoint). Its layout is FLAT -- ``visual`` / ``mlp_AR`` / ``model.embed_tokens``
+        # (Ernie4_5Model) -- not the native ``model.language_model`` / ``get_image_features``
+        # API. Reuse the base remote-code embedding path (same logic as the checkpoint's own
+        # forward), casting pixel_values to the vision-tower dtype as the remote forward does.
         base_model = self.get_base_model(model)
-        input_ids = inputs["input_ids"]
-        pixel_values = inputs.pop("pixel_values")
-        image_grid_thw = inputs.get("image_grid_thw")
-        inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
+        pixel_values = inputs.get("pixel_values")
         if pixel_values is not None:
-            image_embeds = base_model.model.get_image_features(
-                pixel_values, image_grid_thw, return_dict=True
-            ).pooler_output
-            image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-            image_mask = base_model.model.get_placeholder_mask(
-                input_ids, inputs_embeds=inputs_embeds, image_features=image_embeds
-            )
-            inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
-
-        return {"inputs_embeds": inputs_embeds}
+            inputs["pixel_values"] = pixel_values.to(dtype=base_model.visual.dtype)
+        return PaddleOCRTemplate._post_encode(self, base_model, inputs)
 
 
 @dataclass
