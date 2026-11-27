@@ -1,0 +1,118 @@
+---
+title: 插件
+description: 注册奖励、回调、参数分组、工具和 harness，复用 twinkle 的内核扩展。
+---
+
+插件用于替换训练流程中的一个明确扩展点，不需要重写完整 recipe。SWIFT 定义训练语义、基类和注册名，twinkle 负责加载插件源及执行通用组件。
+
+加载顺序是：CLI 读取 `external_plugins` → 导入 Python 文件并执行注册 → Config 选择注册名 → builder 构造对象或可序列化规则 → recipe 使用组件。Ray worker 会重新导入已配置的外部源；多机运行时，每台机器都必须能访问插件代码及其依赖。
+
+## 扩展点
+
+| 扩展点 | 基类或契约 | 选择参数 | 用途 |
+|---|---|---|---|
+| `reward` | `RewardPlugin` | `orm` | 对 completions 和数据列返回逐样本奖励 |
+| `prm_scorer` | `PRMSegmentScorer` | `prm_scorer` | 为过程奖励确定轨迹分段边界 |
+| `callback` | `TrainCallback` | `callbacks` | 训练、日志、保存和评估事件 |
+| `param_groups` | `ParamGroupsPlugin` | `param_groups_plugins` | 返回 optimizer 参数分组规则 |
+| `tool` | `ToolPlugin` | `tools` | 构造多轮 rollout 可调用的工具 |
+| `harness` | `HarnessPlugin` | `harness` | 构造每个 episode 启动的外部 CLI agent |
+
+模型加载器、数据加载器和模板使用各自的注册表，分别见 [模型与数据集](../get-started/models-and-datasets.mdx)、[自定义数据集](./custom-dataset.mdx) 和 [模板](./template.mdx)。它们也可以通过同一个 `external_plugins` 文件注册，但不是上述六个 plugin kind。
+
+loss、metric 和 optimizer 类属于 twinkle 内核组件命名空间。`--loss`、`--metric` 和 `--optim` 选择这些组件；optimizer 参数分组则属于 SWIFT 的 `param_groups` 扩展点。tuner 是模型能力，不是训练事件回调。
+
+## 自定义奖励
+
+保存为 `my_plugin.py`：
+
+```python
+from swift.dev.utils.plugin import PluginRegistry, RewardPlugin
+
+
+@PluginRegistry.register('reward', 'length_bonus')
+class LengthBonus(RewardPlugin):
+    def __call__(self, completions, **columns):
+        return [1.0 if len(text) > 100 else 0.0 for text in completions]
+```
+
+数据沿用 [快速启动](../get-started/quick-start.mdx) 的数学数据集（`messages` 只含 prompt，`solution` 供奖励读取），并安装采样引擎：
+
+```bash
+pip install vllm
+CUDA_VISIBLE_DEVICES=0,1 swift rl \
+    --rl_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --external_plugins ./my_plugin.py \
+    --orm length_bonus \
+    --mode ray \
+    --nproc_per_node 1 \
+    --rollout_sampler vllm \
+    --sampler_mode disaggregated \
+    --generation_batch_size 2 \
+    --num_generations 4 \
+    --max_completion_length 512 \
+    --max_length 2048 \
+    --max_steps 20 \
+    --output_dir output/reward-plugin
+```
+
+返回值长度须等于 completions 长度，并保持相同顺序。`columns` 提供当前样本的参考答案等字段；奖励不要依赖任意 batch 顺序。长度奖励只用于演示接口，实际任务应同时约束正确性、格式和无效输出，避免模型仅通过延长回答提高分数。
+
+涉及外部 API 的奖励可以实现 `async def __call__`，无需另一个 async 基类。设置 API 超时与失败处理，避免一个未返回的评分请求阻塞训练；不要把凭据写进插件或日志。
+
+## 训练回调
+
+将以下内容加入同一个插件文件：
+
+```python
+from swift.dev.callbacks import TrainCallback
+
+
+@PluginRegistry.register('callback', 'progress_printer')
+class ProgressPrinter(TrainCallback):
+    def on_step_end(self, state, control):
+        print(f'step={state.global_step} loss={state.loss}')
+```
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --dataset 'swift/self-cognition#600' \
+    --external_plugins ./my_plugin.py \
+    --callbacks progress_printer \
+    --output_dir output/callback
+```
+
+`CallbackState` 是只读训练位置和最近指标；通过 `CallbackControl` 的 `should_training_stop`、`should_save`、`should_evaluate`、`should_log` 请求相应操作，不直接修改循环计数器。事件包括 train / epoch / step 的 begin、end，以及 optimizer、log、evaluate、save；具体签名见 [callbacks/base.py](https://github.com/modelscope/ms-swift/blob/main/swift/dev/callbacks/base.py)。
+
+## Optimizer 参数分组
+
+```python
+from swift.dev.builders.optimizer_plugins import ParamGroupsPlugin
+
+
+@PluginRegistry.register('param_groups', 'no_decay_embeddings')
+class NoDecayEmbeddings(ParamGroupsPlugin):
+    def __call__(self, *, train_config, tuner_config):
+        return [{'match': {'module_type': 'Embedding'}, 'weight_decay': 0.0}]
+```
+
+通过 `--param_groups_plugins no_decay_embeddings` 选择。插件返回可序列化规则，不读取 driver 代理上的模型参数。twinkle 在真实模型所在 worker 匹配参数；内置多模态分组和 LoRA+ 规则先匹配，第一条匹配规则优先。规则语法见 [build_param_groups_spec](https://github.com/modelscope/ms-swift/blob/main/swift/dev/builders/optimizer.py)。
+
+## 工具、harness 与过程奖励
+
+`ToolPlugin.build()` 返回工具实例列表，工具提供调用接口和模型可见的 schema。`tools=sandbox` 使用环境自己的工具，并绑定到每个 episode 的 session，不从全局共享工作目录执行模型生成的命令。
+
+`HarnessPlugin.build()` 返回 `twinkle_agentic.harness.CliAgent`，内置名为 `codex` 和 `ms_agent`。rollout 管理 episode 环境、模型回调入口和生成记录，harness 只负责外部程序。完整数据流见 [Agentic](../training/agentic.mdx)。
+
+`PRMSegmentScorer.build()` 返回分段判断函数或 `None`；`turn`、`delimiter` 是内置选择。它确定何时对中间轨迹评分，不等于最终正确性奖励，也不代替 PRM 模型。
+
+## 加载与复用
+
+`--external_plugins` 支持本地 `.py`、目录以及 `hf://` / `ms://` 插件源。插件导入会执行代码，只加载可信来源并固定版本。目录和远端插件的解析由 twinkle 统一完成，SWIFT 不另建一套加载器。
+
+新增整个扩展点可使用 `PluginRegistry.register_kind(name, base, config_field=...)`；新增实现用 `PluginRegistry.register(kind, name)`。注册不等于自动接入任意 recipe：新 kind 的选择字段和使用位置仍须由调用者定义。完整示例见 [examples/v5/train/plugins](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/plugins)。

@@ -37,7 +37,9 @@ def inflight_rows(rollout_config: Any, batch_size: int, num_generations: int) ->
 
 
 def rollout_sampling_params(max_tokens: Optional[int], generation_config: Any = None) -> Dict[str, Any]:
-    """The rollout's sampling knobs as a dict: ``max_tokens`` plus the set temperature / top_p / top_k."""
+    """The rollout's sampling knobs as a dict: ``max_tokens`` plus the set temperature / top_p / top_k
+    and the user's ``stop_words`` (an excluded string stop by default -- the sampler trims the decoded
+    text, the sampled token ids stay complete)."""
     params: Dict[str, Any] = {}
     if max_tokens is not None:
         params['max_tokens'] = max_tokens
@@ -45,6 +47,9 @@ def rollout_sampling_params(max_tokens: Optional[int], generation_config: Any = 
         value = getattr(generation_config, key, None)
         if value is not None:
             params[key] = value
+    stop_words = getattr(generation_config, 'stop_words', None)
+    if stop_words:
+        params['stop'] = list(stop_words)
     return params
 
 

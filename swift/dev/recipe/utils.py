@@ -38,46 +38,6 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def fp8_seq_align_option(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
-                         cp_size: int) -> Optional[int]:
-    """The processor's fp8/fp4 token-dimension alignment (legacy ``get_padding_to`` on the data path).
-
-    fp8 GEMMs require the token dimension to be a multiple of 16 (delayed/tensorwise), 32 (mxfp8)
-    or 128 (blockwise); legacy pads every micro-batch through the collator's ``padding_to``. Dev
-    restores it as ``InputProcessor(seq_align_to=...)``. None when fp8/fp4 is off or the backend
-    is not megatron, so bf16 runs keep twinkle's padding untouched. Shared by every recipe that
-    trains locally (SFT and the RL policies alike): the TE GEMM dim assert does not care which
-    loss produced the tokens.
-    """
-    if distributed_config.backend != 'megatron':
-        return None
-    if model_config.fp8_format is None and model_config.fp4_format is None:
-        return None
-    from swift.dev.builders.model import _mixed_precision_for
-    from swift.dev.processor.base import get_sequence_padding_to
-    from swift.dev.utils.naming import resolve_megatron_attn_backend
-    attn_backend = resolve_megatron_attn_backend(
-        model_config.attn_impl, mixed_precision=_mixed_precision_for(model_config.torch_dtype))
-    seq_align_to = get_sequence_padding_to(
-        distributed_config.tensor_model_parallel_size,
-        distributed_config.sequence_parallel,
-        cp_size,
-        attn_backend.name,
-        fp8_format=model_config.fp8_format,
-        fp4_format=model_config.fp4_format,
-        fp8_recipe=model_config.fp8_recipe)
-    return seq_align_to if seq_align_to and seq_align_to > 1 else None
-
-
-def processor_cp_size(distributed_config: 'DistributedConfig') -> int:
-    """The policy's context-parallel width for token padding: explicit knob or parallel_spec."""
-    cp_size = distributed_config.context_parallel_size
-    if distributed_config.parallel_spec:
-        from twinkle import DeviceMesh
-        cp_size = max(cp_size, DeviceMesh.parse_spec(distributed_config.parallel_spec).get('cp_size', 1) or 1)
-    return cp_size
-
-
 def close_driver_preserving_error(driver: Any) -> Dict[str, Any]:
     """Return the driver's terminal statistics while preserving an in-flight training error."""
     primary_error = sys.exc_info()[0]
@@ -1473,7 +1433,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
     HTTPSampler over the server's served engine, so no engine args or replicas are built locally.
     The same dev TemplateSpec the model's processor was set with rebuilds the server-side
     template; the HTTPSampler wraps the served handle in the exact ``sample`` face
-    MultiTurnRollout drives (RolloutState and media in, twinkle SampleResponse out), so single-
+    MultiTurnRollout drives (the complete Trajectory and media in, twinkle SampleResponse out), so single-
     and multi-turn rollouts stay mode-blind.
     """
     if distributed_config is not None and distributed_config.mode == 'remote':
@@ -1491,9 +1451,9 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
 
         sampler = ClientSampler(model_config.model)
         spec = build_template_spec(template_config, model_config)
-        sampler.set_template('swift.dev.template.Template', **{'template_spec': spec})
+        sampler.set_template('SwiftTemplate', template_spec=spec)
         # The rollout drives the served engine through the HTTPSampler: it carries the episode's
-        # RolloutState and media, stamps the synced adapter per call, and returns the twinkle
+        # complete Trajectory, stamps the synced adapter per call, and returns the twinkle
         # SampleResponse the rollout's type guards require (the bare handle speaks protocol models).
         return HTTPSampler(sampler, template)
     from twinkle import DeviceMesh
@@ -1624,12 +1584,26 @@ def spec_world_size(parallel_spec: Optional[str], default: int = 1) -> int:
     return DeviceMesh.from_spec(parallel_spec).world_size
 
 
-def prompt_rows_from_dataset(dataset_config: 'DatasetConfig') -> Tuple[List[Dict[str, Any]], List[List[dict]], List[Dict[str, Any]]]:
+def _messages_under_system(messages: List[dict], system: Optional[str]) -> List[dict]:
+    """``messages`` with ``system`` as their system turn -- it REPLACES one the row already has, the
+    ``to_trajectory`` rule (two system messages is not a supported prompt shape for most templates).
+    """
+    if not system:
+        return messages
+    return [{'role': 'system', 'content': system}] + [m for m in messages if m.get('role') != 'system']
+
+
+def prompt_rows_from_dataset(
+    dataset_config: 'DatasetConfig', system: Optional[str] = None
+) -> Tuple[List[Dict[str, Any]], List[List[dict]], List[Dict[str, Any]]]:
     """Load prompt rows, the prompt message views, and the non-message columns for the rollout.
 
     Returns ``(rows, prompts, extras)``: ``rows`` is the raw loaded rows (the resource estimator
     reads the prompt lengths from them), ``prompts`` the message lists with any trailing assistant
     turn stripped, ``extras`` everything else (solution/target/teacher_prompt/...) keyed per prompt.
+
+    ``system`` (``TemplateConfig.system``) is written into the messages of both ``rows`` and
+    ``prompts``, so a prompt carries its system turn itself whichever sampler or template encodes it.
     """
     from swift.dev.builders import load_prompt_only_rows
 
@@ -1642,6 +1616,8 @@ def prompt_rows_from_dataset(dataset_config: 'DatasetConfig') -> Tuple[List[Dict
         messages = row.get('messages') if isinstance(row, dict) else None
         if not messages:
             continue
+        messages = _messages_under_system(list(messages), system)
+        row['messages'] = messages
         if messages[-1].get('role') == 'assistant':
             messages = messages[:-1]
         prompts.append(list(messages))
@@ -1898,20 +1874,30 @@ def filter_perf_actors(candidates: Dict[str, Any]) -> Dict[str, Any]:
 def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
     """Flatten EvalScope report rows into a ``{metric_name: score}`` dict.
 
-    ``summarize`` returns one report dict per benchmark (an ``evalscope.report.Report``): its overall
-    ``score`` is keyed by the benchmark ``name``, and each entry in ``metrics`` contributes its own
-    ``name``/``score``. ``metric_for_best_model`` on the generative path names one of these keys, so
+    ``summarize`` returns one report dict per benchmark (an ``evalscope.report.Report`` dump): its
+    overall score is keyed by the benchmark ``name``, and each entry in ``metrics`` contributes its
+    own name/score. ``metric_for_best_model`` on the generative path names one of these keys, so
     best-model tracking and ``on_evaluate`` read a flat mapping rather than the nested report.
+
+    Rows are read back through ``Report.from_dict`` -- evalscope's single read path -- because the
+    serialized shape is schema-versioned: report v2 (evalscope >= 1.11) stores ``metrics`` with
+    ``identity`` plus a ``primary_metric_identity`` instead of the v1 convenience ``score``/``name``
+    keys, and the model's compat properties (``Report.score``, ``Metric.name``) resolve both shapes.
+    Hand-picking the v1 keys off a v2 dump silently yielded an EMPTY mapping, leaving best-model
+    tracking blind on every Native eval.
     """
+    from evalscope.report.report import Report
+
     flat: Dict[str, float] = {}
     for row in summary or []:
         if not isinstance(row, dict):
             continue
-        if row.get('name') is not None and row.get('score') is not None:
-            flat[str(row['name'])] = float(row['score'])
-        for metric in row.get('metrics') or []:
-            if isinstance(metric, dict) and metric.get('name') is not None and metric.get('score') is not None:
-                flat[str(metric['name'])] = float(metric['score'])
+        report = Report.from_dict(row)
+        if report.score is not None:
+            flat[str(report.name)] = float(report.score)
+        for metric in report.metrics:
+            if metric.score is not None:
+                flat[str(metric.name)] = float(metric.score)
     return flat
 
 

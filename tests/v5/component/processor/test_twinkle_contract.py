@@ -61,13 +61,14 @@ TEMPLATE_MUST_HAVE = (
 
 #: Exists on twinkle's Template but absent by design on dev's -- the consumer is a twinkle path dev
 #: does not enter today. Keep the pins so "absent" stays an explicit decision.
-KNOWN_DIVERGENCE = {
-    "check": "twinkle dataset/lazy_dataset.py:217; dev drives its own dataset/loader, never twinkle Dataset",
-    "batch_check": "twinkle dataset/base.py:174; same reason as check",
-    "map_col_to_row": "twinkle Dataset columnar input; dev passes row lists only",
-    "map_row_to_col": "twinkle Dataset columnar output; same reason",
-    "_add_attention_fields": "twinkle server/common/datum.py:54; dev does not serve through that path",
-}
+#: EMPTY since 7f194bfea ("refactor(template): 继承 twinkle 并统一公有接口"): dev Template now subclasses
+#: twinkle Template (class Template(ProcessorMixin, TwinkleTemplate)), so it INHERITS the entire twinkle
+#: surface -- check / batch_check / map_col_to_row / map_row_to_col / _add_attention_fields are all present
+#: on dev (verified: in vars(TwinkleTemplate), not overridden in vars(dev Template)). There is no longer
+#: any twinkle member absent by design on dev, so the divergence pin set is empty. The TEMPLATE_MUST_HAVE
+#: guard above still proves dev provides everything twinkle calls; if a future change re-introduces a
+#: deliberate gap, pin it here and the diverged/missing_twinkle assertions re-activate.
+KNOWN_DIVERGENCE = {}
 
 
 #: Members dev's InputProcessor overrides that twinkle no longer defines (or calls). Each entry must
@@ -137,7 +138,7 @@ def test_processor_contract_members_match_twinkle():
 
     from swift.dev.processor import InputProcessor
 
-    overridden = {"prepare_inputs", "collate_fn", "to_transformers_dict", "pad_cp", "split_cp"}
+    overridden = {"prepare_inputs", "collate_fn", "to_transformers_dict", "split_cp"}
     for name in overridden:
         assert hasattr(TwinkleIP, name), f"twinkle InputProcessor lost {name}, which dev overrides"
         assert name in vars(InputProcessor), f"dev InputProcessor must override {name} to stay in contract"
@@ -170,22 +171,28 @@ def test_phase3_role_method_signatures_match(method):
 
 def test_templates_satisfy_shared_runtime_protocol():
     from twinkle.template import Template as TwinkleTemplate
+    from twinkle.template.contract import TemplateProtocol
 
     from swift.dev.template import Template as SwiftTemplate
-    from twinkle.template.contract import TemplateProtocol
 
     assert isinstance(object.__new__(SwiftTemplate), TemplateProtocol)
     assert isinstance(object.__new__(TwinkleTemplate), TemplateProtocol)
 
 
 def test_twinkle_template_encoder_hook_signature():
-    """twinkle's batch_encode routes through ``_encode_messages``; dev's injection point must match it."""
+    """twinkle's batch_encode routes through ``_encode_messages``; dev's injection point must match it.
+
+    Since 7f194bfea dev Template inherits batch_encode/_encode_messages from twinkle (no dev override),
+    so the call shape matches by construction. twinkle 8314e88d ("对齐公共接口与跨组件模板设置") added the
+    keyword-only ``with_labels`` parameter; batch_encode feeds it as ``with_labels=intent.with_labels``
+    (twinkle template/base.py:902). Pin the current signature so a future drift is still caught.
+    """
     import inspect
 
     from twinkle.template import Template as TwinkleTemplate
 
     params = list(inspect.signature(TwinkleTemplate._encode_messages).parameters)
-    assert params == ["self", "trajectory", "add_generation_prompt", "kwargs"], (
+    assert params == ["self", "trajectory", "add_generation_prompt", "with_labels", "kwargs"], (
         f"twinkle changed _encode_messages signature to {params}; update dev Template.batch_encode, which "
-        "feeds it via the same (trajectory, add_generation_prompt) call shape"
+        "feeds it via the same (trajectory, add_generation_prompt, with_labels) call shape"
     )

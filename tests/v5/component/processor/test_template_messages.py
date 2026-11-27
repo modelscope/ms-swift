@@ -5,8 +5,8 @@ import json
 import pytest
 
 from swift.dev.template.base import Template as FamilyTemplate
+from swift.dev.template.base import check_generation_prompt
 from swift.dev.template.inputs import StdTemplateInputs
-from swift.dev.template.intent import check_generation_prompt
 from swift.dev.template.meta import TemplateMeta
 from swift.dev.template.utils import normalize_messages
 
@@ -240,9 +240,10 @@ def test_decode_output_uses_same_normalized_markers_for_split_and_state(generate
 
 
 def test_gemma_decode_splits_special_reasoning_close_before_cleanup():
+    from twinkle.template.contract import DecodeContext
+
     from swift.dev.template.families.gemma import Gemma4Template
     from swift.dev.template.output import OutputCodec
-    from twinkle.template.contract import DecodeContext
 
     class Tokenizer:
         all_special_tokens = ["<channel|>"]
@@ -265,8 +266,9 @@ def test_gemma_decode_splits_special_reasoning_close_before_cleanup():
 
 
 def test_truncated_reasoning_never_becomes_answer_content():
-    from swift.dev.template.output import OutputCodec
     from twinkle.template.contract import DecodeContext
+
+    from swift.dev.template.output import OutputCodec
 
     class Tokenizer:
         all_special_tokens = []

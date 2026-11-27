@@ -1,4 +1,4 @@
 {
-  "title": "Interfaces",
-  "pages": ["index", "cli", "code-api", "mp-separation"]
+  "title": "Interfaces and Components",
+  "pages": ["index", "cli", "custom-dataset", "template", "plugins", "mp-separation", "server-client"]
 }

@@ -1,50 +1,168 @@
 ---
-title: Command Line
-description: One CLI for pretrain, SFT, RL, inference, deployment, evaluation and export.
+title: CLI Parameters
+description: SWIFT v5 commands, parameter groups, defaults, and example entry points.
 ---
 
 ## Commands
 
-| Command | Task |
-|---|---|
-| `swift pt` | pre-training (base models) |
-| `swift sft` | supervised fine-tuning (all task types) |
-| `swift rl` | alignment & online RL (`--rlhf_type` selects the algorithm; `rlhf` is an alias) |
-| `swift infer` | interactive / batch inference |
-| `swift deploy` | serving (vLLM / sglang / transformers engines) |
-| `swift eval` | evaluation (EvalScope) |
-| `swift export` | checkpoint export / merge / quantization / push |
-| `swift merge` | LoRA merge into base weights |
+CLI parameters correspond to fields in `swift.dev.config`. Each command combines the Config classes it needs, processes and validates arguments, and assembles components.
 
-By default the CLI routes to the v5 implementation (`swift.dev.cli.*`), which
-parses arguments straight into typed Config dataclasses. Set `USE_SWIFT_V5=0`
-to run the legacy v4 path — used only for regression comparisons.
+| Command | Purpose | Complete examples |
+| --- | --- | --- |
+| `swift pt` | Pretraining | [Training examples](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| `swift sft` | Instruction tuning and supervised tasks | [SFT](../get-started/quick-start.mdx), [training examples](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| `swift rl` | Preference learning, online RL, and distillation | [GRPO](../get-started/quick-start.mdx), [RL examples](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl) |
+| `swift infer` | Interactive/batch inference and candidate-data synthesis | [Inference examples](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer) |
+| `swift deploy` | Model inference endpoints | [Deployment examples](https://github.com/modelscope/ms-swift/tree/main/examples/v5/deploy) |
+| `swift eval` | Model evaluation | [Evaluation examples](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
+| `swift export` | Export and quantization | [Export examples](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
+| `swift merge` | LoRA merging | [Merge examples](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
 
-## Shared knobs
+`swift rlhf` is a compatible name for `swift rl`. Use the canonical names above in new scripts. See [WebUI Quick Start](/en/webui/quick-start) for the workbench launcher.
 
-Every training command shares the same configuration surface:
+List all parameters for a command with its help:
 
 ```bash
-swift sft \
-    --model Qwen/Qwen3.5-4B --torch_dtype bfloat16 --attn_impl flash_attention_2 \
-    --task_type causal_lm \
-    --dataset 'swift/self-cognition#600' \
-    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
-    --mode ray --nproc_per_node 2 \
-    --num_train_epochs 1 --learning_rate 1e-4 \
-    --save_steps 100 --output_dir output
+swift sft --help
+swift rl --help
+swift infer --help
 ```
 
-- **Task**: `--task_type` ∈ causal_lm / embedding / reranker / generative_reranker /
-  seq_cls / decision … selects the head and loss family.
-- **Tuner**: `--tuner lora|full|…` with `--lora_rank/--lora_alpha/--target_modules`.
-- **Distribution**: `--mode local|ray|remote`, `--nproc_per_node`;
-  remote adds `--server_base_url` (the training processes then run inside a twinkle-server).
-- **Backend**: `--backend transformers|megatron`.
-- **RL**: `swift rl --rlhf_type grpo|ppo|dpo|kto|cpo|orpo|simpo|rm|rft|gkd|opsd|mopd`,
-  with `--num_generations`, `--orm`, `--vllm_mode colocate|disaggregate`,
-  `--beta`, `--epsilon` etc. per algorithm.
+Defaults below are Config declaration values. Automatic fields depend on the model, task, or environment; inference commands can also restore settings from a checkpoint's `args.json`.
 
-Unknown or unconsumed flags fail loudly instead of being silently ignored.
-Full runnable flag sets: [`examples/v5`](https://github.com/modelscope/ms-swift/tree/main/examples/v5)
-— every script header documents its knobs and measured VRAM.
+## Argument syntax
+
+- Pass lists as multiple values: `--dataset train.jsonl extra.jsonl`.
+- Pass booleans explicitly: `--packing true`, `--gradient_checkpointing false`.
+- Pass dictionaries as quoted JSON or a JSON file supported by the field.
+- Field names use underscores, such as `--max_length`. Unknown arguments are rejected, not silently ignored.
+
+```bash
+--columns '{"question":"query","answer":"response"}'
+--model_kwargs '{"trust_remote_code":true}'
+```
+
+You can also put parameters in YAML:
+
+```yaml
+model: Qwen/Qwen3.5-4B
+model_type: qwen3_5
+template: qwen3_5
+torch_dtype: bfloat16
+attn_impl: flash_attention_2
+dataset:
+  - swift/self-cognition#600
+tuner: lora
+num_train_epochs: 3
+output_dir: output/sft
+```
+
+Save as `sft.yaml` and run `swift sft sft.yaml`.
+
+## Model parameters
+
+- `model`: default `None`. Model ID or directory; a served model ID in remote mode.
+- `model_type`, `model_revision`: default `None`. Family identifier and revision.
+- `task_type`: automatic; `causal_lm`, `seq_cls`, `embedding`, `reranker`, `generative_reranker`, or `decision`.
+- `torch_dtype`: automatic; `bfloat16`, `float16`, or `float32`.
+- `attn_impl`: attention implementation, such as `flash_attention_2`, `sdpa`, or `eager`; availability depends on the model and hardware.
+- `vit_attn_impl`: a separate implementation for the vision tower.
+- `model_kwargs`: additional model loading arguments.
+- `language_model_only`: default `false`; construct only the language portion of a multimodal checkpoint.
+
+See [ModelConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/model_config.py) and [QuantizeConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/quantize_config.py) for additional loading, quantization, and low-precision fields.
+
+## Data parameters
+
+- `dataset`, `val_dataset`: empty lists by default; training and validation sources.
+- `split_dataset_ratio`: `0.0`; fraction split from training data for validation.
+- `data_seed`: `42`; `dataset_shuffle`: `true`; `val_dataset_shuffle`: `false`.
+- `dataset_num_proc`: `1`; preprocessing parallelism.
+- `columns`: `None`; source-to-standard column mapping.
+- `custom_dataset_info`: empty list; external dataset metadata JSON.
+- `use_hf`: `false`; use ModelScope unless Hugging Face is selected.
+- `streaming`: `false`; `shuffle_buffer_size`: `1000`.
+- `packing`: `false`; `packing_length`: automatic; `packing_strategy`: `binpack`.
+- `cached_dataset`, `cached_val_dataset`: cached data sources, distinct from preprocessing raw text.
+
+See [Custom Datasets](./custom-dataset.mdx) for formats and integration.
+
+## Template parameters
+
+- `template`: automatic; `system`: supplied by data or template defaults.
+- `max_length`: automatic; encoded sequence limit.
+- `truncation_strategy`: `delete`, `left`, `right`, or `split`; automatic by default.
+- `padding_side`: `right`; `padding_free`: `false`.
+- `loss_scale`: `default`; per-token supervision weighting policy.
+- `enable_thinking`, `preserve_thinking`: automatic; supported thinking behavior and retention.
+- `agent_template`: model-specific tool-call formatting.
+- `max_pixels`: multimodal pixel limit.
+
+These configure encoding rather than the sampler. See [Templates](./template.mdx).
+
+## Tuning parameters
+
+- `tuner`: `lora`; choices are `full`, `lora`, and `trainable_tokens`.
+- `adapters`: empty list; adapter checkpoints to load.
+- `target_modules`: `all-linear`; alternatively provide module names or `target_regex`.
+- `lora_rank`: `8`; `lora_alpha`: `32`; `lora_dropout`: `0.05`.
+- `use_dora`, `use_rslora`: `false`; LoRA variants, not separate tuner names.
+- `freeze_llm`: `false`; `freeze_vit`, `freeze_aligner`: `true`.
+- `modules_to_save`: extra modules to train and save.
+- `trainable_token_indices`: embedding rows trained by `trainable_tokens`.
+
+QLoRA combines LoRA and quantization settings; do not specify `tuner=qlora`.
+
+## Training parameters
+
+- `learning_rate`: `1e-5`; `lr_scheduler`: `cosine`.
+- `warmup_ratio`: `0.0`; `warmup_steps`: `0`.
+- `num_train_epochs`: `3.0`; `max_steps`: `-1`. An explicit step limit caps optimizer updates.
+- `per_device_train_batch_size`, `per_device_eval_batch_size`: `1`.
+- `gradient_accumulation_steps`: `1`.
+- `max_grad_norm`: `1.0`; `gradient_checkpointing`: `true`.
+- `optim`: `adamw_torch_fused` for Transformers; Megatron selects its optimizer with `optimizer`.
+- `weight_decay`: `0.1`; `adam_beta1=0.9`, `adam_beta2=0.95`, `adam_epsilon=1e-8`.
+- `dynamic_batching`: `false`; `max_tokens_per_micro_batch`: token budget; `micro_batch_order`: `none`.
+
+See [TrainConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/train_config.py) for remaining optimizer, scheduling, and evaluation fields.
+
+## Distribution and services
+
+- `mode`: `local`; choices `local`, `ray`, `remote`. On-machine RL requires Ray; the SFT default is not an RL execution mode.
+- `backend`: Transformers by default; choices `hf`, `megatron`, `unsloth`.
+- `nproc_per_node`: training-group processes in Ray mode; a local torchrun launcher sets its own process count.
+- `parallel_spec`: DeviceMesh layout, such as `dp2`.
+- `deepspeed`, `fsdp`, `fsdp_config`: backend-specific training sharding.
+- `tensor_model_parallel_size`, `pipeline_model_parallel_size`, `context_parallel_size`, `expert_model_parallel_size`: Megatron TP/PP/CP/EP; each defaults to `1`.
+- `server_base_url`, `server_api_key`: remote gateway root and authentication.
+
+For local multi-process supervision, use the launcher, for example `NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft sft.yaml`. Configure a Ray training group with `--mode ray --nproc_per_node 2`. See [Server & Client](./server-client.mdx) for remote deployment.
+
+## Online learning and generation
+
+- `rl_type`: `dpo`; choices `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, `ppo`, `grpo`, `gkd`, `opsd`, `mopd`, `rft`.
+- `rollout_sampler`: `vllm`; choices `vllm`, `sglang`.
+- `sampler_mode`: resolves to `disaggregated`; `colocate` shares GPUs.
+- `generation_batch_size`: prompts per sampling round; derived from training batch by default.
+- `num_generations`: responses per GRPO prompt, not the prompt count.
+- `orm`, `prm`: reward rules, plugins, or models; weights align with each channel's entries.
+- `async_mode`: `none`; choices `one_step_off`, `fully_async`.
+- `max_turns`, `max_trajectory_tokens`: multi-turn and total trajectory-token limits.
+- `tools`, `sandbox_kind`: tools and environment; see [Agentic Training](../training/agentic.mdx).
+
+Offline inference uses `sampler`, default `transformers`. `temperature`, `top_k`, `top_p`, `repetition_penalty`, and `max_new_tokens` configure decoding. `vllm_*` and `sglang_*` configure engines: `--vllm_tensor_parallel_size 2` changes sampler TP, not training-model TP.
+
+`--output_format all|dpo|grpo` selects offline output format; `--num_return_sequences` defaults to `1`; `--result_path` specifies the result file. See [Plugins](./plugins.mdx) for rewards.
+
+## Saving and logging
+
+- `output_dir`: `output`; `add_version`: `true`, creating a versioned run directory.
+- `save_strategy`: `steps`; `save_steps`: `500`; `save_total_limit`: unlimited by default.
+- `resume_from_checkpoint`: resume training; `resume_only_model`: `false`, loading only weights when enabled.
+- `save_only_model`: `false`; training resumption also needs optimizer, scheduler, and progress state.
+- `load_args`: training default `false`; inference and artifact commands enable it to restore model and template settings.
+- `external_plugins`: explicit plugin loading. Restoring checkpoint-declared plugin code needs trust authorization; reading `args.json` does not automatically execute it.
+- `report_to`: `tensorboard`; `logging_steps`: `5`; `logging_nan_inf_filter`: `false`.
+
+See [Mechanism / Policy Separation](./mp-separation.mdx) for Python entry points and component-level training.

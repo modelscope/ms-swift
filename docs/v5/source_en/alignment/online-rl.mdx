@@ -1,50 +1,299 @@
 ---
 title: Online RL
-description: GRPO/PPO/RFT/GKD with vLLM rollouts; colocate or disaggregated placement.
+description: Run GRPO through sampling, rewards, and policy updates; configure colocated, disaggregated, and asynchronous training.
 ---
 
-## GRPO end to end
+Online learning generates responses with the current model during training, then updates the model using rewards or teacher feedback. Unlike SFT on fixed answers or DPO on fixed preference pairs, its training data changes as the model evolves.
+
+SWIFT v5 provides GRPO, PPO, RFT, and online distillation workflows such as GKD/OPSD/MOPD. This guide uses GRPO on a mathematical task to introduce data preparation, rewards, training commands, and rollout scheduling.
+
+## How GRPO works
+
+GRPO (Group Relative Policy Optimization) samples multiple responses for each prompt and estimates advantages from their relative rewards. It does not require an additional trained value model.
+
+The training data flow is:
+
+```text
+Prompt → sample multiple responses → score rewards → group-relative advantages
+       → compute token log-probabilities with the training model → policy update → sync weights to sampler
+```
+
+The default group normalization can be summarized as:
+
+```text
+A_i = (R_i - mean(R)) / (std(R) + ε)
+```
+
+`R_i` is the reward for response i, and `R` contains the rewards of all responses to the same prompt. `A_i` measures that response relative to its peers. Here, `ε` is a numerical stability term, not the clipping parameter `--epsilon`.
+
+Training uses the probability ratio between the new and old policies in a clipped objective to constrain update magnitude. `--epsilon` controls clipping, and `--beta` controls an optional reference-policy KL term. Setting `--beta 0` disables that term but changes the objective; it is not an equivalent memory optimization.
+
+The following is a conceptual outline, not line-by-line framework code:
+
+```text
+Initialize training model, sampler, and reward functions
+Sync initial weights
+Repeat:
+    Sample G responses for each prompt
+    Score each response and compute advantages grouped by prompt
+    Form training batches; run forward/backward and optimizer updates
+    Publish updated weights to the sampler according to configuration
+```
+
+When every response in a group receives the same reward, its group-relative advantages are zero. Such a group provides no learning signal from reward differentiation. Reward design, task difficulty, and response diversity therefore matter directly.
+
+## Installation
+
+Install SWIFT as described in [Quick Start](../get-started/quick-start.mdx). Online training also needs the sampling and reward dependencies:
+
+```bash
+pip install vllm math-verify
+```
+
+vLLM handles online generation sampling, Ray is installed with twinkle, and math-verify is used for the mathematical rewards below. Even with `async_mode=none`, current GRPO can execute through streaming scheduling components. Synchronous training does not imply that scheduling dependencies are unnecessary.
+
+Local online training uses Ray to manage the trainer and sampler. `--mode remote` instead connects to an existing twinkle-server, which manages model resources. The commands here use local Ray and do not require a separate legacy v4 rollout server.
+
+## Data preparation
+
+GRPO needs at least a prompt. Include any reference answers, test cases, or other fields required by your rewards. The mathematical correctness reward `accuracy` reads `solution` by default.
+
+Save custom data as `prompts.jsonl`:
+
+```jsonl
+{"messages": [{"role": "user", "content": "Compute 17 × 23. Put the final answer in \\boxed{}."}], "solution": "391"}
+{"messages": [{"role": "user", "content": "Solve 2x + 3 = 11. Put the final answer in \\boxed{}."}], "solution": "4"}
+```
+
+- `messages` contains the conversation before generation; no prewritten assistant response is needed.
+- `solution` is used for scoring. Do not insert the reference answer into the prompt sent to the model.
+- `accuracy` parses and compares mathematical answers with math-verify. Using `\boxed{...}` to identify the final answer is recommended, but it is not the only accepted format.
+- These two records illustrate the format. Real training needs sufficiently many problems with varied difficulty.
+
+If you do not have your own data, load 5000 records from `AI-MO/NuminaMath-TIR` on Hugging Face and explicitly separate prompts from reference answers as above. Save this script as `prepare_data.py` and run `python prepare_data.py`:
+
+```python
+import json
+from datasets import load_dataset
+
+
+dataset = load_dataset('AI-MO/NuminaMath-TIR', split='train[:5000]')
+with open('prompts.jsonl', 'w', encoding='utf-8') as f:
+    for row in dataset:
+        sample = {
+            'messages': [{'role': 'user', 'content': row['problem']}],
+            'solution': row['solution'],
+        }
+        f.write(json.dumps(sample, ensure_ascii=False) + '\n')
+```
+
+The command below uses this `prompts.jsonl`. With existing custom data, skip downloading and conversion; ensure your rewards can read the required reference fields.
+
+## Training example
+
+### Two GPUs with disaggregated sampling
+
+This example uses LoRA, with one GPU for training and one for the vLLM sampler:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rl \
-    --rlhf_type grpo \
-    --model Qwen/Qwen3.5-4B \
-    --attn_impl flash_attention_2 --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
-    --mode ray --nproc_per_node 2 \
-    --num_generations 8 --temperature 1.0 --max_completion_length 2048 \
-    --orm accuracy --beta 0.04 --epsilon 0.2 \
-    --vllm_mode colocate --vllm_gpu_memory_utilization 0.5 \
-    --learning_rate 1e-4 --output_dir output
+    --rl_type grpo \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --model_type qwen3_nothinking \
+    --template qwen3_nothinking \
+    --task_type causal_lm \
+    --torch_dtype bfloat16 \
+    --attn_impl sdpa \
+    --dataset ./prompts.jsonl \
+    --tuner lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --mode ray \
+    --nproc_per_node 1 \
+    --sampler_mode disaggregated \
+    --rollout_sampler vllm \
+    --vllm_tensor_parallel_size 1 \
+    --vllm_gpu_memory_utilization 0.8 \
+    --vllm_max_model_len 4096 \
+    --async_mode none \
+    --generation_batch_size 8 \
+    --num_generations 4 \
+    --temperature 1.0 \
+    --max_completion_length 512 \
+    --max_length 2048 \
+    --orm accuracy \
+    --beta 0.04 \
+    --epsilon 0.2 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-5 \
+    --max_steps 100 \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --report_to tensorboard \
+    --output_dir output/grpo
 ```
 
-Each step: sample `--num_generations` completions per prompt from the current
-policy (weights synced into vLLM before every rollout), score with `--orm`,
-turn each group into a group-relative advantage, update with the clipped
-surrogate. **Judge convergence by the reward curve, not the loss** — a
-policy-gradient loss oscillates around zero by construction.
+`nproc_per_node` counts trainer GPUs, not all GPUs in the RL job. Under this example's manual layout, the trainer uses GPU 0 and the sampler uses GPU 1, numbered in the visible order defined by `CUDA_VISIBLE_DEVICES`.
 
-## Placement
+For an ordinary LoRA reference policy using the same base, disabling the adapter reuses the training model's base without allocating another reference-model GPU. Full-parameter training, an independent reference, teachers, or model-based reward channels may require additional resources. Do not infer total resource needs from `nproc_per_node` alone.
 
-- `--vllm_mode colocate` — sampler and trainer share GPUs (sleep/wake between
-  phases); simplest, fits small clusters.
-- `--vllm_mode disaggregate` — sampler owns its GPU group, trainer another;
-  the heterogeneous layout for throughput at scale.
+Key parameters:
 
-## Algorithm family
-
-| `--rlhf_type` | What it adds |
+| Parameter | Description |
 |---|---|
-| `grpo` | critic-free group-relative advantage |
-| `ppo` | value model + GAE (needs a reward model from `rm` training) |
-| `rft` | rejection-sampling fine-tuning on rewarded rollouts |
-| `gkd` / `opsd` / `mopd` | teacher-guided on-policy distillation |
+| `rl_type` | Online training workflow; `grpo` in this example. |
+| `num_generations` | Responses per prompt; GRPO needs multiple responses in each group. |
+| `generation_batch_size` | Prompts per generation batch, not responses. |
+| `max_completion_length` | Maximum generated tokens per response. |
+| `orm` | Outcome reward channel: registered rewards, plugins, or reward-model IDs. |
+| `beta` / `epsilon` | Reference-policy KL coefficient and clipping range. |
+| `sampler_mode` | GPU placement for training and sampling. |
+| `rollout_sampler` | Online sampling engine: `vllm` or `sglang` locally; the training backend is configured separately. |
+| `async_mode` | Synchronization regime, independent of GPU placement. |
 
-Rewards: registered orms (`accuracy`, …), reward models, or plugins
-(`--external_plugins`). Watch `train/total_reward`, `train/completion_length`,
-`train/clip_ratio`, `train/approx_kl` in tensorboard; `--log_completions true`
-samples completions into the log.
+The batch units in this example are:
 
-Runnable references with measured VRAM: `examples/v5/rl/{grpo,ppo,rft,gkd,opsd,mopd}`.
+```text
+Generation batch: 8 prompts × 4 responses each = 32 responses
+Training update: 1 response per rank × DP 1 × 8 accumulation steps = 8 responses
+```
+
+A generation batch can feed multiple optimizer updates. `generation_batch_size` is not the training batch size. When omitted, the framework derives it from the training batch, gradient accumulation, `num_generations`, and `num_iterations`. Set it explicitly when first adjusting resource usage.
+
+### Single-GPU colocation
+
+With one GPU, change the command above to a single visible GPU and replace or add these settings:
+
+```bash
+CUDA_VISIBLE_DEVICES=0
+```
+
+```bash
+--nproc_per_node 1 \
+--sampler_mode colocate \
+--async_mode none \
+--vllm_gpu_memory_utilization 0.4 \
+--sleep_level 1 \
+--offload_model true \
+--offload_optimizer true
+```
+
+The first line replaces the environment assignment in the original command; the following arguments replace or extend its settings. They are not standalone commands. Colocation alternates generation and training. Asynchronous sampling cannot make them run concurrently on the same GPU.
+
+- `sleep_level` controls the sampler: `0` keeps it resident; `1` offloads weights and discards the KV cache; `2` discards both weights and KV cache.
+- `offload_model` and `offload_optimizer` independently control offloading of the training model and optimizer state.
+- These settings free GPU space between colocated phases; disaggregated sampling does not need this phase switching.
+- Colocation does not guarantee that an arbitrary model fits on one GPU. CPU offloading also increases host memory and transfer costs.
+
+The local CLI defaults to `disaggregated`. With explicit `colocate`, the sampler's parallel size cannot exceed the trainer's GPU allocation.
+
+## Reward functions
+
+### Built-in and model-based rewards
+
+`--orm accuracy` is suitable for mathematical tasks with reference answers. Other registered rewards include `repetition`, `soft_overlong`, and `code_execution`. Each has its own data and parameter requirements; changing the reward name alone does not configure a complete task. For example, code execution rewards need test cases in the data and an appropriate execution environment.
+
+You can also pass reward-model IDs through `--orm`. This path loads a frozen scoring model. For scalar rewards, use a checkpoint with a trained scoring head and its matching template. `--orm_task_type seq_cls` selects a scalar task head but does not turn an ordinary language model into a reliable trained reward model.
+
+GRPO can additionally use the process reward channel `--prm`. It scores intermediate steps and blends them with outcome rewards using `--prm_orm_mix`. This requires appropriate step segmentation and scoring configuration.
+
+### Custom rewards
+
+Save the following as `my_reward.py`:
+
+```python
+from swift.dev.rewards.reward import ORM
+from swift.dev.utils.plugin import PluginRegistry
+
+
+@PluginRegistry.register('reward', 'length_bonus')
+class LengthBonus(ORM):
+    def __call__(self, trajectories, **kwargs):
+        return [min(len(self.completion(t)) / 100.0, 1.0) for t in trajectories]
+```
+
+The reward receives `trajectories` and returns one numeric value per trajectory. `self.completion(t)` retrieves the final assistant text; use `self.column(t, 'solution')` for a reference answer from the sample.
+
+Replace or add these arguments in the training command:
+
+```bash
+--external_plugins ./my_reward.py \
+--orm accuracy length_bonus \
+--orm_weights 1.0 0.1
+```
+
+Plugins load before components are constructed. Synchronous rewards use `def __call__`; asynchronous I/O rewards can use `async def __call__`, without a separate `AsyncORM` base class.
+
+This length reward only demonstrates the interface: length is not correctness. With multiple rewards, inspect their scales, weights, and actual outputs to prevent meaningless verbosity from earning high scores. Plugins execute Python code; load only trusted files.
+
+## Synchronous and asynchronous training
+
+`sampler_mode` controls GPU placement, while `async_mode` controls synchronization:
+
+| `async_mode` | Behavior | Requirements |
+|---|---|---|
+| `none` | No lookahead window; synchronous cadence. Current GRPO can use streaming scheduling with staleness 0. | Colocated or disaggregated sampling. |
+| `one_step_off` | One lookahead window, allowing sampling and training to overlap. | Disaggregated sampling; staleness fixed at 1. |
+| `fully_async` | Deeper sampling buffers, with permitted lag controlled by `max_staleness`. | Disaggregated sampling; currently GRPO/PPO, with `max_staleness` at least 1. |
+
+In the two-GPU GRPO command, replace or add:
+
+```bash
+--async_mode one_step_off \
+--rollout_importance_sampling_mode token_truncate
+```
+
+For a deeper asynchronous buffer:
+
+```bash
+--async_mode fully_async \
+--max_staleness 2 \
+--rollout_importance_sampling_mode token_truncate
+```
+
+Asynchronous GRPO trains on relatively stale samples, so `rollout_importance_sampling_mode` is required for off-policy correction. More overlap does not necessarily mean faster convergence; inspect policy lag, rewards, and clipping metrics.
+
+Notes:
+
+- Asynchronous modes cannot be combined with `colocate`, `dynamic_sample`, or the ReMax advantage estimator.
+- Colocation requires `parameter_sync_step=1`, publishing weights at each training step.
+- Asynchronous GKD/OPSD/MOPD requires `lmbda=1` and uses `one_step_off`. RFT does not use these asynchronous settings.
+- `--async_generate` is a legacy spelling. Use `--async_mode` in new configurations.
+
+## Results and checkpoints
+
+Watch:
+
+- `train/total_reward` and individual reward channels: whether rewards improve or an auxiliary channel dominates.
+- `train/completion_length`: whether responses keep growing or frequently hit the length cap.
+- `train/clip_ratio` and `train/approx_kl`: abnormal update magnitude or policy drift.
+- Accuracy and actual responses on independent validation data: avoid optimizing only training rewards.
+
+Policy-gradient loss need not decrease continuously, nor is it guaranteed to oscillate around zero. Loss alone cannot tell you whether GRPO works. Higher training rewards also do not replace independent evaluation.
+
+`save_steps` and `save_total_limit` control checkpoints; normal completion saves `checkpoint-final`. For LoRA inference, use `swift infer --adapters`. Resume with `--resume_from_checkpoint` and preserved training state; see [Quick Start](../get-started/quick-start.mdx).
+
+Common issues:
+
+| Symptom | Check first |
+|---|---|
+| Rewards stay at zero | Is `solution` preserved? Are answers parseable? Does the reward match the task? |
+| Nonzero rewards but weak learning | Are all responses in a group correct or incorrect? Are tasks too easy or samples too similar? |
+| Startup waits for GPUs | Do visible GPUs cover the trainer, sampler, and auxiliary models, not just `nproc_per_node`? |
+| Training or generation runs out of memory | Inspect training micro-batches/encoded lengths separately from sampling concurrency/generated lengths/KV cache budget. |
+| Asynchronous configuration is rejected | Check disaggregated placement, GRPO off-policy correction, and mutually exclusive features. |
+
+## Other online workflows
+
+| `rl_type` | Purpose |
+|---|---|
+| `grpo` | Update the policy using group-relative rewards without training an additional value model. |
+| `ppo` | Estimate advantages with a value model and GAE; rewards can be rules or models, not only a pretrained RM. |
+| `rft` | Generate candidates, select them by reward, and perform supervised updates. |
+| `gkd` / `opsd` / `mopd` | Distill online using teacher distributions or feedback; algorithm settings determine sampling and the distillation objective. |
+
+Each workflow has its own reward, teacher, or value configuration; switching `rl_type` alone does not define an equivalent experiment. The source directory `examples/v5/rl/` provides commands and Python assembly examples. See [Mechanism / Policy separation](../interfaces/mp-separation.mdx) for component reuse.

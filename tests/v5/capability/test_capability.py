@@ -254,15 +254,43 @@ class CapabilityRun:
             model_dir = TinyModel.build(
                 tmp_path / 'model', tokenizer_id=spec.model_id, builder=loader_builder(spec.model_type),
                 **spec.extra)
-        data_path = TinyData.sft(tmp_path / 'data.jsonl')
+        # Enough rows that PACKING still yields >= GPUS packs. Templates without a default system
+        # prompt (qwen3 / glm4 / qwen2_5_vl) encode these tiny turns to ~12-20 tokens, so the default
+        # 8 rows pack into a SINGLE <256-token pack. twinkle's ShardedBatchSampler drops any global
+        # batch narrower than min_batch_size (= the DP world size, here GPUS) so every DP rank keeps a
+        # sample -- with 1 pack < 2 ranks that drop leaves "Epoch 0 yielded no training batches". This
+        # is adequate-data sizing, not a relaxed assertion: 64 short rows give every family >= GPUS
+        # packs (qwen3 ~8, glm4 ~4) while staying tiny/fast. Non-packing rows just get more batches.
+        data_path = TinyData.sft(tmp_path / 'data.jsonl', n=64)
         result_path = str(tmp_path / 'result.json')
         buckets = CapabilityRun.overrides(switches)
+
+        # The parallel sizes / sequence_parallel / mtp_num_layers are megatron-only knobs:
+        # validate._check_backend_specific (_MEGATRON_PARALLEL_SIZES) and _check_mtp refuse them on
+        # the transformers backend ("Remove it, or switch DistributedConfig.backend"), and the dev
+        # megatron runners (_runners/megatron_sft.py) all pass backend='megatron' explicitly. dp2
+        # writes no distributed knob and stays on the transformers DDP path. Derive the backend from
+        # the folded buckets so every megatron-only switch (any PARALLEL entry but dp2, plus mtp)
+        # selects it without a second hand-maintained list.
+        if buckets['distributed'] or 'mtp_num_layers' in buckets['model']:
+            buckets['distributed']['backend'] = 'megatron'
+            # builders/model.py::build_parallel_mesh REQUIRES nproc_per_node on the megatron backend
+            # ("it sets the DeviceMesh world size ... no default, since a wrong world size silently
+            # builds the wrong data-parallel layout"). This launch IS the torchrun below, single
+            # node with --nproc_per_node=GPUS, so the world size is exactly CombinationPolicy.GPUS
+            # (same contract as _runners/megatron_sft.py reading WORLD_SIZE under torchrun).
+            buckets['distributed']['nproc_per_node'] = CombinationPolicy.GPUS
 
         payload = {
             'model': {
                 'model': model_dir,
                 'model_type': spec.model_type,
                 'torch_dtype': 'bfloat16',
+                # bf16 pairs flash_attention_2 (batch discipline); packing/padding_free on the
+                # transformers backend REQUIRE a flash kernel (validate._check_padding_free_attn),
+                # and on megatron the name translates to AttnBackend.flash
+                # (utils.naming.resolve_megatron_attn_backend), the legacy-matching default.
+                'attn_impl': 'flash_attention_2',
                 **buckets['model']
             },
             'template': {

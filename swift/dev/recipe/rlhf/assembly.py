@@ -156,7 +156,7 @@ def build_preference_objects(
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
     from swift.dev.loss import configure_rl_loss, configure_rl_metrics
-    from swift.dev.processor import InputProcessor, processor_kwargs
+    from swift.dev.processor import InputProcessor, input_processor_kwargs
 
     rl_type = rl_config.rl_type
     ref_remote_group = REF_GROUP if _reference_needs_group(rl_config, tuner_config) else None
@@ -261,10 +261,7 @@ def build_preference_objects(
             apply_full_param_freeze(model, train_config)
         model.set_processor(
             InputProcessor,
-            padding_free=template_config.padding_free,
-            padding_side=template_config.padding_side,
-            cp_partition_mode=distributed_config.cp_partition_mode,
-            **processor_kwargs(template),
+            **input_processor_kwargs(template, template_config, distributed_config, model_config),
         )
         model.set_template(template)
     # The loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport

@@ -95,15 +95,15 @@ class ChatGLM4VTemplate(Template):
             messages = inputs.messages
             messages[0]["image"] = image
             inputs2: Dict[str, Any] = self.processor.apply_chat_template(messages, return_dict=True)
-            encoded["images"] = inputs2["images"]
+            encoded['pixel_values'] = inputs2['images']
         encoded["input_ids"] = input_ids
         encoded["labels"] = labels
         encoded["position_ids"] = list(range(len(input_ids)))
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = [row.pop('pixel_values') for row in batch if row.get('pixel_values') is not None]
         res = super()._data_collator_mm_data(batch)
-        images = [b["images"] for b in batch if "images" in b]
         if images:
             res["images"] = torch.concat(images)
         return res
@@ -612,7 +612,7 @@ class CogTemplate(Template):
         if labels is not None:
             encoded["labels"] = labels[:1] + [-100] * image_token_len + labels[1:]
         if len(image) > 0:
-            encoded["images"] = [[img.to(dtype=self.model_info.torch_dtype)] for img in inputs2["images"]]
+            encoded['pixel_values'] = [[img.to(dtype=self.model_info.torch_dtype)] for img in inputs2['images']]
             if "cross_images" in inputs2:
                 # is cogagent
                 encoded["cross_images"] = [
@@ -621,11 +621,13 @@ class CogTemplate(Template):
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = [row.pop('pixel_values')[0] for row in batch if row.get('pixel_values') is not None]
+        cross_images = [row.pop('cross_images')[0] for row in batch if row.get('cross_images') is not None]
         res = super()._data_collator_mm_data(batch)
-        for key in ["images", "cross_images"]:
-            value = [row.pop(key)[0] for row in batch if row.get(key) is not None]
-            if value:
-                res[key] = value
+        if images:
+            res['images'] = images
+        if cross_images:
+            res['cross_images'] = cross_images
         return res
 
 
@@ -689,7 +691,7 @@ class Cog2VideoTemplate(CogTemplate):
             encoded["labels"] = labels[:1] + [-100] * video_token_len + labels[1:]
         if len(video) > 0:
             dtype = model.dtype
-            encoded["images"] = [[img.to(dtype=dtype)] for img in inputs2["images"]]
+            encoded['pixel_values'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
         return encoded
 
 

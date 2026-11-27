@@ -366,7 +366,11 @@ class Preprocessor:
         if messages is None:
             return
         assert len(messages) > 0, f"messages: {messages}"
-        allowed_message_keys = {"role", "content", "loss", "loss_scale"}
+        # reasoning_content is a first-class per-message field: the OpenAI converter and
+        # normalize_messages preserve it, and the family folds it into the think block at encode
+        # time (_fold_reasoning_content). Dropping it here would silently empty every thinking-ON
+        # training turn, so it must survive the stray-key clean alongside loss/loss_scale.
+        allowed_message_keys = {"role", "content", "loss", "loss_scale", "reasoning_content"}
         allowed_roles = {"system", "user", "assistant", "tool_call", "tool_response", "tool"}
         for message in messages:
             for key in set(message.keys()) - allowed_message_keys:

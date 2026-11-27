@@ -1,0 +1,229 @@
+---
+title: 组件与 MP 分离
+description: 理解 Mechanism / Policy separation，使用 Python 复用组件、组装训练流程与修改训练循环。
+---
+
+SWIFT v5 的命令行不是唯一使用入口。用户可以直接调用训练 recipe，也可以复用模型、数据、采样、loss、reward 等组件，编写自己的训练流程。底层组件由 twinkle 提供，SWIFT 负责模型与数据适配、配置解析和常用训练流程的组装。
+
+本文介绍 Mechanism / Policy separation（M/P 分离）：让“算法决定做什么”与“系统负责如何执行”分开，使算法修改、组件替换与分布式放置尽量独立。
+
+这里的 MP **不是 model parallelism**，也不是 pipeline parallelism；Policy 是软件设计中的决策逻辑，不仅指强化学习里的 policy model。训练器与采样器分离是一个应用场景，但不是 M/P 分离的全部含义。
+
+<ArchitectureDiagram src="/images/v5/mp-separation.zh.svg" alt="SWIFT、twinkle 与执行基础设施" />
+
+蓝色箭头表示配置与控制流，绿色表示训练数据流，虚线表示权重同步。CLI、Python 和 WebUI 共用 SWIFT Config / builders / recipe；twinkle 组件将计算交给 infra。远程模式通过 twinkle-server 边界访问同类组件，server 不取代客户端的算法循环。
+
+## 原理与边界
+
+同一个训练流程包含两类不同的问题：
+
+- **Policy**：选择什么目标，如何准备样本，先采样还是先更新，怎样计算 advantage，什么时候记录指标或保存模型。
+- **Mechanism**：模型在哪些设备与进程上执行，张量如何分片，调用如何跨进程传输，权重如何同步，checkpoint 如何读写。
+
+例如 GRPO 决定“对同一个 prompt 生成多个回答，根据相对奖励更新模型”，这是算法决策；将训练模型和采样器放到不同 GPU，并把更新后的权重传过去，是执行机制。
+
+```text
+配置与数据
+    ↓
+SWIFT recipe：选择组件、定义目标、组织训练循环
+    ↓
+twinkle 组件：模型、数据、采样器、loss、reward、advantage
+    ↓
+twinkle 执行机制：设备放置、并行、远程调用、传输、权重同步与存储
+```
+
+组件并不等于 Policy，也不等于基础设施。模型、loss、reward 等组件提供可复用能力；recipe 通过配置和调用顺序决定如何组合它们，组件内部则将分布式执行委托给相应机制。
+
+| 层次 | 负责什么 | 用户通常在这里改什么 |
+|---|---|---|
+| CLI / Config | 解析参数、处理默认值、校验组合。 | 模型、数据、训练超参数与并行配置。 |
+| SWIFT Builders | 将配置转换为模型、模板、数据等组件。 | 组件适配、插件注册和构建方式。 |
+| SWIFT Recipe | 组装组件、定义训练目标、组织更新和保存流程。 | 新算法、数据节奏、目标组合与训练循环。 |
+| twinkle 组件与基础设施 | 提供统一操作及其本地、分布式执行。 | 可复用组件、并行实现、传输或执行后端。 |
+
+twinkle 使用 `@remote_class`、`@remote_function` 在组件上声明远程执行、数据分发和结果收集等信息，运行时通过 `twinkle.initialize` 配置执行方式。领域操作仍定义在组件自身，例如模型的 `forward_backward` 和采样器的 `sample`；recipe 调用这些操作，不直接管理 actor 通信。
+
+分离的目的不是让算法作者完全不用理解分布式约束，而是避免在每个算法中重复实现 Ray actor、GPU 放置和权重传输。
+
+## 选择使用层次
+
+| 方式 | 适用场景 | 需要自己负责的内容 |
+|---|---|---|
+| 命令行 | 现有任务，只需调整参数。 | 数据准备与实验配置。 |
+| Config + Recipe | 在 Python 中启动现有任务，与其他代码集成。 | 配置对象和调用入口。 |
+| 组件组装 + 自定义循环 | 修改训练步骤、目标或组件组合。 | 算法循环、指标、恢复、评估和保存的完整行为。 |
+| 直接使用 twinkle | 不需要 SWIFT 的模型/数据适配或 recipe。 | 组件构建、编码协议与完整训练编排。 |
+
+从命令行转到 Python，不一定需要重写训练循环；只有现有 recipe 无法表达需求时，才需要进一步使用组件层。
+
+## 使用 Python 调用现有流程
+
+下面是一个完整的 LoRA SFT 启动脚本。先按[快速启动](../get-started/quick-start.mdx)安装 SWIFT，将代码保存为 `sft.py`，再运行 `CUDA_VISIBLE_DEVICES=0 python sft.py`：
+
+```python
+from swift.dev.config import (
+    CheckpointConfig,
+    DatasetConfig,
+    DistributedConfig,
+    LoggingConfig,
+    ModelConfig,
+    TemplateConfig,
+    TrainConfig,
+    TunerConfig,
+)
+from swift.dev.recipe.sft.run_sft import run_sft
+
+
+def main():
+    output_dir = 'output/mp-sft'
+    model_config = ModelConfig(
+        model='Qwen/Qwen3.5-4B',
+        model_type='qwen3_5',
+        task_type='causal_lm',
+        torch_dtype='bfloat16',
+        attn_impl='flash_attention_2',
+    )
+    template_config = TemplateConfig(template='qwen3_5', max_length=2048)
+    dataset_config = DatasetConfig(
+        dataset=['swift/self-cognition#600'],
+        model_name=['swift-robot'],
+        model_author=['swift'],
+    )
+    train_config = TrainConfig(
+        num_train_epochs=3,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=8,
+        learning_rate=1e-4,
+        lr_scheduler='cosine',
+        warmup_ratio=0.05,
+    )
+    distributed_config = DistributedConfig(mode='local', backend='hf', nproc_per_node=1)
+    checkpoint_config = CheckpointConfig(
+        output_dir=output_dir, add_version=False, save_steps=100, save_total_limit=2,
+    )
+    tuner_config = TunerConfig(
+        tuner='lora', lora_rank=8, lora_alpha=32, target_modules=['all-linear'],
+    )
+    logging_config = LoggingConfig(report_to=['tensorboard'], logging_steps=5)
+
+    history = run_sft(
+        model_config=model_config,
+        template_config=template_config,
+        dataset_config=dataset_config,
+        train_config=train_config,
+        distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config,
+        tuner_config=tuner_config,
+        logging_config=logging_config,
+        output_dir=output_dir,
+    )
+    print(f'Training records: {len(history)}')
+
+
+if __name__ == '__main__':
+    main()
+```
+
+配置对象分别描述模型、模板、数据、优化、执行方式和 checkpoint 等内容，字段名对应命令行参数。`run_sft` 负责构建组件并调用完整的监督训练流程，返回训练指标记录列表。
+
+这里显式关闭运行目录的版本后缀，输出写入 `output/mp-sft`；重复实验时请使用不同目录。这个 Python 写法仍复用 recipe 的评估、保存和恢复逻辑，并不是一个独立实现的简化训练器。
+
+## 复用组件，修改训练循环
+
+当需要改变更新步骤时，可以使用 `build_supervised_objects` 保留配置校验、模板编码、数据加载和模型构建，只接管循环。
+
+以下是局部组装示例，配置变量沿用上一个脚本。将 import 和 `sft_loss` 定义放在文件顶层，将 `cluster` 构建和循环放入 `main()`，替换 `run_sft` 调用及其后的 `history` 输出。它只展示一轮训练，不包含完整的日志、评估、恢复和保存逻辑：
+
+```python
+from swift.dev.loss import configure_loss
+from swift.dev.recipe.sft.assembly import build_supervised_objects
+from swift.dev.recipe.utils import grouped_training_batches
+
+
+def sft_loss(model):
+    configure_loss(model, loss_type='cross_entropy')
+
+
+cluster = build_supervised_objects(
+    recipe='run_sft',
+    model_config=model_config,
+    template_config=template_config,
+    dataset_config=dataset_config,
+    train_config=train_config,
+    distributed_config=distributed_config,
+    checkpoint_config=checkpoint_config,
+    tuner_config=tuner_config,
+    logging_config=logging_config,
+    configure_loss=sft_loss,
+    output_dir=output_dir,
+)
+
+for group, _ in grouped_training_batches(
+    cluster.dataloader, train_config.gradient_accumulation_steps,
+):
+    cluster.model.forward_backward(
+        inputs=group,
+        task=cluster.forward_task,
+        micro_batch_size=train_config.per_device_train_batch_size,
+        gradient_accumulation_steps=1,
+    )
+    cluster.model.clip_grad_and_step(
+        max_grad_norm=train_config.max_grad_norm,
+        gradient_accumulation_steps=1,
+    )
+```
+
+关键步骤：
+
+1. `configure_loss` 为构建后的模型设置训练目标，在优化器配置前执行。修改 loss 不需要在循环中实现另一套分布式 forward。
+2. `build_supervised_objects` 返回模型、dataloader、template 等句柄和训练预算，循环使用这些已经适配好的对象。
+3. `grouped_training_batches` 将多个 dataloader batch 组成一次更新的输入。这里已经在输入层完成分组，因此模型调用中的 `gradient_accumulation_steps=1` 避免再次累积同一组。
+4. `forward_backward` 执行前向与反向，`clip_grad_and_step` 执行梯度裁剪与优化器更新。实际的 micro-batch 切分、并行执行与梯度处理由模型组件完成。
+
+完整的组件级示例位于源码的 `examples/v5/train/lora/train.py`。它展示了训练步骤、日志和保存，但仍有明确的简化范围；需要 recipe 的恢复、周期评估或最佳模型管理时，应继续复用相应实现，而不是认为短循环已包含这些行为。
+
+## 改变执行方式
+
+### 本地与 Ray
+
+上面的 recipe 使用 `mode='local'`。安装 Ray 依赖后，可以将执行配置替换为：
+
+```python
+distributed_config = DistributedConfig(mode='ray', backend='hf', nproc_per_node=1)
+```
+
+在 Ray 模式下，模型执行放到 worker，调用方通过组件句柄组织训练；算法层仍调用 `forward_backward` 和 `clip_grad_and_step`。增加训练 GPU 或使用分片时，需要配套调整 `nproc_per_node`、`parallel_spec` 等配置，并检查 batch size 和硬件资源。
+
+这不是“任意配置都能互换”的承诺。所选模型、训练后端和并行方式必须具备对应能力，非法组合由配置校验拒绝；切换执行方式时也需要正确安装依赖。
+
+### 在线采样放置
+
+对于在线训练，`sampler_mode` 描述共卡或分离式放置，`async_mode` 描述同步程度。它们不改变“采样—打分—更新”的算法基本结构，但会影响资源占用和采样数据的滞后程度。
+
+```text
+colocate：训练器与采样器共享 GPU，按阶段切换
+disaggregated：训练器与采样器使用不同 GPU，可以按异步配置重叠执行
+```
+
+具体命令和互斥条件见[在线学习](/zh/blog/online-rl)。M/P 分离让各算法复用放置与同步机制，而不是把 GPU 切换代码复制进每个训练循环。
+
+### 远程服务
+
+`mode='remote'` 下，SWIFT 通过 twinkle_client 构建服务端模型与采样器的句柄。监督训练的数据和模板处理仍可在客户端完成，模型操作通过服务接口执行。网关地址等连接参数由执行配置提供，服务端负责资源管理。
+
+跨进程或服务边界的组件配置应使用可序列化规格、注册名或可导入的类名，不要依赖客户端对远端模型内部对象的直接访问。自定义插件必须在执行侧可加载；不能把客户端的临时 monkey patch 当作远端组件实现。
+
+远程接口有独立的能力边界，例如当前在线远程采样使用 vLLM 服务接口。某个参数在本地可用，并不意味着服务端自动支持同样的组合。
+
+## 直接使用 twinkle
+
+twinkle 可以独立于 SWIFT 使用。用户可以直接构建 `TransformersModel`、dataloader、sampler、loss 和 reward 等对象，控制其初始化与调用顺序，不需要先通过 `swift sft`。
+
+区别在于：SWIFT builders 提供模型族识别、聊天模板、数据格式和任务适配；直接使用 twinkle 时，这些输入协议和组件配置由调用者准备。独立示例位于 twinkle 源码的 `cookbook/transformers/` 和 `cookbook/rl/grpo/`，应按其中的模型与依赖要求使用。
+
+## 扩展时放在哪里
+
+- **只改实验参数**：使用 CLI 或 Config，不修改底层组件。
+- **新增奖励、模板或其他已支持的扩展点**：实现插件，通过注册名选择；奖励接口示例见[在线学习](/zh/blog/online-rl)。
+- **修改算法或训练步骤**：在 recipe/自定义循环中组合组件，复用数据、日志和保存能力。
+- **多个算法都需要的执行能力**：实现为可复用组件或 twinkle 机制，避免各 recipe 重复实现。

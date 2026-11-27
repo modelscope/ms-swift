@@ -1,0 +1,105 @@
+---
+title: Agentic Training
+description: Learn from tool trajectories and multi-turn rollouts with agents, environments and rewards.
+---
+
+Agentic training teaches a model to call tools, read observations and continue making decisions. SFT learns recorded trajectories; online RL executes tasks with the current model and learns from rewards. A successful tool call is not necessarily a completed task: rewards must measure the objective.
+
+## Data flow and components
+
+```text
+Task prompt → model generation → tool call → environment → tool observation
+                    ↑                                      │
+                    └──────────── next turn ───────────────┘
+Complete trajectory → reward → advantage → model update → sampler weight sync
+```
+
+- **Agent / policy:** chooses actions or a final answer from message history.
+- **Tool:** exposes a name, parameter schema and execution interface returning an observation.
+- **Env:** owns each episode's workspace, files and execution state.
+- **Rollout:** manages turns, calls, termination and token budgets.
+- **Reward:** scores trajectories using answers or task validators.
+- **Recipe:** organizes data, sampling, scoring and updates; twinkle handles distributed execution.
+
+Tool observations are context. Only policy-generated actions and responses contribute to policy updates, with masks preserved by templates and rollout.
+
+## Tool-trajectory SFT
+
+Store the question, tool schema, call and observation. For example, in OpenAI format:
+
+```jsonl
+{"messages": [{"role": "user", "content": "Compute 17×23"}, {"role": "assistant", "content": null, "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "calculator", "arguments": "{\"expression\":\"17*23\"}"}}]}, {"role": "tool", "tool_call_id": "call_1", "content": "391"}, {"role": "assistant", "content": "The result is 391."}], "tools": [{"type": "function", "function": {"name": "calculator", "description": "Evaluate a mathematical expression", "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}}}]}
+```
+
+Save as `agent_train.jsonl`:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --torch_dtype bfloat16 \
+    --dataset ./agent_train.jsonl \
+    --tuner lora \
+    --max_length 4096 \
+    --learning_rate 1e-4 \
+    --num_train_epochs 3 \
+    --output_dir output/agent-sft
+```
+
+SFT replays recorded trajectories without executing calculator. Use the same tool schemas and template protocol at deployment, and define supervision of successful and failed trajectories explicitly. See [Custom Dataset](../interfaces/custom-dataset.mdx) and [the component example](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/agentic).
+
+## Multi-turn GRPO
+
+Use the math dataset from [Quick Start](../get-started/quick-start.mdx): no answer in `messages`, `solution` only for rewards. This mathematical correctness example needs vLLM and math-verify:
+
+```bash
+pip install vllm math-verify
+CUDA_VISIBLE_DEVICES=0,1 swift rl \
+    --rl_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --system 'You may run Python to verify computations. Put the final answer within \boxed{}.' \
+    --mode ray \
+    --nproc_per_node 1 \
+    --rollout_sampler vllm \
+    --sampler_mode disaggregated \
+    --tuner lora \
+    --orm accuracy \
+    --max_turns 3 \
+    --tools sandbox \
+    --sandbox_num_envs 2 \
+    --sandbox_command_timeout 60 \
+    --sandbox_memory_limit_gb 2 \
+    --max_trajectory_tokens 3072 \
+    --max_completion_length 512 \
+    --max_length 4096 \
+    --vllm_max_model_len 4096 \
+    --generation_batch_size 2 \
+    --num_generations 4 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-5 \
+    --max_steps 100 \
+    --logging_steps 1 \
+    --output_dir output/agent-grpo
+```
+
+One GPU trains and another samples. Each prompt produces four trajectories; complete-trajectory rewards provide group-relative advantages. Tools require multi-turn configuration. `max_turns` bounds turns, `max_completion_length` bounds each generated response, `max_trajectory_tokens` bounds the whole trajectory, and `max_length` bounds encoding.
+
+`tools=sandbox` exposes environment-owned command and file tools. Without a remote template, local environment slots are used; `sandbox_num_envs` bounds simultaneous leases. LocalEnv is not a security isolation boundary for hostile code. Use low-privilege processes, separate data directories, network restrictions and isolated environments appropriate to production tasks. Never expose credentials or sensitive host files.
+
+## Custom tools and environments
+
+Subclass `ToolPlugin`, return tools from `build()`, import through `--external_plugins`, and select with `--tools name`. Bind environment tools to episode sessions instead of sharing mutable files. See [Plugins](../interfaces/plugins.mdx) and [agentic inference](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer/agentic).
+
+External environment and OpenEnv entry points are in [rl/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/agentic). URLs, authentication, images, timeouts and workspace lifecycle must match the environment service. A harness delegates episode execution to an external CLI agent while rollout records generations through its model endpoint; this differs from the model directly emitting tool calls.
+
+## Rewards and monitoring
+
+Mathematics can verify final answers; coding should use isolated tests or task validators. Rewarding only tool usage encourages redundant calls, and format rewards do not establish correctness. Combine correctness, format, resource cost and failures where needed, recording each component separately.
+
+Inspect reward trends, task success, tool errors, trajectory length, timeouts, grad_norm and KL. Uniform group rewards yield zero advantage: adjust difficulty or reward discrimination. Training reward does not establish generalization, so keep validation tasks separate.
+
+See [Server and Client](../interfaces/server-client.mdx) for remote model and sampler deployment, and [the Online RL article](/en/blog/online-rl) for the algorithm flow.

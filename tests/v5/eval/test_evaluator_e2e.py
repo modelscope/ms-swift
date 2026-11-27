@@ -7,8 +7,10 @@ benchmark, replacing only the three model-construction calls (``build_sampler`` 
 ``build_template``) with a scripted sampler. That is the seam the retired stub test faked away: here a break
 anywhere in config -> Evaluator -> adapter -> evalscope -> summarize -> result_jsonl fails the test.
 
-The scored answers match the references verbatim, so BLEU/Rouge yield ``score == 1.0`` over ``num == 3`` rows
-deterministically; the assertions check the report's fields and side effects, not merely that a call returned.
+The scored answers match the references verbatim, so the primary metric (Rouge-L-R) yields
+``score == 1.0`` over ``num == 3`` rows deterministically (evalscope >= 1.11 reports schema v2:
+the verdict lives in ``metrics`` under ``primary_metric_identity``, not a top-level ``score``);
+the assertions check the report's fields and side effects, not merely that a call returned.
 """
 from swift.dev.config import EvalConfig, ModelConfig, TemplateConfig
 from swift.dev.recipe.infer.run_eval import run_eval
@@ -54,6 +56,20 @@ def _native_row(report):
     return rows[0]
 
 
+def _primary_score(row):
+    """The report's conclusion score under evalscope's schema v2 (>= 1.11).
+
+    v2 serializes the structured ``metrics`` list plus ``primary_metric_identity`` instead of the
+    v1 convenience ``score`` key; the primary metric (general_qa: Rouge-L-R) carries the verdict.
+    """
+    assert row['schema_version'] == 2
+    primary = row['primary_metric_identity']
+    assert primary is not None and row['primary_metric_unavailable_reason'] is None
+    matches = [m for m in row['metrics'] if m['identity'] == primary]
+    assert len(matches) == 1
+    return matches[0]['score']
+
+
 def test_continuous_evaluator_runs_end_to_end(monkeypatch, tmp_path, hermetic_qa_dataset):
     report, sampler, out_dir, jsonl = _drive(monkeypatch, tmp_path, hermetic_qa_dataset, continuous=True)
 
@@ -61,7 +77,11 @@ def test_continuous_evaluator_runs_end_to_end(monkeypatch, tmp_path, hermetic_qa
     row = _native_row(report)
     assert row['dataset_name'] == 'general_qa'
     assert row['num'] == 3
-    assert row['score'] == 1.0
+    assert _primary_score(row) == 1.0
+    # The training-side consumer must read the same verdict off the v2 dump (best-model tracking).
+    from swift.dev.recipe.utils import flatten_evalscope_report
+    flat = flatten_evalscope_report(report['Native'])
+    assert flat.get(row['name']) == 1.0
 
     # Report side effects: the exact shape result_jsonl records, and the on-disk EvalScope work dir.
     assert set(report) == REPORT_KEYS
@@ -86,7 +106,7 @@ def test_non_continuous_evaluator_runs_end_to_end(monkeypatch, tmp_path, hermeti
     row = _native_row(report)
     assert row['dataset_name'] == 'general_qa'
     assert row['num'] == 3
-    assert row['score'] == 1.0
+    assert _primary_score(row) == 1.0
     assert len(read_jsonl(str(jsonl))) == 1
     assert sampler.calls and sampler.shutdown_called is True
 
@@ -101,3 +121,20 @@ def test_adapters_select_the_first_and_warn_on_extras(monkeypatch, tmp_path, her
     # the LoRA the engine is asked to select for every request is adapters[0], threaded as adapter_path
     assert sampler.seen_kwargs and all(kw.get('adapter_path') == '/ckpt/first' for kw in sampler.seen_kwargs)
     assert any('adapters[0]' in record.message for record in caplog.records)
+
+
+def test_flatten_reads_legacy_v1_rows():
+    """The training-side flatten keeps reading pre-1.11 (v1) report dicts through Report's migration.
+
+    evalscope's migration canonicalizes known legacy metric names ('Rouge-L-R' -> the rouge-l
+    recall identity key), so the metric key is asserted via the migrated model, not a literal.
+    """
+    from evalscope.report.report import Report
+
+    from swift.dev.recipe.utils import flatten_evalscope_report
+    v1 = {'name': 'm@general_qa', 'dataset_name': 'general_qa', 'model_name': 'm', 'score': 1.0,
+          'metrics': [{'name': 'Rouge-L-R', 'score': 1.0, 'num': 3}]}
+    flat = flatten_evalscope_report([v1])
+    assert flat['m@general_qa'] == 1.0
+    metric_key = Report.from_dict(v1).metrics[0].name
+    assert flat[metric_key] == 1.0

@@ -1,0 +1,118 @@
+---
+title: Plugins
+description: Extend rewards, callbacks, parameter groups, tools and harnesses, and reuse twinkle kernel components.
+---
+
+Plugins replace a defined extension point without rewriting a recipe. SWIFT owns training semantics, base classes and registry names; twinkle owns source loading and generic component execution.
+
+The CLI imports `external_plugins`, registration executes, Config selects names, builders construct objects or serializable rules, and recipes consume them. Ray workers reimport configured sources. Every node must have access to plugin code and dependencies.
+
+## Extension points
+
+| Kind | Contract | Selection parameter | Purpose |
+|---|---|---|---|
+| `reward` | `RewardPlugin` | `orm` | Per-completion rewards using dataset columns |
+| `prm_scorer` | `PRMSegmentScorer` | `prm_scorer` | Segment boundaries for process rewards |
+| `callback` | `TrainCallback` | `callbacks` | Training, logging, saving and evaluation events |
+| `param_groups` | `ParamGroupsPlugin` | `param_groups_plugins` | Declarative optimizer parameter-group rules |
+| `tool` | `ToolPlugin` | `tools` | Tools available during multi-turn rollout |
+| `harness` | `HarnessPlugin` | `harness` | An external CLI agent per episode |
+
+Model loaders, dataset loaders and templates have separate registries; see [Models and Datasets](../get-started/models-and-datasets.mdx), [Custom Dataset](./custom-dataset.mdx) and [Templates](./template.mdx). They can share an external source file but are not these six plugin kinds.
+
+Loss, metric and optimizer classes belong to twinkle kernel namespaces, selected with `--loss`, `--metric` and `--optim`. Optimizer parameter grouping belongs to SWIFT's `param_groups` extension point. Tuners are model capabilities, not event callbacks.
+
+## Custom reward
+
+Save as `my_plugin.py`:
+
+```python
+from swift.dev.utils.plugin import PluginRegistry, RewardPlugin
+
+
+@PluginRegistry.register('reward', 'length_bonus')
+class LengthBonus(RewardPlugin):
+    def __call__(self, completions, **columns):
+        return [1.0 if len(text) > 100 else 0.0 for text in completions]
+```
+
+Use the math dataset from [Quick Start](../get-started/quick-start.mdx) (`messages` holds only the prompt; `solution` is available to rewards), and install the sampler:
+
+```bash
+pip install vllm
+CUDA_VISIBLE_DEVICES=0,1 swift rl \
+    --rl_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --external_plugins ./my_plugin.py \
+    --orm length_bonus \
+    --mode ray \
+    --nproc_per_node 1 \
+    --rollout_sampler vllm \
+    --sampler_mode disaggregated \
+    --generation_batch_size 2 \
+    --num_generations 4 \
+    --max_completion_length 512 \
+    --max_length 2048 \
+    --max_steps 20 \
+    --output_dir output/reward-plugin
+```
+
+Return one reward per completion, in the original order. `columns` contains reference answers and other sample fields. Do not depend on arbitrary batch ordering. Length reward only illustrates the interface: real rewards should also constrain correctness, format and invalid outputs to prevent reward hacking by verbosity.
+
+I/O-bound rewards can implement `async def __call__` without a separate async base. Configure timeouts and failure handling for external scoring APIs; never embed credentials in code or logs.
+
+## Training callback
+
+Append to the same plugin file:
+
+```python
+from swift.dev.callbacks import TrainCallback
+
+
+@PluginRegistry.register('callback', 'progress_printer')
+class ProgressPrinter(TrainCallback):
+    def on_step_end(self, state, control):
+        print(f'step={state.global_step} loss={state.loss}')
+```
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --dataset 'swift/self-cognition#600' \
+    --external_plugins ./my_plugin.py \
+    --callbacks progress_printer \
+    --output_dir output/callback
+```
+
+`CallbackState` provides read-only loop position and recent metrics. Request actions through `CallbackControl.should_training_stop`, `should_save`, `should_evaluate` or `should_log` instead of editing loop counters. Events cover train / epoch / step begin and end, optimizer, log, evaluate and save; see [exact signatures](https://github.com/modelscope/ms-swift/blob/main/swift/dev/callbacks/base.py).
+
+## Optimizer parameter grouping
+
+```python
+from swift.dev.builders.optimizer_plugins import ParamGroupsPlugin
+
+
+@PluginRegistry.register('param_groups', 'no_decay_embeddings')
+class NoDecayEmbeddings(ParamGroupsPlugin):
+    def __call__(self, *, train_config, tuner_config):
+        return [{'match': {'module_type': 'Embedding'}, 'weight_decay': 0.0}]
+```
+
+Select with `--param_groups_plugins no_decay_embeddings`. Return serializable rules instead of reading parameters from a driver proxy. twinkle matches real parameters on workers. Built-in multimodal and LoRA+ rules come first; the first matching rule wins. See [build_param_groups_spec](https://github.com/modelscope/ms-swift/blob/main/swift/dev/builders/optimizer.py) for the grammar.
+
+## Tools, harnesses and process rewards
+
+`ToolPlugin.build()` returns tool instances with callable interfaces and model-visible schemas. `tools=sandbox` exposes environment-owned tools bound to each episode's session, rather than executing model commands in a shared global workspace.
+
+`HarnessPlugin.build()` returns a `twinkle_agentic.harness.CliAgent`; built-in names are `codex` and `ms_agent`. Rollout owns episode environments, model callback endpoints and generation records; the harness owns the external program. See [Agentic](../training/agentic.mdx).
+
+`PRMSegmentScorer.build()` returns a segmentation predicate or `None`; built-ins are `turn` and `delimiter`. This controls when an intermediate trajectory is scored; it is neither a final correctness reward nor a replacement for the PRM model.
+
+## Loading and reuse
+
+`--external_plugins` accepts local `.py` files, directories, and `hf://` / `ms://` sources. Import executes code: trust and pin plugin sources. twinkle provides the common loader instead of a parallel SWIFT implementation.
+
+Use `PluginRegistry.register_kind(name, base, config_field=...)` to declare a new extension point and `PluginRegistry.register(kind, name)` for implementations. Registration alone does not integrate a new kind into every recipe; callers still define selection fields and consumption. See [the complete plugin example](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/plugins).

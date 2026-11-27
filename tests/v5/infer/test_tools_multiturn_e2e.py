@@ -37,7 +37,8 @@ from twinkle.template.tools import HermesQwenParser
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 _REPO = Path(__file__).resolve().parents[3]
-_CUSTOM_TOOLS = _REPO / 'examples' / 'infer' / 'code' / 'custom_tools.py'
+# 1a1d516e7 split examples into examples/v5, then 2818563be renamed infer/code -> infer/plugin.
+_CUSTOM_TOOLS = _REPO / 'examples' / 'v5' / 'infer' / 'plugin' / 'custom_tools.py'
 
 _PARSER = HermesQwenParser()
 _OM, _CM = _PARSER.open_marker, _PARSER.close_marker
@@ -69,14 +70,12 @@ class _ScriptedToolSampler:
         self.call_text = call_text
         self.answer_text = answer_text
 
-    accepts_rollout_state = True
-
     def sample(self, states, sampling_params=None, **kwargs):
         if isinstance(states, dict):
             states = [states]
         responses = []
         for state in states:
-            messages = getattr(state, 'messages', None) or []
+            messages = state.get('messages') or []
             turns = sum(1 for m in messages if m.get('role') == 'assistant')
             text = self.call_text if turns == 0 else self.answer_text
             tokens = self.template.tokenizer.encode(text, add_special_tokens=False)
@@ -84,7 +83,7 @@ class _ScriptedToolSampler:
             completion = self.template.append_completion(state, list(tokens))
             seq = SampledSequence(
                 stop_reason='stop', tokens=tokens, logprobs=logprobs, decoded=text,
-                new_input_feature=dict(completion.state.feature))
+                new_input_feature=completion)
             responses.append(SampleResponse(sequences=[seq]))
         return responses
 

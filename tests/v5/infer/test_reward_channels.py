@@ -197,20 +197,14 @@ class _ScriptedJudgeSampler:
         self.verdicts = dict(verdicts)  # completion text -> score
         self.gen_index = 0  # one sequence per call: the engine fans out num_samples itself
 
-    # the rollout path hands us its RolloutState so the reply can extend the real token accounting
-    accepts_rollout_state = True
-
     def _messages(self, traj):
-        return (traj.get('messages') if isinstance(traj, dict) else getattr(traj, 'messages', None)) or []
+        return traj.get('messages') or []
 
     def _feature(self, traj, tokens):
-        """The continuation feature the engine will re-check against its own template accounting.
-        Only the rollout path hands us a RolloutState; the judge scorer passes plain message dicts,
-        which need no accounting (its reply is read as text only)."""
-        if not hasattr(traj, 'feature'):
+        """Extend an encoded rollout; raw judge requests only consume the verdict text."""
+        if 'input_ids' not in traj:
             return None
-        completion = self.template.append_completion(traj, list(tokens))
-        return dict(completion.state.feature)
+        return self.template.append_completion(traj, list(tokens))
 
     def sample(self, trajectories, params=None, **kwargs):
         responses = []

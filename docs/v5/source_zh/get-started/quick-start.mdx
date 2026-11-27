@@ -1,0 +1,355 @@
+---
+title: 快速启动
+description: 了解 swift 的基本使用方法
+---
+
+SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于以简洁的API 支持大模型的训练与训练后操作，并 day0 保持新模型和新算法的高效更新。
+到目前为止，SWIFT 已支持纯文本和多模态大模型逾千个，在 swift 5 中，swift 原生支持 基于 ray 的 Agentic RL，可以轻松融合大量的 harness、沙箱进行高效异步的强化学习训练。
+
+**为什么选择 SWIFT v5？**
+
+- **写单机代码，训任意规模**：同一份代码从单卡扩展到集群化训练，分布式与采样调度通过配置驱动。
+- **训练技术**：不仅维持了 SWIFT 的 PT、SFT 技术优势，并完整扩展了 PPO、GRPO、OPD、MOPD、OPSD 等各类强化学习和蒸馏方案，在框架设计上仍极具扩展性
+- **丰富的训练后端**：不仅支持 transformers、megatron，还通过组件化方式兼容了 unsloth、sentence-transformers 训练，且以上模型均可用于 SaaS 化部署训练
+- **数据集**：内置 150+ 任务数据集，支持数据湖（Data Lake），并支持新数据集动态添加训练
+- **硬件支持**：丰富的硬件支持，除NVIDIA GPU外，还支持AMD GPU、昇腾 NPU、Apple MPS、平头哥、沐曦、寒武纪等生态
+- **训练即服务**：在算力机器部署 twinkle-server，本地无需 GPU 即可训练大模型，适合希望开放训练服务的个人和厂商
+
+## 环境安装与样例
+
+在 SWIFT 的架构体系中涉及到以下包：
+
+- swift: 涵盖命令行和训练主体
+- twinkle-kit: 底层算法基础组件，自动随 swift 安装，用户无需关心
+- twinkle-server: 服务化训练框架，可以将 swift 所有支持的训练类型和模型转换为远端 HTTP 训练模式
+- twinkle-client: 远程训练和采样的 Python SDK，客户端无需安装 twinkle-server
+
+### 本地训练
+
+在训练机器上安装 SWIFT：
+
+```bash
+pip install 'ms-swift>=5.0.0'
+```
+
+使用开发分支时，按[源码安装](./installation.mdx#源码安装)说明从各自仓库安装 Twinkle 和 SWIFT。
+
+完整环境要求见[安装](./installation.mdx)，容器启动见 [Docker](./docker.mdx)，模型选择和数据来源见[模型与数据集](./models-and-datasets.mdx)。
+
+SWIFT 支持的训练模式包括：
+
+| 训练模式 | 命令 | 论文 | 示例 |
+|---|---|---|---|
+| 预训练 | `swift pt` | — | [pretrain](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/pretrain) |
+| 监督微调（`--task_type` 选择对话生成、序列分类、embedding、reranker、生成式 reranker、决策打分） | `swift sft` | — | [train](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| DPO 直接偏好优化 | `swift rl --rl_type dpo` | [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) | [dpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/dpo) |
+| ORPO 偏好对齐（无参考模型） | `swift rl --rl_type orpo` | [ORPO](https://arxiv.org/abs/2403.07691) | [orpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/orpo) |
+| SimPO 偏好对齐（无参考模型） | `swift rl --rl_type simpo` | [SimPO](https://arxiv.org/abs/2405.14734) | [simpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/simpo) |
+| KTO 对齐 | `swift rl --rl_type kto` | [KTO](https://arxiv.org/abs/2402.01306) | [kto](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/kto) |
+| CPO 对比偏好优化 | `swift rl --rl_type cpo` | [CPO](https://arxiv.org/abs/2401.08417) | [cpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/cpo) |
+| 奖励模型训练 | `swift rl --rl_type rm` | [InstructGPT](https://arxiv.org/abs/2203.02155) | [rm](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/rm) |
+| PPO 近端策略优化 | `swift rl --rl_type ppo` | [PPO](https://arxiv.org/abs/1707.06347) | [ppo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/ppo) |
+| GRPO 组相对策略优化 | `swift rl --rl_type grpo` | [DeepSeekMath](https://arxiv.org/abs/2402.03300) | [grpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/grpo) |
+| RFT 拒绝采样微调 | `swift rl --rl_type rft` | [RFT](https://arxiv.org/abs/2308.01825) | [rft](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/rft) |
+| GKD 在线蒸馏 | `swift rl --rl_type gkd` | [GKD](https://arxiv.org/abs/2306.13649) | [gkd](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/gkd) |
+| OPSD 在线自蒸馏 | `swift rl --rl_type opsd` | [OPSD](https://arxiv.org/abs/2601.18734) | [opsd](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/opsd) |
+| MOPD 多教师在线蒸馏 | `swift rl --rl_type mopd` | [MOPD](https://arxiv.org/abs/2606.30406) | [mopd](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/mopd) |
+
+非训练功能：
+
+| 功能 | 命令 | 示例 |
+|---|---|---|
+| 推理（交互 / 批量，含 embedding、reranker、奖励模型等任务头） | `swift infer` | [infer](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer) |
+| 合并 LoRA | `swift merge` | [merge](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export/merge) |
+| 部署推理服务（vLLM / SGLang 等） | `swift deploy` | [deploy](https://github.com/modelscope/ms-swift/tree/main/examples/v5/deploy) |
+| 导出与量化（GPTQ / AWQ / FP8 等） | `swift export` | [export](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
+| 评测 | `swift eval` | [eval](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
+
+本文的本地示例使用 NVIDIA GPU、BF16 与 FlashAttention 2。请安装与驱动、CUDA 环境匹配的 PyTorch，并安装 flash-attn（`pip install flash-attn --no-build-isolation`）。
+
+```bash
+# A simple sft example
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --dataset 'swift/self-cognition#600' \
+    --model_name swift-robot \
+    --model_author swift \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-4 \
+    --max_length 2048 \
+    --save_steps 100 \
+    --save_total_limit 2 \
+    --output_dir output/sft
+```
+
+```bash
+# A simple grpo example
+# pip install vllm math-verify
+CUDA_VISIBLE_DEVICES=0,1 \
+swift rl \
+    --rl_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --sampler_mode disaggregated \
+    --vllm_gpu_memory_utilization 0.8 \
+    --vllm_max_model_len 4096 \
+    --generation_batch_size 8 \
+    --num_generations 4 \
+    --max_length 2048 \
+    --temperature 1.0 \
+    --orm accuracy \
+    --beta 0.04 \
+    --gradient_accumulation_steps 8 \
+    --max_steps 100 \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --output_dir output/grpo
+```
+
+```python
+# pip install vllm
+import math
+
+from swift.dev.builders import build_prompt_dataloader, resolve_rl_dp_size
+from swift.dev.config import (
+    CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, RLConfig, RewardConfig,
+    RolloutConfig, TemplateConfig, TrainConfig, TunerConfig)
+from swift.dev.recipe.distill.assembly import (
+    DISTILL_SIGNALS, build_distill_driver, distill_group_requests, initialize_distill_cluster)
+from swift.dev.recipe.offload import sleep_for_rollout
+from swift.dev.recipe.utils import (
+    effective_colocate, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
+    stream_batch_size)
+from swift.dev.utils.scoring import copy_inputs
+
+
+def main():
+    model_config = ModelConfig(model='Qwen/Qwen3.5-4B', attn_impl='flash_attention_2')
+    template_config = TemplateConfig(max_length=8192)
+    dataset_config = DatasetConfig(dataset=['AI-MO/NuminaMath-TIR#2000'])
+    train_config = TrainConfig(
+        max_steps=20, per_device_train_batch_size=4, learning_rate=2e-5, gradient_checkpointing=True)
+    distributed_config = DistributedConfig(mode='ray', nproc_per_node=2)
+    checkpoint_config = CheckpointConfig(output_dir='output/mopd')
+    generation_batch_size = 16  # prompts rolled out per batch
+    rollout_config = RolloutConfig(
+        sampler_mode='colocate', vllm_gpu_memory_utilization=0.5,
+        generation_batch_size=generation_batch_size)
+    # Two frozen teachers score the student's own rollouts; the weights are normalized to sum 1.
+    rl_config = RLConfig(
+        rl_type='mopd', teacher_model=['Qwen/Qwen3.5-4B', 'Qwen/Qwen3.5-9B'],
+        teacher_weights=[0.7, 0.3], lmbda=1.0, num_generations=1, sampling_temperature=1.0,
+        max_completion_length=2048)
+
+    # 1. Prompts: the rows the student rolls out on.
+    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
+
+    # 2. Devices: the template, the device-group plan and twinkle (Ray) itself.
+    template, resource_plan, teacher_meshes = initialize_rl_devices(
+        model_config=model_config, template_config=template_config, dataset_config=dataset_config,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        reward_config=RewardConfig(), tuner_config=TunerConfig(),
+        output_dir=checkpoint_config.output_dir, prompt_rows=prompt_rows,
+        group_requests=lambda: distill_group_requests(rl_config))
+
+    # 3. Cluster: the student (LoRA), the vLLM sampler, the frozen teachers, and the worker that
+    #    turns each teacher forward into the training signal.
+    train_batch_size = train_config.per_device_train_batch_size * resolve_rl_dp_size(distributed_config)
+    batch_size = stream_batch_size(
+        colocate=effective_colocate(rollout_config, resource_plan),
+        generation_batch_size=generation_batch_size, num_generations=rl_config.num_generations,
+        train_batch_size=train_batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps)
+    cluster = initialize_distill_cluster(
+        model_config=model_config, template_config=template_config, template=template,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        tuner_config=TunerConfig(), max_steps=train_config.max_steps,
+        signal=DISTILL_SIGNALS['mopd'], train_batch_size=train_batch_size, batch_size=batch_size,
+        resource_plan=resource_plan, auxiliary_meshes=teacher_meshes)
+
+    # 4. Driver: streams the student's rollouts, `batch_size` rows per batch.
+    dataloader = build_prompt_dataloader(
+        prompts, prompt_extras, seed=dataset_config.data_seed,
+        shuffle=dataset_config.train_dataloader_shuffle, batch_size=generation_batch_size)
+    driver = build_distill_driver(
+        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config,
+        prompt_dataloader=dataloader, batch_size=batch_size,
+        num_train_epochs=math.ceil(train_config.num_train_epochs),
+        max_steps=train_config.max_steps * train_batch_size // batch_size)
+
+    # 5. Loop: roll out, score with the teachers, update, publish the weights to the sampler.
+    cluster.engine.sync_weights()
+    for trajs, _ in driver:
+        if cluster.colocate:  # hand the GPUs back from the sampler
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
+            cluster.model.reload_to_gpu()
+        for lo, hi in optimizer_batch_slices(len(trajs), train_batch_size, 1):
+            update = trajs[lo:hi]
+            signal = dict(cluster.worker.forward_kwargs(update, True))
+            cluster.model.forward_backward(
+                inputs=copy_inputs(update), gradient_accumulation_steps=1,
+                micro_batch_size=train_config.per_device_train_batch_size, **signal)
+            cluster.model.clip_grad_and_step(
+                max_grad_norm=train_config.max_grad_norm, gradient_accumulation_steps=1)
+            print(cluster.model.calculate_metric(is_training=True))
+        cluster.engine.sync_weights()
+    driver.close()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+以上示例使用 `Qwen/Qwen3.5-4B`。默认通过 ModelScope 下载模型；需要 Hugging Face 时，在 SWIFT 命令中添加 `--use_hf true`。
+
+### 部署 server
+
+```bash
+pip install twinkle-server
+```
+
+将以下配置保存为 `server_config.yaml`：
+
+```yaml
+http_options:
+  host: 127.0.0.1
+  port: 8000
+persistence:
+  mode: memory
+applications:
+  - name: server
+    route_prefix: /api/v1
+    import_path: server
+    args:
+      supported_models:
+        - Qwen/Qwen3.5-4B
+  - name: models-Qwen3.5-4B
+    route_prefix: /api/v1/model/Qwen/Qwen3.5-4B
+    import_path: model
+    args:
+      backend: transformers
+      model_id: ms://Qwen/Qwen3.5-4B
+      model_loader: swift.dev.model.loader:build_model_loader
+      train_mode: lora
+      min_replicas: 1
+      nproc_per_node: 1
+      max_length: 2048
+      device_group:
+        name: model
+        ranks: 1
+        device_type: cuda
+      device_mesh:
+        device_type: cuda
+        dp_size: 1
+```
+
+启动 Ray，然后启动服务：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 ray start --head --num-gpus=1
+twinkle-server launch --config server_config.yaml
+```
+
+### 客户端远程训练
+
+在提交训练任务的机器上安装轻量客户端。模型权重与 GPU 计算由服务端管理，客户端无需本地 GPU：
+
+```bash
+pip install twinkle-client
+```
+
+```bash
+pip install transformers peft
+```
+
+将以下代码保存为 `client_grpo.py`。每一轮先把当前权重发布给 sampler，再采样、打分、按组归一化得到 advantage，最后更新：
+
+```python
+import os
+from peft import LoraConfig
+from twinkle_client import init_twinkle_client
+from twinkle_client.dataloader import DataLoader
+from twinkle.dataset import DatasetMeta
+from twinkle.preprocessor import GSM8KProcessor
+from twinkle.reward import GSM8KAccuracyReward
+
+MODEL_ID = 'ms://Qwen/Qwen3.5-4B'
+NUM_GENERATIONS = 4  # completions per prompt
+MAX_STEPS = 20
+
+with init_twinkle_client(
+    base_url=os.environ.get('TWINKLE_SERVER_URL', 'http://127.0.0.1:8000'),
+    api_key=os.environ.get('TWINKLE_SERVER_TOKEN'),
+) as client:
+    # 1. Prompts: math problems with the answer kept aside for the reward.
+    dataset = client.dataset(
+        DatasetMeta('ms://modelscope/gsm8k', subset_name='main', split='train', data_slice=range(2000)))
+    dataset.set_template('Qwen3_5Template', model_id=MODEL_ID, max_length=2048, enable_thinking=False)
+    dataset.map(GSM8KProcessor())
+    dataset.encode(add_generation_prompt=True)
+    dataloader = DataLoader(dataset=dataset, batch_size=8, num_workers=0)
+
+    # 2. Model: LoRA student with the GRPO loss.
+    model = client.model(MODEL_ID)
+    model.add_adapter_to_model(
+        'default', LoraConfig(r=8, lora_alpha=32, target_modules='all-linear'), gradient_accumulation_steps=1)
+    model.set_template('Qwen3_5Template', model_id=MODEL_ID)
+    model.set_processor('InputProcessor')
+    model.set_loss('GRPOLoss', epsilon=0.2, beta=0.0)
+    model.set_optimizer('Adam', lr=2e-5)
+
+    # 3. Sampler: the vLLM engine the student rolls out on.
+    sampler = client.sampler(MODEL_ID)
+    sampler.set_template('Qwen3_5Template', model_id=MODEL_ID)
+    reward_fn = GSM8KAccuracyReward()
+    sampling_params = {'max_tokens': 1024, 'temperature': 1.0, 'top_p': 0.95}
+
+    try:
+        for step, prompts in enumerate(dataloader):
+            if step >= MAX_STEPS:
+                break
+            # 4. Publish the current weights to the sampler.
+            weights = model.save(name='grpo-weights', save_optimizer=False, is_sampler=True).twinkle_path
+
+            # 5. Roll out NUM_GENERATIONS completions per prompt.
+            responses = sampler.sample(
+                inputs=prompts, sampling_params=sampling_params, adapter_uri=weights,
+                num_samples=NUM_GENERATIONS)
+            sequences = [seq for response in responses for seq in response.sequences]
+            samples = [seq.new_input_feature for seq in sequences]
+            old_logps = [[lp[0][1] for lp in seq.logprobs] for seq in sequences]
+
+            # 6. Reward each completion, then normalize inside its group.
+            rewards = reward_fn(samples)
+            advantages = []
+            for i in range(0, len(rewards), NUM_GENERATIONS):
+                group = rewards[i:i + NUM_GENERATIONS]
+                mean = sum(group) / len(group)
+                std = (sum((r - mean)**2 for r in group) / len(group))**0.5
+                advantages += [(r - mean) / (std + 1e-4) for r in group]
+
+            # 7. Update.
+            model.forward_backward(inputs=samples, advantages=advantages, old_logps=old_logps)
+            model.clip_grad_and_step(max_grad_norm=1.0)
+            print(step + 1, model.calculate_metric().result)
+        checkpoint = model.save('quick-start-grpo', save_optimizer=True)
+        print(checkpoint.twinkle_path)
+    finally:
+        model.close()
+```
+
+运行：
+
+```bash
+python client_grpo.py
+```
+
+## 了解更多
+
+- [在线学习](/zh/blog/online-rl)：GRPO 原理、奖励与采样调度。
+- [组件与 MP 分离](../interfaces/mp-separation.mdx)：复用组件和修改训练循环。

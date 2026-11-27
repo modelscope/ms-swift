@@ -47,8 +47,9 @@ from tests.v5.infer.conftest import write_cache_file
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 _REPO = Path(__file__).resolve().parents[3]
-CUSTOM_PLUGINS = _REPO / 'examples' / 'infer' / 'code' / 'custom_plugins.py'
-CUSTOM_SAMPLER = _REPO / 'examples' / 'infer' / 'code' / 'custom_sampler.py'
+# 1a1d516e7 split examples into examples/v5, then 2818563be renamed infer/code -> infer/plugin.
+CUSTOM_PLUGINS = _REPO / 'examples' / 'v5' / 'infer' / 'plugin' / 'custom_plugins.py'
+CUSTOM_SAMPLER = _REPO / 'examples' / 'v5' / 'infer' / 'plugin' / 'custom_sampler.py'
 
 # The three prompts ``demo_synthetic``'s DatasetLoader synthesises (custom_plugins.py). The loader's rows
 # come back shuffled, so tests compare them as a set and key caches by prompt, never by position.
@@ -166,7 +167,7 @@ def test_reward_name_is_unresolvable_without_the_plugin_file():
     import subprocess
     import sys
 
-    custom_tools = _REPO / 'examples' / 'infer' / 'code' / 'custom_tools.py'
+    custom_tools = _REPO / 'examples' / 'v5' / 'infer' / 'plugin' / 'custom_tools.py'
     script = (
         'from swift.dev.utils.plugin import PluginRegistry;'
         'from swift.dev.config import PluginConfig;'
@@ -252,13 +253,9 @@ class _ScriptedToolSampler:
     building each continuation through the REAL ``append_completion`` (whose feature the ledger
     re-checks against its own token accounting).
 
-    The reply is chosen by counting assistant turns already on the state, not by mutable sampler
-    state, because the multi-turn engine samples a group's trajectories concurrently on one shared
-    sampler. ``accepts_rollout_state`` makes the engine hand us its RolloutState (the object
-    ``append_completion`` extends); ``sample`` is declared ``_enable_continous_work`` since the
-    engine samples one trajectory per call."""
-
-    accepts_rollout_state = True
+    The reply is chosen by counting assistant turns on the complete trajectory, not mutable sampler
+    state, because the engine samples a group concurrently. ``sample`` is declared
+    ``_enable_continous_work`` since the engine samples one trajectory per call."""
 
     def __init__(self, template, call_text, answer_text):
         self.template = template
@@ -270,7 +267,7 @@ class _ScriptedToolSampler:
             states = [states]
         responses = []
         for state in states:
-            messages = getattr(state, 'messages', None) or []
+            messages = state.get('messages') or []
             turns = sum(1 for m in messages if m.get('role') == 'assistant')
             text = self.call_text if turns == 0 else self.answer_text
             tokens = self.template.tokenizer.encode(text, add_special_tokens=False)
@@ -278,7 +275,7 @@ class _ScriptedToolSampler:
             completion = self.template.append_completion(state, list(tokens))
             seq = SampledSequence(
                 stop_reason='stop', tokens=tokens, logprobs=logprobs, decoded=text,
-                new_input_feature=dict(completion.state.feature))
+                new_input_feature=completion)
             responses.append(SampleResponse(sequences=[seq]))
         return responses
 

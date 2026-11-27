@@ -200,8 +200,13 @@ def test_bootstrap_versions_output_and_abspaths_resume(tmp_path):
     assert model.model_kwargs == {'cli_runtime_test': 'yes'}
 
 
-def test_dev_route_switch_is_opt_in(monkeypatch):
+def test_dev_route_switch_defaults_to_v5_with_v4_opt_out(monkeypatch):
+    # c478407aa made v5 the DEFAULT CLI: an unset USE_SWIFT_V5 routes to v5, and '0' opts into v4.
     monkeypatch.delenv('USE_SWIFT_V5', raising=False)
+    assert resolve_route('sft', ROUTE_MAPPING) == 'swift.dev.cli.sft'
+    assert resolve_route('export', ROUTE_MAPPING) == 'swift.dev.cli.export'
+
+    monkeypatch.setenv('USE_SWIFT_V5', '0')
     assert resolve_route('sft', ROUTE_MAPPING) == 'swift.cli.sft'
     assert resolve_route('export', ROUTE_MAPPING) == 'swift.cli.export'
 

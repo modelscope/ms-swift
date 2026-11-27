@@ -1,40 +1,229 @@
 ---
-title: Components & M/P Separation
-description: Mechanism/Policy separation — infrastructure mechanisms stay invisible to training policy.
+title: Mechanism / Policy separation
+description: Reuse components from Python, assemble training workflows, and separate algorithm decisions from execution mechanisms.
 ---
 
-## The idea
+The CLI is not the only entry point in SWIFT v5. You can call an existing training recipe or reuse model, data, sampler, loss, and reward components to write your own workflow. twinkle provides the underlying components; SWIFT adds model and dataset adaptation, configuration parsing, and assembly of common training workflows.
 
-SWIFT v5 separates **Mechanism** (how distributed execution, transport, placement
-and weight movement work) from **Policy** (what the training algorithm does:
-loss, advantage, reward, sampling schedule). The term follows the classic
-mechanism/policy separation from operating-system design.
+This guide introduces Mechanism / Policy separation (M/P separation): separating what an algorithm decides to do from how the system executes it, so that algorithm changes, component replacement, and distributed placement remain as independent as possible.
 
-The consequence for users is *distribution transparency*: a component author
-writes single-machine logic; the same code runs on one GPU, a Ray cluster, or a
-remote twinkle-server without edits.
+MP here is **not model parallelism** or pipeline parallelism. Policy means decision logic in software design, not only an RL policy model. Separating a trainer from a sampler is one application, not the entire meaning of M/P separation.
 
-## Where the boundary sits
+<ArchitectureDiagram src="/images/v5/mp-separation.en.svg" alt="SWIFT, twinkle and execution infrastructure" />
 
-| Layer | Owns | Does not own |
+Blue arrows carry configuration and control, green arrows training data, and dashed arrows weight synchronization. CLI, Python and WebUI share SWIFT Config / builders / recipes; twinkle components delegate execution to infrastructure. Remote mode accesses components through the twinkle-server boundary without replacing the client's algorithm loop.
+
+## Principles and boundaries
+
+A training workflow contains two kinds of questions:
+
+- **Policy**: Which objective should be used? How are samples prepared? When do sampling and updates occur? How are advantages computed? When are metrics recorded and checkpoints saved?
+- **Mechanism**: Which devices and processes execute the model? How are tensors sharded? How do calls cross process boundaries? How are weights synchronized and checkpoints stored?
+
+For example, GRPO decides to generate multiple responses for a prompt and update the model using relative rewards. That is an algorithm decision. Placing the training model and sampler on different GPUs and transferring updated weights is an execution mechanism.
+
+```text
+Configuration and data
+    ↓
+SWIFT recipe: select components, define the objective, organize the training loop
+    ↓
+twinkle components: model, data, sampler, loss, reward, advantage
+    ↓
+twinkle execution mechanisms: placement, parallelism, remote calls, transport, weight sync, storage
+```
+
+Components are not synonymous with Policy or infrastructure. Models, losses, and rewards provide reusable capabilities. A recipe combines them through configuration and call order, while components delegate distributed execution to the corresponding mechanisms.
+
+| Layer | Responsibility | Typical changes here |
 |---|---|---|
-| twinkle infra (Mechanism) | Ray actors, device mesh, transport, weight sync channels, checkpoint IO | algorithm semantics |
-| components (Policy) | model forward/backward, loss, sampler logic, reward, advantage | cluster topology, process placement |
-| SWIFT recipes | assembling components into a training run | re-implementing mechanisms |
+| CLI / Config | Parse arguments, process defaults, validate combinations. | Models, datasets, hyperparameters, and parallel configuration. |
+| SWIFT Builders | Turn configurations into models, templates, data, and other components. | Component adaptation, plugin registration, and construction. |
+| SWIFT Recipe | Assemble components, define objectives, organize updates and saving. | New algorithms, data cadence, objective combinations, and loops. |
+| twinkle components and infrastructure | Provide common operations and their local or distributed execution. | Reusable components, parallel implementations, transport, or execution backends. |
 
-Two contact points only: `initialize` (bring up the runtime) and function
-annotations (mark what may run remotely). Everything else crosses the boundary
-as serializable specs, registered names and scalars.
+twinkle uses `@remote_class` and `@remote_function` on components to declare remote execution, data dispatch, and result collection. `twinkle.initialize` configures execution at runtime. Domain operations remain defined by the components, such as a model's `forward_backward` and a sampler's `sample`; recipes call those operations rather than managing actor communication directly.
 
-## What this buys you
+The goal is not to remove every distributed constraint from algorithm development. It is to avoid reimplementing Ray actors, GPU placement, and weight transport in every algorithm.
 
-- **Swap without rewrites**: change the loss or the reward function without
-  touching distribution code; change placement without touching the algorithm.
-- **Backend neutrality**: transformers, Megatron and remote backends expose the
-  same component surface.
-- **Scale neutrality**: one code path from a single card to 1000B+ models;
-  placement is driven by configuration, not hardcoded branches.
+## Choose a usage level
 
-Read the component-level examples (`examples/v5/**/*.py`) to see the boundary in
-practice: assembly and loops are policy; every distributed call is a mechanism
-delegated to twinkle.
+| Approach | Suitable for | What you own |
+|---|---|---|
+| CLI | Existing tasks with parameter changes. | Data preparation and experiment configuration. |
+| Config + Recipe | Starting existing tasks from Python and integrating with other code. | Configuration objects and the entry point. |
+| Component assembly + custom loop | Changing training steps, objectives, or component combinations. | Complete algorithm, metrics, resumption, evaluation, and saving behavior. |
+| Direct twinkle usage | Workflows that do not need SWIFT adaptation or recipes. | Component construction, encoding contracts, and full orchestration. |
+
+Moving from CLI to Python does not necessarily require rewriting a loop. Use the component level when an existing recipe cannot express your requirements.
+
+## Call an existing workflow from Python
+
+The following is a complete LoRA SFT launch script. Install SWIFT as described in [Quick Start](../get-started/quick-start.mdx), save it as `sft.py`, and run `CUDA_VISIBLE_DEVICES=0 python sft.py`:
+
+```python
+from swift.dev.config import (
+    CheckpointConfig,
+    DatasetConfig,
+    DistributedConfig,
+    LoggingConfig,
+    ModelConfig,
+    TemplateConfig,
+    TrainConfig,
+    TunerConfig,
+)
+from swift.dev.recipe.sft.run_sft import run_sft
+
+
+def main():
+    output_dir = 'output/mp-sft'
+    model_config = ModelConfig(
+        model='Qwen/Qwen3.5-4B',
+        model_type='qwen3_5',
+        task_type='causal_lm',
+        torch_dtype='bfloat16',
+        attn_impl='flash_attention_2',
+    )
+    template_config = TemplateConfig(template='qwen3_5', max_length=2048)
+    dataset_config = DatasetConfig(
+        dataset=['swift/self-cognition#600'],
+        model_name=['swift-robot'],
+        model_author=['swift'],
+    )
+    train_config = TrainConfig(
+        num_train_epochs=3,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=8,
+        learning_rate=1e-4,
+        lr_scheduler='cosine',
+        warmup_ratio=0.05,
+    )
+    distributed_config = DistributedConfig(mode='local', backend='hf', nproc_per_node=1)
+    checkpoint_config = CheckpointConfig(
+        output_dir=output_dir, add_version=False, save_steps=100, save_total_limit=2,
+    )
+    tuner_config = TunerConfig(
+        tuner='lora', lora_rank=8, lora_alpha=32, target_modules=['all-linear'],
+    )
+    logging_config = LoggingConfig(report_to=['tensorboard'], logging_steps=5)
+
+    history = run_sft(
+        model_config=model_config,
+        template_config=template_config,
+        dataset_config=dataset_config,
+        train_config=train_config,
+        distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config,
+        tuner_config=tuner_config,
+        logging_config=logging_config,
+        output_dir=output_dir,
+    )
+    print(f'Training records: {len(history)}')
+
+
+if __name__ == '__main__':
+    main()
+```
+
+These configuration objects describe the model, template, data, optimization, execution mode, and checkpoints. Field names correspond to CLI arguments. `run_sft` builds the components, invokes the full supervised workflow, and returns a list of training metric records.
+
+This example disables version suffixes and writes to `output/mp-sft`; use a different directory for repeated experiments. It still reuses the recipe's evaluation, saving, and resumption logic rather than implementing a separate simplified trainer.
+
+## Reuse components and change the loop
+
+To change update steps, use `build_supervised_objects` to retain configuration validation, template encoding, data loading, and model construction while taking control of the loop.
+
+This partial assembly example reuses the configurations above. Put the imports and `sft_loss` definition at module level, and put the `cluster` construction and loop inside `main()`, replacing the `run_sft` call and the subsequent `history` print. It only illustrates one training epoch, without complete logging, evaluation, resumption, or saving:
+
+```python
+from swift.dev.loss import configure_loss
+from swift.dev.recipe.sft.assembly import build_supervised_objects
+from swift.dev.recipe.utils import grouped_training_batches
+
+
+def sft_loss(model):
+    configure_loss(model, loss_type='cross_entropy')
+
+
+cluster = build_supervised_objects(
+    recipe='run_sft',
+    model_config=model_config,
+    template_config=template_config,
+    dataset_config=dataset_config,
+    train_config=train_config,
+    distributed_config=distributed_config,
+    checkpoint_config=checkpoint_config,
+    tuner_config=tuner_config,
+    logging_config=logging_config,
+    configure_loss=sft_loss,
+    output_dir=output_dir,
+)
+
+for group, _ in grouped_training_batches(
+    cluster.dataloader, train_config.gradient_accumulation_steps,
+):
+    cluster.model.forward_backward(
+        inputs=group,
+        task=cluster.forward_task,
+        micro_batch_size=train_config.per_device_train_batch_size,
+        gradient_accumulation_steps=1,
+    )
+    cluster.model.clip_grad_and_step(
+        max_grad_norm=train_config.max_grad_norm,
+        gradient_accumulation_steps=1,
+    )
+```
+
+Key steps:
+
+1. `configure_loss` attaches the objective to the constructed model before optimizer configuration. Changing the loss does not require another distributed forward implementation in the loop.
+2. `build_supervised_objects` returns handles such as the model, dataloader, and template, plus the training budget. The loop drives these already adapted objects.
+3. `grouped_training_batches` combines dataloader batches into the inputs for one update. Since grouping is already done at the input level, `gradient_accumulation_steps=1` in model calls avoids accumulating the same group again.
+4. `forward_backward` performs forward and backward; `clip_grad_and_step` clips gradients and updates the optimizer. The model component handles micro-batching, parallel execution, and gradient processing.
+
+The source example `examples/v5/train/lora/train.py` demonstrates component-level training steps, logging, and saving, with an explicit simplification scope. For recipe-level resumption, periodic evaluation, or best-model management, reuse the corresponding implementations; a short loop does not contain those behaviors automatically.
+
+## Change execution mode
+
+### Local execution and Ray
+
+The recipe above uses `mode='local'`. After installing Ray dependencies, replace its execution configuration with:
+
+```python
+distributed_config = DistributedConfig(mode='ray', backend='hf', nproc_per_node=1)
+```
+
+In Ray mode, model execution moves to workers, and the caller orchestrates training through component handles. The algorithm still calls `forward_backward` and `clip_grad_and_step`. Adding trainer GPUs or sharding requires matching `nproc_per_node`, `parallel_spec`, and other settings, with appropriate batch sizes and hardware resources.
+
+This is not a promise that arbitrary configurations are interchangeable. The selected model, training backend, and parallel layout must support the required capabilities. Validation rejects invalid combinations, and switching modes also requires the correct dependencies.
+
+### Online sampler placement
+
+For online training, `sampler_mode` describes colocated or disaggregated placement; `async_mode` describes synchronization. These settings preserve the basic sample–score–update structure but affect resource usage and sampling lag.
+
+```text
+colocate: trainer and sampler share GPUs and alternate phases
+disaggregated: trainer and sampler use different GPUs and can overlap according to async settings
+```
+
+See [Online RL](/en/blog/online-rl) for commands and incompatible combinations. M/P separation lets algorithms reuse placement and synchronization mechanisms instead of copying GPU switching code into each loop.
+
+### Remote services
+
+With `mode='remote'`, SWIFT uses twinkle_client to construct handles for server-side models and samplers. Supervised data and template processing can remain on the client, while model operations execute through service interfaces. Connection settings such as the gateway address come from execution configuration; the server manages resources.
+
+Across process or service boundaries, use serializable specifications, registered names, or importable class names for component configuration. Do not rely on direct access to a remote model's internal objects. Custom plugins must be loadable on the execution side; a temporary client-side monkey patch is not a remote component implementation.
+
+Remote interfaces have their own capability boundaries. For example, current remote online sampling uses the vLLM service interface. A locally supported parameter does not automatically imply that the same combination is supported by the server.
+
+## Use twinkle directly
+
+twinkle can be used independently of SWIFT. Construct `TransformersModel`, dataloader, sampler, loss, and reward objects directly, controlling their initialization and call order without going through `swift sft`.
+
+SWIFT builders provide model-family identification, chat templates, data formats, and task adaptation. With direct twinkle usage, the caller prepares these input contracts and component settings. Independent examples are in twinkle's `cookbook/transformers/` and `cookbook/rl/grpo/`; follow their model and dependency requirements.
+
+## Where to put extensions
+
+- **Experiment settings only**: use CLI or Config without changing underlying components.
+- **Rewards, templates, or other supported extension points**: implement and register plugins, then select them by name. See [Online RL](/en/blog/online-rl) for a reward example.
+- **Algorithm or training-step changes**: combine components in a recipe or custom loop, reusing data, logging, and saving facilities.
+- **Execution capabilities shared by algorithms**: implement a reusable component or twinkle mechanism rather than repeating it across recipes.

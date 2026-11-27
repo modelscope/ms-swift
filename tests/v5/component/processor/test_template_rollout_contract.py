@@ -5,23 +5,15 @@ Labels / masks are asserted in INPUT order (unrolled), where each appended role'
 slice; the stored next-token order is that rolled left by one.
 """
 
-from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
 from swift.dev.template.base import MaxLengthError, Template
-from swift.dev.template.conventions import (
-    APPEND_ROLES,
-    FIELDS,
-    SPLICE_FILL,
-    TOKEN,
-    is_bookkeeping_key,
-    model_payload_keys,
-)
+from swift.dev.template.conventions import is_bookkeeping_key, model_payload_keys
 from swift.dev.template.meta import TemplateMeta
 from swift.dev.template.output import OutputCodec
-from twinkle.template.contract import CompletionEncoding, MediaBundle, PromptEncoding, RolloutState
+from twinkle.template.contract import engine_input_ids
 
 IGNORE = -100
 
@@ -80,34 +72,18 @@ def test_tools_require_an_agent_parser():
     ],
 )
 def test_append_role_sets_labels_and_completion_mask(appended_as, labels_tail, mask_tail):
-    result = _Contract().append_completion(_prompt(), [10, 11], appended_as=appended_as).state.feature
+    result = _Contract().append_completion(_prompt(), [10, 11], appended_as=appended_as)
     assert _unroll(result["labels"]) == [IGNORE] * 3 + labels_tail
     assert _unroll(result["completion_mask"]) == [0] * 3 + mask_tail
 
 
-def test_append_completion_advances_rollout_state():
+def test_append_completion_advances_trajectory():
     prompt = _prompt()
-    state = RolloutState(
-        feature=prompt,
-        engine_input_ids=(1, 2, 3),
-        messages=tuple(prompt["messages"]),
-        tools=(),
-        reasoning_started=False,
-        media=MediaBundle(),
-    )
-    result = _Contract().append_completion(state, [10, 11])
-    assert result.state.feature["input_ids"] == [1, 2, 3, 10, 11]
-    assert result.state.engine_input_ids == (1, 2, 3, 10, 11)
-    assert result.state.reasoning_started is False
-
-
-def test_append_roles_match_twinkle():
-    """demonstration is scored (SFT imitates it) but carries no log-prob (RL skips it)."""
-    assert {name: tuple(role) for name, role in APPEND_ROLES.items()} == {
-        "completion": (True, True),
-        "demonstration": (True, False),
-        "context": (False, False),
-    }
+    result = _Contract().append_completion(prompt, [10, 11])
+    assert result["input_ids"] == [1, 2, 3, 10, 11]
+    assert engine_input_ids(result) == [1, 2, 3, 10, 11]
+    assert result["reasoning_started"] is False
+    assert prompt == _prompt()
 
 
 def test_unknown_append_role_raises():
@@ -125,38 +101,34 @@ def test_concat_rejects_a_train_prefix_with_loss_scale():
 
 def test_turns_stay_aligned_across_appends():
     contract = _Contract()
-    first = contract.append_completion(_prompt(), [10, 11]).state
-    second = contract.append_completion(first, [20], appended_as="context").state
-    third = contract.append_completion(second, [30]).state.feature
+    first = contract.append_completion(_prompt(), [10, 11])
+    second = contract.append_completion(first, [20], appended_as="context")
+    third = contract.append_completion(second, [30])
     assert third["input_ids"] == [1, 2, 3, 10, 11, 20, 30]
     assert _unroll(third["labels"]) == [IGNORE] * 3 + [10, 11, IGNORE, 30]
     assert _unroll(third["completion_mask"]) == [0, 0, 0, 1, 1, 0, 1]
     assert third["attention_mask"] == [1] * 7
 
 
-def test_multimodal_concat_requires_state_and_preserves_payload():
+def test_multimodal_concat_requires_engine_ids_and_preserves_payload():
     prompt = _prompt()
     payload = object()
     prompt["pixel_values"] = payload
-    with pytest.raises(NotImplementedError, match="RolloutState"):
+    with pytest.raises(ValueError, match="engine_input_ids and original media"):
         _Contract().append_completion(prompt, [10, 11])
-    state = RolloutState(
-        feature={key: value for key, value in prompt.items() if key != "messages"},
-        engine_input_ids=(1, 2, 3),
-        messages=tuple(prompt["messages"]),
-        tools=(),
-        reasoning_started=False,
-        media=MediaBundle(images=("image",)),
-    )
-    result = _Contract().append_completion(state, [10, 11]).state
-    assert result.messages[-1] == {"role": "assistant", "content": "10 11"}
+    prompt.update(engine_input_ids=[8, 9], images=["image"])
+    result = _Contract().append_completion(prompt, [10, 11])
+    assert result["messages"][-1] == {"role": "assistant", "content": "10 11"}
     assert prompt["messages"] == [{"role": "user", "content": "q"}]
-    assert result.feature["pixel_values"] is payload
+    assert result["pixel_values"] is payload
+    assert result["images"] == ["image"]
+    assert result["engine_input_ids"] == [8, 9, 10, 11]
+    assert result["input_ids"] == [1, 2, 3, 10, 11]
 
 
 def test_concat_extends_token_types_with_text():
     prompt = dict(_prompt(), mm_token_type_ids=[0, 1, 1])
-    result = _Contract().append_completion(prompt, [10, 11]).state.feature
+    result = _Contract().append_completion(prompt, [10, 11])
     assert result["mm_token_type_ids"] == [0, 1, 1, 0, 0]
 
 
@@ -197,9 +169,13 @@ def test_post_pipeline_raise_and_delete_match_strategy():
     assert _Contract(max_length=2, truncation_strategy="delete").finalize_appended_features([feature]) == []
 
 
-def test_prompt_and_completion_encodings_are_state_only():
-    assert [field.name for field in fields(PromptEncoding)] == ["state"]
-    assert [field.name for field in fields(CompletionEncoding)] == ["state", "response"]
+def test_prompt_and_completion_share_one_trajectory():
+    prompt = _prompt()
+    result = _Contract().append_completion(prompt, [10])
+    assert isinstance(result, dict)
+    assert "state" not in result and "encoded" not in result
+    assert result["messages"] == prompt["messages"] + [{"role": "assistant", "content": "10"}]
+    assert result["input_ids"] == prompt["input_ids"] + [10]
 
 
 def test_runtime_order_marker_is_absent_from_production_code():
@@ -249,15 +225,6 @@ def test_unsupported_system_prompt_fails_explicitly():
 
 
 # ---- field registry ----------------------------------------------------------------------------
-
-
-def test_registered_fields_are_not_bookkeeping():
-    assert not [name for name in FIELDS if is_bookkeeping_key(name)]
-
-
-def test_only_token_fields_follow_a_splice():
-    assert set(SPLICE_FILL) == {"token_type_ids", "mm_token_type_ids"}
-    assert all(FIELDS[name].kind == TOKEN for name in SPLICE_FILL)
 
 
 def test_payload_is_everything_unregistered():

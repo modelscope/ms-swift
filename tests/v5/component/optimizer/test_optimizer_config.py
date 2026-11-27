@@ -402,8 +402,11 @@ def test_hf_warmup_steps_match_transformers_exactly(warmup_ratio, num_training_s
     """dev's warmup step count must equal TrainingArguments.get_warmup_steps, not merely resemble it.
 
     Anchored against HF's own implementation rather than a restated formula, so a future change on
-    either side shows up here. HF computes math.ceil(num_training_steps * warmup_ratio)
+    either side shows up here. HF computes math.ceil(num_training_steps * ratio)
     (training_args.py::get_warmup_steps) and its schedules treat that as an integer step boundary.
+    transformers 5.x merged the old ``warmup_ratio`` knob into ``warmup_steps``: a float < 1 IS the
+    ratio (``int(warmup_steps) if warmup_steps >= 1 else ceil(n * warmup_steps)``), so the anchor
+    passes the ratio through ``warmup_steps``.
 
     Why this test exists at all: dev used int(round(...)), which disagrees with HF whenever the
     product lands on .5 (Python rounds 2.5 to 2) or anywhere below .5 of a step. warmup_ratio=0.05
@@ -420,7 +423,7 @@ def test_hf_warmup_steps_match_transformers_exactly(warmup_ratio, num_training_s
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         expected = TrainingArguments(
-            output_dir='/tmp/_warmup_probe', warmup_ratio=warmup_ratio,
+            output_dir='/tmp/_warmup_probe', warmup_steps=warmup_ratio,
             report_to=[]).get_warmup_steps(num_training_steps)
     actual = _hf_warmup_steps(warmup_ratio, num_training_steps)
     assert actual == expected, (
@@ -502,7 +505,7 @@ def test_hf_lr_curve_matches_transformers_with_nonzero_warmup(sched_type, warmup
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         num_warmup_steps = TrainingArguments(
-            output_dir='/tmp/_warmup_probe', warmup_ratio=warmup_ratio,
+            output_dir='/tmp/_warmup_probe', warmup_steps=warmup_ratio,
             report_to=[]).get_warmup_steps(num_training_steps)
 
     def _drive(scheduler, optimizer):

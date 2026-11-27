@@ -39,6 +39,7 @@ class PrecisionAndShuffleTests(unittest.TestCase):
 
     def test_prompt_order_and_tail_batch(self):
         from swift.dev.builders.dataset import build_prompt_dataloader
+        from twinkle.data_format import user_data_get
 
         prompts = [[{'role': 'user', 'content': str(i)}] for i in range(17)]
         extras = [{'id': i} for i in range(17)]
@@ -50,8 +51,12 @@ class PrecisionAndShuffleTests(unittest.TestCase):
             batches = list(dl)
             self.assertEqual([len(batch) for batch in batches], [4, 4, 4, 4, 1])
             rows = [row for batch in batches for row in batch]
-            self.assertTrue(all(row['messages'][0]['content'] == str(row['id']) for row in rows))
-            return [row['id'] for row in rows]
+            # 6d82dd8ac packs prompt_extras into user_data (build_prompt_dataloader -> pack_user_data);
+            # the id rides user_data and JSON-decodes back to the int (cf F12). Ordering / tail-batch /
+            # content==id intent is unchanged -- only the read path moved off the flat row['id'].
+            ids = [user_data_get(row['user_data'], 'id') for row in rows]
+            self.assertTrue(all(row['messages'][0]['content'] == str(i) for row, i in zip(rows, ids)))
+            return ids
 
         ordered = loader(False)
         self.assertEqual(read(ordered), list(range(17)))
@@ -70,13 +75,15 @@ class PrecisionAndShuffleTests(unittest.TestCase):
 
     def test_prompt_shuffle_seed_controls_order(self):
         from swift.dev.builders.dataset import build_prompt_dataloader
+        from twinkle.data_format import user_data_get
 
         prompts = [[{'role': 'user', 'content': str(i)}] for i in range(17)]
         extras = [{'id': i} for i in range(17)]
 
         def order(seed):
             dl = build_prompt_dataloader(prompts, extras, seed=seed, batch_size=4, shuffle=True)
-            return [row['id'] for batch in dl for row in batch]
+            # 6d82dd8ac: extras packed into user_data; read the decoded id (cf F12 / the ordering test).
+            return [user_data_get(row['user_data'], 'id') for batch in dl for row in batch]
 
         self.assertEqual(order(42), order(42))
         self.assertNotEqual(order(42), order(43))

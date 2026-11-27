@@ -383,13 +383,13 @@ class LLavaTemplate(Template):
         image_processor = model.vision_tower.image_processor
         if images:
             images_tensor = process_images(images, image_processor, model.config)
-            encoded["images"] = images_tensor.to(model.dtype).squeeze(0)
+            encoded["pixel_values"] = images_tensor.to(model.dtype).squeeze(0)
             encoded["image_sizes"] = image_sizes
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = [row.pop('pixel_values') for row in batch if row.get('pixel_values') is not None]
         res = super()._data_collator_mm_data(batch)
-        images = [row.pop("images") for row in batch if row.get("images") is not None]
         if images:
             res["images"] = images
             res["image_sizes"] = sum(

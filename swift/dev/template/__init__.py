@@ -11,20 +11,18 @@ Public surface:
 from __future__ import annotations
 
 from twinkle.template.contract import (
-    CompletionEncoding,
     DecodeContext,
     DecodedResponse,
     EncodedRow,
     KTOSample,
     MediaBundle,
     PreferenceSample,
-    PromptEncoding,
 )
 from .base import MaxLengthError, Template
 from .constant import TemplateCapability
 from .conventions import NO_SHIFT_TASK_TYPES, is_bookkeeping_key
 from .inputs import SampleInput, StdTemplateInputs, TemplateInputs
-from .intent import ENGINE, INFER, SCORE, TRAIN, EncodeIntent
+from twinkle.template.contract import ENGINE, INFER, SCORE, TRAIN, EncodeIntent
 from .media import load_file
 from .meta import TemplateMeta
 from .register import register_template
@@ -41,8 +39,6 @@ __all__ = [
     "NO_SHIFT_TASK_TYPES",
     "is_bookkeeping_key",
     "MediaBundle",
-    "PromptEncoding",
-    "CompletionEncoding",
     "DecodedResponse",
     "DecodeContext",
     "SampleInput",

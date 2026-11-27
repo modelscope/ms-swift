@@ -336,7 +336,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     if rl_config.rl_type != 'ppo':
         raise ValueError(f'run_ppo expects rl_type="ppo", got {rl_config.rl_type!r}.')
     # segment 1: prompts (the resource estimator reads the prompt lengths off the raw rows).
-    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
+    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config, system=template_config.system)
     # segment 2: devices (configs + template + twinkle + perf; an estimate rewrites the parallel sizes).
     template, resource_plan, auxiliary_meshes = initialize_rl_devices(
         model_config=model_config, template_config=template_config, dataset_config=dataset_config,

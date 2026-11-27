@@ -14,7 +14,7 @@ from twinkle.reward.gsm8k import MathVerifyAccuracyReward as _MathVerifyAccuracy
 
 
 class MathAccuracy(_MathVerifyAccuracyReward):
-    """twinkle's math-verify scorer with swift's 'solution' gold column as the default key."""
+    """twinkle's math-verify scorer; the gold is the row's ``solution`` label in its packed ``user_data``."""
 
     def __init__(self, **kwargs):
         kwargs.setdefault('ground_truth_key', 'solution')

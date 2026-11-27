@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
 
 from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.utils import (
-    fp8_seq_align_option as _fp8_seq_align_option,
     initialize_supervised_twinkle,
     plan_supervised_steps,
     process_and_validate,
@@ -103,8 +102,8 @@ def build_supervised_objects(
     )
     from swift.dev.builders.adapter import apply_tuner
     from swift.dev.builders.optimizer import configure_optimizer
-    from swift.dev.processor import InputProcessor, processor_kwargs
-    from twinkle import DeviceMesh, Platform
+    from swift.dev.processor import InputProcessor, input_processor_kwargs, processor_cp_size
+    from twinkle import Platform
     from twinkle.perf import Perf
 
     # Enable before assembly: @timed init spans (set_*/load) are dropped while the recorder is off.
@@ -213,26 +212,12 @@ def build_supervised_objects(
         configure_remote_processor(model, template_config, model_config, distributed_config)
         configure_remote_loss(model, train_config, task_type=task_type, model_config=model_config)
     else:
-        processor_options = processor_kwargs(template)
-        cp_size = distributed_config.context_parallel_size
-        if distributed_config.parallel_spec:
-            cp_size = max(cp_size, DeviceMesh.parse_spec(distributed_config.parallel_spec).get('cp_size', 1) or 1)
+        processor_options = input_processor_kwargs(template, template_config, distributed_config, model_config)
         if (distributed_config.fsdp and distributed_config.backend != 'megatron'
                 and (distributed_config.nproc_per_node or Platform.get_world_size()) > 1
-                and cp_size == 1 and template.multimodal_graph_adapter is not None):
+                and processor_cp_size(distributed_config) == 1 and template.multimodal_graph_adapter is not None):
             processor_options['uniform_multimodal_graph'] = True
-        # fp8/fp4 micro-batch token padding (None = off); the processor right-pads token columns
-        # to this alignment before twinkle builds cu_seqlens, reproducing legacy's collator pad.
-        processor_options['seq_align_to'] = _fp8_seq_align_option(model_config, distributed_config, cp_size)
-        model.set_processor(
-            InputProcessor,
-            padding_free=template_config.padding_free,
-            # The collator must pad on the same side as the Template (builders/template.py forwards
-            # padding_side to it), or a training-time --padding_side left reaches the Template only.
-            padding_side=template_config.padding_side,
-            cp_partition_mode=distributed_config.cp_partition_mode,
-            **processor_options,
-        )
+        model.set_processor(InputProcessor, **processor_options)
         model.set_template(template)
         configure_loss(model)
     # Shared by both modes: the transformers branch of configure_optimizer is already a

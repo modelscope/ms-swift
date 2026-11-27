@@ -151,6 +151,8 @@ def test_load_prompt_only_rows_val_wins_and_ratio_slices(tmp_path):
 
 
 def test_build_prompt_dataloader_guards_and_iterates():
+    from twinkle.data_format import user_data_get
+
     from swift.dev.builders.dataset import build_prompt_dataloader
 
     with pytest.raises(ValueError, match='at least one prompt'):
@@ -167,9 +169,14 @@ def test_build_prompt_dataloader_guards_and_iterates():
         seed=42,
         batch_size=2)
     batch = next(iter(loader))
-    # rows carry messages plus their flattened extras, and a partial batch is never dropped
+    # rows carry messages, their labels packed into user_data, and a partial batch is never dropped
     assert len(batch) == 2
-    assert {row['solution'] for row in batch} == {'4', '5'}
+    # 6d82dd8ac switched this read from the flat row['solution'] to user_data_get, which JSON-decodes
+    # the packed value (twinkle data_format/trajectory.py: "Look up ... decoded"): the numeric-looking
+    # strings '4'/'5' decode to the ints 4/5. The label survives packing and is retrievable -- the
+    # assertion's intent -- under the decoded contract.
+    assert {user_data_get(row['user_data'], 'solution') for row in batch} == {4, 5}
+    assert all('solution' not in row for row in batch)
     assert all(row['messages'][0]['role'] == 'user' for row in batch)
 
 
@@ -245,7 +252,7 @@ def test_frozen_auxiliary_config_inherits_identity_only():
 
 def test_build_ref_model_three_branches(monkeypatch):
     from swift.dev.builders import model as model_module
-    from swift.dev.config import DistributedConfig, ModelConfig
+    from swift.dev.config import DistributedConfig, ModelConfig, TemplateConfig
 
     # disable_adapter without the policy model is a hard error (the shared-weights view IS the ref)
     with pytest.raises(ValueError, match='needs the policy model'):
@@ -285,17 +292,21 @@ def test_build_ref_model_three_branches(monkeypatch):
     monkeypatch.setattr(model_module, 'build_model', fake_build_model)
     frozen = model_module.build_ref_model(
         name='teacher', model_id='teacher-id', model_config=ModelConfig(model='policy-id'), template='T',
-        distributed_config=DistributedConfig(backend='megatron'), adapters=['/tmp/a'], model_type='qwen2')
+        distributed_config=DistributedConfig(backend='megatron'), adapters=['/tmp/a'], model_type='qwen2',
+        template_config=TemplateConfig())
     assert isinstance(frozen, _Frozen)
     assert calls['config'].model == 'teacher-id' and calls['config'].model_type == 'qwen2'
     assert calls['dist'].mode == 'ray' and calls['dist'].nproc_per_node == 1
     assert calls['kwargs']['remote_group'] == 'teacher'
     assert calls['adapter'] == ('teacher_adapter', '/tmp/a', False)
 
+    # e2f27753b added a template_config prerequisite (the frozen processor pads like the policy)
+    # guarded BEFORE the adapter-count check, so the multi-adapter refusal must supply template_config
+    # to reach the 'exactly one frozen adapter' guard under test.
     with pytest.raises(ValueError, match='exactly one frozen adapter'):
         model_module.build_ref_model(
             name='teacher', model_id='t', model_config=ModelConfig(model='m'), template=None,
-            distributed_config=DistributedConfig(), adapters=['a', 'b'])
+            distributed_config=DistributedConfig(), adapters=['a', 'b'], template_config=TemplateConfig())
 
 
 # ---------------------------------------------------------------- reward model dispatch (S5-28/29)

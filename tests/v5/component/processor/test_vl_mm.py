@@ -156,13 +156,13 @@ def test_native_engine_encode_agrees_with_the_full_render(template_type, model_i
     encoded = dev.encode_prompt(copy.deepcopy(prompt))
     expanded = dev.encode(copy.deepcopy(prompt), intent=INFER)["input_ids"]
     engine = dev.encode(copy.deepcopy(prompt), intent=ENGINE)["input_ids"]
-    assert encoded.state.feature["input_ids"] == expanded
-    assert list(encoded.state.engine_input_ids) == list(engine)
+    assert encoded["input_ids"] == expanded
+    assert list(encoded['engine_input_ids']) == list(engine)
     from swift.dev.template import MediaBundle
 
     # one placeholder per image: the engine expands it itself, so a prompt carrying the expanded form
     # (or a stale count) is a wrong prompt
-    dev._check_engine_placeholders(list(engine), MediaBundle(images=encoded.state.media.images))
+    dev._check_engine_placeholders(list(engine), MediaBundle(images=MediaBundle.from_sources(encoded).images))
 
 
 @pytest.mark.slow
@@ -171,10 +171,10 @@ def test_vl_encode_prompt_checks_one_placeholder_per_image(vl):
 
     dev, _ = vl
     prompt = dev.encode_prompt({"messages": _sample(2)["messages"][:1], "images": _sample(2)["images"]})
-    assert len(prompt.state.media.images) == 2
+    assert len(MediaBundle.from_sources(prompt).images) == 2
     with pytest.raises(ValueError, match="image placeholder"):
         dev._check_engine_placeholders(
-            list(prompt.state.engine_input_ids), MediaBundle(images=prompt.state.media.images[:1])
+            list(prompt['engine_input_ids']), MediaBundle(images=MediaBundle.from_sources(prompt).images[:1])
         )
 
 
@@ -189,18 +189,16 @@ def test_vl_single_row_keeps_the_batch_axis(vl):
 
 
 @pytest.mark.slow
-def test_vl_rollout_encode_loads_image_refs_in_place(vl, tmp_path):
-    """twinkle's samplers read multi_modal_data off the trajectory list they encode; an engine needs PIL
-    images there, not the dataset's path / ``{'bytes', 'path'}`` refs."""
-    from PIL import Image
-
+def test_vl_rollout_encode_preserves_image_refs(vl, tmp_path):
+    """Encoding preserves caller-owned raw media; each engine loads its own media view."""
     dev, _ = vl
     path = str(tmp_path / "a.png")
     _rand_image().save(path)
     images = [path, {"bytes": None, "path": path}]
     prompt = {"messages": [{"role": "user", "content": "<image><image>What is this?"}], "images": images}
-    dev.encode(prompt, add_generation_prompt=True)
-    assert prompt["images"] is images and all(isinstance(image, Image.Image) for image in images)
+    encoded = dev.encode(prompt, add_generation_prompt=True)
+    assert prompt["images"] is images and images == [path, {"bytes": None, "path": path}]
+    assert encoded["images"] == images
     # a training encode leaves the row alone
     row = dict(_sample(1), images=[path])
     dev.encode(row)

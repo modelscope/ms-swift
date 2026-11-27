@@ -26,7 +26,6 @@ from transformers import StoppingCriteriaList
 from transformers.utils import strtobool
 
 from twinkle.template.contract import (
-    CompletionEncoding,
     DecodeContext,
     DecodedResponse,
     EncodedRow,
@@ -34,18 +33,19 @@ from twinkle.template.contract import (
     KTOSample,
     MediaBundle,
     PreferenceSample,
-    PromptEncoding,
-    RolloutState,
     append_and_finalize,
     feature_has_media,
 )
+from twinkle.template.contract.encoding import (engine_input_ids, preserve_trajectory, project_engine_ids,
+                                               project_sliced_messages)
+from twinkle.data_format import Trajectory, copy_trajectory
 from twinkle.template.contract.encoding import refresh as refresh_row
 from twinkle.template.contract.encoding import render_delta as render_delta_tokens
 from twinkle.template.contract.encoding import shift as shift_row
 from twinkle.template.contract.encoding import unshift as unshift_row
 from twinkle.template.contract.output import _reasoning_is_open, split_reasoning
 from .constant import TemplateCapability
-from .conventions import APPEND_ROLES, NO_SHIFT_TASK_TYPES, model_payload_keys
+from .conventions import NO_SHIFT_TASK_TYPES
 from .inputs import (
     SampleInput,
     StdTemplateInputs,
@@ -54,7 +54,8 @@ from .inputs import (
     normalize_sample,
     preference_sample_from_row,
 )
-from .intent import INFER, TRAIN, EncodeIntent, EngineBackend, check_generation_prompt, resolve_intent
+from twinkle.template.contract import INFER, TRAIN, EncodeIntent, EngineBackend, resolve_intent
+from twinkle.template.contract.encoding import check_generation_prompt as _check_generation_prompt
 from .media import _check_path, load_audio, load_batch, load_image, rescale_image
 from .output import AgentToolParser, OutputCodec
 from .processor import Processor, ProcessorMixin
@@ -79,8 +80,6 @@ if TYPE_CHECKING:
 _RENDER_MODE: ContextVar[str] = ContextVar("template_render_mode", default="train")
 # Never pickled: the lazy meta-device model and a bound real model are process-local.
 _PROCESS_LOCAL_ATTRS = ("dummy_model", "model")
-# Settings a caller may override on a derived template (``Template.replace``).
-_REPLACEABLE = frozenset({"max_length", "truncation_strategy"})
 
 #: The slots a prompt block may carry; substituted in one pass so injected payload text is never rescanned.
 _PLACEHOLDER_SYSTEM, _PLACEHOLDER_QUERY = "{{SYSTEM}}", "{{QUERY}}"
@@ -101,11 +100,19 @@ def _rendering(mode: str):
         _RENDER_MODE.reset(token)
 
 
-class MaxLengthError(ValueError):
-    pass
+def check_generation_prompt(sample, add_generation_prompt) -> None:
+    """The shared open/closed-turn check, accepting a dev ``TemplateInputs`` (its chosen turn) too."""
+    if isinstance(sample, TemplateInputs):
+        sample = {'messages': sample.chosen.messages}
+    _check_generation_prompt(sample, add_generation_prompt)
 
 
-class Template(ProcessorMixin):
+from twinkle.template.base import Template as TwinkleTemplate
+from twinkle.template.contract import MaxLengthError, check_backend
+from twinkle.template.contract.encoding import normalize_token_fields, truncate_rows
+
+
+class Template(ProcessorMixin, TwinkleTemplate):
     """Base template class for formatting and processing model inputs/outputs.
 
     This class serves as the foundation for all template implementations in the Swift framework.
@@ -137,6 +144,12 @@ class Template(ProcessorMixin):
     support_padding_free = None
     supported_task_types: Optional[FrozenSet[str]] = None
     unsupported_capabilities: FrozenSet[TemplateCapability] = frozenset()
+    # Media kinds this family cannot serve to the vLLM engine. Enforced at the vLLM encode
+    # boundary (``encode(engine='vllm')``), NOT inside the shared placeholder renderer: the
+    # unified contract also renders serving-format ``engine_input_ids`` for transformers-bound
+    # trajectories (``_encode_engine`` borrows the vllm render mode), and a vLLM capability
+    # assertion there would reject media the target engine legitimately supports.
+    vllm_unsupported_media: Tuple[str, ...] = ()
     # Families whose media collation needs the row's text ids too (see ``_prepare_media_row``).
     media_requires_text = False
     requires_mm_token_type_ids = False
@@ -153,7 +166,7 @@ class Template(ProcessorMixin):
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
-        truncation_strategy: Literal["raise", "left", "right", "split"] = "raise",
+        truncation_strategy: Literal["raise", "left", "right", "split", "delete"] = "raise",
         max_pixels: Optional[int] = None,
         agent_template: Optional[str] = None,
         norm_bbox: Literal["norm1000", "none", None] = None,
@@ -213,6 +226,7 @@ class Template(ProcessorMixin):
             enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
         self.response_prefix = response_prefix
         self.template_meta: "TemplateMeta" = template_meta
+        self.default_system = template_meta.default_system
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
         self.preserve_thinking = preserve_thinking
@@ -244,6 +258,12 @@ class Template(ProcessorMixin):
         if task_type is not None:
             self.task_type = task_type
         self._validate_declared_capabilities()
+        explicit_thinking = self._explicit_enable_thinking
+        self._init_common(model_id=getattr(getattr(processor, 'model_info', None), 'model_dir', None),
+                          max_length=self.max_length, truncation_strategy=truncation_strategy,
+                          use_chat_template=use_chat_template, enable_thinking=self.enable_thinking,
+                          preserve_thinking=preserve_thinking, media_types=media_types, padding_side=padding_side)
+        self._explicit_enable_thinking = explicit_thinking
 
     def _validate_declared_capabilities(self) -> None:
         if self.supported_task_types is not None and self.task_type not in self.supported_task_types:
@@ -366,6 +386,11 @@ class Template(ProcessorMixin):
         self.init_env_args()
 
     def _init_placeholder_tokens(self):
+        self.placeholder_tokens = list(self.placeholder_tokens)
+        for name in ('vision_start_token_id', 'vision_end_token_id'):
+            value = getattr(self.config, name, None)
+            if value is not None and value not in self.placeholder_tokens:
+                self.placeholder_tokens.append(value)
         for mm_type in ["image", "video", "audio"]:
             mm_token = getattr(self.processor, f"{mm_type}_token", None)
             mm_token_id = getattr(self.processor, f"{mm_type}_token_id", None)
@@ -462,7 +487,8 @@ class Template(ProcessorMixin):
                 agent_template = self.agent_template
                 agent_template.template_meta = self.template_meta  # for hermes
                 i_start = i
-                while i + 1 < len(messages) and messages[i + 1]["role"] == "tool_call":
+                while (i + 1 < len(messages) and messages[i + 1]["role"] == "tool_call"
+                       and messages[i + 1].get('_swift_turn_index') == messages[i_start].get('_swift_turn_index')):
                     i += 1
                 tool_call_msgs = messages[i_start : i + 1]
                 tool_content = agent_template._format_tool_calls(tool_call_msgs)
@@ -471,7 +497,7 @@ class Template(ProcessorMixin):
                 merged_message = {"role": "assistant", "content": tool_content}
                 # Preserve loss/loss_scale fields from the first tool_call message.
                 for msg in tool_call_msgs:
-                    for key in ["loss", "loss_scale"]:
+                    for key in ["loss", "loss_scale", "_swift_turn_index"]:
                         if key in msg and key not in merged_message:
                             merged_message[key] = msg[key]
                 messages[i_start : i + 1] = [merged_message]
@@ -560,11 +586,16 @@ class Template(ProcessorMixin):
     def _replace_start_image_tags(inputs: StdTemplateInputs):
         # compat
         generate_mode = False
-        message = inputs.messages[-1]
-        content = message["content"]
-        if message["role"] == "user" and content.endswith("<start-image>"):
-            generate_mode = True
-            message["content"] = message["content"][: -len("<start-image>")]  # remove the <start-image>
+        # A conversation whose whole content is the leading system block has NO messages left:
+        # StdTemplateInputs lifts every leading system into `inputs.system`. The truncation
+        # projection re-encodes such a prefix (system-only) to recover message spans, so the
+        # last-message lookup must tolerate the empty list rather than assume a turn exists.
+        if inputs.messages:
+            message = inputs.messages[-1]
+            content = message["content"]
+            if message["role"] == "user" and content.endswith("<start-image>"):
+                generate_mode = True
+                message["content"] = message["content"][: -len("<start-image>")]  # remove the <start-image>
         inputs.generate_mode = generate_mode
 
     @staticmethod
@@ -765,14 +796,9 @@ class Template(ProcessorMixin):
         return encoded
 
     def encode(
-        self,
-        sample: SampleInput,
-        *,
-        intent: Optional[EncodeIntent] = None,
-        add_generation_prompt: Optional[bool] = None,
-        engine: EngineBackend = "vllm",
-        return_length: bool = False,
-    ) -> Union[EncodedRow, List[EncodedRow], Dict[str, Any]]:
+        self, sample=None, add_generation_prompt=None, *, intent=None,
+        engine='vllm', return_length=False, **kwargs,
+    ):
         """Encode one sample.
 
         ``intent`` selects the rendering objective (TRAIN / INFER / ENGINE / SCORE). Only
@@ -782,38 +808,79 @@ class Template(ProcessorMixin):
         ``add_generation_prompt`` is a shorthand: True -> INFER, None/False -> TRAIN. A legacy
         ``set_mode('rlhf' | 'kto')`` turns a raw paired row into the corresponding sample type.
         """
+        sample = self._encode_argument(sample, kwargs)
+        if isinstance(sample, dict) and self._get_trajectory_keys(sample, False):
+            return super().encode(sample, add_generation_prompt, intent=intent, engine=engine,
+                                  return_length=return_length, **kwargs)
+        check_backend(engine)
+        if engine == 'vllm' and self.vllm_unsupported_media:
+            bundle = MediaBundle.from_sources(sample)
+            for kind in self.vllm_unsupported_media:
+                if getattr(bundle, kind, ()):
+                    raise ValueError(f'{kind[:-1].capitalize()} is not supported in vLLM '
+                                     f'for {type(self).__name__}')
+        if kwargs:
+            raise TypeError(f'encode accepts no extra keyword arguments, got {sorted(kwargs)}')
+        sample = normalize_sample(sample)
         legacy_preference = False
         if getattr(self, "_legacy_mode", None) in ("rlhf", "kto") and intent is None and isinstance(sample, dict):
             legacy_mode = self._legacy_mode
-            # KTO is UNPAIRED: its raw row is ``messages`` + a boolean ``label`` (no rejected turn).
-            # The ``rejected_response`` trigger alone (the KL-batch shape the KTO trainer injects)
-            # missed plain KTO rows, so ``set_mode('kto')`` silently fell through to TRAIN encoding
-            # and dropped the label -- e.g. ``export --template_mode kto --store_encoded true`` wrote
-            # a train-schema cache. A dict carrying ``label`` under kto mode is a KTO row too.
+            # A dict carrying ``label`` under kto mode is a KTO row too (not only the ``rejected_response``
+            # shape the KTO trainer injects), so plain KTO rows encode to the KTO schema instead of
+            # falling through to TRAIN encoding and dropping the label.
             if "rejected_response" in sample or (legacy_mode == "kto" and "label" in sample):
+                if "rejected_response" in sample:
+                    sample = copy_trajectory(sample)
+                    TemplateInputs._compat_rejected_response(sample)
+                    self._mask_key_rounds(sample)
+                    rejected = {**sample, 'messages': sample['rejected_messages']}
+                    self._mask_key_rounds(rejected)
+                    sample['rejected_messages'] = rejected['messages']
                 sample = preference_sample_from_row(sample) if legacy_mode == "rlhf" else kto_sample_from_row(sample)
                 legacy_preference = True
         elif getattr(self, "_legacy_mode", None) in ("infer", "transformers") and intent is None:
             intent = INFER
         sample = normalize_sample(sample)
-        preference_mode = None
-        if isinstance(sample, PreferenceSample):
-            chosen = deepcopy(sample.chosen)
-            if sample.margin is not None:
-                chosen["margin"] = sample.margin
-            sample = TemplateInputs(chosen=chosen, rejected=deepcopy(sample.rejected))
-            preference_mode = "rlhf"
-        elif isinstance(sample, KTOSample):
-            conversation = deepcopy(sample.conversation)
-            conversation["label"] = sample.label
-            sample = TemplateInputs(chosen=conversation, rejected=deepcopy(sample.rejected))
-            preference_mode = "kto"
+        source = (copy_trajectory(sample) if isinstance(sample, dict)
+                  else self._public_conversation(sample.chosen) if isinstance(sample, TemplateInputs) else None)
+        if isinstance(sample, dict):
+            sample = copy_trajectory(source)
+        elif isinstance(sample, TemplateInputs):
+            sample = copy(sample)
+            sample.chosen = copy(sample.chosen)
+            sample.chosen.extra_kwargs = dict(sample.chosen.extra_kwargs)
         explicit_intent = intent is not None or add_generation_prompt is not None
         intent = resolve_intent(intent, add_generation_prompt)
+        preference_mode = None
+        if isinstance(sample, PreferenceSample):
+            chosen = copy_trajectory(sample.chosen)
+            if sample.margin is not None:
+                chosen["margin"] = sample.margin
+            rejected = copy_trajectory(sample.rejected)
+            public = {'chosen': self._public_conversation(chosen), 'rejected': self._public_conversation(rejected)}
+            if not legacy_preference:
+                self._mask_key_rounds(chosen)
+                self._mask_key_rounds(rejected)
+            sample = TemplateInputs(chosen=chosen, rejected=rejected)
+            preference_mode = "rlhf"
+        elif isinstance(sample, KTOSample):
+            conversation = copy_trajectory(sample.conversation)
+            conversation["label"] = sample.label
+            public = {'chosen': self._public_conversation(conversation)}
+            if sample.rejected is not None:
+                public['rejected'] = self._public_conversation(sample.rejected)
+            rejected = copy_trajectory(sample.rejected) if sample.rejected is not None else None
+            if not legacy_preference:
+                self._mask_key_rounds(conversation)
+                if rejected is not None:
+                    self._mask_key_rounds(rejected)
+            sample = TemplateInputs(chosen=conversation, rejected=rejected)
+            preference_mode = "kto"
         if preference_mode is not None:
             if not intent.with_labels:
                 raise ValueError(f"A preference sample encodes only under a labelled intent, got {intent}.")
-            result = self._encode_preference(sample, mode=preference_mode, return_length=return_length)
+            result = self._encode_preference(sample, mode=preference_mode, return_length=return_length,
+                                             public=public)
             if legacy_preference:
                 # Legacy callers (dataset preprocessors, the preference encoder) read flat chosen_*/rejected_* keys.
                 flat = {}
@@ -823,163 +890,122 @@ class Template(ProcessorMixin):
                 flat.update({key: value for key, value in result.items() if key not in ("chosen", "rejected")})
                 return flat
             return result
+        if intent.with_labels:
+            self._mask_key_rounds(sample.chosen if isinstance(sample, TemplateInputs) else sample)
         if not intent.add_generation_prompt and not intent.expand_media:
             if isinstance(sample, dict):
                 sample = {**sample, "add_eos": True}
             else:
                 sample = deepcopy(sample)
                 sample.chosen.extra_kwargs = {**sample.chosen.extra_kwargs, "add_eos": True}
-        if explicit_intent and self.task_type not in NO_SHIFT_TASK_TYPES:
-            check_generation_prompt(sample, intent.add_generation_prompt)
+        if explicit_intent:
+            if isinstance(sample, dict):
+                sample['add_generation_prompt'] = intent.add_generation_prompt
+            else:
+                sample.chosen.extra_kwargs['add_generation_prompt'] = intent.add_generation_prompt
+            if (self.use_chat_template and self.task_type not in NO_SHIFT_TASK_TYPES
+                    and (intent.with_labels or intent.add_generation_prompt)):
+                check_generation_prompt(sample, intent.add_generation_prompt)
         if intent.add_generation_prompt:
             self._load_images_in_place(sample)
         with _rendering(intent.render_mode(engine)):
             encoded = self._encode_sample(sample, return_length=return_length)
-        return self._finalize(encoded, intent)
+        result = self._finalize(encoded, intent)
+        rows = result if isinstance(result, list) else [result]
+        engine_encoded = None
+        if (self.is_multimodal and feature_has_media(source) and not intent.with_labels and intent.expand_media
+                and self.task_type == 'causal_lm' and len(rows) == 1):
+            engine_encoded = self._encode_engine(source, engine, intent.add_generation_prompt)
+        span_cache = {}
+        outputs = []
+        for row in rows:
+            trajectory = preserve_trajectory(source, row)
+            original_ids = trajectory.pop('_original_input_ids', None)
+            kept = trajectory.pop('_kept_token_indices', None)
+            if original_ids is not None and kept is not None:
+                def render_prefix(messages):
+                    prefix = copy_trajectory(source)
+                    prefix['messages'] = messages
+                    prefix['add_generation_prompt'] = False
+                    renderer = self.replace(max_length=None)
+                    with _rendering(intent.render_mode(engine)):
+                        return renderer._encode_sample(prefix)['input_ids']
+                trajectory['messages'] = project_sliced_messages(
+                    source.get('messages') or [], original_ids, kept,
+                    render_prefix=render_prefix, span_cache=span_cache,
+                    decode=lambda values: self.tokenizer.decode(values, skip_special_tokens=True))
+            ids = row.get('input_ids')
+            if ids is not None and (len(ids) == 0 or not isinstance(ids[0], (list, tuple, np.ndarray))):
+                if engine_encoded is not None or (not intent.expand_media and feature_has_media(trajectory)):
+                    engine_ids = list(engine_encoded['input_ids'] if engine_encoded is not None else ids)
+                    if engine_encoded is not None and original_ids is not None and kept is not None:
+                        engine_ids = project_engine_ids(original_ids, engine_ids, kept)
+                    trajectory['engine_input_ids'] = engine_ids
+                else:
+                    trajectory.pop('engine_input_ids', None)
+                if not intent.with_labels:
+                    trajectory['reasoning_started'] = self._reasoning_started(ids)
+            if engine_encoded is not None:
+                # Serving engines consume the media the engine encoding loaded (resized images, decoded
+                # waveforms); the raw paths/URLs in the sample are not accepted by them, so they win.
+                if engine != 'transformers':
+                    for key in ('images', 'videos', 'audios'):
+                        if engine_encoded.get(key) is not None:
+                            trajectory[key] = engine_encoded[key]
+                if engine_encoded.get('mm_processor_kwargs'):
+                    trajectory['mm_processor_kwargs'] = engine_encoded['mm_processor_kwargs']
+            if not intent.with_labels:
+                for key in ('labels', 'loss_scale', 'completion_mask'):
+                    trajectory.pop(key, None)
+            outputs.append(normalize_token_fields(trajectory))
+        return outputs if isinstance(result, list) else outputs[0]
 
-    def batch_encode(
-        self, trajectories: List[SampleInput], add_generation_prompt: bool = False, **kwargs
-    ) -> List[EncodedRow]:
-        """twinkle's batch entry point (Model.forward on un-encoded trajectories), row by row."""
-        if isinstance(trajectories, dict):
-            raise NotImplementedError("batch_encode expects a list of trajectories, not a columnar dict.")
-        flag = True if add_generation_prompt else None
-        return [self.encode(t, add_generation_prompt=flag, **kwargs) for t in trajectories]
+    def _encode_engine(self, source: Trajectory, backend: EngineBackend, add_generation_prompt: bool) -> Dict[str, Any]:
+        """Render the serving processor's sequence independently from the model's expanded IDs."""
+        sample = copy_trajectory(source)
+        sample['add_generation_prompt'] = add_generation_prompt
+        if not add_generation_prompt:
+            sample['add_eos'] = True
+        intent = EncodeIntent(add_generation_prompt=add_generation_prompt, with_labels=False, expand_media=False)
+        backend = 'vllm' if backend == 'transformers' else backend
+        with _rendering(intent.render_mode(backend)):
+            encoded = self.replace(max_length=None)._encode_sample(sample, return_length=False)
+        if not isinstance(encoded, dict):
+            raise ValueError('multimodal engine encoding requires one unsplit trajectory')
+        return encoded
 
     def encode_prompt(
-        self, sample: SampleInput, *, backend: EngineBackend = "vllm", add_generation_prompt: bool = True
-    ) -> PromptEncoding:
+        self, sample: SampleInput, *, backend: EngineBackend = 'vllm', add_generation_prompt: bool = True
+    ) -> Trajectory:
         sample = normalize_sample(sample)
-        feature_intent = EncodeIntent(add_generation_prompt=add_generation_prompt, with_labels=False, expand_media=True)
-        engine_intent = EncodeIntent(add_generation_prompt=add_generation_prompt, with_labels=False, expand_media=False)
-        feature = self.encode(deepcopy(sample), intent=feature_intent, engine=backend)
-        engine_feature = self.encode(deepcopy(sample), intent=engine_intent, engine=backend)
-        if not isinstance(feature, dict) or not isinstance(engine_feature, dict):
-            raise ValueError("encode_prompt requires one unsplit prompt feature.")
-        prompt_inputs = sample if isinstance(sample, TemplateInputs) else TemplateInputs.from_dict(sample)
-        engine_ids = list(engine_feature["input_ids"])
-        # Serving engines retain processed media here: resized images AND the waveforms the
-        # template loaded (vllm mode loads audios to (ndarray, sr)). The raw sample still holds
-        # paths/URLs, which vLLM's audio parser rejects (it accepts ndarrays / (ndarray, sr) only),
-        # so the engine encoding's media must win over the sample's refs for every media kind.
-        # Transformers templates may use the same keys for tensors consumed by the model.
-        if backend in ("vllm", "sglang", "lmdeploy"):
-            engine_media = {key: engine_feature.get(key) for key in ("images", "videos", "audios")}
-        else:
-            engine_media = {"images": None}
-        engine_images = engine_media["images"]
-        media = MediaBundle.from_sources(engine_media, sample, feature)
-        processor_kwargs = dict(engine_feature.get("mm_processor_kwargs") or {})
-        if backend == "vllm" and media.videos:
-            # The rollout uploads the original videos, which vLLM must process.
-            if processor_kwargs.get("do_resize") is False:
-                processor_kwargs.pop("do_resize")
-                if engine_images:
-                    image_kwargs = dict(processor_kwargs.get("images_kwargs") or {})
-                    image_kwargs.setdefault("do_resize", False)
-                    processor_kwargs["images_kwargs"] = image_kwargs
-            if processor_kwargs.get("do_sample_frames") is False:
-                processor_kwargs.pop("do_sample_frames")
-            processor_kwargs.pop("video_metadata", None)
-        if self.is_multimodal and backend in ("vllm", "sglang", "lmdeploy"):
-            # Only serving engines re-expand media placeholders themselves, so only they need the
-            # collapsed one-placeholder-per-image prompt. The transformers engine consumes the
-            # EXPANDED feature ids (the template already matched them to the precomputed media
-            # tensors); for backend='transformers' the engine encoding renders in 'transformers'
-            # mode and legitimately holds the expanded token run, so the collapse check must not
-            # fire (it would reject every expanded multimodal prompt, e.g. PaddleOCR-VL-1.5).
-            self._check_engine_placeholders(engine_ids, media)
-        state = RolloutState(
-            feature=feature,
-            engine_input_ids=tuple(engine_ids),
-            messages=tuple(deepcopy(prompt_inputs.chosen.messages)),
-            tools=tuple(deepcopy(prompt_inputs.chosen.tools or ())),
-            reasoning_started=self._reasoning_started(feature["input_ids"]),
-            media=media,
-            mm_processor_kwargs=processor_kwargs,
-        )
-        return PromptEncoding(state)
+        intent = EncodeIntent(add_generation_prompt=add_generation_prompt, with_labels=False, expand_media=True)
+        feature = self.encode(sample, intent=intent, engine=backend)
+        if not isinstance(feature, dict):
+            raise ValueError('encode_prompt requires one unsplit prompt feature')
+        media = MediaBundle.from_sources(feature)
+        # Only serving engines re-expand the media placeholders themselves, so only they need the
+        # one-placeholder-per-image prompt; the transformers engine consumes the expanded feature
+        # ids, and the check would reject every expanded multimodal prompt (PaddleOCR-VL infer).
+        if backend != 'transformers' and feature_has_media(feature):
+            self._check_engine_placeholders(engine_input_ids(feature), media)
+        if backend == 'vllm' and media.videos and feature.get('mm_processor_kwargs'):
+            # The rollout hands vLLM the original videos, which it must process itself: drop the processor
+            # flags that describe the template's own pre-processing of them (dev-swift-v5 #10602).
+            processor_kwargs = dict(feature['mm_processor_kwargs'])
+            if processor_kwargs.get('do_resize') is False:
+                processor_kwargs.pop('do_resize')
+                if feature.get('images'):
+                    image_kwargs = dict(processor_kwargs.get('images_kwargs') or {})
+                    image_kwargs.setdefault('do_resize', False)
+                    processor_kwargs['images_kwargs'] = image_kwargs
+            if processor_kwargs.get('do_sample_frames') is False:
+                processor_kwargs.pop('do_sample_frames')
+            processor_kwargs.pop('video_metadata', None)
+            feature['mm_processor_kwargs'] = processor_kwargs
+        return feature
 
-    def decode_response(
-        self, token_ids: List[int], *, context: Optional[DecodeContext] = None, **kwargs
-    ) -> DecodedResponse:
-        return self.decode_message(token_ids, context=context or DecodeContext(first_token=True), **kwargs)
-
-    def decode_message(
-        self, token_ids: List[int], *, context: Optional[DecodeContext] = None, structured_calls=None, **kwargs
-    ) -> DecodedResponse:
-        if context is None:
-            context = DecodeContext(
-                parse_tool_calls=kwargs.pop("parse_tool_calls", True),
-                reasoning_started=kwargs.pop("reasoning_started", None),
-                tools=tuple(kwargs.pop("tools", ()) or ()),
-                skip_special_tokens=kwargs.pop("skip_special_tokens", True),
-            )
-        if kwargs:
-            raise TypeError(f"Unsupported decode_message kwargs: {sorted(kwargs)}")
+    def _decode_message(self, token_ids: List[int], context: DecodeContext, structured_calls) -> DecodedResponse:
         return self.output_codec.decode(self, token_ids, context, structured_calls=structured_calls)
-
-    def append_completion(
-        self,
-        prompt: Union[Dict[str, Any], RolloutState],
-        tokens: List[int],
-        *,
-        appended_as: str = "completion",
-        tool_calls: Optional[List[Dict[str, Any]]] = None,
-    ) -> CompletionEncoding:
-        state = prompt if isinstance(prompt, RolloutState) else None
-        if state is None:
-            feature = dict(prompt)
-            messages = tuple(deepcopy(feature.pop("messages", ())))
-            tools = tuple(deepcopy(feature.pop("tools", ())))
-            if feature_has_media(prompt):
-                raise NotImplementedError("multimodal continuation requires RolloutState.")
-            state = RolloutState(
-                feature=feature,
-                engine_input_ids=tuple(feature["input_ids"]),
-                messages=messages,
-                tools=tools,
-                reasoning_started=self._reasoning_started(feature["input_ids"]),
-                media=MediaBundle(),
-            )
-        prompt_feature = state.feature
-        role = APPEND_ROLES.get(appended_as)
-        if role is None:
-            raise ValueError(f"appended_as must be one of {sorted(APPEND_ROLES)}, got {appended_as!r}")
-        feature = append_and_finalize(
-            prompt_feature,
-            tokens,
-            scored=role.scored,
-            sampled=role.sampled,
-            finalize=self.finalize_appended_features,
-        )
-        if feature is None:
-            raise MaxLengthError("appended completion exceeds max_length under delete truncation strategy.")
-        response = self.decode_message(
-            tokens,
-            context=DecodeContext(
-                parse_tool_calls=tool_calls is None,
-                reasoning_started=state.reasoning_started,
-                tools=state.tools,
-            ),
-            structured_calls=tool_calls,
-        )
-        parsed = response.tool_calls
-        message: Dict[str, Any] = {"role": "assistant", "content": response.content}
-        if response.reasoning_content is not None:
-            message["reasoning_content"] = response.reasoning_content
-        if parsed:
-            message["tool_calls"] = list(parsed)
-        next_state = RolloutState(
-            feature=feature,
-            engine_input_ids=state.engine_input_ids + tuple(tokens),
-            messages=state.messages + (deepcopy(message),),
-            tools=state.tools,
-            reasoning_started=bool(response.reasoning_started),
-            media=state.media,
-            mm_processor_kwargs=state.mm_processor_kwargs,
-        )
-        return CompletionEncoding(next_state, response)
 
     def render_delta(
         self,
@@ -1031,18 +1057,6 @@ class Template(ProcessorMixin):
             render=render,
         )
 
-    def decode(
-        self, token_ids: Union[int, List[int]], *, context: Optional[DecodeContext] = None, **kwargs
-    ) -> Union[str, DecodedResponse]:
-        """Decode token ids.
-
-        With ``context``: returns ``DecodedResponse`` (content + tool calls + errors).
-        Without ``context``: returns raw string (tokenizer decode).
-        """
-        if context is not None:
-            return self.output_codec.decode(self, token_ids, context)
-        return self.tokenizer.decode(token_ids, **kwargs)
-
     def finalize_appended_features(self, input_features: List[InputOrderRow]) -> List[EncodedRow]:
         strategy = getattr(self, "_append_truncation_strategy", self.truncation_strategy)
         result = []
@@ -1065,7 +1079,7 @@ class Template(ProcessorMixin):
                     continue
                 else:
                     raise ValueError(f"append does not support truncation_strategy={strategy!r}.")
-            result.append(refresh_row(row))
+            result.append(self._add_attention_fields(refresh_row(row))[0])
         return result
 
     def parse_tool_call(self, decoded: str) -> List[Dict[str, Any]]:
@@ -1077,30 +1091,89 @@ class Template(ProcessorMixin):
     def tool_call_errors(self, decoded: str) -> List[str]:
         return self.output_codec.tool_call_errors(decoded)
 
+    def _mask_key_rounds(self, sample) -> None:
+        if self.task_type != 'causal_lm':
+            return
+        metadata = {**(sample.get('extra_kwargs') or {}), **sample} if isinstance(sample, dict) else sample.extra_kwargs
+        selected = self._get_train_indices(metadata)
+        if selected is None:
+            return
+        messages = sample['messages'] if isinstance(sample, dict) else sample.messages
+        system = sample.get('system') if isinstance(sample, dict) else sample.system
+        leading = 0
+        while leading < len(messages) and messages[leading].get('role') == 'system':
+            leading += 1
+        offset = int(leading > 0 or system is not None or self.use_chat_template and bool(self.default_system))
+        messages = copy_trajectory({'messages': messages})['messages']
+        for index, message in enumerate(messages[leading:], offset):
+            source_index = message.get('_swift_turn_index', index - offset) + offset
+            if message.get('role') in ('assistant', 'tool_call') and source_index not in selected:
+                message['loss'] = 0
+        if isinstance(sample, dict):
+            sample['messages'] = messages
+        else:
+            sample.messages = messages
+
+    @staticmethod
+    def _public_conversation(chosen) -> Trajectory:
+        """Save raw inputs before renderer-owned message and media normalization."""
+        if isinstance(chosen, dict):
+            return copy_trajectory(chosen)
+        result = copy_trajectory(chosen.extra_kwargs)
+        result['messages'] = copy_trajectory({'messages': chosen.messages})['messages']
+        result['tools'] = copy_trajectory({'tools': chosen.tools or []})['tools']
+        if chosen.system is not None:
+            result['messages'] = [{'role': 'system', 'content': chosen.system}] + result['messages']
+        for key in ('images', 'videos', 'audios', 'objects', 'chat_template_kwargs', 'mm_processor_kwargs', 'channel'):
+            value = getattr(chosen, key, None)
+            if value is not None:
+                result[key] = copy_trajectory({key: value})[key]
+        return result
+
     def _encode_preference(
         self,
         sample: Union[Dict[str, Any], TemplateInputs],
         *,
         mode: Literal["rlhf", "kto"] = "rlhf",
         return_length: bool = False,
+        public: Optional[Dict[str, Trajectory]] = None,
     ) -> Dict[str, Any]:
         if self.truncation_strategy == "split":
             raise ValueError('preference encoding does not support truncation_strategy="split".')
+        if public is None:
+            public = {name: self._public_conversation(getattr(sample, name))
+                      for name in ('chosen', 'rejected') if getattr(sample, name, None) is not None}
         with _rendering(mode):
             encoded = self._encode_sample(sample, return_length=return_length)
         result: Dict[str, Any] = {}
-        for prefix in ("chosen", "rejected"):
-            side = {k[len(prefix) + 1 :]: v for k, v in encoded.items() if k.startswith(prefix + "_")}
-            result[prefix] = self._finalize(side, TRAIN) if side.get("input_ids") is not None else None
+        for prefix in ('chosen', 'rejected'):
+            side = {k[len(prefix) + 1 :]: v for k, v in encoded.items() if k.startswith(prefix + '_')}
+            if side.get('input_ids') is None:
+                result[prefix] = None
+                continue
+            source = public[prefix]
+            finalized = self._finalize(side, TRAIN)
+            if return_length:
+                finalized['lengths'] = [finalized['length']]
+            result[prefix] = preserve_trajectory(source, finalized)
+            original_ids = result[prefix].pop('_original_input_ids', None)
+            kept = result[prefix].pop('_kept_token_indices', None)
+            if original_ids is not None:
+                def render_prefix(messages):
+                    row = copy_trajectory(source)
+                    row['messages'] = messages
+                    with _rendering('train'):
+                        return self.replace(max_length=None)._encode_sample(row)['input_ids']
+                result[prefix]['messages'] = project_sliced_messages(
+                    source.get('messages') or [], original_ids, kept,
+                    render_prefix=render_prefix,
+                    decode=lambda values: self.tokenizer.decode(values, skip_special_tokens=True))
+            result[prefix].pop('engine_input_ids', None)
+            result[prefix].pop('reasoning_started', None)
         if result["chosen"] is None:
             raise ValueError("preference row did not encode a chosen sequence.")
         result.update({k: v for k, v in encoded.items() if not k.startswith(("chosen_", "rejected_"))})
         return result
-
-    def encode_preference(self, row: Union[Dict[str, Any], TemplateInputs], *, kto: bool = False) -> Dict[str, Any]:
-        """Compatibility wrapper that makes the preference runtime type explicit."""
-        sample = kto_sample_from_row(row) if kto else preference_sample_from_row(row)
-        return self.encode(sample)
 
     def _media_token_ids(self) -> Dict[str, int]:
         ids = {}
@@ -1123,6 +1196,13 @@ class Template(ProcessorMixin):
                 f"{type(self).__name__}: engine prompt holds {found} image placeholder(s) for "
                 f"{len(media.images)} image(s); the expanded media cannot be collapsed faithfully."
             )
+
+    def preprocess_image(self, image):
+        image = self._load_image(image, True)
+        return rescale_image(image, self.max_pixels) if self.max_pixels is not None else image
+
+    def set_mm_position_ids(self, input_feature):
+        return self.prepare_row(dict(input_feature))['position_ids']
 
     def prepare_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Derive sequence fields for one final row; twinkle handles their batching afterwards."""
@@ -1153,11 +1233,6 @@ class Template(ProcessorMixin):
             row["position_ids"] = position_ids.to(torch.long)
         return row
 
-    @staticmethod
-    def media_keys(feature: Dict[str, Any]) -> FrozenSet[str]:
-        """The model-specific payload fields of an encoded row, derived from the fixed text contract."""
-        return model_payload_keys(feature)
-
     def pop_media(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Remove and return one row's model-specific payload before twinkle collates its text fields."""
         media = {key: row.pop(key) for key in self.media_keys(row)}
@@ -1185,26 +1260,15 @@ class Template(ProcessorMixin):
         """Apply an exceptional model-level batch transform after text and media collation."""
         return self._post_collate(inputs)
 
-    def bind_model(self, model: Any) -> None:
-        """Attach the real model for families that read its submodules (``use_model``)."""
-        self.model = model
-
-    def replace(self, **overrides) -> "Template":
-        """A new Template with some settings changed; this one is left untouched."""
-        unknown = set(overrides) - _REPLACEABLE
-        if unknown:
-            raise TypeError(f"Template.replace does not support {sorted(unknown)}; supported: {sorted(_REPLACEABLE)}")
-        derived = copy(self)
-        for key, value in overrides.items():
-            setattr(derived, key, value)
-        return derived
-
     @property
     def spec(self):
         return getattr(self, "_spec", None)
 
     @classmethod
     def from_spec(cls, spec, processor=None):
+        if isinstance(spec, dict):
+            from twinkle.template.contract import TemplateSpec
+            spec = TemplateSpec.from_dict(spec)
         module = importlib.import_module("swift.dev.builders.template")
         return module.build_template_from_spec(spec, processor)
 
@@ -1229,13 +1293,22 @@ class Template(ProcessorMixin):
         if isinstance(encoded, list):
             return [self._finalize(row, intent) for row in encoded]
         if not intent.with_labels:
-            encoded.pop("labels", None)
-            encoded.pop("loss_scale", None)
+            for key in ('labels', 'loss_scale', 'completion_mask'):
+                encoded.pop(key, None)
         elif self.task_type not in NO_SHIFT_TASK_TYPES:
             encoded.update(shift_row(encoded))
-        if intent.expand_media and self.task_type == "causal_lm":
+        if intent.expand_media and self.task_type == 'causal_lm':
             self._validate_model_payload(encoded)
-        return encoded
+        ids = encoded.get('input_ids')
+        if ids is not None and (not len(ids) or not isinstance(ids[0], (list, tuple, np.ndarray))):
+            encoded['attention_mask'] = [1] * len(ids)
+            encoded['length'] = len(ids)
+            if intent.expand_media:
+                with _rendering(intent.render_mode()):
+                    self.prepare_row(encoded)
+            else:
+                encoded['position_ids'] = list(range(len(ids)))
+        return normalize_token_fields(encoded)
 
     def _validate_model_payload(self, encoded: Dict[str, Any]) -> None:
         media = {key: encoded[key] for key in self.media_keys(encoded)}
@@ -1699,7 +1772,7 @@ class Template(ProcessorMixin):
             if context == "<image>" and inputs.is_multimodal and inputs.image_idx < len(inputs.images):
                 c_list = self.replace_tag("image", inputs.image_idx, inputs)
                 inputs.image_idx += 1
-                loss_scale = 0.0 if self.template_backend == "swift" else 1.0
+                loss_scale = 0.0 if self.template_backend == "swift" else loss_scale
             else:
                 c_list = [context]
             res += c_list
@@ -1791,7 +1864,7 @@ class Template(ProcessorMixin):
                         "We will only replace the frontmost media_tags while keeping the subsequent media_tags."
                     )
 
-    def _tokenize_run(self, pieces: List[str]) -> Tuple[List[int], List[int]]:
+    def _tokenize_run(self, pieces: List[str], piece_weights: List[float]) -> Tuple[List[int], List[int]]:
         """Tokenize adjacent string contexts as one string and map tokens back to their piece.
 
         Tokenizing each piece on its own inserts a word-start stride at every piece boundary
@@ -1799,7 +1872,7 @@ class Template(ProcessorMixin):
         no such strides. Running the pieces together, then mapping tokens back through character
         offsets, keeps labels/loss aligned per piece while producing the ids the jinja produces.
 
-        Returns ``(token_ids, piece_index_per_token)``. A piece that overrides ``_tokenize``
+        Returns ``(token_ids, piece_index_per_token)``; -1 masks ambiguous boundary tokens. A piece that overrides ``_tokenize``
         (custom processor kwargs) keeps the per-piece path: its offsets are not ours to assume.
         """
         merged = "".join(pieces)
@@ -1821,9 +1894,12 @@ class Template(ProcessorMixin):
             starts.append(position)
             position += len(piece)
         owners = []
-        for start, _ in offsets:
-            index = bisect.bisect_right(starts, start) - 1
-            owners.append(min(max(index, 0), len(pieces) - 1))
+        for start, end in offsets:
+            index = min(max(bisect.bisect_right(starts, start) - 1, 0), len(pieces) - 1)
+            last = min(max(bisect.bisect_right(starts, end - 1) - 1, index), len(pieces) - 1)
+            if end <= start or last > index and any(weight <= 0 for weight in piece_weights[index:last + 1]):
+                index = -1
+            owners.append(index)
         return token_ids, owners
 
     def _tokenize_run_by_prefix(self, merged: str, pieces: List[str]) -> Tuple[List[int], List[int]]:
@@ -1880,8 +1956,8 @@ class Template(ProcessorMixin):
                     end += 1
                 pieces = context_list[index:end]
                 piece_weights = loss_scale_list[index:end]
-                token_list, owners = self._tokenize_run(pieces)
-                weights = [piece_weights[owner] for owner in owners]
+                token_list, owners = self._tokenize_run(pieces, piece_weights)
+                weights = [piece_weights[owner] if owner >= 0 else 0.0 for owner in owners]
                 index = end
             input_ids += token_list
             for token, weight in zip(token_list, weights):
@@ -1918,7 +1994,8 @@ class Template(ProcessorMixin):
         # add_generation_prompt=True
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
-        messages = inputs.messages.copy()
+        messages = [{key: value for key, value in message.items() if key != '_swift_turn_index'}
+                    for message in inputs.messages]
         if inputs.system is None:
             # Fix default_system passed from command line being ignored.
             inputs.system = self.template_meta.default_system
@@ -1950,6 +2027,28 @@ class Template(ProcessorMixin):
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs
         )
+        if (self.is_training and self.task_type == 'causal_lm'
+                and self._get_train_indices(inputs.extra_kwargs) is not None):
+            from twinkle.template.utils import jinja_assistant_ranges
+
+            selected = {index for index, message in enumerate(messages)
+                        if message.get('role') == 'assistant' and message.get('loss', 1) != 0}
+            spans = jinja_assistant_ranges(self.tokenizer, messages, selected, text,
+                                           add_generation_prompt=add_generation_prompt, **kwargs)
+            contexts, weights, cursor = [], [], 0
+            for start, end in spans:
+                start, end = max(cursor, min(start, len(text))), min(end, len(text))
+                if start > cursor:
+                    contexts.append(text[cursor:start])
+                    weights.append(0.0)
+                if end > start:
+                    contexts.append(text[start:end])
+                    weights.append(1.0)
+                cursor = max(start, end)
+            if cursor < len(text):
+                contexts.append(text[cursor:])
+                weights.append(0.0)
+            return contexts or [text], weights or [0.0], len(contexts) or 1
         answer_len = 1 if self.is_training else 0
         return [text], [1.0], answer_len
 
@@ -2052,6 +2151,14 @@ class Template(ProcessorMixin):
             open_marker = "<think>\n" if close.startswith("\n") else "<think>"
         return open_marker, close
 
+    @property
+    def reasoning_open_marker(self):
+        return self._thinking_marks()[0]
+
+    @property
+    def reasoning_close_marker(self):
+        return self._thinking_marks()[1]
+
     def _reasoning_started(self, input_ids) -> bool:
         open_marker, close_marker = self._thinking_marks()
         return _reasoning_is_open(input_ids, self.tokenizer, open_marker, close_marker)
@@ -2134,6 +2241,10 @@ class Template(ProcessorMixin):
                     "Enable use_chat_template or use a single-round sample."
                 )
             elif pre_role == "assistant" and role == "assistant":
+                if (self.template_backend == 'jinja'
+                        and pre_message.get('_swift_turn_index') != message.get('_swift_turn_index')):
+                    i += 1
+                    continue
                 # Consecutive assistant messages belong to one response; merge them into one turn.
                 if self.template_backend == "swift" and pre_role == "assistant":
                     for key in ["content", "loss", "loss_scale"]:
@@ -2182,7 +2293,11 @@ class Template(ProcessorMixin):
             prefix = template_meta.system_prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
-        assert len(inputs.messages) > 0, f"inputs.messages: {inputs.messages}"
+        # A conversation can render with ZERO turns: StdTemplateInputs lifts every leading system
+        # block into `system`, so a system-only prefix (the truncation span-recovery re-encode of
+        # messages[:1]) legitimately reaches here with an empty message list. The system block is
+        # already rendered above; such a render is that block alone, with no response to weigh.
+        assert len(inputs.messages) > 0 or system, f"inputs.messages: {inputs.messages}"
         # A round is a maximal run of user/tool messages (the round's queries) followed by one
         # assistant message (the round's response) -- the shape the official jinja renders: every
         # query message its own turn block, the opener once, right before the response. A
@@ -2198,6 +2313,10 @@ class Template(ProcessorMixin):
         wants_generation_prompt = True if requested_prompt is None else bool(requested_prompt)
 
         response_prefix = self._get_response_prefix(inputs) if wants_generation_prompt else None
+        # Zero-round render (system-only): neither a response nor a suffix is produced, so the
+        # answer length below must read defined values rather than the loop's last iteration.
+        response = None
+        extra_context_list: List[Context] = []
         for round_idx, (query_messages, response_message) in enumerate(rounds):
             last_round = round_idx == len(rounds) - 1
             # Each query message renders its own block, in message order. The opener is not part
@@ -2339,46 +2458,15 @@ class Template(ProcessorMixin):
     def _truncate(
         self, input_ids: List[int], labels: Optional[List[int]], encoded, truncation_strategy: Literal["left", "right"]
     ):
-        placeholder_tokens = torch.tensor(self.placeholder_tokens)
-        input_ids_tensor = torch.tensor(input_ids)
-        protected = (input_ids_tensor[:, None] == placeholder_tokens).any(dim=-1)
-        n_protected = protected.sum().item()
-        if n_protected < self.max_length:
-            non_protected = (~protected).nonzero(as_tuple=True)[0]
-            if truncation_strategy == "left":
-                idx = non_protected[-(self.max_length - n_protected) :]
-            else:
-                idx = non_protected[: self.max_length - n_protected]
-            protected[idx] = True
-        input_ids = input_ids_tensor[protected].tolist()
+        row = {**encoded, 'input_ids': input_ids}
         if labels is not None:
-            labels = torch.tensor(labels)[protected].tolist()
-            labels[0] = -100
-        for key, first_value in {
-            "loss_scale": 0.0,
-            "completion_mask": 0,
-            "token_type_ids": None,
-            "mm_token_type_ids": None,
-        }.items():
-            value = encoded.get(key)
-            if value is None:
-                continue
-            if torch.is_tensor(value):
-                selected = value[..., protected.to(value.device)]
-            elif isinstance(value, np.ndarray):
-                selected = value[..., protected.numpy()]
-            else:
-                selected_tensor = torch.as_tensor(value)[..., protected]
-                selected = selected_tensor.tolist()
-                if isinstance(value, tuple):
-                    selected = tuple(selected)
-            if first_value is not None and len(selected) > 0:
-                if torch.is_tensor(selected) or isinstance(selected, np.ndarray):
-                    selected[..., 0] = first_value
-                else:
-                    selected[0] = first_value
-            encoded[key] = selected
-        return input_ids, labels
+            row['labels'] = labels
+        result = truncate_rows(row, self.max_length, truncation_strategy,
+                               placeholder_tokens=self.placeholder_tokens, multimodal=self.is_multimodal,
+                               supervised=self.task_type not in NO_SHIFT_TASK_TYPES)[0]
+        encoded.clear()
+        encoded.update(result)
+        return result['input_ids'], result.get('labels')
 
     @staticmethod
     def _get_length(input_ids, labels):
@@ -2415,28 +2503,13 @@ class Template(ProcessorMixin):
                     input_ids, labels, encoded, truncation_strategy=self.truncation_strategy
                 )
                 length = self._get_length(input_ids, labels)
-            elif self.truncation_strategy == "raise":
+            elif self.truncation_strategy in {'raise', 'delete'}:
                 raise MaxLengthError(
                     f"Current length of row({length}) is larger than the max_length({self.max_length})."
                 )
-            elif self.truncation_strategy == "split":
-                i = 0
-                batched = []
-                while i < length:
-                    splited = {}
-                    for key in ["input_ids", "labels", "loss_scale"]:
-                        value = encoded.get(key)
-                        if value is not None:
-                            value = value[i : i + self.max_length]
-                            if key == "labels" and len(value) > 0:
-                                value[0] = -100
-                            elif key == "loss_scale" and len(value) > 0:
-                                value[0] = 0
-                        splited[key] = value
-                    splited["length"] = self._get_length(splited.get("input_ids"), splited.get("labels"))
-                    batched.append(splited)
-                    i += self.max_length
-                return batched
+            elif self.truncation_strategy == 'split':
+                return truncate_rows(encoded, self.max_length, 'split', multimodal=self.is_multimodal,
+                                     supervised=self.task_type not in NO_SHIFT_TASK_TYPES)
             else:
                 raise ValueError(f"Invalid truncation_strategy: {self.truncation_strategy}")
         encoded["length"] = length

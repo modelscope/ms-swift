@@ -1,0 +1,28 @@
+---
+title: SWIFT v5 文档
+description: 使用 SWIFT 与 twinkle 进行训练、推理、Agentic 和远程训练。
+---
+
+SWIFT 是大语言模型与多模态模型的训练、推理和部署框架。v5 将通用能力下沉到 [twinkle](https://github.com/modelscope/twinkle) 组件库：SWIFT 负责模型和数据适配、配置及算法 recipe，twinkle 提供模型、数据、采样、分布式执行和服务端 / 客户端能力。
+
+设计原则是“写单机代码，训任意规模”。Ray 管理并行执行，命令行和 Python API 共用配置与组件；harness 接入 Agentic RL，Transformers、Megatron 与远程训练复用同一使用接口。ModelScope 服务提供远端模型算力，WebUI 将训练任务、自动研究和工作流编排放在一个工作台中。
+
+## 开始使用
+
+- [快速启动](./get-started/quick-start.mdx)：本机 SFT、GRPO 和服务端 / 客户端训练。
+- [安装](./get-started/installation.mdx)与 [Docker](./get-started/docker.mdx)：按使用场景准备环境。
+- [模型与数据集](./get-started/models-and-datasets.mdx)：注册信息、下载与数据选择。
+- [v4 到 v5 迁移](./get-started/migration.mdx)：CLI、配置、Python API 与插件对应关系。
+
+## 接口与组件
+
+- [CLI](./interfaces/cli.mdx)：命令和分组参数。
+- [自定义数据集](./interfaces/custom-dataset.mdx)、[模板](./interfaces/template.mdx)、[插件](./interfaces/plugins.mdx)：接入数据和扩展能力。
+- [组件与 MP 分离](./interfaces/mp-separation.mdx)：架构、recipe 和代码级训练。
+- [服务端与客户端](./interfaces/server-client.mdx)：远程服务、多租户和 checkpoint。
+- [Agentic 训练](./training/agentic.mdx)：工具、环境、多轮 rollout 与奖励。
+- [性能与回归](./performance.mdx)：真实计时、训练曲线与复现协议。
+
+## 博客、WebUI 与服务
+
+[离线蒸馏](/zh/blog/offline-distillation)与[在线 RL](/zh/blog/online-rl)介绍算法和实现数据流。[WebUI](/zh/webui/quick-start)提供首个任务与功能说明，[Benchmarks](/zh/webui/benchmarks)说明自动研究评测方法。[Tinker](/zh/services/tinker)与 [ModelScope](/zh/services/modelscope)说明远程训练服务的接入。

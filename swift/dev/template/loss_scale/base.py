@@ -6,6 +6,7 @@ import json
 
 from ..utils import ContextType, Messages, get_last_user_round
 from .utils import calculate_loss_scale
+from twinkle.data_format import user_data_get
 
 ALL_BASE_STRATEGY = ["default", "last_round", "all"]
 
@@ -42,6 +43,9 @@ class LossScale:
         res_loss_scale = []
         i = 0
         last_user_round = get_last_user_round(messages)
+        key_rounds = user_data_get(kwargs.get('user_data'), 'key_rounds')
+        selective = isinstance(key_rounds, list) and bool(key_rounds)
+        previous_loss = None
         for context, context_type in zip(context_list, context_types):
             is_last_round = 2 * i >= last_user_round
             query, loss, loss_scale = None, None, None
@@ -56,8 +60,12 @@ class LossScale:
                     # correct when the pairing holds.
                     raise ValueError(
                         f'Loss-scale context pairing broke at turn {i}: rendered {context!r} does not '
-                        f'match the message it was weighed against ({messages[2 * i + 1]["content"]!r}).')
+                        f"match the message it was weighed against ({messages[2 * i + 1]['content']!r})."
+                    )
+                previous_loss = loss[-1] if isinstance(loss, list) and loss else loss
                 i += 1
+            elif context_type == ContextType.SUFFIX and selective and previous_loss == 0:
+                loss = 0
             if not isinstance(context, list) or (len(context) > 0 and isinstance(context[0], int)):
                 context = [context]
             for j in range(len(context)):

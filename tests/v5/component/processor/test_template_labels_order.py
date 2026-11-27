@@ -52,7 +52,10 @@ def test_shift_calls_stay_on_the_nominal_row_boundaries():  # noqa: C901
             ("swift", "template/base.py", "unshift"): 1,
             ("swift", "template/families/gemma.py", "unshift_values"): 1,
             ("swift", "template/families/deepseek.py", "unshift_values"): 1,
-            ("twinkle", "template/base.py", "shift_values"): 2,
+            # twinkle 012aff34 ("统一完整 Trajectory 返回与共享模板契约") consolidated the two explicit
+            # shift_values calls (labels + completion_mask) into one loop over SHIFTED_FIELDS
+            # (labels/loss_scale/completion_mask) in _roll_labels -> a single call site.
+            ("twinkle", "template/base.py", "shift_values"): 1,
         }
     )
 

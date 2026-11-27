@@ -380,14 +380,14 @@ class DeepseekOCR(Template):
             encoded["input_ids"] = input_ids
             encoded["labels"] = labels
             encoded["loss_scale"] = loss_scale
-            encoded["images"] = [(images_crop, images_ori)]
+            encoded['pixel_values'] = [(images_crop, images_ori)]
             encoded["images_seq_mask"] = (torch.tensor(input_ids) == image_token[0])[None]
             encoded["images_spatial_crop"] = images_spatial_crop
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        images = self.gather_list(batch, 'pixel_values')
         res = super()._data_collator_mm_data(batch)
-        images = self.gather_list(batch, "images")
         if images:
             res["images"] = images
         images_seq_mask = [x["images_seq_mask"] for x in batch if x.get("images_seq_mask") is not None]
@@ -655,6 +655,54 @@ class DeepseekV4Template(DeepseekV3_1Template):
             system = REASONING_EFFORT_MAX + (system or "")
         return system
 
+    def _fold_reasoning_content(self, inputs) -> None:
+        # The official V4 encoding (encoding/encoding_dsv4.py::render_message) renders a
+        # (possibly EMPTY) think block on every assistant turn whose thinking is kept, and
+        # ignores ``reasoning_content`` entirely in chat mode -- unlike V3.1, whose jinja
+        # always closes the think block right after the assistant header.
+        if not self._get_enable_thinking(inputs):
+            for message in inputs.messages:
+                if message["role"] == "assistant":
+                    message.pop("reasoning_content", None)
+            return
+        for message in inputs.messages:
+            if message["role"] != "assistant":
+                continue
+            reasoning = message.pop("reasoning_content", None) or ""
+            content = message.get("content") or ""
+            if not isinstance(content, str):
+                raise ValueError(
+                    f"an assistant turn with reasoning_content must have text content, got {type(content)}."
+                )
+            if self.template_meta.thinking_prefix in content:
+                if reasoning:
+                    raise ValueError(
+                        "an assistant turn carries both reasoning_content and inline think content; "
+                        "keep the reasoning in one of the two."
+                    )
+                continue
+            message["content"] = self._thinking_turn_text(reasoning.strip("\n"), content.lstrip("\n"))
+
+    def _get_preserve_thinking(self, inputs=None):
+        if not self._get_enable_thinking(inputs):
+            # chat mode keeps no thinking anywhere; every turn opens with the think-close marker
+            return False
+        return super()._get_preserve_thinking(inputs)
+
+    def _get_response_prefix(self, inputs=None):
+        response_prefix = None if inputs is None else inputs.chat_template_kwargs.get("response_prefix")
+        if response_prefix is None:
+            response_prefix = self.response_prefix
+        if response_prefix is not None:
+            return response_prefix
+        if not self.use_chat_template:
+            return ""
+        # the official encoding ALWAYS marks the generation prompt: think-open in thinking
+        # mode, think-close in chat mode (render_message's user->assistant transition).
+        if self._get_enable_thinking(inputs):
+            return self.template_meta.thinking_prefix
+        return self.template_meta.non_thinking_prefix
+
 
 register_template(
     DeepseekV2_5TemplateMeta(
@@ -663,13 +711,15 @@ register_template(
         is_thinking=True,
         template_cls=DeepseekV4Template,
         thinking_prefix="<think>",
-                non_thinking_prefix="</think>",
-        # the think-close marker on every post-user assistant turn comes from response_opener;
-        # a history turn therefore needs no additional head once its thinking is stripped.
-        history_thinking_prefix="",
-        # the official V3.1 jinja opens every post-user assistant turn with the think-close
-        # marker, and an assistant turn continuing after tool outputs renders headerless.
-        response_opener=["<｜Assistant｜></think>"],
+        non_thinking_prefix="</think>",
+        # Official V4 encoding: the think-open marker belongs to the assistant turn itself
+        # (every kept turn renders a -- possibly empty -- think block), so the turn opener is
+        # the bare assistant header. A turn whose thinking is stripped, and every chat-mode
+        # turn, opens with the think-close marker instead (history_thinking_prefix /
+        # train_final_think_block / the chat-mode response prefix).
+        history_thinking_prefix="</think>",
+        train_final_think_block="</think>",
+        response_opener=["<｜Assistant｜>"],
         suppress_opener_after_tool=True,
     )
 )

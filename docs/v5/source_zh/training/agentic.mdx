@@ -1,0 +1,105 @@
+---
+title: Agentic 训练
+description: 从工具调用数据到多轮 rollout，理解 agent、环境、奖励和训练的关系。
+---
+
+Agentic 训练让模型学习在任务中调用工具、读取观察并继续决策。SFT 学习已有的工具轨迹；在线 RL 让当前模型在环境中执行任务，再用奖励更新。工具执行成功不等于任务完成，奖励必须衡量最终目标。
+
+## 数据流与组件
+
+```text
+任务 prompt → 模型生成 → 工具调用 → 环境执行 → tool 观察
+                  ↑                           │
+                  └──────── 下一轮 ────────────┘
+完整轨迹 → 奖励 → advantage → 模型更新 → sampler 权重同步
+```
+
+- **Agent / policy**：根据历史消息选择动作或最终回答。
+- **Tool**：有名称、参数 schema 和执行接口，返回模型可读的观察。
+- **Env**：管理每个 episode 的工作目录、文件和执行状态。
+- **Rollout**：控制多轮生成、工具执行、终止条件和 token 预算。
+- **Reward**：根据轨迹、参考答案或任务验证器评分。
+- **Recipe**：组织数据、采样、评分和训练更新；并行执行由 twinkle 管理。
+
+工具消息属于上下文，只有模型生成的动作与回复 token 参与策略更新。多轮轨迹的监督范围由模板与 rollout 构造的 mask 保留，不能把工具观察当作模型输出训练。
+
+## 工具轨迹 SFT
+
+训练行中保存用户问题、工具定义、调用和观察。例如 OpenAI 格式：
+
+```jsonl
+{"messages": [{"role": "user", "content": "计算 17×23"}, {"role": "assistant", "content": null, "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "calculator", "arguments": "{\"expression\":\"17*23\"}"}}]}, {"role": "tool", "tool_call_id": "call_1", "content": "391"}, {"role": "assistant", "content": "结果是 391。"}], "tools": [{"type": "function", "function": {"name": "calculator", "description": "计算数学表达式", "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}}}]}
+```
+
+保存为 `agent_train.jsonl`：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --torch_dtype bfloat16 \
+    --dataset ./agent_train.jsonl \
+    --tuner lora \
+    --max_length 4096 \
+    --learning_rate 1e-4 \
+    --num_train_epochs 3 \
+    --output_dir output/agent-sft
+```
+
+SFT 重放已有轨迹，不需要在训练期间执行 calculator。训练和部署必须使用相同工具 schema 与模板约定；数据中成功轨迹和失败轨迹的监督策略要明确。数据格式见 [自定义数据集](../interfaces/custom-dataset.mdx)，组件例子见 [train/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/agentic)。
+
+## 多轮 GRPO
+
+数据沿用 [快速启动](../get-started/quick-start.mdx) 的数学数据集：`messages` 不含答案、`solution` 只用于奖励。安装 vLLM；这个数学正确性奖励还需要 math-verify：
+
+```bash
+pip install vllm math-verify
+CUDA_VISIBLE_DEVICES=0,1 swift rl \
+    --rl_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --attn_impl flash_attention_2 \
+    --torch_dtype bfloat16 \
+    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --system 'You may run Python to verify computations. Put the final answer within \boxed{}.' \
+    --mode ray \
+    --nproc_per_node 1 \
+    --rollout_sampler vllm \
+    --sampler_mode disaggregated \
+    --tuner lora \
+    --orm accuracy \
+    --max_turns 3 \
+    --tools sandbox \
+    --sandbox_num_envs 2 \
+    --sandbox_command_timeout 60 \
+    --sandbox_memory_limit_gb 2 \
+    --max_trajectory_tokens 3072 \
+    --max_completion_length 512 \
+    --max_length 4096 \
+    --vllm_max_model_len 4096 \
+    --generation_batch_size 2 \
+    --num_generations 4 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --learning_rate 1e-5 \
+    --max_steps 100 \
+    --logging_steps 1 \
+    --output_dir output/agent-grpo
+```
+
+这个例子用一张 trainer GPU 和一张 sampler GPU。每个 prompt 生成四条轨迹，完整轨迹评分后计算组内相对 advantage。`tools` 需要多轮配置；`max_turns` 限制轮数，`max_completion_length` 限制单轮输出，`max_trajectory_tokens` 限制整条轨迹，`max_length` 是编码总长度。
+
+`tools=sandbox` 使用环境自身的命令、文件读写工具。没有远端模板时使用本地环境槽；`sandbox_num_envs` 限制同时租用的环境数。LocalEnv 不是对敌意代码的安全隔离边界。模型可生成命令时，用低权限进程、独立数据目录和网络策略，生产任务按需求使用隔离环境；不要向工作目录暴露密钥或宿主敏感文件。
+
+## 自定义工具与环境
+
+工具插件继承 `ToolPlugin`，`build()` 返回工具列表；通过 `--external_plugins` 加载并用 `--tools 注册名` 选择。环境工具必须绑定 episode session，避免多个轨迹共享可变文件。完整工具合同与示例见 [插件](../interfaces/plugins.mdx) 和 [infer/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer/agentic)。
+
+外部环境接入和 OpenEnv 示例见 [rl/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/agentic)。远端环境的 URL、认证、镜像、超时和工作区生命周期需要与环境服务一致。harness 模式由外部 CLI agent 驱动 episode，rollout 记录它通过模型入口生成的轨迹；这与模型直接输出工具调用的模式不同。
+
+## 奖励和观察
+
+数学任务可验证最终答案，代码任务应使用隔离测试或任务验证器。仅给“调用过工具”奖励会鼓励无效调用；只给格式奖励也不能保证正确性。必要时组合任务正确性、格式、资源成本和失败惩罚，并分别记录各项。
+
+检查 reward 趋势、任务成功率、工具错误、轨迹长度、超时、grad_norm 和 KL。组内奖励全部相同会产生零 advantage，应调整任务难度或奖励区分度。训练 reward 上升不代表未见任务上的泛化，验证集应与训练任务隔离。
+
+远程模型和采样服务部署见 [服务端与客户端](../interfaces/server-client.mdx)，算法数据流见 [在线 RL 博客](/zh/blog/online-rl)。

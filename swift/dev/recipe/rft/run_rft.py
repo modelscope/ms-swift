@@ -250,7 +250,7 @@ def _reown_kept_payloads(payloads):
 
 def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloader, num_samples, window):
     """Generate and score one round, returning the kept trajectories (this process's own refs) and
-    their row lengths; the third slot is retained for call-site compatibility and is always ``None``.
+    their row lengths.
 
     The driver hands each batch out as it travels (references) with its row-aligned score
     column riding the facts; the round collects the references plus the facts' numeric columns
@@ -308,7 +308,7 @@ def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloa
         if cluster.colocate:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
-    return kept_trajs, kept_lengths, None
+    return kept_trajs, kept_lengths
 
 
 def _train_selected_samples(cluster, state, trajs, lengths, train_batch_size, save_steps):
@@ -372,7 +372,7 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     round boundaries only (the round component rides along), so a resume replays whole rounds.
     """
     # segment 1: prompts (the resource estimator reads the prompt lengths off the raw rows).
-    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
+    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config, system=template_config.system)
     # segment 2: devices (configs + template + twinkle + perf; an estimate rewrites the parallel sizes).
     template, resource_plan, _ = initialize_rl_devices(
         model_config=model_config, template_config=template_config, dataset_config=dataset_config,
@@ -491,7 +491,7 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         for round_index in range(start_round, rl_config.rft_iterations):
             if state.reached_max():
                 break
-            kept_trajs, kept_lengths, _ = _sample_and_select(
+            kept_trajs, kept_lengths = _sample_and_select(
                 cluster, rollout_config, reward_config, selector, dataloader, num_samples, generation_batch_size)
             # kept_trajs are THIS process's own object refs (re-owned in _sample_and_select); they
             # are released when the name is rebound next round, so this round's payloads never leak.

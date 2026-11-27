@@ -767,8 +767,8 @@ def test_save_total_limit_bounds():
 
 def test_rlhf_reference_and_layout_gates():
     """S2-55: a ref model passed to an algorithm that never loads one is refused; ref_adapters
-    without a ref model is refused; padding_free/packing is wired for most RLHF types (ppo/opsd/
-    mopd refused with the reason); RL requires right padding (logp extraction)."""
+    without a ref model is refused; padding_free/packing is wired for every RLHF type including
+    ppo/opsd/mopd (4b38e51e8); an unwired algorithm is still refused; RL requires right padding."""
     with pytest.raises(ValueError, match='ref_adapters requires'):
         _check_rl_ref_model(ModelConfig(), None, RLConfig(rl_type='dpo', ref_adapters=['a']))
     with pytest.raises(ValueError, match='not used by rl_type'):
@@ -791,12 +791,24 @@ def test_rlhf_reference_and_layout_gates():
     _check_rl_ref_model(ModelConfig(), lora,
                         RLConfig(rl_type='grpo', beta=0.04, ref_adapters=['a'], ref_model='m'))
 
-    for rl_type, message in (('ppo', 'value-head critic'), ('opsd', 'teacher->student'),
-                             ('mopd', 'K teacher logps')):
-        with pytest.raises(ValueError, match=message):
-            _check_rl_padding_free(TemplateConfig(padding_free=True), DatasetConfig(),
-                                     RLConfig(rl_type=rl_type))
-    _check_rl_padding_free(TemplateConfig(padding_free=True), DatasetConfig(), RLConfig(rl_type='grpo'))
+    # 4b38e51e8 (enable PPO and distillation packing): ppo/opsd/mopd now implement the variable-length
+    # training path, so padding_free AND packing are legal for them; the old per-type refusal is gone.
+    for rl_type in ('ppo', 'opsd', 'mopd', 'grpo'):
+        _check_rl_padding_free(TemplateConfig(padding_free=True), DatasetConfig(), RLConfig(rl_type=rl_type))
+        _check_rl_padding_free(TemplateConfig(), DatasetConfig(packing=True), RLConfig(rl_type=rl_type))
+    # an algorithm outside the wired set is still refused fail-closed, naming the feature.
+    with pytest.raises(ValueError, match='does not support padding_free'):
+        _check_rl_padding_free(TemplateConfig(padding_free=True), DatasetConfig(),
+                               RLConfig(rl_type='not_a_real_algo'))
+    with pytest.raises(ValueError, match='does not support packing'):
+        _check_rl_padding_free(TemplateConfig(), DatasetConfig(packing=True),
+                               RLConfig(rl_type='not_a_real_algo'))
+    # PPO sequence-parallel guard is preserved: packing support did not add SP for the value-head critic.
+    from swift.dev.config.validate import _check_rl_sequence_parallel
+    with pytest.raises(ValueError, match='does not support sequence_parallel_size'):
+        _check_rl_sequence_parallel(ModelConfig(), TemplateConfig(sequence_parallel_size=2),
+                                    DatasetConfig(), DistributedConfig(nproc_per_node=2),
+                                    RLConfig(rl_type='ppo'), False)
 
     with pytest.raises(ValueError, match='padding_side="right"'):
         _check_rl_padding_side(TemplateConfig(padding_side='left'), RLConfig(rl_type='dpo'))
@@ -969,22 +981,27 @@ def test_remote_rl_refuses_only_the_local_fabric_gaps():
 def test_remote_rl_allows_every_recipe_algorithm_with_defaults():
     """The remote contract: EVERY rl_type passes with default knobs -- the policy, the critic,
     the frozen reference / teacher / reward models are each a served-model handle. A
-    reintroduced rl_type whitelist (the old grpo-only guard) would break this."""
+    reintroduced rl_type whitelist (the old grpo-only guard) would break this.
+
+    f695138b3: a run WITH a rollout needs an adapter (has_adapter): tuner=None is the
+    full-parameter spelling and is refused for online RL, so the legal default here is lora."""
     for rl_type in ('grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'rm'):
-        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig())
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(), None, TunerConfig(tuner='lora'))
 
 
 def test_remote_rl_multi_turn_boundary_and_missing_rollout():
     """Remote multi-turn is supported (fa41237929): the rollout, sandbox env and driver run
     in-process in the client, sampling each turn through HTTPSampler, so max_turns>1 and tools
     pass for both grpo and ppo (no refusal). max_turns=None (off) and single-turn pass too; a
-    None rollout_config (the offline preference family) must not dereference the rollout guards."""
+    None rollout_config (the offline preference family) must not dereference the rollout guards.
+    Online runs carry lora: f695138b3 refuses a rollout with no adapter (tuner=None means full)."""
     for rl_type in ('grpo', 'ppo'):
-        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=None))
-        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=1))
-        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=4))
-        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=1, tools=['sandbox']))
-        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=4, tools=['sandbox']))
+        lora = TunerConfig(tuner='lora')
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=None), None, lora)
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=1), None, lora)
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=4), None, lora)
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=1, tools=['sandbox']), None, lora)
+        _check_remote_rl(RLConfig(rl_type=rl_type), RolloutConfig(max_turns=4, tools=['sandbox']), None, lora)
     for rl_type in ('dpo', 'kto', 'rm'):
         _check_remote_rl(RLConfig(rl_type=rl_type), None)
 
@@ -1001,6 +1018,10 @@ def test_remote_rl_refuses_the_two_protocol_gaps():
     """
     with pytest.raises(ValueError, match='--tuner full'):
         _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(), None, TunerConfig(tuner='full'))
+    # f695138b3: tuner=None IS the full-parameter spelling (has_adapter is False for it), so the
+    # refusal covers both spellings, not just the explicit TunerConfig(tuner='full').
+    with pytest.raises(ValueError, match='--tuner full'):
+        _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(), None, None)
     with pytest.raises(ValueError, match='PPO resume'):
         _check_remote_rl(RLConfig(rl_type='ppo'), RolloutConfig(),
                          CheckpointConfig(resume_from_checkpoint='/ckpts/step-10'))
@@ -1008,5 +1029,5 @@ def test_remote_rl_refuses_the_two_protocol_gaps():
     # has no sampler and so no weight ring to publish over, and no resume requested is not a resume.
     _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(), None, TunerConfig(tuner='lora'))
     _check_remote_rl(RLConfig(rl_type='dpo'), None, None, TunerConfig(tuner='full'))
-    _check_remote_rl(RLConfig(rl_type='ppo'), RolloutConfig(), CheckpointConfig())
-    _check_remote_rl(RLConfig(rl_type='grpo'), RolloutConfig(), None, None)
+    _check_remote_rl(RLConfig(rl_type='dpo'), None, None, None)
+    _check_remote_rl(RLConfig(rl_type='ppo'), RolloutConfig(), CheckpointConfig(), TunerConfig(tuner='lora'))

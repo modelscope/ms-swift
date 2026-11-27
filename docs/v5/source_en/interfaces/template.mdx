@@ -1,0 +1,128 @@
+---
+title: Templates
+description: Template selection, messages encoding, multimodal inputs, thinking and loss masks.
+---
+
+The same `messages` need different role markers, separators, stop tokens and media processing for different models. A template converts standard samples to model inputs and determines which tokens contribute to training loss, separating the dataset format from the model protocol.
+
+Encoding flows through messages and media, template rendering, tokenizer / processor, `input_ids`, `labels` and media tensors, then padding or packing. Inference adds a generation prefix; training preserves target responses and constructs supervision masks.
+
+## Select a template
+
+SWIFT selects the model registry's default template, or you can specify one:
+
+```bash
+swift sft --model Qwen/Qwen3.5-4B \
+    --model_type qwen3_5 \
+    --template qwen3_5 \
+    --torch_dtype bfloat16 \
+    --attn_impl flash_attention_2 \
+    --dataset 'swift/self-cognition#600' \
+    --max_length 2048 \
+    --output_dir output/template
+```
+
+`model_type` selects the loader and `template` selects the encoding protocol; they are not interchangeable. Local checkpoints need the original model's protocol. See [the template registry](https://github.com/modelscope/ms-swift/tree/main/swift/dev/template).
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `template` | Automatic | Model registry default |
+| `system` | Template default | Dataset system messages take precedence |
+| `max_length` | `None` | Total length including prompt, responses and media tokens |
+| `truncation_strategy` | `None` | Encoding raises on oversized samples; the dataset stage drops them by default |
+| `padding_side` | `right` | Batch padding direction |
+| `padding_free` | `false` | Requires backend and attention support |
+| `template_backend` | `swift` | `swift` or `jinja` rendering |
+| `loss_scale` | `default` | Token supervision and weighting |
+| `enable_thinking` | `None` | Model-default thinking behavior |
+| `preserve_thinking` | `None` | Template-default handling of historical thinking |
+
+`jinja` uses the checkpoint chat template; `swift` uses a registered template. Changing the renderer does not automatically provide identical training masks or multimodal support.
+
+## Inspect encoding
+
+This component API builds the template and processor without downloading base model weights:
+
+```python
+from swift.dev.builders.template import build_template_from_spec, build_template_spec
+from swift.dev.config import ModelConfig, TemplateConfig
+
+
+spec = build_template_spec(
+    TemplateConfig(template='qwen3_5', max_length=2048),
+    ModelConfig(model='Qwen/Qwen3.5-4B', model_type='qwen3_5'),
+)
+template = build_template_from_spec(spec)
+template.set_mode('train')
+encoded = template.encode({'messages': [
+    {'role': 'user', 'content': 'Who are you?'},
+    {'role': 'assistant', 'content': 'I am a helpful assistant.'},
+]})
+print(encoded['input_ids'])
+print(encoded['labels'])
+```
+
+Tokenizer / processor files must be downloadable or cached, and model-specific media dependencies installed. `TemplateSpec` carries serializable model references and settings so workers rebuild a local template instead of receiving mutable tokenizer or model instances as configuration.
+
+## Shared component interface
+
+`swift.dev.template.Template` inherits `twinkle.template.Template`. SWIFT keeps its existing construction and model-family registry; it does not select twinkle's model templates. Both expose the same `encode`, `batch_encode`, `encode_prompt`, `append_completion`, decoding and batch-hook arguments.
+
+```python
+from twinkle.template.contract import TRAIN
+
+encoded = template.encode(sample, intent=TRAIN)
+rows = template.batch_encode(samples, intent=TRAIN)
+prompt = template.encode_prompt(sample, backend='vllm')
+continued = template.append_completion(prompt, generated_tokens)
+```
+
+`TRAIN/INFER/ENGINE/SCORE` come from `twinkle.template.contract` and are also exported by `swift.dev.template`. Default/False encoding uses TRAIN; True uses INFER. Inference and scoring omit training labels. Causal labels shift left exactly once; the last position is -100. Returned trajectories retain original conversation and media alongside model fields. List batches return a flat list; columnar batches return equally sized columns.
+
+`set_template` accepts an instance, a subclass with its construction arguments, or a registered name. HTTP transfers only the name and configuration; SWIFT uses its existing TemplateSpec and registers SwiftTemplate through the existing worker startup hook. Single encode raises MaxLengthError under delete; batch_encode drops that whole sample, including both sides of a pair. Text split may return several trajectories, which encode_prompt rejects. Multimodal payloads cannot be split safely. Appending generated tokens never truncates recorded history.
+
+## Supervision and loss masks
+
+SFT supervises assistant responses by default. Prompt and padding positions use label `-100` and are excluded from cross entropy.
+
+- `default`: supervise assistant responses.
+- `last_round`: supervise only the final response.
+- `all`: extend supervision to the full text where appropriate.
+- Compose strategies such as `default+ignore_empty_think` to mask empty thinking prefixes.
+
+Samples can override message-level supervision:
+
+```jsonl
+{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hello!", "loss": false}, {"role": "user", "content": "1+1?"}, {"role": "assistant", "content": "2", "loss_scale": 2.0}]}
+```
+
+`loss: false` excludes a response; `loss_scale` sets its weight. Set `--is_binary_loss_scale false` to preserve nonbinary weights such as 0.5 or 2.0. A loss mask controls supervision, whereas an attention mask controls visibility. Removing conversation history is not a substitute for masking its loss.
+
+## Thinking
+
+For supported models, `enable_thinking` controls inference generation prefixes; it does not add reasoning capabilities to another model. `preserve_thinking` controls whether historical thinking is retained. Training traces should match the protocol used at deployment.
+
+```bash
+swift infer --model Qwen/Qwen3.5-4B \
+    --sampler transformers \
+    --enable_thinking false \
+    --max_new_tokens 512
+```
+
+Samples can pass `enable_thinking` and supported media settings in `chat_template_kwargs`. `disable_ignore_empty_think` disables automatic empty-thinking masking, but explicitly composed `loss_scale` strategies still apply.
+
+## Media and tool messages
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>Describe the image"}, {"role": "assistant", "content": "A cat."}], "images": ["/data/cat.png"], "chat_template_kwargs": {"max_pixels": 1048576}}
+```
+
+Media placeholders correspond to top-level media lists. The processor determines image resizing, video frames, audio features and media token counts. `max_length` must cover the encoded sequence, not just visible text.
+
+A tool trajectory contains an assistant call, a tool observation and a continuing assistant response. Format converters normalize tool messages; templates render tool schemas and calls into the model protocol. Observations are context and normally excluded from response supervision. Supervision of tool actions follows the data and loss policy. See [Agentic](../training/agentic.mdx).
+
+## Length and batches
+
+Oversized samples support `delete`, `left`, `right` or `split`. Dropping preserves whole-sample semantics but reduces sample counts; truncation can remove the question or answer; splitting can break conversation, media or tool relationships. Inspect effective counts and retained answers before adjusting budgets.
+
+Packing and padding-free change batch organization, not message protocols. Sequence boundaries, position encoding and loss masks must be preserved by the template and dataloader. See [CLI](./cli.mdx) for parameters and [MP separation](./mp-separation.mdx) for component roles.

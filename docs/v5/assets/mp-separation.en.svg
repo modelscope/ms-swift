@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 680" role="img" aria-labelledby="title desc">
+<title id="title">SWIFT, twinkle and execution infrastructure</title>
+<desc id="desc">Entry points share Config, builders and recipes. twinkle supplies components and infrastructure; remote execution crosses twinkle-server. Data feeds model updates and weights synchronize to the sampler.</desc>
+<defs>
+<marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#3566a0"/></marker>
+<marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#277a60"/></marker>
+<style>text{font-family:system-ui,sans-serif;fill:#20354e;font-size:17px}.box{fill:#edf4fb;stroke:#9bb7d0;stroke-width:1.5}.ctrl{fill:none;stroke:#3566a0;stroke-width:2;marker-end:url(#b)}.data{fill:none;stroke:#277a60;stroke-width:2;marker-end:url(#g)}.sync{fill:none;stroke:#3566a0;stroke-width:2;stroke-dasharray:6 5;marker-end:url(#b)}</style>
+</defs>
+<rect width="1000" height="680" rx="16" fill="#fff"/>
+<text x="40" y="38" font-size="23">SWIFT v5: Mechanism / Policy separation</text>
+<rect class="box" x="40" y="65" width="175" height="50" rx="8"/><text x="66" y="97">CLI / Python</text>
+<rect class="box" x="260" y="65" width="175" height="50" rx="8"/><text x="301" y="97">WebUI</text>
+<rect class="box" x="40" y="155" width="395" height="70" rx="8"/><text x="65" y="185">SWIFT Config → builders → recipe</text><text x="65" y="210">Adaptation, objectives, updates, saving</text>
+<path class="ctrl" d="M128 115V155"/><path class="ctrl" d="M348 115V155"/>
+<rect x="25" y="260" width="610" height="215" rx="12" fill="#f5f9fc" stroke="#9bb7d0"/><text x="45" y="290">twinkle reusable components</text>
+<rect class="box" x="45" y="320" width="165" height="60" rx="8"/><text x="58" y="345">Dataset / Template</text><text x="72" y="368">DataLoader</text>
+<rect class="box" x="250" y="320" width="145" height="60" rx="8"/><text x="272" y="357">Model / Loss</text>
+<rect class="box" x="440" y="320" width="165" height="60" rx="8"/><text x="455" y="357">Sampler / Rollout</text>
+<rect class="box" x="250" y="410" width="355" height="45" rx="8"/><text x="268" y="439">Reward / Advantage / Optimizer</text>
+<path class="ctrl" d="M238 225V245H323V320"/>
+<path class="data" d="M210 350H250"/><path class="sync" d="M395 337H440"/><path class="data" d="M523 380V410"/><path class="data" d="M250 432H225V365H250"/>
+<rect class="box" x="680" y="170" width="280" height="135" rx="8"/><text x="702" y="202">twinkle-server boundary</text><text x="702" y="235">gateway / model / sampler</text><text x="702" y="265">processor / session / queue</text>
+<path class="ctrl" d="M435 190H680"/><text x="485" y="177">remote / HTTP</text>
+<path class="ctrl" d="M820 305V355H635"/>
+<rect class="box" x="40" y="520" width="920" height="85" rx="8"/><text x="65" y="550">twinkle infra: placement, DeviceMesh, remote calls, weight sync, checkpoint storage</text><text x="65" y="583">Local / Ray / server workers → Transformers or Megatron → CPU / GPU / NPU</text>
+<path class="ctrl" d="M323 475V520"/><path class="ctrl" d="M820 355V520"/>
+<path class="ctrl" d="M45 640H95"/><text x="108" y="646">Control</text><path class="data" d="M300 640H350"/><text x="363" y="646">Training data</text><path class="sync" d="M565 640H615"/><text x="628" y="646">Weight sync</text>
+</svg>

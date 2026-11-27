@@ -1,0 +1,43 @@
+---
+title: 性能与训练回归
+description: v4、v5-ray 与 remote 的速度、loss / reward 曲线、稳定性和复现协议。
+---
+
+性能比较需要同时回答两个问题：同一训练任务运行得多快，训练结果是否保持一致。本页使用 `perf_bench_20261124` 已完成的实验记录，比较 v4 legacy、v5-ray 和 v5-remote；与站点[性能图表](/zh/performance)共用一份结果快照。
+
+## 比较协议
+
+硬件为 8 × NVIDIA H20 96GB。每条运行使用的卡数、trainer / sampler 放置和分片方式分别记录，不把机器总卡数当作每个实验的用卡数。
+
+SFT 使用 Qwen3.5-4B 与 Qwen3.5-35B-A3B、self-cognition 数据、LoRA rank 8 / alpha 32、有效 batch 16、BF16 与 FlashAttention 2，记录 30 次 optimizer 更新。对齐数据顺序、seed、初始化 adapter、学习率、scheduler 和整数 warmup_steps。remote 的有效 batch 按服务端分发核算，ga16 对齐结果不与 ga8 对照混排。
+
+GRPO 使用 NuminaMath-TIR 和数学正确性奖励，记录 15 次更新。除模型与 optimizer 设置外，还需对齐 num_generations、温度、输出长度、采样引擎、奖励与权重同步频率。v4 对照采用 colocate，v5 采用 disaggregated；35B v5 使用 FSDP2 与 attention-only LoRA，不能据此声称完全相同的资源布局。
+
+## 计时口径
+
+- **稳态 step**：SFT 取 steps 6–30，排除首次加载与预热。
+- **全周期平均**：包含采样、训练等整个过程，部分记录以 runtime / 更新次数给出。
+- **trainer / server compute**：只包含指定计算段，不等于客户端观察到的整个更新周期。
+- **总墙钟**：可能包含模型加载、数据准备、保存与请求等待，单独呈现。
+
+v5 部分 elapsed 指标按整秒记录，逐步差值有量化噪声。35B 模型首次从网络挂载读取约 85 分钟，page cache 预热后的读取明显更短；启动与 I/O 不能混入稳态训练加速结论。缺失的 tokens/s 和 remote 逐步时间显示“未记录”，不估算或补零。
+
+4B GRPO 的 v4 全周期约 26.71 s/update，而 v5-ray 的 1.12 s 与历史 remote 的 2.25 s 是 trainer compute 段，不能相除声称二十多倍加速。remote 最新奖励重跑与旧计时不是同一运行，图表明确区分来源。
+
+## 结果与曲线
+
+<PerformanceSnapshot lang="zh" />
+
+SFT 的本机 v4 与 v5-ray 稳态时间同量级；35B remote 记录更慢，需结合 HTTP、排队与服务端分片解释。不同放置或计时口径不计算统一加速倍数。
+
+4B SFT 的 v4-ray 终点差为 3.877%，v4-remote ga16 为 3.014%，ray-remote 为 0.898%；35B 对应为 3.416%、2.308%、1.071%。它们满足该批“首步紧配、终点差小于 5%、没有单调系统发散”的回归判据。4B v5-ray 同配置复跑 30/30 步 loss 相等；这是该运行的确定性证据，不推广为所有硬件或采样任务逐位一致。
+
+GRPO 根据 reward 趋势、稳定平台与有限梯度判断。4B remote 最新重跑前后五步 reward 均值为 0.475→0.875，35B ray 为 0.5625→0.95，remote 为 0.5875→0.9875。小 prompt 数导致逐步高方差，不要求三条随机轨迹逐位重合，也不把训练 reward 当作独立任务能力分数。
+
+JEV decision 保留专用模型 `autotrust/JEV-9B`，三形态监督 loss 均下降；remote 仅记录总墙钟，没有逐步稳态时间。Router replay 的 R2 ray 与 R3 remote 是不同路由记录机制，分开展示；现有 attention-only LoRA 对照没有证明 replay 比 recompute 更稳定，不据此给出普遍稳定性提升结论。
+
+## 复现与来源
+
+[实验协议](https://github.com/tastelikefeet/swift5-regression-exps/blob/main/PERF_BENCH_20261124.md)、[起始版本](https://github.com/tastelikefeet/swift5-regression-exps/blob/main/perf_bench_20261124/version_lock.json)、[结果目录](https://github.com/tastelikefeet/swift5-regression-exps/tree/main/perf_bench_20261124/results)与[运行脚本和日志](https://github.com/tastelikefeet/swift5-regression-exps/tree/main/perf_bench_20261124)记录模型、设备、batch、精度、采样放置和版本。图表来源链接锁定结果仓 commit，逐步曲线使用相应 JSONL，而不是从论文图片估读。
+
+复现实验时固定这些条件，为各形态准备正确的依赖和资源；命令入口见 [CLI](./interfaces/cli.mdx)、[远程训练](./interfaces/server-client.mdx)和 [examples/v5](https://github.com/modelscope/ms-swift/tree/main/examples/v5)。本批是训练行为与计时回归，不是 WebUI AutoResearch 榜单；自动研究的评测规则见 [Benchmarks](/zh/webui/benchmarks)。

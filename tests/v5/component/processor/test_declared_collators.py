@@ -44,6 +44,21 @@ CASES = {
 }
 
 
+# d41e77952 ("统一完整 Trajectory 编码与采样契约") renamed the encoded media payload key for these
+# families: legacy encode/collator carry 'images', dev encode/collator carry 'pixel_values'
+# (valley: 'pixel_values_aux'). Each dev collator consumes its own encode's key, so the dev side
+# must be fed that key while legacy still gets 'images'. The batched OUTPUT (res['images'] etc.)
+# is unchanged and is still compared tensor-equal against the legacy full collator below.
+DEV_MEDIA_KEY = {
+    "chatglm4v": {"images": "pixel_values"},
+    "mplug_owl2": {"images": "pixel_values"},
+    "yi_vl": {"images": "pixel_values"},
+    "doc_owl2": {"images": "pixel_values"},
+    "got_ocr2": {"images": "pixel_values"},
+    "valley": {"images": "pixel_values_aux"},
+}
+
+
 def _kernel(template_type, padding_free=False, *, legacy=False):
     if legacy:
         from swift.template import TEMPLATE_MAPPING
@@ -89,7 +104,9 @@ def test_family_media_hook_matches_full_legacy_collator(template_type):
     media_rows = [
         {key: value for key, value in row.items() if key not in {"input_ids", "labels", "length"}} for row in rows
     ]
-    direct = dev_kernel.collate_media(copy.deepcopy(media_rows))
+    rename = DEV_MEDIA_KEY.get(template_type, {})
+    dev_media_rows = [{rename.get(key, key): value for key, value in row.items()} for row in media_rows]
+    direct = dev_kernel.collate_media(copy.deepcopy(dev_media_rows))
 
     assert direct
     for key, value in direct.items():

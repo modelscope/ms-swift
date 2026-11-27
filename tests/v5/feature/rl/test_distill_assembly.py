@@ -176,8 +176,15 @@ def test_distill_worker_init_avoids_infra_reserved_placements_kwarg():
 
     from swift.dev.recipe.distill.worker import DistillWorker
 
-    reserved = set(inspect.signature(RayHelper.create_workers).parameters) - {
-        'cls', 'group', 'execute', 'args', 'kwargs'
+    # twinkle 58b2b979 ("ray-boundary plan batch") split create_workers into a public rollback wrapper
+    # ``create_workers(*args, creation_timeout=None, **kwargs)`` delegating to ``_create_workers``, which
+    # now DECLARES the reserved constructor kwargs (instance_id / extra_torch_kwargs / max_concurrency /
+    # placements). remote_class (infra/dispatch.py) still pops only instance_id/remote_group/
+    # extra_torch_kwargs before forwarding, so a domain ``placements`` kwarg still reaches
+    # _create_workers as ray placement dicts -- the crash this guards is unchanged. Read the reserved
+    # set off the method that actually declares it (_create_workers), not the *args/**kwargs wrapper.
+    reserved = set(inspect.signature(RayHelper._create_workers).parameters) - {
+        'worker_cls', 'group', 'execute', 'args', 'kwargs'
     }
     assert 'placements' in reserved, 'infra contract changed: re-derive the reserved-kwarg guard'
     init_params = set(inspect.signature(DistillWorker.__init__).parameters)

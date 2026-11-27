@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Sequence
 
 from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
+from swift.dev.utils.naming import mixed_precision_for
 
 if TYPE_CHECKING:
     from twinkle import DeviceMesh
@@ -577,7 +578,7 @@ def build_model(
             instance_id=instance_id,
             enable_router_replay=enable_router_replay,
         )
-    mixed_precision = _mixed_precision_for(model_config.torch_dtype)
+    mixed_precision = mixed_precision_for(model_config.torch_dtype)
     if torch_dtype is not None:
         model_config = copy.copy(model_config)
         model_config.torch_dtype = torch_dtype
@@ -690,7 +691,9 @@ def build_ref_model(
         frozen = build_remote_model(config, distributed_config)
         configure_remote_processor(frozen, template_config, model_config, distributed_config)
         return frozen
-    from swift.dev.processor import InputProcessor, processor_kwargs
+    if template_config is None:
+        raise ValueError(f'{name}: build_ref_model needs template_config: the frozen processor pads like the policy.')
+    from swift.dev.processor import InputProcessor, input_processor_kwargs
 
     config = copy.copy(model_config)
     config.model = model_id
@@ -707,27 +710,15 @@ def build_ref_model(
     frozen = build_model(config, dist, device_mesh=device_mesh, remote_group=name, instance_id=instance_id)
     if len(adapters) > 1:
         raise ValueError(f"{name} currently supports exactly one frozen adapter per auxiliary model.")
+    processor_options = input_processor_kwargs(template, template_config, dist, config)
     if adapters:
         frozen.add_adapter_to_model(f"{name}_adapter", adapters[0], is_trainable=False)
-        frozen.set_processor(InputProcessor, adapter_name=f"{name}_adapter", **processor_kwargs(template))
+        frozen.set_processor(InputProcessor, adapter_name=f"{name}_adapter", **processor_options)
         frozen.set_template(template, adapter_name=f"{name}_adapter")
     else:
-        frozen.set_processor(InputProcessor, **processor_kwargs(template))
+        frozen.set_processor(InputProcessor, **processor_options)
         frozen.set_template(template)
     return frozen
-
-
-def _mixed_precision_for(torch_dtype: Optional[str]) -> str:
-    """torch_dtype -> twinkle's mixed_precision mode. Shared by both backends so they cannot drift.
-
-    float32 -> 'no' is a DELIBERATE divergence: legacy sets fp16=True for a float32 run, so "full
-    precision" there still autocasts to fp16; dev takes float32 at face value instead.
-    """
-    if torch_dtype == "float32":
-        return "no"
-    if torch_dtype == "float16":
-        return "fp16"
-    return "bf16"
 
 
 def is_megatron_backend(distributed_config: DistributedConfig) -> bool:
@@ -1177,7 +1168,7 @@ def _build_transformers_model(
     if distributed_config.ddp_timeout is not None:
         os.environ["TWINKLE_DIST_TIMEOUT_SECONDS"] = str(distributed_config.ddp_timeout)
     kwargs["mixed_precision"] = (
-        mixed_precision if mixed_precision is not None else _mixed_precision_for(model_config.torch_dtype)
+        mixed_precision if mixed_precision is not None else mixed_precision_for(model_config.torch_dtype)
     )
 
     # DDP find_unused_parameters, mirroring HF Trainer: an adapter run needs it (unused-param grads);
@@ -1720,7 +1711,7 @@ def _build_megatron_model(
     model_loader = _resolve_model_loader(model_config)
     hf_config = _build_hf_config(model_config, model_loader)
 
-    mixed_precision = _mixed_precision_for(model_config.torch_dtype)
+    mixed_precision = mixed_precision_for(model_config.torch_dtype)
 
     # High-frequency knobs flow straight into MegatronModel.__init__; forwarded only when set so the
     # bit-exact SFT baseline is unchanged unless opted in (use_distributed_optimizer has a real default).

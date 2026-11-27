@@ -142,7 +142,7 @@ def initialize_ppo_cluster(
         configure_rl_loss,
         configure_rl_metrics,
     )
-    from swift.dev.processor import InputProcessor, processor_kwargs
+    from swift.dev.processor import InputProcessor, input_processor_kwargs
 
     sp = template_config.sequence_parallel_size
     # mode='remote' runs ONE client process: the policy AND the critic are served-model handles.
@@ -191,10 +191,7 @@ def initialize_ppo_cluster(
     else:
         model.set_processor(
             InputProcessor,
-            padding_free=template_config.padding_free,
-            padding_side=template_config.padding_side,
-            cp_partition_mode=distributed_config.cp_partition_mode,
-            **processor_kwargs(template),
+            **input_processor_kwargs(template, template_config, distributed_config, model_config),
         )
         model.set_template(template)
         # the policy's loss is the shared clipped surrogate ('ppo' maps to it in configure_rl_loss)
@@ -257,10 +254,7 @@ def initialize_ppo_cluster(
         )
         value_model.set_processor(
             InputProcessor,
-            padding_free=template_config.padding_free,
-            padding_side=template_config.padding_side,
-            cp_partition_mode=distributed_config.cp_partition_mode,
-            **processor_kwargs(template),
+            **input_processor_kwargs(template, template_config, distributed_config, value_config),
         )
         value_model.set_template(template)
     # The value loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport

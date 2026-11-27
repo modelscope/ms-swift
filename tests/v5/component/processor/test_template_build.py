@@ -66,17 +66,20 @@ def test_intents_map_to_legacy_modes_without_mutating_the_template(template, pro
 
 
 def test_sampler_api_returns_canonical_prompt_and_one_completion_result(template):
+    from twinkle.template.contract import MediaBundle, engine_input_ids
+
     prompt = template.encode_prompt({"messages": copy.deepcopy(MSGS[:1])}, backend="vllm")
-    assert prompt.state.feature["input_ids"]
-    assert "messages" not in prompt.state.feature and "tools" not in prompt.state.feature
-    assert list(prompt.state.engine_input_ids) == prompt.state.feature["input_ids"]
-    assert not prompt.state.media
+    assert prompt["input_ids"]
+    assert prompt["messages"] == MSGS[:1]
+    assert engine_input_ids(prompt) == prompt["input_ids"]
+    assert "engine_input_ids" not in prompt
+    assert not MediaBundle.from_sources(prompt)
 
     tokens = template.tokenizer.encode("done", add_special_tokens=False)
-    completion = template.append_completion(prompt.state, tokens)
-    assert completion.state.feature["input_ids"][-len(tokens) :] == tokens
-    assert completion.response.content == "done"
-    assert completion.state.messages[-1] == {"role": "assistant", "content": "done"}
+    completion = template.append_completion(prompt, tokens)
+    assert completion["input_ids"][-len(tokens) :] == tokens
+    assert completion["messages"][-1] == {"role": "assistant", "content": "done"}
+    assert prompt["messages"] == MSGS[:1]
 
 
 def test_add_generation_prompt_is_honoured_or_rejected(template):
@@ -92,18 +95,24 @@ def test_add_generation_prompt_is_honoured_or_rejected(template):
 def test_encode_routes_preference_by_type(template):
     """Only explicit runtime types select preference encoding; raw dicts stay SFT rows."""
     from swift.dev.template import INFER, KTOSample, PreferenceSample, TemplateInputs
+    from swift.dev.template.inputs import kto_sample_from_row, preference_sample_from_row
 
     row = {"messages": copy.deepcopy(MSGS), "rejected_response": "go away"}
     flat = template.encode(copy.deepcopy(row), return_length=True)
-    assert flat == template.encode({"messages": copy.deepcopy(MSGS)}, return_length=True)
-    assert template.encode(TemplateInputs.from_dict(copy.deepcopy(row)), return_length=True) == flat
+    plain = template.encode({"messages": copy.deepcopy(MSGS)}, return_length=True)
+    structured = template.encode(TemplateInputs.from_dict(copy.deepcopy(row)), return_length=True)
+    for key in ('input_ids', 'labels'):
+        assert flat[key] == plain[key] == structured[key]
+    assert flat['messages'] == MSGS
+    assert flat['rejected_response'] == 'go away'
+    assert 'chosen' not in flat and 'rejected' not in flat
 
     preference = PreferenceSample(
         chosen={"messages": copy.deepcopy(MSGS)},
         rejected={"messages": copy.deepcopy(MSGS[:-1]) + [{"role": "assistant", "content": "go away"}]},
     )
     pair = template.encode(preference)
-    assert pair == template.encode_preference(copy.deepcopy(row))
+    assert pair == template.encode(preference_sample_from_row(copy.deepcopy(row)))
     assert pair["chosen"]["input_ids"] != pair["rejected"]["input_ids"]
     with pytest.raises(ValueError, match="labelled intent"):
         template.encode(preference, intent=INFER)
@@ -111,7 +120,7 @@ def test_encode_routes_preference_by_type(template):
     kto = template.encode(KTOSample(conversation={"messages": copy.deepcopy(MSGS)}, label=True))
     assert kto["chosen"] is not None and kto["rejected"] is None and kto["label"] is True
     with pytest.raises(ValueError, match="requires a boolean label"):
-        template.encode_preference({"messages": copy.deepcopy(MSGS)}, kto=True)
+        template.encode(kto_sample_from_row({"messages": copy.deepcopy(MSGS)}))
 
 
 def test_encode_accepts_message_list_and_std_inputs(template):
@@ -119,7 +128,18 @@ def test_encode_accepts_message_list_and_std_inputs(template):
 
     expected = template.encode({"messages": copy.deepcopy(MSGS)})
     assert template.encode(copy.deepcopy(MSGS)) == expected
-    assert template.encode(StdTemplateInputs.from_dict({"messages": copy.deepcopy(MSGS)})) == expected
+    std = template.encode(StdTemplateInputs.from_dict({"messages": copy.deepcopy(MSGS)}))
+    # preserve_trajectory (twinkle 012aff34 "统一完整 Trajectory 返回与共享模板契约", adopted by the dev
+    # template-inheritance refactor) keeps the raw source columns verbatim. The StdTemplateInputs
+    # dataclass carries empty default media/kwargs columns (images/videos/audios/objects/tools/
+    # chat_template_kwargs/mm_processor_kwargs) that a sparse {'messages': ...} dict omits, so those
+    # raw columns and _trajectory_columns differ between the two forms. The encoding itself must be
+    # identical: compare every non-raw field, and assert the extra raw columns are genuinely empty.
+    raw_cols = {'images', 'videos', 'audios', 'objects', 'tools', 'chat_template_kwargs',
+                'mm_processor_kwargs', '_trajectory_columns'}
+    assert {k: v for k, v in std.items() if k not in raw_cols} == {
+        k: v for k, v in expected.items() if k not in raw_cols}
+    assert all(not std[k] for k in raw_cols - {'_trajectory_columns'} if k in std)
     with pytest.raises(TypeError, match="Cannot encode"):
         template.encode("hi")
 
@@ -400,7 +420,8 @@ def test_template_contract_is_a_lightweight_leaf_package():
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 modules = [node.module]
             for module in modules:
-                if module == "swift" or module.startswith(("swift.", "twinkle")):
+                if (module == "swift" or module.startswith("swift.")
+                        or module.startswith(("twinkle.template.base", "twinkle.sampler", "twinkle.model"))):
                     violations.append(f"{path.name}:{node.lineno}: {module}")
     assert not violations, "\n".join(violations)
 

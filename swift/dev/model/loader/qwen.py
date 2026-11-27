@@ -1331,6 +1331,7 @@ class Qwen3TTSLoader(ModelLoader):
 
     def process_model(self, model):
         from twinkle.patch import apply_patch
+
         from swift.dev.patch.transformers_qwen3_tts import Qwen3TTSTrainingPatch
 
         self.delegate_to_submodel(model, "talker", ["get_input_embeddings", "gradient_checkpointing_enable"])
