@@ -8,8 +8,9 @@ SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于�
 
 **为什么选择 SWIFT v5？**
 
-- **写单机代码，训任意规模**：同一份代码从单卡扩展到集群化训练，分布式与采样调度通过配置驱动。
-- **训练技术**：不仅维持了 SWIFT 的 PT、SFT 技术优势，并完整扩展了 PPO、GRPO、OPD、MOPD、OPSD 等各类强化学习和蒸馏方案，在框架设计上仍极具扩展性
+- **写单机代码，训任意规模**：同一份代码从单卡扩展到大规模集群化训练，分布式与采样调度通过配置驱动。
+- **稳定性与速度**：支持 Async RL、Delta同步、低精度训练、训练集群自动扩缩容等技术，支持高效稳定的训练
+- **训练技术**：不仅维持了 SWIFT 的 PT、SFT 技术优势，并完整扩展了 PPO、GRPO、OPD、MOPD、OPSD 等各类强化学习和蒸馏方案，在新算法兼容上仍极具扩展性
 - **丰富的训练后端**：不仅支持 transformers、megatron，还通过组件化方式兼容了 unsloth、sentence-transformers 训练，且以上模型均可用于 SaaS 化部署训练
 - **数据集**：内置 150+ 任务数据集，支持数据湖（Data Lake），并支持新数据集动态添加训练
 - **硬件支持**：丰富的硬件支持，除NVIDIA GPU外，还支持AMD GPU、昇腾 NPU、Apple MPS、平头哥、沐曦、寒武纪等生态
@@ -272,7 +273,7 @@ TWINKLE_WORKER_SETUP_HOOK=swift.dev.processor.server_plugin:register twinkle-ser
 
 ### 客户端远程训练
 
-客户端需要 `twinkle-kit[client]` 连接服务，以及 `ms-swift` 提供的数据集、模板配置和奖励函数（只在 CPU 上做数据准备，不加载权重）：
+客户端需要 `twinkle-kit[client]` 连接服务，以及 `ms-swift` 提供的数据集、模板配置和奖励函数：
 
 ```bash
 pip install 'twinkle-kit[client]' ms-swift
