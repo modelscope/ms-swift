@@ -210,7 +210,7 @@ if __name__ == '__main__':
 pip install 'twinkle-kit[server,client]' ms-swift
 ```
 
-训练用的模型服务由下面的 `server_config.yaml` 描述。它加载 swift 自己的模型加载器，并在 worker 启动时运行 `swift.dev.processor.server_plugin:register`，把 swift 的模板（`SwiftTemplate`）和 processor（`DevInputProcessor`）注册进 twinkle 的命名空间，客户端才能按名字让服务端用 swift 的模板编码：
+训练模型和采样引擎都由下面的 `server_config.yaml` 描述，三个应用共用一个网关：训练模型（transformers 后端，LoRA）走 swift 自己的模型加载器；vLLM sampler 负责采样，开着 LoRA 以便每轮加载学生权重：
 
 ```yaml
 http_options:
@@ -243,22 +243,31 @@ applications:
       device_mesh:
         device_type: cuda
         dp_size: 1
-    deployments:
-      - name: ModelManagement
-        ray_actor_options:
-          runtime_env:
-            env_vars:
-              TWINKLE_WORKER_SETUP_HOOK: swift.dev.processor.server_plugin:register
+  - name: sampler-gemma-4-E4B-it
+    route_prefix: /api/v1/sampler/google/gemma-4-E4B-it
+    import_path: sampler
+    args:
+      model_id: ms://google/gemma-4-E4B-it
+      sampler_type: vllm
+      nproc_per_node: 1
+      engine_args:
+        max_model_len: 4096
+        gpu_memory_utilization: 0.5
+        enable_lora: true
+      device_group:
+        name: sampler
+        ranks: 1
+        device_type: cuda
+      device_mesh:
+        device_type: cuda
+        dp_size: 1
 ```
 
-启动 Ray 和模型服务；采样用的 vLLM 引擎用 `swift deploy` 启动，它会加入已经在运行的网关，并把 swift 的 `TemplateSpec` 钉在 sampler 上，训练侧和采样侧用的是同一份 swift 模板（`gemma4_nothinking`）：
+启动 Ray 和服务。`TWINKLE_WORKER_SETUP_HOOK` 让每个 worker 启动时运行 `swift.dev.processor.server_plugin:register`，把 swift 的模板（`SwiftTemplate`）和 processor（`DevInputProcessor`）注册进 twinkle 的命名空间；这个变量会传播到所有应用，客户端才能按名字让服务端用 swift 的模板编码：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 ray start --head --num-gpus=2
-twinkle-server launch --config server_config.yaml
-# 另开一个终端
-swift deploy --model google/gemma-4-E4B-it --use_hf true --nproc_per_node 1 \
-    --route_prefix /api/v1 --served_model_name google/gemma-4-E4B-it --detach
+TWINKLE_WORKER_SETUP_HOOK=swift.dev.processor.server_plugin:register twinkle-server launch --config server_config.yaml
 ```
 
 ### 客户端远程训练
@@ -269,14 +278,14 @@ swift deploy --model google/gemma-4-E4B-it --use_hf true --nproc_per_node 1 \
 pip install 'twinkle-kit[client]' ms-swift
 ```
 
-将以下代码保存为 `client_grpo.py`。数据集、模板和奖励都来自 swift：`prompt_rows_from_dataset` 读取 GSM8K 的 `grpo` 视图（答案保留在 `solution` 列）并把它打包进 `user_data`，`configure_remote_processor` 把 swift 的 `TemplateSpec` 发给模型服务，`MathAccuracy` 按 `solution` 打分。每一轮先把当前权重发布给 sampler，再采样、打分、按组归一化得到 advantage，最后更新：
+将以下代码保存为 `client_grpo.py`。数据集、模板和奖励都来自 swift：`prompt_rows_from_dataset` 读取 GSM8K 的 `grpo` 视图（答案保留在 `solution` 列）并把它打包进 `user_data`，`configure_remote_processor` 把 swift 的 `TemplateSpec` 发给模型服 务，`set_template` 把同一份 spec 钉到 sampler，训练和采样编码一致，`MathAccuracy` 按 `solution` 打分。每一轮先把当前权重发布给 sampler，再采样 、打分、按组归一化得到 advantage，最后更新：
 
 ```python
 import os
 from peft import LoraConfig
 from twinkle_client import init_twinkle_client
 
-from swift.dev.builders import build_prompt_dataloader
+from swift.dev.builders import build_prompt_dataloader, resolve_twinkle_template
 from swift.dev.builders.remote import configure_remote_processor
 from swift.dev.config import DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig
 from swift.dev.recipe.utils import prompt_rows_from_dataset
@@ -306,8 +315,9 @@ with init_twinkle_client(
     model.set_loss('GRPOLoss', epsilon=0.2, beta=0.0)
     model.set_optimizer('Adam', lr=2e-5)
 
-    # 3. Sampler: the vLLM engine the student rolls out on; its template was pinned by `swift deploy`.
+    # 3. Sampler: the vLLM engine the student rolls out on, pinned to the same dev TemplateSpec.
     sampler = client.sampler(MODEL_ID)
+    sampler.set_template(**resolve_twinkle_template(template_config, model_config))
     reward_fn = MathAccuracy()
     sampling_params = {'max_tokens': 1024, 'temperature': 1.0, 'top_p': 0.95}
 
