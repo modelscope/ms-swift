@@ -15,7 +15,6 @@ Two tiers, mirroring ``tests/v5/infer``:
 multimodal serving tests.
 """
 from __future__ import annotations
-
 import base64
 import io
 import os
@@ -81,8 +80,8 @@ def build_template():
     """
     if 'template' not in _TEMPLATE_CACHE:
         import twinkle.template
-        from twinkle.server.utils import get_template_for_model
         from twinkle.template import Template
+        from twinkle.template.mapping import get_template_for_model
         from twinkle.utils import construct_class
         _TEMPLATE_CACHE['template'] = construct_class(
             get_template_for_model(MODEL), Template, twinkle.template, model_id=MODEL)

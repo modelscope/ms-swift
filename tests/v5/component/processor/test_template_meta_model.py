@@ -6,6 +6,7 @@ No checkpoint, tokenizer download, legacy registry, or mock model factory is nee
 import copy
 import pickle
 import socket
+from dataclasses import asdict
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -191,6 +192,9 @@ def test_template_spec_pickle_and_rebuild_with_supplied_processor():
     assert type(template).from_spec(spec, processor=_processor()).encode(sample, intent=INFER) == template.encode(
         sample, intent=INFER
     )
+    rebuilt_from_dict = type(template).from_spec(asdict(spec), processor=_processor())
+    assert rebuilt_from_dict.spec == spec
+    assert rebuilt_from_dict.encode(sample, intent=INFER) == template.encode(sample, intent=INFER)
 
 
 @pytest.mark.parametrize("use_chat_template", [None, True, False])

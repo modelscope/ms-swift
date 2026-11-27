@@ -33,7 +33,10 @@ def _preload_pip_cudnn():
     pollution. Loading the pip main + every sublibrary RTLD_GLOBAL first makes all later
     resolutions reuse one consistent family. No-op where the pip wheel is absent.
     """
-    spec = importlib.util.find_spec('nvidia.cudnn')
+    try:
+        spec = importlib.util.find_spec('nvidia.cudnn')
+    except ModuleNotFoundError:
+        return
     if spec is None or not spec.submodule_search_locations:
         return
     libdir = os.path.join(spec.submodule_search_locations[0], 'lib')

@@ -21,11 +21,13 @@ Choose packages for your needs; you do not need to install everything on the sam
 
 ### Local training with SWIFT
 
-Install SWIFT v5 on the training machine. twinkle is installed as a dependency, so no separate installation is needed:
+Install SWIFT v5 on the training machine. `twinkle-kit` is installed as a dependency, so no separate installation is needed:
 
 ```bash
 pip install 'ms-swift>=5.0.0'
 ```
+
+For development checkouts, follow [Source installation](./installation.mdx#source-installation) to install Twinkle and SWIFT from their repositories.
 
 See [Installation](./installation.mdx) for environment requirements, [Docker](./docker.mdx) for containers, and [Models and Datasets](./models-and-datasets.mdx) for selection and data sources.
 
@@ -212,7 +214,7 @@ See [Online RL](/en/blog/online-rl) for colocation, asynchronous sampling, custo
 Install the server with its dependencies on the machine providing GPU compute:
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install twinkle-server
 ```
 
 ### Remote training with a client
@@ -220,7 +222,7 @@ pip install 'twinkle-kit[server,client]'
 Install the lightweight client on the machine submitting training work. The server manages model weights and GPU computation; the client does not need a local GPU:
 
 ```bash
-pip install 'twinkle-kit[client]'
+pip install twinkle-client
 ```
 
 ## Remote training

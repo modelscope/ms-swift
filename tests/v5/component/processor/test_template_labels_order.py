@@ -28,7 +28,7 @@ def test_shift_calls_stay_on_the_nominal_row_boundaries():  # noqa: C901
     calls = Counter()
     for repository, root in (("swift", dev), ("twinkle", twinkle)):
         for path in root.rglob("*.py"):
-            if "tests" in path.parts or "template_contract/encoding.py" in path.as_posix():
+            if "tests" in path.parts or "template/contract/encoding.py" in path.as_posix():
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"))
             aliases = {}

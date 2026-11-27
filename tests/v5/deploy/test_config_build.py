@@ -136,12 +136,12 @@ def test_sampler_app_names_distinguish_slash_and_underscore():
 
 
 def test_run_deploy_rejects_duplicate_public_model_on_legacy_route(monkeypatch):
-    import twinkle.server
-    from twinkle.server import launcher
+    import twinkle_server
+    from twinkle_server import launcher
 
     deployment = importlib.import_module("swift.dev.recipe.infer.run_deploy")
     monkeypatch.setattr(launcher, "ensure_ray_cluster", Mock())
-    monkeypatch.setattr(twinkle.server, "launch_server", Mock())
+    monkeypatch.setattr(twinkle_server, "launch_server", Mock())
     monkeypatch.setattr(deployment, "_serve_routes", lambda: {"sampler-team_model": "/v1/sampler/team/model"})
     with pytest.raises(ValueError, match="Model 'team/model' is already deployed"):
         run_deploy(
@@ -149,7 +149,7 @@ def test_run_deploy_rejects_duplicate_public_model_on_legacy_route(monkeypatch):
             TemplateConfig(template="qwen3_5"),
             deploy_config=DeployConfig(served_model_name="team/model"),
         )
-    twinkle.server.launch_server.assert_not_called()
+    twinkle_server.launch_server.assert_not_called()
 
 
 def test_build_server_config_data_plane_adds_app_and_async_sampler():
@@ -358,7 +358,7 @@ def test_build_server_config_default_pool_is_one_replica():
 def test_persistence_is_the_server_default():
     """The persistence knobs moved to the server config file; the assembled config carries twinkle's
     own in-memory default (memory mode), not a deploy-side persistence mapping."""
-    from twinkle.server.config.persistence import PersistenceConfig
+    from twinkle_server.config.persistence import PersistenceConfig
 
     cfg = build_server_config(
         _model_config(),

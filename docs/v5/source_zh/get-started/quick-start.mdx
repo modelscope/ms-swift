@@ -18,11 +18,12 @@ SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于�
 
 ## 环境安装与样例
 
-在 SWIFT 的架构体系中涉及到三个框架：
+在 SWIFT 的架构体系中涉及到以下包：
 
 - swift: 涵盖命令行和训练主体
 - twinkle-kit: 底层算法基础组件，自动随 swift 安装，用户无需关心
 - twinkle-server: 服务化训练框架，可以将 swift 所有支持的训练类型和模型转换为远端 HTTP 训练模式
+- twinkle-client: 远程训练和采样的 Python SDK，客户端无需安装 twinkle-server
 
 ### 本地训练
 
@@ -31,6 +32,8 @@ SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于�
 ```bash
 pip install 'ms-swift>=5.0.0'
 ```
+
+使用开发分支时，按[源码安装](./installation.mdx#源码安装)说明从各自仓库安装 Twinkle 和 SWIFT。
 
 完整环境要求见[安装](./installation.mdx)，容器启动见 [Docker](./docker.mdx)，模型选择和数据来源见[模型与数据集](./models-and-datasets.mdx)。
 
@@ -208,7 +211,7 @@ if __name__ == '__main__':
 ### 部署 server
 
 ```bash
-pip install 'twinkle-kit[server,client]' ms-swift
+pip install twinkle-server ms-swift
 ```
 
 训练模型和采样引擎都由下面的 `server_config.yaml` 描述，三个应用共用一个网关：训练模型（transformers 后端，LoRA）走 swift 自己的模型加载器；vLLM sampler 负责采样，开着 LoRA 以便每轮加载学生权重：
@@ -273,10 +276,10 @@ TWINKLE_WORKER_SETUP_HOOK=swift.dev.processor.server_plugin:register twinkle-ser
 
 ### 客户端远程训练
 
-客户端需要 `twinkle-kit[client]` 连接服务，以及 `ms-swift` 提供的数据集、模板配置和奖励函数：
+客户端需要 `twinkle-client` 连接服务，以及 `ms-swift` 提供的数据集、模板配置和奖励函数：
 
 ```bash
-pip install 'twinkle-kit[client]' ms-swift
+pip install twinkle-client ms-swift
 ```
 
 将以下代码保存为 `client_grpo.py`。数据集、模板和奖励都来自 swift：`prompt_rows_from_dataset` 读取 GSM8K 的 `grpo` 视图（答案保留在 `solution` 列）并把它打包进 `user_data`，`configure_remote_processor` 把 swift 的 `TemplateSpec` 发给模型服 务，`set_template` 把同一份 spec 钉到 sampler，训练和采样编码一致，`MathAccuracy` 按 `solution` 打分。每一轮先把当前权重发布给 sampler，再采样 、打分、按组归一化得到 advantage，最后更新：
