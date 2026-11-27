@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import pytest
 import sys
 import torch
@@ -70,8 +71,11 @@ def test_glm_cann_mhc_matches_megatron(monkeypatch):
     branch = random_tensor(config.hidden_size).requires_grad_()
     upstream = random_tensor(4 * config.hidden_size)
 
+    # Older MCore returns the residual by default. Newer versions make it opt-in.
+    forward_kwargs = {'return_residual': True} if 'return_residual' in inspect.signature(hc.forward).parameters else {}
+
     def forward_and_grads(module):
-        collapsed, h_res, h_post, residual = module(x, return_residual=True)
+        collapsed, h_res, h_post, residual = module(x, **forward_kwargs)
         merged = module.fused_h_res_h_post_bda(h_res, residual, h_post, (collapsed + branch, None), 0., True, True)
         grads = torch.autograd.grad(merged, (x, branch, *module.parameters()), upstream)
         return (collapsed, h_res, h_post, merged, *grads)

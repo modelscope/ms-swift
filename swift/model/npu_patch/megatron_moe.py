@@ -28,21 +28,6 @@ def permute(tokens,
     return tokens.index_select(0, sorted_indices), permuted_probs, sorted_indices, None, tokens_per_expert
 
 
-def _permute_with_inverse_map(tokens,
-                              routing_map,
-                              probs=None,
-                              num_out_tokens=None,
-                              fused=False,
-                              drop_and_pad=False,
-                              tokens_per_expert=None,
-                              align_size=0,
-                              return_batch_invariant_inverse_map=False):
-    args = (tokens, routing_map, probs, num_out_tokens, fused, drop_and_pad, tokens_per_expert, align_size)
-    if return_batch_invariant_inverse_map:
-        return _ORIGINAL_PERMUTE(*args, return_batch_invariant_inverse_map=True)
-    return permute(*args)
-
-
 def patch_megatron_moe():
     """Replace MCore permutation exports and cached dispatcher references."""
     global _ORIGINAL_PERMUTE
@@ -50,10 +35,7 @@ def patch_megatron_moe():
         return
     from megatron.core.transformer.moe import moe_utils, token_dispatcher
 
-    parameters = tuple(inspect.signature(moe_utils.permute).parameters)
-    for implementation in (permute, _permute_with_inverse_map):
-        if parameters == tuple(inspect.signature(implementation).parameters):
-            _ORIGINAL_PERMUTE = moe_utils.permute
-            moe_utils.permute = token_dispatcher.permute = implementation
-            return
-    raise RuntimeError('Unsupported MCore permute signature for the Swift NPU performance patch.')
+    if tuple(inspect.signature(moe_utils.permute).parameters) != tuple(inspect.signature(permute).parameters):
+        raise RuntimeError('Unsupported MCore permute signature for the Swift NPU performance patch.')
+    _ORIGINAL_PERMUTE = moe_utils.permute
+    moe_utils.permute = token_dispatcher.permute = permute
