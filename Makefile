@@ -19,7 +19,7 @@ test:
 
 .PHONY: whl
 whl:
-	python setup.py sdist bdist_wheel
+	python -m build
 
 .PHONY: clean
 clean:

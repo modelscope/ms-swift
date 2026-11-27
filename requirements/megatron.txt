@@ -1,3 +1,0 @@
-mcore-bridge>=1.6.5
-megatron-core>=0.18,<0.21
-peft>=0.15

@@ -1,3 +1,108 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ms_swift"
+dynamic = ["version"]
+description = "Swift: Scalable lightWeight Infrastructure for Fine-Tuning"
+readme = "README.md"
+authors = [{ name = "DAMO ModelScope teams", email = "contact@modelscope.cn" }]
+keywords = ["transformers", "LLM", "lora", "megatron", "grpo", "sft"]
+license = "Apache-2.0"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.11,<3.14"
+# ray is pulled in by twinkle-kit; torch is left to the user (CUDA / NPU / MUSA build); tracking
+# backends (swanlab, wandb) stay opt-in.
+dependencies = [
+    "accelerate>=1.14.0",
+    "addict",
+    "aiohttp",
+    "binpacking",
+    "dacite",
+    "datasets>=4.0,<4.8.5",
+    "einops",
+    "fastapi",
+    "huggingface_hub",
+    "json_repair",
+    "matplotlib",
+    "modelscope>=1.34",
+    "msgspec",
+    "nltk",
+    "numpy",
+    "openai",
+    # modelscope.msdatasets constructs OssUtilities (import oss2) on every MsDataset download without
+    # declaring it; swift loads ModelScope datasets through MsDataset.load.
+    "oss2",
+    "packaging",
+    "pandas",
+    "peft>=0.11,<0.20",
+    "pillow",
+    "PyYAML>=5.4",
+    "pydantic>=2,<3",
+    "requests",
+    "rouge",
+    "safetensors",
+    "scipy",
+    "sentencepiece",
+    "tensorboard",
+    "tiktoken",
+    "tqdm",
+    "transformers>=5.8,<6.0",
+    "trl>=0.15,<1.0",
+    "twinkle-kit>=0.4.0.dev0,<0.5",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+# megatron is CUDA-bound and therefore not part of all; transformer-engine stays opt-in (install_all.sh).
+megatron = ["mcore-bridge>=1.6.5", "megatron-core>=0.18,<0.21", "peft>=0.15"]
+eval = ["evalscope>=1.0.0", "evalscope[opencompass]", "evalscope[vlmeval]"]
+# Installing an extra always brings the base dependencies, so all only adds eval.
+all = ["evalscope>=1.0.0", "evalscope[opencompass]", "evalscope[vlmeval]"]
+
+[project.urls]
+Homepage = "https://github.com/modelscope/ms-swift"
+
+[project.scripts]
+swift = "swift.cli.main:cli_main"
+megatron = "swift.cli._megatron.main:cli_main"
+
+[project.entry-points."vllm.general_plugins"]
+swift_uembed = "swift.model.models.qwen:register_uembed_model"
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.dynamic]
+version = { attr = "swift.version.__version__" }
+
+[tool.setuptools.packages.find]
+# Plain packages only (as the former find_packages()); namespace discovery would swallow
+# sibling checkouts such as 3rd/ and twinkle/ living inside the workspace.
+namespaces = false
+exclude = ["tests", "tests.*"]
+
+[tool.setuptools.package-data]
+# 'loader/dataset_info.json' also covers swift/dev/dataset/loader (the "*" key applies the
+# pattern to every package), so the dev tree's built-in dataset registry ships in the wheel.
+"*" = [
+    "utils/*",
+    "dataset/data/*.*",
+    "config/*.json",
+    "loss_scale/config/*.json",
+    "loader/dataset_info.json",
+    "decision_data/*.jsonl",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests/v5"]
 addopts = "--strict-markers -ra"
