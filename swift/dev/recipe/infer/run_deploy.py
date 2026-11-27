@@ -34,14 +34,21 @@ def run_deploy(
 ) -> None:
     """Serve the model until interrupted, by launching twinkle-server on Ray Serve.
 
-    ``template_config`` resolves to a serializable twinkle template spec (the sampler runs inside a
-    Ray actor); ``generation_config`` is accepted for parity with ``run_infer`` but its sampling
-    defaults are NOT applied server-side -- a warning names any that were set. Blocks until
-    SIGINT/SIGTERM; twinkle's launcher installs the handlers and calls serve.shutdown(). With
-    ``deploy_config.detach`` the driver returns once the applications are RUNNING and the
-    deployment keeps living on the Ray cluster; deployments of different model names coexist
-    behind one shared gateway (the registry widens per deployment).
+    ``template_config`` resolves to a serializable template spec (the sampler runs inside a Ray
+    actor): the dev ``TemplateSpec`` plus the ``SwiftTemplate`` name, so the served sampler encodes with
+    the same dev Template the training side builds -- which needs ``register`` to run in every worker,
+    hence the swift worker-startup hook is published here, before Ray comes up. ``generation_config`` is
+    accepted for parity with ``run_infer`` but its sampling defaults are NOT applied server-side -- a
+    warning names any that were set. Blocks until SIGINT/SIGTERM; twinkle's launcher installs the
+    handlers and calls serve.shutdown(). With ``deploy_config.detach`` the driver returns once the
+    applications are RUNNING and the deployment keeps living on the Ray cluster; deployments of
+    different model names coexist behind one shared gateway (the registry widens per deployment).
     """
+    from swift.dev.processor.server_plugin import WORKER_SETUP_HOOK
+    from swift.dev.utils.plugin import publish_worker_setup_hook
+
+    publish_worker_setup_hook(WORKER_SETUP_HOOK)
+
     from twinkle_server import launch_server
     from twinkle_server.launcher import ensure_ray_cluster
 
@@ -126,6 +133,11 @@ def build_server_config(
     handed to ``launch_server`` by a caller that manages Ray itself. The gateway is mounted at
     ``route_prefix`` and the sampler at ``{route_prefix}/sampler/{public_name}`` -- twinkle's proxy
     rebuilds that exact path from the request's model, so the two must agree.
+
+    The sampler pins ``SwiftTemplate`` + a dev ``TemplateSpec``, a name that only resolves once
+    ``swift.dev.processor.server_plugin.register`` has run in the worker: a caller that launches this
+    config itself must publish ``WORKER_SETUP_HOOK`` (``publish_worker_setup_hook``) or set
+    ``TWINKLE_WORKER_SETUP_HOOK`` in the app's ``runtime_env.env_vars`` before the workers start.
 
     ``gateway_supported_models`` overrides the gateway registry (defaults to this deployment's
     own name); coexisting deployments pass the union with every live sampler's name.

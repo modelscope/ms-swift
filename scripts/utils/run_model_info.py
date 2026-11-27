@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Regenerate the model half of ``Supported-models-and-datasets.md`` from the dev model registry.
+"""Regenerate the ``models`` block of ``docs/v5/**/get-started/models-and-datasets.mdx`` from the dev model registry.
 
 Reads ``swift.dev.model.loader.MODEL_MAPPING`` (not legacy's ``MODEL_MAPPING``), emits one row per
-checkpoint id grouped by family, split into large-language and multimodal tables, and rewrites the
-top matter (title, table of contents, tags legend) plus the ``## Models`` section of both the Chinese
-and the English doc. The dataset half below the ``## Datasets`` heading is preserved verbatim -- it is
-owned by ``run_dataset_info.py``.
+checkpoint id grouped by family, split into large-language and multimodal tables, and replaces only
+the text between the block's markers; the surrounding prose is preserved. The ``datasets`` and
+``tags`` blocks of the same files are owned by ``run_dataset_info.py``.
 
-Run from the repository root::
+Run from the repository root (CI does this after every merge to ``main``)::
 
     python scripts/utils/run_model_info.py
 """
@@ -16,8 +15,7 @@ from __future__ import annotations
 from itertools import chain
 from typing import Dict, Iterator, List, Optional, Set, Tuple
 
-from doc_common import (DOC_PATHS, PROSE, build_tags_legend, build_toc, hub_link, read_doc,
-                        split_head_tail, write_doc)
+from doc_common import (DOC_PATHS, PROSE, read_doc, replace_block, hub_link, write_doc)
 
 from swift.dev.model.loader import MODEL_MAPPING
 
@@ -108,7 +106,8 @@ def _build_rows(supported: Optional[Set[str]]) -> Tuple[List[str], List[str], in
     for model_type in sorted(MODEL_MAPPING):
         loader_cls = MODEL_MAPPING[model_type]
         template = loader_cls.template or '-'
-        requires = ', '.join(loader_cls.requires) or '-'
+        # Code spans: a bound like ``transformers>=4.54,<4.56`` would otherwise open a JSX tag in MDX.
+        requires = ', '.join(f'`{req}`' for req in loader_cls.requires) or '-'
         tags = ', '.join(loader_cls.tags) or '-'
         for ms_id, hf_id in _iter_ids(loader_cls.models):
             support = _support_megatron(loader_cls, ms_id, supported)
@@ -123,7 +122,8 @@ def _build_rows(supported: Optional[Set[str]]) -> Tuple[List[str], List[str], in
     return llm_rows, mllm_rows, llm_mg, mllm_mg
 
 
-def _render_head(lang: str, supported: Optional[Set[str]]) -> str:
+def _render_block(lang: str, supported: Optional[Set[str]]) -> str:
+    """The body of the ``models`` block: a summary, the column legend, then the two family tables."""
     p = PROSE[lang]
     llm_rows, mllm_rows, llm_mg, mllm_mg = _build_rows(supported)
     total = len(llm_rows) + len(mllm_rows)
@@ -136,25 +136,21 @@ def _render_head(lang: str, supported: Optional[Set[str]]) -> str:
                    if supported is not None else f'{len(MODEL_MAPPING)} model families and {total} models in total.')
 
     parts = [
-        f'# {p["title"]}',
+        f'### {p["list"]}',
         '',
-        build_toc(lang),
-        '',
-        build_tags_legend(lang),
-        '',
-        f'## {p["models"]}',
         summary,
         '',
         *_LEGEND[lang],
         '',
-        f'### {p["llm"]} ({len(llm_rows)})',
+        f'#### {p["llm"]} ({len(llm_rows)})',
+        '',
         _MODEL_HEADER.rstrip('\n'),
         ''.join(llm_rows).rstrip('\n'),
         '',
-        f'### {p["mllm"]} ({len(mllm_rows)})',
+        f'#### {p["mllm"]} ({len(mllm_rows)})',
+        '',
         _MODEL_HEADER.rstrip('\n'),
         ''.join(mllm_rows).rstrip('\n'),
-        '',
     ]
     print(f'[{lang}] LLM: {len(llm_rows)} (Megatron {llm_mg}), MLLM: {len(mllm_rows)} (Megatron {mllm_mg})')
     return '\n'.join(parts) + '\n'
@@ -165,9 +161,7 @@ def main() -> None:
     if supported is None:
         print('WARNING: mcore_bridge is unavailable; every model is marked as not supporting Megatron.')
     for lang, path in DOC_PATHS:
-        _, tail = split_head_tail(read_doc(path), lang)
-        head = _render_head(lang, supported)
-        write_doc(path, head + ('\n' + tail if tail else ''))
+        write_doc(path, replace_block(read_doc(path), 'models', _render_block(lang, supported)))
         print(f'[{lang}] wrote {path}')
 
 

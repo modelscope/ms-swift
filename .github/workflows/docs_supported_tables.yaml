@@ -1,0 +1,80 @@
+name: "docs: supported models & datasets"
+
+# Regenerates the registry tables embedded in docs/v5/**/get-started/models-and-datasets.mdx after
+# every merge to main and, when they drifted, commits the result straight to main. The generators
+# (scripts/utils/run_model_info.py, run_dataset_info.py) only read the dev registries, so this is a
+# CPU job; the Megatron column needs mcore_bridge importable, which is why it is installed and
+# asserted below -- without it the generator marks every model as unsupported and still succeeds.
+#
+# The push uses a personal token (secret DOCS_PUSH_TOKEN) because main is protected against the
+# default GITHUB_TOKEN; the token's account must be allowed to bypass that protection. Nothing is
+# committed or pushed when the tables are unchanged.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never cancel mid-run: a cancelled run could leave a half-written push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # swift/dev imports twinkle, which no requirements file declares; pin the ref like ci.yaml does.
+  TWINKLE_REF: master
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: modelscope/twinkle
+          ref: ${{ env.TWINKLE_REF }}
+          path: .twinkle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      # CPU torch first so the later `pip install -e .` sees the dependency satisfied and does not
+      # pull the CUDA builds; everything else comes from the declared requirements.
+      - name: Install
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-deps -e ./.twinkle
+          pip install -e . mcore-bridge
+      - name: Assert the Megatron bridge is importable
+        run: python -c "import mcore_bridge.model"
+      - name: Regenerate
+        run: |
+          python scripts/utils/run_model_info.py
+          python scripts/utils/run_dataset_info.py
+      - name: Commit and push to main if the tables changed
+        env:
+          DOCS_PUSH_TOKEN: ${{ secrets.DOCS_PUSH_TOKEN }}
+        run: |
+          if git diff --quiet -- docs/v5; then
+            echo "tables are up to date"
+            exit 0
+          fi
+          if [ -z "$DOCS_PUSH_TOKEN" ]; then
+            echo "::error::secrets.DOCS_PUSH_TOKEN is not set; create it (Settings > Secrets and variables > Actions) with a token allowed to push to main."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Path-limited commit: `pip install -e .` may rewrite egg-info in the worktree.
+          git commit -m "docs(v5): regenerate supported models & datasets tables" -- docs/v5
+          # checkout authenticated the remote with GITHUB_TOKEN, which main rejects; drop that header
+          # and push with the personal token. The token goes to git on the command line only (masked
+          # in the log), never into .git/config. Non-fast-forward (another merge landed meanwhile)
+          # fails loudly; that merge re-runs this workflow anyway.
+          git config --unset-all http.https://github.com/.extraheader || true
+          git push "https://x-access-token:${DOCS_PUSH_TOKEN}@github.com/${{ github.repository }}.git" \
+            "HEAD:refs/heads/${{ github.ref_name }}"

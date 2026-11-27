@@ -61,6 +61,21 @@ _EXTERNAL_PLUGINS_ENV = 'SWIFT_EXTERNAL_PLUGINS'
 _WORKER_RELOAD_HOOK = 'swift.dev.utils.plugin:_reload_external_in_worker'
 
 
+def publish_worker_setup_hook(target: str) -> None:
+    """Append a ``module:attr`` worker-startup hook to ``TWINKLE_WORKER_SETUP_HOOK`` for this driver's workers.
+
+    twinkle's ``run_worker_setup_hook`` runs every comma-separated target once per worker process, so
+    the plugin reloader and the server-side namespace export (``swift.dev.processor.server_plugin:register``)
+    add up instead of one overwriting the other; an already-registered target is kept where it is.
+    """
+    from twinkle.utils.loader import WORKER_SETUP_HOOK_ENV
+
+    targets = [item.strip() for item in os.environ.get(WORKER_SETUP_HOOK_ENV, '').split(',') if item.strip()]
+    if target not in targets:
+        targets.append(target)
+    os.environ[WORKER_SETUP_HOOK_ENV] = ','.join(targets)
+
+
 class SwiftPlugin:
     """Base of every swift plugin.
 
@@ -324,17 +339,16 @@ def _publish_to_workers(raw_paths: List[str]) -> None:
     """Record the loaded sources + the reload hook in the environment so every Ray worker inherits them.
 
     ``create_workers`` copies ``os.environ`` into each worker's ``runtime_env``; twinkle's generic
-    ``worker_process_setup_hook`` then resolves ``_WORKER_RELOAD_HOOK`` and calls
+    ``worker_process_setup_hook`` then resolves the registered targets and calls
     :func:`_reload_external_in_worker`, which re-imports these sources at worker startup. Local paths are
     resolved to absolute here so a worker on another node (a different CWD, and no inherited ``sys.path``)
     still finds the file; hub ids are passed through untouched.
     """
-    from twinkle.utils.loader import WORKER_SETUP_HOOK_ENV
     published = [
         raw if raw.startswith(('hf://', 'ms://')) else str(Path(raw).expanduser().resolve()) for raw in raw_paths
     ]
     os.environ[_EXTERNAL_PLUGINS_ENV] = json.dumps(published)
-    os.environ[WORKER_SETUP_HOOK_ENV] = _WORKER_RELOAD_HOOK
+    publish_worker_setup_hook(_WORKER_RELOAD_HOOK)
 
 
 def _reload_external_in_worker() -> None:

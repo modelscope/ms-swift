@@ -5,6 +5,8 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from twinkle.data_format import attach_user_data
+
 from swift.dev.utils import split_str_parts_by
 
 from .base import DatasetLoader, SubsetMeta, register_dataset
@@ -29,11 +31,33 @@ class ShareGptLoader(DatasetLoader):
     tags = ['chat', 'general', 'multi-round']
 
 
+class Gsm8kGRPOPreprocessor(Preprocessor):
+    """The ``grpo`` view: the worked answer is kept a second time as the reward's reference.
+
+    The response aliases cover ``answer``, so the assistant turn IS the worked solution; the RL
+    reward (``MathAccuracy``) reads the reference from the packed ``user_data`` entry ``solution``
+    under its own column name.
+    """
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        row = self.standardise(row)
+        solution = self.pick_response(row['response'])
+        converted = super().preprocess(row)
+        if converted is None or solution is None:
+            return converted
+        # Attached after conversion: `solution` is itself a response alias, so handing it to the
+        # converter would make the alias pass fight over which one is the answer.
+        return attach_user_data(converted, solution=solution)
+
+
 @register_dataset
 class Gsm8kLoader(DatasetLoader):
     dataset_type = 'gsm8k'
     datasets = [('modelscope/gsm8k', None)]
-    subsets = ['main']
+    subsets = [
+        SubsetMeta('main'),
+        SubsetMeta('main', name='grpo', preprocessor=Gsm8kGRPOPreprocessor),
+    ]
     tags = ['qa', 'math']
 
 
