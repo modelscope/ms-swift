@@ -1,5 +1,5 @@
 import ray  # noqa: E402
-from twinkle.server import launch_server  # noqa: E402
+from twinkle_server import launch_server  # noqa: E402
 
 from swift.dev.config import DeployConfig, DistributedConfig, ModelConfig, TemplateConfig  # noqa: E402
 from swift.dev.recipe.infer.run_deploy import build_server_config  # noqa: E402

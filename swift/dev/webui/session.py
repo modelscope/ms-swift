@@ -573,7 +573,7 @@ def _bootstrap(declaration: Dict[str, Any]) -> None:
         # so a dead server fails the session loudly at bootstrap instead of at the first node
         # build. The env vars double as the documented fallback every later client object
         # (the sampler over the same context) reads.
-        from twinkle import init_twinkle_client
+        from twinkle_client import init_twinkle_client
 
         target = _remote_target(graph.resource)
         os.environ['TWINKLE_SERVER_URL'] = target.server_url

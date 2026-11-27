@@ -45,7 +45,7 @@ pip install 'ms-swift>=5.0.0'
 安装服务端依赖：
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install twinkle-server
 ```
 
 将 `server_config.yaml` 挂载到容器，按[远程训练文档](../interfaces/server-client.mdx)启动 Ray 和 twinkle-server。跨容器访问需要映射服务端口，并配置监听地址、鉴权和网络入口；默认监听本机的配置不会自动对其他容器开放。

@@ -15,14 +15,14 @@ Install with pip:
 pip install 'ms-swift>=5.0.0'
 ```
 
-twinkle is installed with SWIFT. The [SFT example](./quick-start.mdx) does not require the server or client extras.
+`twinkle-kit` is installed with SWIFT. The [SFT example](./quick-start.mdx) does not require `twinkle-server` or `twinkle-client`.
 
 ### Deploy twinkle-server
 
 On the machine providing GPU compute, install:
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install twinkle-server
 ```
 
 The server configures models, samplers, and resources; clients submit training operations. See [Remote Training & twinkle-server](../interfaces/server-client.mdx) for deployment.
@@ -32,10 +32,27 @@ The server configures models, samplers, and resources; clients submit training o
 On the machine submitting requests, install:
 
 ```bash
-pip install 'twinkle-kit[client]'
+pip install twinkle-client
 ```
 
 The client does not need a local GPU. To train remotely through SWIFT commands, install SWIFT in the client environment and select `--mode remote`.
+
+## Source installation
+
+For development checkouts, install the packages in the same Python environment. First enter the cloned [Twinkle repository](https://github.com/modelscope/twinkle) and install the core package:
+
+```bash
+pip install -e .
+```
+
+From that repository root, install only the additional package needed by this environment:
+
+```bash
+pip install -e ./twinkle_cs/client  # Remote Python SDK / --mode remote
+pip install -e ./twinkle_cs/server  # swift deploy / twinkle-server
+```
+
+Then enter the cloned [ms-swift repository](https://github.com/modelscope/ms-swift) and run `pip install -e .`. Megatron users can also install [mcore-bridge](https://github.com/modelscope/mcore-bridge) from its checkout with `pip install -e .`.
 
 ## PyTorch and the compute environment
 
@@ -43,7 +60,7 @@ Choose a [PyTorch](https://pytorch.org/get-started/locally/) build compatible wi
 
 | Component | Requirement or purpose |
 | --- | --- |
-| Python | 3.12 recommended |
+| Python | `>=3.11,<3.14`; 3.12 recommended |
 | PyTorch | twinkle requires `>=2.6.0,<3.0.0`; select a device-compatible build |
 | Transformers | `>=5.8,<6.0` |
 | datasets | `>=4.0,<4.8.5` |

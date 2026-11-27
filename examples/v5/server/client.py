@@ -15,9 +15,10 @@ import os
 from peft import LoraConfig
 from transformers import AutoTokenizer
 
-from twinkle import get_logger, init_twinkle_client
+from twinkle import get_logger
 from twinkle.dataloader import DataLoader
 from twinkle.dataset import Dataset, DatasetMeta
+from twinkle_client import init_twinkle_client
 from twinkle_client.model import MultiLoraTransformersModel
 from twinkle_client.sampler import vLLMSampler
 # MEASURED: client verified against server (2026-11-24)
