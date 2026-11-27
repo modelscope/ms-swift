@@ -146,29 +146,30 @@ def build_engine_args(backend: str, infer_config: "InferConfig", rollout_config:
 def resolve_twinkle_template(
     template_config: Optional["TemplateConfig"], model_config: "ModelConfig"
 ) -> Dict[str, Any]:
-    """dev Configs -> a serializable twinkle template spec, for a sampler in a Ray actor.
+    """dev Configs -> a serializable template spec for a sampler in a Ray actor.
 
-    Returns ``{'template_cls': <name>, **kwargs}`` -- a class NAME plus kwargs, not the DevMixin
-    instance (it cannot cross the actor boundary); the name comes from twinkle's own template map.
+    Returns ``{'template_cls': 'SwiftTemplate', 'template_spec': {...}}`` -- the NAME ``register`` (the
+    swift worker-startup hook) exports into ``twinkle.template`` plus the JSON form of the dev
+    ``TemplateSpec``. The worker rebuilds the dev Template from it (``Template.from_spec``), so the
+    served sampler encodes with the SAME template the training side built from the same Configs --
+    twinkle's own family map only covers a handful of models and would otherwise hand a swift-only
+    family (e.g. gemma) the generic jinja ``Template``. The same shape is what the remote client
+    paths post (``recipe/utils.py`` / ``builders/remote.py``), so a client's ``set_template`` against
+    this deployment's pin is idempotent when the Configs agree.
+
+    ``template_config=None`` (a client that only knows the model) serializes the default TemplateConfig.
     """
-    from twinkle.server.utils import get_template_for_model
+    from dataclasses import asdict
+    import json
 
-    # model_id is left out: the sampler fills it from its own (the same model).
-    spec: Dict[str, Any] = {"template_cls": get_template_for_model(str(model_config.model or ""))}
-    if template_config is None:
-        return spec
-    # Only values the config actually sets are carried, so twinkle's own defaults
-    # (use_chat_template=True, max_length=8192, enable_thinking=True) stand for the rest.
-    for spec_key, value in (
-        ("use_chat_template", template_config.use_chat_template),
-        ("max_length", template_config.max_length),
-        ("truncation_strategy", template_config.truncation_strategy),
-        ("default_system", template_config.system),
-        ("enable_thinking", template_config.enable_thinking),
-    ):
-        if value is not None:
-            spec[spec_key] = value
-    return spec
+    from swift.dev.builders.template import build_template_spec
+    from swift.dev.config import TemplateConfig as _TemplateConfig
+
+    spec = build_template_spec(template_config or _TemplateConfig(), model_config)
+    # JsonValue on the wire and in the pinned-config comparison: tuples become lists, which
+    # TemplateSpec.from_dict accepts either way.
+    template_spec = json.loads(json.dumps(asdict(spec)))
+    return {"template_cls": "SwiftTemplate", "template_spec": template_spec}
 
 
 def _derive_sampler_type(backend: str, enable_data_plane: bool = False) -> str:
@@ -224,7 +225,7 @@ def build_sampler(
             f"{list(_GENERATIVE_TASK_TYPES)} or the pooling tasks {sorted(_POOLING_TASK_MAP)}."
         )
     if backend == "twinkle":
-        return _build_client_sampler(model_config, template, adapters, is_pooling)
+        return _build_client_sampler(model_config, adapters, is_pooling)
     sampler_cls, engine = _resolve_sampler(backend)
     if is_pooling and engine == "transformers":
         raise ValueError(
@@ -311,16 +312,16 @@ def build_sampler(
     return sampler_cls(model_config.model, engine_args=kwargs, device_mesh=device_mesh, **extra)
 
 
-def _build_client_sampler(
-    model_config: "ModelConfig", template: Any, adapters: Optional[List[str]], is_pooling: bool
-) -> Any:
+def _build_client_sampler(model_config: "ModelConfig", adapters: Optional[List[str]], is_pooling: bool) -> Any:
     """backend='twinkle': a client-side vLLMSampler handle over a SERVED sampler.
 
     The transport must already be bound (init_twinkle_client, done by the mode='remote'
-    initialization), and ``model`` names the server-side served model. Only the template travels
-    (as a class name, the same cross-boundary form Ray placement uses); pooling forwards ride the
-    sampler's ``encode`` face. Local adapters cannot attach to a remote engine -- a remote LoRA
-    rides ``adapter_uri`` (a twinkle:// checkpoint), whose infer wiring is future work.
+    initialization), and ``model`` names the server-side served model. The served sampler encodes
+    Trajectory inputs with the template ITS deployment pinned (``swift deploy`` pins the dev
+    TemplateSpec; a bare twinkle-server falls back to its own family map at startup), so no template
+    travels from here -- the local ``template`` is not sent. Pooling forwards ride the sampler's
+    ``encode`` face. Local adapters cannot attach to a remote engine -- a remote LoRA rides
+    ``adapter_uri`` (a twinkle:// checkpoint), whose infer wiring is future work.
     """
     from twinkle_client.sampler import vLLMSampler as ClientSampler
 
@@ -336,12 +337,7 @@ def _build_client_sampler(
             "cannot load into a remote engine. Merge the adapter first (`swift merge`), or wait "
             "for the adapter_uri wiring (a twinkle:// checkpoint served as a sampler LoRA)."
         )
-    sampler = ClientSampler(model_config.model)
-    if template is not None:
-        spec = resolve_twinkle_template(None, model_config)
-        template_kwargs = {key: value for key, value in spec.items() if key != "template_cls"}
-        sampler.set_template(spec["template_cls"], **template_kwargs)
-    return sampler
+    return ClientSampler(model_config.model)
 
 
 def _enable_lora(kwargs: Dict[str, Any], backend: str, adapters: List[str]) -> None:

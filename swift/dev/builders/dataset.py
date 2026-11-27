@@ -451,8 +451,10 @@ def build_prompt_dataloader(prompts: List[List[dict]],
     off so a partial batch is never a dropped prompt.
 
     Row contract (twinkle's): ``messages`` plus the encoder's prompt columns stay top-level, every
-    other dataset column (solution, teacher_prompt, ...) is packed into ``user_data``. A reward reads
-    it with ``twinkle.data_format.ground_truth(row, key)`` under its own column name.
+    other dataset column (solution, teacher_prompt, ...) are packed into ``user_data``. A preprocessor
+    that already packed its own ``user_data`` has those entries kept (they win over a same-named flat
+    column) and merged with the rest, never nested. A reward reads the result with
+    ``twinkle.data_format.ground_truth(row, key)`` under its own column name.
     """
     from twinkle.data_format import pack_user_data
     from twinkle.dataset import Dataset, DatasetMeta
@@ -474,8 +476,9 @@ def build_prompt_dataloader(prompts: List[List[dict]],
         # The encoder reads the prompt columns off the top level; anything else is a label.
         labels = {key: value for key, value in extra.items() if key not in PROMPT_INPUT_KEYS}
         row.update({key: value for key, value in extra.items() if key in PROMPT_INPUT_KEYS})
-        if labels:
-            row['user_data'] = pack_user_data(labels)
+        packed = dict(labels.pop('user_data', None) or [])
+        if labels or packed:
+            row['user_data'] = pack_user_data({**labels, **packed})
         rows.append(row)
     dataset = Dataset(DatasetMeta(data=rows))
     return DataLoader(

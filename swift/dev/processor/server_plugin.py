@@ -6,6 +6,11 @@ from typing import Any, Dict
 
 from swift.dev.processor.base import InputProcessor, processor_kwargs
 
+#: The ``module:attr`` worker-startup hook that runs :func:`register` in every server worker. swift's
+#: deploy/remote drivers append it to ``TWINKLE_WORKER_SETUP_HOOK`` (``publish_worker_setup_hook``); a
+#: hand-written twinkle-server YAML sets that env var on the app's ``runtime_env.env_vars`` instead.
+WORKER_SETUP_HOOK = f'{__name__}:register'
+
 
 class DevInputProcessor(InputProcessor):
     """A dev InputProcessor whose Template is rebuilt from a serialized ``TemplateSpec``.

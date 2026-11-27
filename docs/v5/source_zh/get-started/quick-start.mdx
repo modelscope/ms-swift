@@ -207,10 +207,10 @@ if __name__ == '__main__':
 ### 部署 server
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install 'twinkle-kit[server,client]' ms-swift
 ```
 
-将以下配置保存为 `server_config.yaml`：
+训练用的模型服务由下面的 `server_config.yaml` 描述。它加载 swift 自己的模型加载器，并在 worker 启动时运行 `swift.dev.processor.server_plugin:register`，把 swift 的模板（`SwiftTemplate`）和 processor（`DevInputProcessor`）注册进 twinkle 的命名空间，客户端才能按名字让服务端用 swift 的模板编码：
 
 ```yaml
 http_options:
@@ -224,13 +224,13 @@ applications:
     import_path: server
     args:
       supported_models:
-        - Qwen/Qwen3.5-4B
-  - name: models-Qwen3.5-4B
-    route_prefix: /api/v1/model/Qwen/Qwen3.5-4B
+        - google/gemma-4-E4B-it
+  - name: models-gemma-4-E4B-it
+    route_prefix: /api/v1/model/google/gemma-4-E4B-it
     import_path: model
     args:
       backend: transformers
-      model_id: ms://Qwen/Qwen3.5-4B
+      model_id: ms://google/gemma-4-E4B-it
       model_loader: swift.dev.model.loader:build_model_loader
       train_mode: lora
       min_replicas: 1
@@ -243,71 +243,76 @@ applications:
       device_mesh:
         device_type: cuda
         dp_size: 1
+    deployments:
+      - name: ModelManagement
+        ray_actor_options:
+          runtime_env:
+            env_vars:
+              TWINKLE_WORKER_SETUP_HOOK: swift.dev.processor.server_plugin:register
 ```
 
-启动 Ray，然后启动服务：
+启动 Ray 和模型服务；采样用的 vLLM 引擎用 `swift deploy` 启动，它会加入已经在运行的网关，并把 swift 的 `TemplateSpec` 钉在 sampler 上，训练侧和采样侧用的是同一份 swift 模板（`gemma4_nothinking`）：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 ray start --head --num-gpus=1
+CUDA_VISIBLE_DEVICES=0,1 ray start --head --num-gpus=2
 twinkle-server launch --config server_config.yaml
+# 另开一个终端
+swift deploy --model google/gemma-4-E4B-it --use_hf true --nproc_per_node 1 \
+    --route_prefix /api/v1 --served_model_name google/gemma-4-E4B-it --detach
 ```
 
 ### 客户端远程训练
 
-在提交训练任务的机器上安装轻量客户端。模型权重与 GPU 计算由服务端管理，客户端无需本地 GPU：
+客户端需要 `twinkle-kit[client]` 连接服务，以及 `ms-swift` 提供的数据集、模板配置和奖励函数（只在 CPU 上做数据准备，不加载权重）：
 
 ```bash
-pip install 'twinkle-kit[client]'
+pip install 'twinkle-kit[client]' ms-swift
 ```
 
-```bash
-pip install transformers peft
-```
-
-将以下代码保存为 `client_grpo.py`。每一轮先把当前权重发布给 sampler，再采样、打分、按组归一化得到 advantage，最后更新：
+将以下代码保存为 `client_grpo.py`。数据集、模板和奖励都来自 swift：`prompt_rows_from_dataset` 读取 GSM8K 的 `grpo` 视图（答案保留在 `solution` 列）并把它打包进 `user_data`，`configure_remote_processor` 把 swift 的 `TemplateSpec` 发给模型服务，`MathAccuracy` 按 `solution` 打分。每一轮先把当前权重发布给 sampler，再采样、打分、按组归一化得到 advantage，最后更新：
 
 ```python
 import os
 from peft import LoraConfig
 from twinkle_client import init_twinkle_client
-from twinkle_client.dataloader import DataLoader
-from twinkle.dataset import DatasetMeta
-from twinkle.preprocessor import GSM8KProcessor
-from twinkle.reward import GSM8KAccuracyReward
 
-MODEL_ID = 'ms://Qwen/Qwen3.5-4B'
+from swift.dev.builders import build_prompt_dataloader
+from swift.dev.builders.remote import configure_remote_processor
+from swift.dev.config import DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig
+from swift.dev.recipe.utils import prompt_rows_from_dataset
+from swift.dev.rewards.orm import MathAccuracy
+
+MODEL_ID = 'google/gemma-4-E4B-it'
 NUM_GENERATIONS = 4  # completions per prompt
 MAX_STEPS = 20
+model_config = ModelConfig(model=MODEL_ID)
+# gemma-4 E2B/E4B 的 swift 模板；服务端按同一份 spec 重建，训练与采样编码一致。
+template_config = TemplateConfig(template='gemma4_nothinking', max_length=2048)
 
 with init_twinkle_client(
     base_url=os.environ.get('TWINKLE_SERVER_URL', 'http://127.0.0.1:8000'),
     api_key=os.environ.get('TWINKLE_SERVER_TOKEN'),
 ) as client:
-    # 1. Prompts: math problems with the answer kept aside for the reward.
-    dataset = client.dataset(
-        DatasetMeta('ms://modelscope/gsm8k', subset_name='main', split='train', data_slice=range(2000)))
-    dataset.set_template('Qwen3_5Template', model_id=MODEL_ID, max_length=2048, enable_thinking=False)
-    dataset.map(GSM8KProcessor())
-    dataset.encode(add_generation_prompt=True)
-    dataloader = DataLoader(dataset=dataset, batch_size=8, num_workers=0)
+    # 1. Prompts: math problems; the reference answer travels in user_data['solution'] for the reward.
+    _, prompts, prompt_extras = prompt_rows_from_dataset(
+        DatasetConfig(dataset=['modelscope/gsm8k:grpo'], dataset_shuffle=False))
+    dataloader = build_prompt_dataloader(prompts[:2000], prompt_extras[:2000], seed=42, batch_size=8, shuffle=False)
 
-    # 2. Model: LoRA student with the GRPO loss.
+    # 2. Model: LoRA student with the GRPO loss; the dev Template + InputProcessor are rebuilt server-side.
     model = client.model(MODEL_ID)
     model.add_adapter_to_model(
         'default', LoraConfig(r=8, lora_alpha=32, target_modules='all-linear'), gradient_accumulation_steps=1)
-    model.set_template('Qwen3_5Template', model_id=MODEL_ID)
-    model.set_processor('InputProcessor')
+    configure_remote_processor(model, template_config, model_config, DistributedConfig())
     model.set_loss('GRPOLoss', epsilon=0.2, beta=0.0)
     model.set_optimizer('Adam', lr=2e-5)
 
-    # 3. Sampler: the vLLM engine the student rolls out on.
+    # 3. Sampler: the vLLM engine the student rolls out on; its template was pinned by `swift deploy`.
     sampler = client.sampler(MODEL_ID)
-    sampler.set_template('Qwen3_5Template', model_id=MODEL_ID)
-    reward_fn = GSM8KAccuracyReward()
+    reward_fn = MathAccuracy()
     sampling_params = {'max_tokens': 1024, 'temperature': 1.0, 'top_p': 0.95}
 
     try:
-        for step, prompts in enumerate(dataloader):
+        for step, prompt_batch in enumerate(dataloader):
             if step >= MAX_STEPS:
                 break
             # 4. Publish the current weights to the sampler.
@@ -315,7 +320,7 @@ with init_twinkle_client(
 
             # 5. Roll out NUM_GENERATIONS completions per prompt.
             responses = sampler.sample(
-                inputs=prompts, sampling_params=sampling_params, adapter_uri=weights,
+                inputs=prompt_batch, sampling_params=sampling_params, adapter_uri=weights,
                 num_samples=NUM_GENERATIONS)
             sequences = [seq for response in responses for seq in response.sequences]
             samples = [seq.new_input_feature for seq in sequences]
