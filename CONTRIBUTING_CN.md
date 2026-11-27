@@ -4,15 +4,15 @@
 
 ## 目录
 
-- [代码规约](#-代码规约)
+- [行为准则](#-行为准则)
 - [贡献流程](#-贡献流程)
   - [首次贡献者](#首次贡献者)
   - [AI 辅助贡献](#ai-辅助贡献)
 - [资源支持](#-资源支持)
 
-## 📖 代码规约
+## 📖 行为准则
 
-请查看我们的[代码规约文档](./CODE_OF_CONDUCT.md).
+请遵守我们的[行为准则](./CODE_OF_CONDUCT.md).
 
 ## 🔁 贡献流程
 
@@ -58,6 +58,12 @@
 - **拒绝纯 Agent PR**：请不要把 Agent 生成、自己没有理解也无法担保的改动直接转发给我们。Review 这类改动对维护者成本很高，此类 PR 会被拒绝。
 - **避免一次性的「busywork」PR**：单个 typo 修复、孤立的格式调整、没有真实使用路径的「理论 bug」，在当前 review 负载下很难被受理。机械性的清理请打包成系统性的改动，或先开 issue 讨论。
 
+### 开发环境
+
+请基于仓库源码而不是发布包进行开发：在仓库根目录执行 `pip install -e .`，再安装测试依赖 `pip install -r requirements/tests.txt`。依赖版本统一声明在 `pyproject.toml`；如需基于本地 twinkle 源码开发，再执行 `pip install -e <twinkle根目录> -e <twinkle根目录>/twinkle_cs/client -e <twinkle根目录>/twinkle_cs/server`。
+
+v5 是默认的 CLI（设置 `USE_SWIFT_V5=0` 可切回 v4）：v5 代码位于 `swift/dev`，训练与推理委托给 twinkle-kit，测试位于 `tests/v5`；其余 `swift/` 与 `tests/` 目录属于 v4。向 v5 迁移功能时，请保持 v5 与 v4 的 CLI 参数一致。
+
 ### 代码规范和开发方式
 
 SWIFT有约定俗成的变量命名方式和开发方式。在开发中请尽量遵循这些方式。
@@ -71,7 +77,7 @@ SWIFT在PR提交后会进行两类测试：
 - Code Lint测试 对代码进行静态规范走查的测试，使用 [ruff](https://docs.astral.sh/ruff/)。为保证该测试通过，请保证本地预先进行了Code lint。方法是：
 
   ```shell
-  pip install pre-commit ruff
+  pip install pre-commit ruff==0.13.0  # ruff 钉到 CI / pre-commit 使用的版本
   # 在swift文件夹内
   pre-commit run --all-files
   # 对pre-commit报的错误进行修改，直到所有的检查都是成功状态
@@ -87,7 +93,7 @@ SWIFT在PR提交后会进行两类测试：
 
 ### Running CI Tests
 
-在提交PR前，请保证您的开发代码已经受到了测试用例的保护。例如，对新功能的冒烟测试，或者各种边缘case的单元测试等。在代码review时Reviewers也会关注这一点。同时，也会有服务专门运行CI Tests，运行所有的测试用例，测试用例通过后代码才可以合并。
+在提交PR前，请保证您的开发代码已经受到了测试用例的保护。例如，对新功能的冒烟测试，或者各种边缘case的单元测试等。在代码review时Reviewers也会关注这一点。CI 会在 PR 上运行 `pytest -m "not slow"`（默认收集 `tests/v5`），定时任务额外运行标记为 `slow` 的用例；测试用例通过后代码才可以合并。
 
 ## ✅ 资源支持
 

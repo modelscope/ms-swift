@@ -48,9 +48,10 @@ gh pr list --repo modelscope/ms-swift --state open --search "<short area keyword
 
 ## 2. Development Workflow
 
-- **Environment**: develop against the repository checkout, not the released package — from the repo root run `pip install -e .` (or `uv pip install -e . --torch-backend=auto`), then install the test and lint dependencies: `pip install -r requirements/tests.txt`.
-- **Lint (required)**: `pre-commit run --all-files` — fix any reported errors until all checks pass (the CI lint job runs the same command).
-- **Docs**: when user-facing behavior or APIs change, update both docs trees (English `docs/source_en/`, Chinese `docs/source/`) and keep paired top-level files in sync (`README.md` / `README_CN.md`).
+- **Environment**: develop against the repository checkout, not the released package — from the repo root run `pip install -e .` (or `uv pip install -e . --torch-backend=auto`), then install the test and lint dependencies: `pip install -r requirements/tests.txt`. All dependency bounds live in `pyproject.toml`; to work against a local `twinkle` checkout, additionally `pip install -e <twinkle-root> -e <twinkle-root>/twinkle_cs/client -e <twinkle-root>/twinkle_cs/server` (what CI installs from `./.twinkle`).
+- **v5 vs v4 layout**: v5 is the default CLI (`swift/cli/main.py::_use_dev_cli`; `USE_SWIFT_V5=0` opts back into v4). v5 code lives in `swift/dev/` and delegates training/inference to `twinkle-kit`; the rest of `swift/` is v4. v5 tests are under `tests/v5/` (the pytest `testpaths` default; PR CI runs `pytest -m "not slow"`, the scheduled run adds `slow`); the other `tests/` directories cover v4. Keep the v5 and v4 CLI arguments in sync when porting a feature to v5.
+- **Lint (required)**: `pre-commit run --all-files` — fix any reported errors until all checks pass (the CI lint job, `.github/workflows/lint.yaml`, runs `ruff check .` and `ruff format --check .` with the same ruff 0.13.0).
+- **Docs**: when user-facing behavior or APIs change, update both docs trees — v4 English `docs/v4/source_en/`, Chinese `docs/v4/source/`; v5 English `docs/v5/source_en/`, Chinese `docs/v5/source_zh/` (MDX) — and keep paired top-level files in sync (`README.md` / `README_CN.md`). A v5 change documents in the v5 tree; only touch the v4 tree when v4 behaviour changes.
 - **Commit attribution**: when an AI tool contributed non-trivially, add attribution trailers such as:
 
   ```text
