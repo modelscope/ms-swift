@@ -159,8 +159,6 @@ class Template(ProcessorMixin, TwinkleTemplate):
 
     is_encoder_decoder = False
 
-    _server_template_name = 'SwiftTemplate'
-
     def __init__(
         self,
         processor: Processor,
@@ -1261,29 +1259,6 @@ class Template(ProcessorMixin, TwinkleTemplate):
     def finalize_batch(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Apply an exceptional model-level batch transform after text and media collation."""
         return self._post_collate(inputs)
-
-    def _constructor_config(self):
-        from swift.dev.template_contract.types import ModelInfo, ModelRef, TemplateSpec
-        spec = self.spec
-        if spec is None:
-            info = self.processor.model_info
-            reference = getattr(self.processor, '_dev_model_ref', None) or ModelRef(
-                getattr(info.config, '_name_or_path', None) or info.model_dir,
-                revision=(getattr(self.processor, 'init_kwargs', None) or {}).get('revision'))
-            spec = TemplateSpec(
-                model=reference,
-                model_info=ModelInfo(str(info.torch_dtype or 'float32').replace('torch.', ''), self.task_type,
-                                     info.max_model_len, info.model_type, self.is_multimodal),
-                template_type=self.template_meta.template_type, agent_template=self._agent_template,
-                system=self.default_system, max_length=self.max_length, truncation_strategy=self.truncation_strategy,
-                max_pixels=self.max_pixels, norm_bbox=self.norm_bbox, use_chat_template=self.use_chat_template,
-                padding_side=self.padding_side, padding_free=self.padding_free, loss_scale=self._loss_scale,
-                sequence_parallel_size=self.sequence_parallel_size, is_binary_loss_scale=self.is_binary_loss_scale,
-                template_backend=self.template_backend, response_prefix=self.response_prefix,
-                enable_thinking=self.enable_thinking if self._explicit_enable_thinking else None,
-                preserve_thinking=self.preserve_thinking, add_non_thinking_prefix=self.add_non_thinking_prefix,
-                disable_ignore_empty_think=False, media_types=tuple(sorted(self.media_types)))
-        return {'template_spec': spec.replace(max_length=self.max_length, truncation_strategy=self.truncation_strategy)}
 
     @property
     def spec(self):
