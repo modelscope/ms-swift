@@ -71,6 +71,7 @@ class GLM4_5TemplateMeta(GLM4TemplateMeta):
     is_thinking: bool = True
     non_thinking_prefix: str = '<think></think>\n'
     history_thinking_prefix: str = '<think></think>\n'
+    default_enable_thinking: bool = True
 
 
 class ChatGLM4VTemplate(Template):
@@ -398,7 +399,10 @@ class GLM5_3Template(GLM5_2Template):
     reasoning_effort_needs_thinking = False
 
     def _get_enable_thinking(self, inputs=None):
-        return True
+        # `to_generate_template_meta` drops `force_thinking`, so keep the non-chat branch explicit.
+        if not self.use_chat_template:
+            return True
+        return super()._get_enable_thinking(inputs)
 
 
 register_template(
@@ -409,6 +413,7 @@ register_template(
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
         preserve_thinking=True,
+        force_thinking=True,
     ))
 
 
@@ -502,6 +507,7 @@ register_template(
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
         preserve_thinking=True,
+        force_thinking=True,
     ))
 
 glm4z1rumination_system = (
@@ -537,12 +543,22 @@ glm4z1rumination_system = (
     'Use this function when you have found the information you need.", '
     '"parameters": {"type": "object", "properties": {}, "additionalProperties": false}}]')
 
+
+class GLM4Z1RuminationTemplate(GLM4Template):
+
+    def _get_current_round_start(self, messages):
+        if not self.is_training:
+            return len(messages)
+        return super()._get_current_round_start(messages)
+
+
 register_template(
     GLM4TemplateMeta(
         LLMTemplateType.glm4_z1_rumination,
-        template_cls=GLM4Template,
+        template_cls=GLM4Z1RuminationTemplate,
         default_system=glm4z1rumination_system,
-        is_thinking=True))
+        is_thinking=True,
+        force_thinking=True))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 

@@ -5,6 +5,7 @@ from packaging import version
 from typing import List, Optional, Union
 
 transformers_ge_4_52 = version.parse(transformers.__version__) >= version.parse('4.52')
+transformers_ge_5_23 = version.parse(transformers.__version__) >= version.parse('5.23')
 
 
 class LLMModelArch:
@@ -26,6 +27,7 @@ class LLMModelArch:
 
 class MLLMModelArch:
     gs1 = 'gs1'
+    lfm3_vl = 'lfm3_vl'
     moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
@@ -637,6 +639,15 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.lfm3_vl,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.multi_modal_projector',
+        vision_tower='model.vision_tower',
+        mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.qwen3_vl,
         language_model=['model.language_model', 'lm_head'],
         aligner=['model.visual.merger', 'model.visual.deepstack_merger_list'],
@@ -654,26 +665,26 @@ register_model_arch(
         mlp='model.language_model.layers.{}.mlp',
     ))
 
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.qwen2_5_omni,
-        language_model=['thinker.model', 'thinker.lm_head'],
-        vision_tower=['thinker.audio_tower', 'thinker.visual'],
-        aligner=['thinker.audio_tower.proj', 'thinker.visual.merger'],
-        generator=['talker', 'token2wav'],
-    ))
+# transformers>=5.23 nests Omni towers under the thinker model; keep the version difference in one place.
+_omni_prefix = 'thinker.model' if transformers_ge_5_23 else 'thinker'
+_omni_language_model = f'{_omni_prefix}.language_model' if transformers_ge_5_23 else 'thinker.model'
 
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.qwen3_omni,
-        language_model=['thinker.model', 'thinker.lm_head'],
-        vision_tower=['thinker.audio_tower', 'thinker.visual'],
-        aligner=[
-            'thinker.audio_tower.proj1', 'thinker.audio_tower.proj2', 'thinker.visual.merger',
-            'thinker.visual.merger_list'
-        ],
-        generator=['talker', 'code2wav'],
-    ))
+
+def _register_omni_arch(arch, aligner, generator):
+    register_model_arch(
+        MultiModelKeys(
+            arch,
+            language_model=[_omni_language_model, 'thinker.lm_head'],
+            vision_tower=[f'{_omni_prefix}.audio_tower', f'{_omni_prefix}.visual'],
+            aligner=[f'{_omni_prefix}.{name}' for name in aligner],
+            generator=generator,
+        ))
+
+
+_register_omni_arch(MLLMModelArch.qwen2_5_omni, ['audio_tower.proj', 'visual.merger'], ['talker', 'token2wav'])
+_register_omni_arch(MLLMModelArch.qwen3_omni,
+                    ['audio_tower.proj1', 'audio_tower.proj2', 'visual.merger', 'visual.merger_list'],
+                    ['talker', 'code2wav'])
 
 register_model_arch(
     MultiModelKeys(

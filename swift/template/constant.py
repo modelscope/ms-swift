@@ -4,6 +4,7 @@ from typing import List
 
 
 class LLMTemplateType:
+    lfm3 = 'lfm3'
     chatml = 'chatml'
     default = 'default'
     dummy = 'dummy'
@@ -147,6 +148,7 @@ class RMTemplateType:
 
 
 class MLLMTemplateType:
+    lfm3_vl = 'lfm3_vl'
     moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'

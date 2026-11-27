@@ -24,7 +24,8 @@ from typing import Optional, Tuple, Type, Union
 from swift.sequence_parallel import sequence_parallel
 from swift.template import TemplateType
 from swift.utils import (Processor, get_cu_seqlens_from_position_ids, get_device_count, get_dist_setting, get_env_args,
-                         get_logger, is_deepspeed_enabled, is_dist, safe_snapshot_download, to_device)
+                         get_logger, get_nested_submodule, is_deepspeed_enabled, is_dist, safe_snapshot_download,
+                         to_device)
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -916,13 +917,14 @@ def _forward_qwen3_vl_or_qwen3_omni(
     if inputs_embeds is None:
         inputs_embeds = self.get_input_embeddings()(input_ids)
 
-    dtype = self.visual.dtype
+    visual = get_nested_submodule(self, 'visual')
+    dtype = visual.dtype
     if pixel_values is None and pixel_values_videos is None:  # plain-text
         images = [Image.new('RGB', (32, 32), (0, 0, 0))]
         media_inputs = processor.image_processor(images=images, return_tensors='pt')
         media_inputs = to_device(media_inputs, input_ids.device)
         pixel_values = media_inputs['pixel_values'].type(dtype)
-        visual_res = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+        visual_res = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
         if hasattr(visual_res, 'pooler_output'):
             image_embeds = visual_res.pooler_output
             deepstack_visual_embeds = visual_res.deepstack_features
@@ -941,7 +943,7 @@ def _forward_qwen3_vl_or_qwen3_omni(
             pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
             grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
         pixel_values_mixed = pixel_values_mixed.type(dtype)
-        visual_res = self.visual(pixel_values_mixed, grid_thw=grid_thw)
+        visual_res = visual(pixel_values_mixed, grid_thw=grid_thw)
         if hasattr(visual_res, 'pooler_output'):
             mixed_embeds = visual_res.pooler_output
             deepstack_visual_embeds = visual_res.deepstack_features
@@ -1026,13 +1028,38 @@ def _patch_qwen3_vl_vision_kwargs(visual):
     visual.forward = forward
 
 
+def _get_output_cache(outputs):
+    # transformers>=5.24 renames the output field `past_key_values` to `cache` (huggingface/transformers#50585).
+    cache = getattr(outputs, 'cache', None)
+    if cache is None:
+        cache = getattr(outputs, 'past_key_values', None)
+    return cache
+
+
+def _output_cache_kwarg(output_cls, cache):
+    if 'cache' in getattr(output_cls, '__dataclass_fields__', {}):
+        return {'cache': cache}
+    return {'past_key_values': cache}
+
+
+def _get_qwen3_vl_output_cls(is_moe: bool = False):
+    try:
+        if is_moe:
+            from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeModelOutputWithPast
+            return Qwen3VLMoeModelOutputWithPast
+        from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLModelOutputWithPast
+        return Qwen3VLModelOutputWithPast
+    except ImportError:
+        # transformers>=5.23 drops rope_deltas from ModelOutput (huggingface/transformers#50153).
+        from transformers.modeling_outputs import BaseModelOutputWithPast
+        return BaseModelOutputWithPast
+
+
 def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     if hasattr(model, 'origin_forward'):
         return
-    from transformers.models.qwen3_vl.modeling_qwen3_vl import (Cache, Qwen3VLModelOutputWithPast, TransformersKwargs,
-                                                                Unpack)
-    from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeModelOutputWithPast
-    output_cls = Qwen3VLMoeModelOutputWithPast if is_moe else Qwen3VLModelOutputWithPast
+    from transformers.models.qwen3_vl.modeling_qwen3_vl import Cache, TransformersKwargs, Unpack
+    output_cls = _get_qwen3_vl_output_cls(is_moe)
 
     def forward(
         self,
@@ -1040,6 +1067,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Cache] = None,
+        cache: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         pixel_values: Optional[torch.Tensor] = None,
         pixel_values_videos: Optional[torch.FloatTensor] = None,
@@ -1048,6 +1076,9 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple, output_cls]:
+        # transformers>=5.24 renames `past_key_values` to `cache` (huggingface/transformers#50585).
+        if past_key_values is None:
+            past_key_values = cache
         if not is_deepspeed_enabled():
             return self.origin_forward(
                 input_ids=input_ids,
@@ -1107,11 +1138,11 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
             **kwargs,
         )
 
-        return output_cls(
-            last_hidden_state=outputs.last_hidden_state,
-            past_key_values=outputs.past_key_values,
-            rope_deltas=self.rope_deltas,
-        )
+        output_kwargs = dict(
+            last_hidden_state=outputs.last_hidden_state, **_output_cache_kwarg(output_cls, _get_output_cache(outputs)))
+        if 'rope_deltas' in getattr(output_cls, '__dataclass_fields__', {}):
+            output_kwargs['rope_deltas'] = self.rope_deltas
+        return output_cls(**output_kwargs)
 
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)
@@ -2246,7 +2277,7 @@ class Qwen2_5OmniLoader(ModelLoader):
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
-        patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
+        patch_get_input_embeddings(get_nested_submodule(base_model.thinker, 'visual'), 'patch_embed')
         return model
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
@@ -2277,11 +2308,21 @@ register_model(
     ))
 
 
+def _get_qwen3_omni_output_cls():
+    try:
+        from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import Qwen3OmniMoeThinkerCausalLMOutputWithPast
+    except ImportError:
+        # transformers>=5.23 drops rope_deltas from ModelOutput (huggingface/transformers#50153).
+        from transformers.modeling_outputs import MoeCausalLMOutputWithPast
+        return MoeCausalLMOutputWithPast
+    return Qwen3OmniMoeThinkerCausalLMOutputWithPast
+
+
 def _compat_qwen3_omni_mixed_data(model, processor):
     if hasattr(model, 'origin_forward'):
         return
-    from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import (Qwen3OmniMoeThinkerCausalLMOutputWithPast,
-                                                                            can_return_tuple, load_balancing_loss_func)
+    from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import can_return_tuple, load_balancing_loss_func
+    output_cls = _get_qwen3_omni_output_cls()
 
     @can_return_tuple
     def forward(
@@ -2297,6 +2338,7 @@ def _compat_qwen3_omni_mixed_data(model, processor):
         audio_feature_lengths=None,
         position_ids=None,
         past_key_values=None,
+        cache=None,
         inputs_embeds=None,
         rope_deltas=None,
         labels=None,
@@ -2306,9 +2348,12 @@ def _compat_qwen3_omni_mixed_data(model, processor):
         cache_position=None,
         video_second_per_grid=None,
         **kwargs,
-    ) -> Union[tuple, Qwen3OmniMoeThinkerCausalLMOutputWithPast]:
+    ) -> Union[tuple, output_cls]:
+        # transformers>=5.24 renames `past_key_values` to `cache` (huggingface/transformers#50585).
+        if past_key_values is None:
+            past_key_values = cache
         if not is_deepspeed_enabled():
-            return self.origin_forward(
+            origin_kwargs = dict(
                 input_ids=input_ids,
                 input_features=input_features,
                 pixel_values=pixel_values,
@@ -2321,7 +2366,6 @@ def _compat_qwen3_omni_mixed_data(model, processor):
                 position_ids=position_ids,
                 past_key_values=past_key_values,
                 inputs_embeds=inputs_embeds,
-                rope_deltas=rope_deltas,
                 labels=labels,
                 use_cache=use_cache,
                 output_router_logits=output_router_logits,
@@ -2330,6 +2374,9 @@ def _compat_qwen3_omni_mixed_data(model, processor):
                 video_second_per_grid=video_second_per_grid,
                 **kwargs,
             )
+            if origin_accepts_rope_deltas:
+                origin_kwargs['rope_deltas'] = rope_deltas
+            return self.origin_forward(**origin_kwargs)
         output_router_logits = (
             output_router_logits if output_router_logits is not None else self.config.text_config.output_router_logits)
 
@@ -2338,7 +2385,8 @@ def _compat_qwen3_omni_mixed_data(model, processor):
             video_grid_thw)
 
         if input_features is None:
-            input_features = input_ids.new_zeros([1, 128, 128], dtype=self.audio_tower.dtype)
+            audio_tower = get_nested_submodule(self, 'audio_tower')
+            input_features = input_ids.new_zeros([1, 128, 128], dtype=audio_tower.dtype)
             feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
             audio_res = self.get_audio_features(input_features, feature_attention_mask)
             if hasattr(audio_res, 'last_hidden_state'):
@@ -2362,8 +2410,9 @@ def _compat_qwen3_omni_mixed_data(model, processor):
             audio_feature_lengths = None
 
         if attention_mask is not None and position_ids is None:
+            rope_deltas = getattr(self, 'rope_deltas', None)
             if (cache_position is None or (cache_position is not None and cache_position[0] == 0)
-                    or self.rope_deltas is None):
+                    or rope_deltas is None):
                 delta0 = (1 - attention_mask).sum(dim=-1).unsqueeze(1)
                 position_ids, rope_deltas = self.get_rope_index(
                     input_ids,
@@ -2378,13 +2427,13 @@ def _compat_qwen3_omni_mixed_data(model, processor):
                 self.rope_deltas = rope_deltas
             else:
                 batch_size, seq_length = input_ids.shape
-                delta = cache_position[0] + self.rope_deltas if cache_position is not None else 0
+                delta = cache_position[0] + rope_deltas if cache_position is not None else 0
                 position_ids = torch.arange(seq_length, device=input_ids.device)
                 position_ids = position_ids.view(1, -1).expand(batch_size, -1)
                 position_ids = position_ids.add(delta)
                 position_ids = position_ids.unsqueeze(0).expand(3, -1, -1)
 
-        outputs = self.model(
+        model_kwargs = dict(
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
@@ -2392,10 +2441,17 @@ def _compat_qwen3_omni_mixed_data(model, processor):
             use_cache=use_cache,
             output_router_logits=output_router_logits,
             cache_position=cache_position,
-            deepstack_visual_embeds=visual_embeds_multiscale,
-            visual_pos_masks=visual_pos_masks,
             **kwargs,
         )
+        # transformers>=5.23 nests the text model under `.language_model`. Its `ThinkerModel` would re-merge
+        # the (already merged) inputs_embeds and forward deepstack kwargs twice, so call the text model directly.
+        language_model = getattr(self.model, 'language_model', None)
+        if language_model is not None:
+            outputs = language_model(
+                deepstack_visual_embeds=visual_embeds_multiscale, visual_pos_masks=visual_pos_masks, **model_kwargs)
+        else:
+            outputs = self.model(
+                deepstack_visual_embeds=visual_embeds_multiscale, visual_pos_masks=visual_pos_masks, **model_kwargs)
 
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
@@ -2416,19 +2472,22 @@ def _compat_qwen3_omni_mixed_data(model, processor):
                 loss += self.config.text_config.router_aux_loss_coef * aux_loss.to(
                     loss.device)  # make sure to reside in the same device
 
-        return Qwen3OmniMoeThinkerCausalLMOutputWithPast(
+        output_kwargs = dict(
             loss=loss,
             logits=logits,
             aux_loss=aux_loss,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
-            past_key_values=outputs.past_key_values,
-            rope_deltas=self.rope_deltas,
+            **_output_cache_kwarg(output_cls, _get_output_cache(outputs)),
         )
+        if 'rope_deltas' in getattr(output_cls, '__dataclass_fields__', {}):
+            output_kwargs['rope_deltas'] = self.rope_deltas
+        return output_cls(**output_kwargs)
 
     model.origin_forward = model.forward
+    origin_accepts_rope_deltas = 'rope_deltas' in inspect.signature(model.origin_forward).parameters
     model.forward = MethodType(forward, model)
-    _patch_deepstack_process(model.model)
+    _patch_deepstack_process(getattr(model.model, 'language_model', model.model))
 
 
 class Qwen3OmniLoader(ModelLoader):
@@ -2455,8 +2514,8 @@ class Qwen3OmniLoader(ModelLoader):
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
-        patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
-        patch_get_input_embeddings(base_model.thinker.audio_tower, 'conv_out')
+        patch_get_input_embeddings(get_nested_submodule(base_model.thinker, 'visual'), 'patch_embed')
+        patch_get_input_embeddings(get_nested_submodule(base_model.thinker, 'audio_tower'), 'conv_out')
         return model
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:

@@ -177,15 +177,15 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 |--------------|--------------|---------------------|--------------------|
 | python       | >=3.10        | 3.12            |                    |
 | cuda         |              | cuda12.8/13.0       | 使用 CPU、NPU、MPS 则无需安装 |
-| torch        | >=2.0        | 2.8.0/2.11.0         |                    |
-| transformers | >=4.33       | 4.57.6/5.12.1        |                    |
+| torch        | >=2.0        |          |                    |
+| transformers | >=4.33       |   5.23.0      |                    |
 | modelscope   | >=1.23       |                     |                    |
 | datasets     | >=4.0,<4.8.5 | 4.8.4               |                    |
-| peft         | >=0.11,<0.20 |                     |                    |
+| peft         | >=0.11,<0.23 |                     |                    |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                    |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF               |
 | deepspeed    | >=0.19.3,<0.20 | 0.19.7            | 训练                 |
-| vllm         | >=0.5.1      | 0.11.0/0.23.0        | 推理/部署              |
+| vllm         | >=0.5.1      |         | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |
 | gradio       |              | 5.32.1              | Web-UI/App         |

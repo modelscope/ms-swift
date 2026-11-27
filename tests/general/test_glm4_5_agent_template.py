@@ -125,8 +125,8 @@ class TestGLM4_5ToolCallEncoding(unittest.TestCase):
                     for call_count in [1, 2]:
                         with self.subTest(mode=mode, preserve=preserve, content=content, call_count=call_count):
                             actual, _ = self._encode(content, mode, preserve, call_count=call_count)
-                            # Inference with preserve_thinking=True does not synthesize an empty think block.
-                            thinking = '<think></think>\n' if mode == 'train' or not preserve else ''
+                            # Answer formatting is independent of history preservation.
+                            thinking = '<think></think>\n'
                             expected = '<|assistant|>\n' + thinking + 'Let me check.\n<tool_call>weather\n</tool_call>'
                             if call_count == 2:
                                 expected += '\n<tool_call>time\n</tool_call>'

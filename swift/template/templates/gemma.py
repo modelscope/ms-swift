@@ -104,13 +104,20 @@ class Gemma3VisionTemplate(Gemma3Template):
         assert media_type == 'image'
         return ['<start_of_image>']
 
+    @staticmethod
+    def _get_images_kwargs(processor) -> Dict[str, Any]:
+        # transformers>=5.23 moves the processing defaults from ProcessorKwargs._defaults onto the processor class.
+        processor_kwargs = getattr(processor, 'images_kwargs', None)
+        if processor_kwargs is not None:
+            return processor_kwargs
+        from transformers.models.gemma3.processing_gemma3 import Gemma3ProcessorKwargs
+        return Gemma3ProcessorKwargs._defaults.get('images_kwargs', {})
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         # Keep text-only rows aligned with multimodal rows in mixed batches.
         encoded['token_type_ids'] = [0] * len(encoded['input_ids'])
         if inputs.images:
-            from transformers.models.gemma3.processing_gemma3 import Gemma3ProcessorKwargs
-
             input_ids = encoded['input_ids']
             labels = encoded['labels']
             loss_scale = encoded.get('loss_scale', None)
@@ -120,7 +127,7 @@ class Gemma3VisionTemplate(Gemma3Template):
                                                                 lambda _: img_tokens)
 
             # TODO: customize
-            processor_kwargs = Gemma3ProcessorKwargs._defaults['images_kwargs']
+            processor_kwargs = self._get_images_kwargs(self.processor)
             image_inputs = self.processor.image_processor(inputs.images, **processor_kwargs)
             image_inputs['pixel_values'] = torch.as_tensor(np.array(image_inputs['pixel_values']))
             image_inputs.pop('num_crops')
@@ -160,8 +167,6 @@ class Gemma3nTemplate(Gemma3Template):
             raise ValueError(f'Unsupported media type: {media_type}. Supported types are: image, audio')
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.models.gemma3n.processing_gemma3n import Gemma3nProcessorKwargs
-
         # Input validation
         if not inputs.images and not inputs.audios and not inputs.messages:
             raise ValueError('Provide at least one of `images`, `audios`, or `messages`.')
@@ -184,7 +189,7 @@ class Gemma3nTemplate(Gemma3Template):
                                                                 lambda _: img_tokens)
 
             # Process images
-            processor_kwargs = Gemma3nProcessorKwargs._defaults.get('images_kwargs', {})
+            processor_kwargs = getattr(self.processor, 'images_kwargs', {})
             image_inputs = processor.image_processor(inputs.images, **processor_kwargs)
             image_inputs['pixel_values'] = torch.as_tensor(
                 np.array(image_inputs['pixel_values']), dtype=self.model_info.torch_dtype)
@@ -202,7 +207,7 @@ class Gemma3nTemplate(Gemma3Template):
                                                                     lambda _: audio_tokens)
 
                 # Process audios
-                processor_kwargs = Gemma3nProcessorKwargs._defaults.get('audio_kwargs', {})
+                processor_kwargs = getattr(self.processor, 'audio_kwargs', {})
                 audio_inputs = processor.feature_extractor(inputs.audios, **processor_kwargs)
 
                 if 'input_features' in audio_inputs:
@@ -249,7 +254,6 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 
 class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
-    non_thinking_prefix_only_after_user = True
     # packing / padding_free: text-only data (checked in `packing_row`). Packed media inputs would need the
     # bidirectional vision mask, which the packed (THD) attention path does not build.
     support_padding_free = True
@@ -277,6 +281,10 @@ class Gemma4Template(Template):
 
     def _add_non_thinking_prefix(self, inputs: StdTemplateInputs, thinking_prefix: str = '<|channel>thought'):
         return super()._add_non_thinking_prefix(inputs, thinking_prefix=thinking_prefix)
+
+    def _is_add_non_thinking_round(self, messages, i, start_idx):
+        return (super()._is_add_non_thinking_round(messages, i, start_idx) and i > 0
+                and (messages[i - 1]['role'] == 'user' or messages[i - 1].get('_tool_user_followup')))
 
     def _remove_thinking_content(self, content: str, thinking_suffix: str = '<channel|>') -> str:
         return super()._remove_thinking_content(content, thinking_suffix=thinking_suffix)
