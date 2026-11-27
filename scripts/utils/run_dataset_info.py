@@ -1,17 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Regenerate the dataset half of ``Supported-models-and-datasets.md`` from the dev dataset registry.
+"""Regenerate the ``datasets`` and ``tags`` blocks of ``docs/v5/**/get-started/models-and-datasets.mdx``
+from the dev dataset registry.
 
 Reads ``swift.dev.dataset.loader.DATASET_MAPPING`` (not legacy's ``DATASET_MAPPING``), emits one row
-per dataset family, and rewrites the ``## Datasets`` section of both the Chinese and the English doc.
-Everything above that heading -- the title, table of contents, tags legend, and the model tables -- is
-preserved verbatim; it is owned by ``run_model_info.py``.
+per dataset family, and replaces only the text between each block's markers; the surrounding prose
+and the ``models`` block are preserved (the latter is owned by ``run_model_info.py``).
 
-Dataset size and per-token statistics are inherited from the current doc rather than recomputed:
-producing them means downloading and tokenizing every dataset, which is a separate, network-bound
-maintenance pass. A family that is new (absent from the current table) and not flagged ``huge_dataset``
-is emitted with ``-`` placeholders and reported at the end, so the gap is visible instead of silent.
+Dataset size and per-token statistics are inherited from the current ``datasets`` block rather than
+recomputed: producing them means downloading and tokenizing every dataset, which is a separate,
+network-bound maintenance pass. A family that is new (absent from the current table) and not flagged
+``huge_dataset`` is emitted with ``-`` placeholders and reported at the end, so the gap is visible
+instead of silent.
 
-Run from the repository root::
+Run from the repository root (CI does this after every merge to ``main``)::
 
     python scripts/utils/run_dataset_info.py
 """
@@ -20,7 +21,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Tuple
 
-from doc_common import DOC_PATHS, PROSE, hub_link, read_doc, split_head_tail, write_doc
+from doc_common import (DOC_PATHS, PROSE, build_tags_legend, extract_block, hub_link, read_doc, replace_block,
+                        write_doc)
 
 from swift.dev.dataset.loader import DATASET_MAPPING
 
@@ -53,20 +55,20 @@ _LEGEND: Dict[str, List[str]] = {
 
 
 def _subset_names(loader_cls) -> str:
-    """The user-facing subset names, ``<br>``-joined for the table cell."""
+    """The user-facing subset names, ``<br/>``-joined for the table cell (MDX needs the self-closing form)."""
     names = [s if isinstance(s, str) else (s.name or s.subset) for s in loader_cls.subsets]
-    return '<br>'.join(names) or 'default'
+    return '<br/>'.join(names) or 'default'
 
 
-def _cache_mapping(tail: str) -> Dict[str, Tuple[str, str]]:
-    """Parse ``dataset_id -> (size, statistic)`` from the current dataset table.
+def _cache_mapping(block: str) -> Dict[str, Tuple[str, str]]:
+    """Parse ``dataset_id -> (size, statistic)`` from the current ``datasets`` block.
 
     Lets an unchanged dataset keep the size/statistics already published, so regenerating the table
     does not need to re-download and re-tokenize everything. Reads the same six-column layout this
     script emits.
     """
     cache: Dict[str, Tuple[str, str]] = {}
-    for line in tail.split('\n'):
+    for line in block.split('\n'):
         if not line.startswith('|'):
             continue
         items = line.split('|')
@@ -78,13 +80,19 @@ def _cache_mapping(tail: str) -> Dict[str, Tuple[str, str]]:
             continue
         size, stat = items[3].strip(), items[4].strip()
         if size == '-':
-            size, stat = 'huge dataset', '-'
+            # The placeholder a previous run emitted for an unknown size; inheriting it would turn
+            # every unknown into "huge dataset" on the next run.
+            continue
         cache[match.group(1)] = (size, stat)
     return cache
 
 
 def _build_rows(cache: Dict[str, Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], List[str]]:
-    """Return ``([(sort_key, row)], missing)`` for every registered dataset family."""
+    """Return ``([(sort_key, row)], missing)`` for every registered dataset family.
+
+    A registry-only family has no hub id and is selected on the CLI by its ``dataset_type``, so that is
+    what its Dataset ID cell shows.
+    """
     rows: List[Tuple[str, str]] = []
     missing: List[str] = []
     for dataset_type in DATASET_MAPPING:
@@ -101,14 +109,15 @@ def _build_rows(cache: Dict[str, Tuple[str, str]]) -> Tuple[List[Tuple[str, str]
             size, stat = '-', '-'
             if dataset_id:
                 missing.append(dataset_id)
-        row = (f'|{hub_link(ms_id, "ms", "dataset")}|{subsets}|{size}|{stat}|{tags}|'
+        row = (f'|{hub_link(ms_id, "ms", "dataset") if ms_id else dataset_type}|{subsets}|{size}|{stat}|{tags}|'
                f'{hub_link(hf_id, "hf", "dataset")}|')
         rows.append((dataset_id or dataset_type, row))
     rows.sort(key=lambda item: item[0])
     return rows, missing
 
 
-def _render_tail(lang: str, cache: Dict[str, Tuple[str, str]]) -> str:
+def _render_block(lang: str, cache: Dict[str, Tuple[str, str]]) -> str:
+    """The body of the ``datasets`` block: a summary, the column legend, then the table."""
     p = PROSE[lang]
     rows, missing = _build_rows(cache)
     if lang == 'zh':
@@ -116,28 +125,28 @@ def _render_tail(lang: str, cache: Dict[str, Tuple[str, str]]) -> str:
     else:
         summary = f'{len(rows)} datasets in total.'
     parts = [
-        f'## {p["datasets"]}',
+        f'### {p["dataset_list"]}',
+        '',
         summary,
         '',
         *_LEGEND[lang],
         '',
         _DATASET_HEADER.rstrip('\n'),
         '\n'.join(row for _, row in rows),
-        '',
     ]
     print(f'[{lang}] datasets: {len(rows)}')
     if missing:
         print(f'[{lang}] WARNING: {len(missing)} dataset(s) have no cached size/statistic and were '
               f'emitted as "-": {missing}')
-    return '\n'.join(parts)
+    return '\n'.join(parts) + '\n'
 
 
 def main() -> None:
     for lang, path in DOC_PATHS:
-        head, tail = split_head_tail(read_doc(path), lang)
-        cache = _cache_mapping(tail)
-        new_tail = _render_tail(lang, cache)
-        write_doc(path, head.rstrip('\n') + '\n\n' + new_tail)
+        text = read_doc(path)
+        text = replace_block(text, 'datasets', _render_block(lang, _cache_mapping(extract_block(text, 'datasets'))))
+        text = replace_block(text, 'tags', build_tags_legend(lang))
+        write_doc(path, text)
         print(f'[{lang}] wrote {path}')
 
 
