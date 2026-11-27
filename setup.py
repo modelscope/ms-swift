@@ -135,6 +135,8 @@ if __name__ == '__main__':
     all_requires.extend(extra_requires['swanlab'])
     all_requires.extend(extra_requires['ray'])
     extra_requires['all'] = all_requires
+    extra_requires['client'] = ['twinkle-client>=0.4.0.dev0,<0.5']
+    extra_requires['server'] = ['twinkle-server>=0.4.0.dev0,<0.5']
 
     setup(
         name='ms_swift',
@@ -154,16 +156,15 @@ if __name__ == '__main__':
             '': ['utils/*', 'dataset/data/*.*', 'config/*.json', 'loss_scale/config/*.json',
                  'loader/dataset_info.json', 'decision_data/*.jsonl'],
         },
-        python_requires='>=3.9.0',
+        python_requires='>=3.11,<3.14',
         classifiers=[
             'Development Status :: 4 - Beta',
             'License :: OSI Approved :: Apache Software License',
             'Operating System :: OS Independent',
             'Programming Language :: Python :: 3',
-            'Programming Language :: Python :: 3.9',
-            'Programming Language :: Python :: 3.10',
             'Programming Language :: Python :: 3.11',
             'Programming Language :: Python :: 3.12',
+            'Programming Language :: Python :: 3.13',
         ],
         license='Apache License 2.0',
         tests_require=parse_requirements('requirements/tests.txt'),

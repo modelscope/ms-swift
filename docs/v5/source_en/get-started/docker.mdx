@@ -45,7 +45,7 @@ Then run the [Quick Start](./quick-start.mdx) SFT or GRPO example. Install sampl
 Install server dependencies:
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install twinkle-server
 ```
 
 Mount `server_config.yaml` and launch Ray and twinkle-server following [Remote Training](../interfaces/server-client.mdx). Access from other containers requires port mapping, a listening address, authentication, and a network entry point. A localhost-only configuration is not automatically exposed.

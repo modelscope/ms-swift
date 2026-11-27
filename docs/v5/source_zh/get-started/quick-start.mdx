@@ -17,11 +17,12 @@ SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于�
 
 ## 环境安装与样例
 
-在 SWIFT 的架构体系中涉及到三个框架：
+在 SWIFT 的架构体系中涉及到以下包：
 
 - swift: 涵盖命令行和训练主体
 - twinkle-kit: 底层算法基础组件，自动随 swift 安装，用户无需关心
 - twinkle-server: 服务化训练框架，可以将 swift 所有支持的训练类型和模型转换为远端 HTTP 训练模式
+- twinkle-client: 远程训练和采样的 Python SDK，客户端无需安装 twinkle-server
 
 ### 本地训练
 
@@ -30,6 +31,8 @@ SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于�
 ```bash
 pip install 'ms-swift>=5.0.0'
 ```
+
+使用开发分支时，按[源码安装](./installation.mdx#源码安装)说明从各自仓库安装 Twinkle 和 SWIFT。
 
 完整环境要求见[安装](./installation.mdx)，容器启动见 [Docker](./docker.mdx)，模型选择和数据来源见[模型与数据集](./models-and-datasets.mdx)。
 
@@ -207,7 +210,7 @@ if __name__ == '__main__':
 ### 部署 server
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install twinkle-server
 ```
 
 将以下配置保存为 `server_config.yaml`：
@@ -257,7 +260,7 @@ twinkle-server launch --config server_config.yaml
 在提交训练任务的机器上安装轻量客户端。模型权重与 GPU 计算由服务端管理，客户端无需本地 GPU：
 
 ```bash
-pip install 'twinkle-kit[client]'
+pip install twinkle-client
 ```
 
 ```bash

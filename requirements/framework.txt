@@ -34,5 +34,6 @@ tqdm
 transformers>=5.8,<6.0
 transformers_stream_generator
 trl>=0.15,<1.0
+twinkle-kit>=0.4.0.dev0,<0.5
 uvicorn
 zstandard

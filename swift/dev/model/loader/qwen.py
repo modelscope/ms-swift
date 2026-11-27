@@ -1274,10 +1274,10 @@ class Qwen3TTSLoader(ModelLoader):
     key, which ``build_config`` reproduces here (registration is idempotent per key).
 
     Real behaviour kept from legacy:
-      * twinkle's ``Qwen3TTSTrainingPatch`` -- **not** an obsolete patch but the dual-channel training
+      * Swift's ``Qwen3TTSTrainingPatch`` -- **not** an obsolete patch but the dual-channel training
         step itself: it splits ``input_ids`` into text/codec channels, sums their embeddings, injects the
         speaker embedding at codec position 6, folds in the 15 sub-talker codec embeddings, and adds a
-        sub-talker cross-entropy term on top of the talker loss. Applied from ``twinkle.patch`` (the
+        sub-talker cross-entropy term on top of the talker loss. Applied from ``swift.dev.patch`` (the
         componentized equivalent of legacy ``_patch_qwen3_tts_forward``).
       * ``speaker_encoder`` is frozen -- only the talker trains.
       * the external ``Qwen3TTSTokenizer`` (a separate checkpoint, ``tts_tokenizer_path`` env knob) is
@@ -1331,7 +1331,8 @@ class Qwen3TTSLoader(ModelLoader):
 
     def process_model(self, model):
         from twinkle.patch import apply_patch
-        from twinkle.patch.transformers_qwen3_tts import Qwen3TTSTrainingPatch
+
+        from swift.dev.patch.transformers_qwen3_tts import Qwen3TTSTrainingPatch
 
         self.delegate_to_submodel(model, "talker", ["get_input_embeddings", "gradient_checkpointing_enable"])
         if model.speaker_encoder is not None:

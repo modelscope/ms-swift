@@ -15,14 +15,14 @@ description: 按训练、服务端和客户端场景准备 SWIFT v5 环境。
 pip install 'ms-swift>=5.0.0'
 ```
 
-twinkle 随 SWIFT 安装。运行 [SFT 示例](./quick-start.mdx)时不需要再安装服务端或客户端依赖组。
+`twinkle-kit` 随 SWIFT 安装。运行 [SFT 示例](./quick-start.mdx)时不需要安装 `twinkle-server` 或 `twinkle-client`。
 
 ### 部署 twinkle-server
 
 在提供 GPU 算力的机器上安装：
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install twinkle-server
 ```
 
 服务端配置模型、采样器和资源；客户端提交训练操作。完整部署步骤见[远程训练与 twinkle-server](../interfaces/server-client.mdx)。
@@ -32,10 +32,27 @@ pip install 'twinkle-kit[server,client]'
 在提交训练任务的机器上安装：
 
 ```bash
-pip install 'twinkle-kit[client]'
+pip install twinkle-client
 ```
 
 客户端不需要本地 GPU。通过 SWIFT 命令发起远程训练时，在客户端环境安装 SWIFT，并使用 `--mode remote`。
+
+## 源码安装
+
+使用开发分支时，在同一个 Python 环境中依次安装。先进入克隆的 [Twinkle 仓库](https://github.com/modelscope/twinkle)根目录，安装基础包：
+
+```bash
+pip install -e .
+```
+
+在该仓库根目录，按当前环境的用途安装所需的额外包：
+
+```bash
+pip install -e ./twinkle_cs/client  # 远程 Python SDK / --mode remote
+pip install -e ./twinkle_cs/server  # swift deploy / twinkle-server
+```
+
+然后进入克隆的 [ms-swift 仓库](https://github.com/modelscope/ms-swift)，执行 `pip install -e .`。使用 Megatron 后端时，也可以进入 [mcore-bridge 仓库](https://github.com/modelscope/mcore-bridge)，执行 `pip install -e .` 安装源码版本。
 
 ## PyTorch 与计算环境
 
@@ -43,7 +60,7 @@ pip install 'twinkle-kit[client]'
 
 | 组件 | 版本要求或用途 |
 | --- | --- |
-| Python | 建议 3.12 |
+| Python | `>=3.11,<3.14`；建议 3.12 |
 | PyTorch | twinkle 要求 `>=2.6.0,<3.0.0`；具体构建匹配设备 |
 | Transformers | `>=5.8,<6.0` |
 | datasets | `>=4.0,<4.8.5` |

@@ -41,7 +41,7 @@ swift/dev/          orchestration: cli, config, recipe, builders, plugins glue
 | `twinkle.module` | module-level registration helpers used by the kernel namespaces |
 | `twinkle.utils` | `DeviceGroup`, `DeviceMesh`, `Platform`, `Plugin`, `get_logger`, `trust_remote_code`, torch utils |
 | `twinkle.exceptions` / `twinkle.version` | shared exception types; release metadata |
-| `twinkle.server` | the twinkle-server app surface (gateway / model / sampler / processor apps) — see server-client.md |
+| `twinkle_server` | the twinkle-server app surface (gateway / model / sampler / processor apps) — see server-client.md |
 
 ## TrainableModel: the training-side interface
 
@@ -82,7 +82,7 @@ they accept adapters/weights updates between rollouts. Constructors take `model_
 
 | Import | What it is |
 | --- | --- |
-| `twinkle.init_twinkle_client(base_url, api_key)` | bind the process to a twinkle-server gateway (call once before creating client handles) |
+| `twinkle_client.init_twinkle_client(base_url, api_key)` | bind the process to a twinkle-server gateway (call once before creating client handles) |
 | `twinkle_client.model.MultiLoraTransformersModel` | a remote trainable model: same method names as `TrainableModel`, but arguments must be serializable (class names + scalar kwargs; no live objects) |
 | `twinkle_client.sampler.vLLMSampler` | a remote sampling engine handle |
 | `twinkle_client.manager` | ClientManager: sessions, heartbeats, server capabilities, training-run and checkpoint bookkeeping over the wire |
@@ -122,7 +122,7 @@ See server-client.md for the full usage pattern.
 | `swift.dev.callbacks` | `TrainCallback` + built-ins (`EarlyStopCallback`) — the callback plugin surface |
 | `swift.dev.loss` | Config -> twinkle loss wiring (loss selection, Liger fused CE) |
 | `swift.dev.utils` | `plugin.py` (PluginRegistry — see plugins.md) and `naming.py` (name resolution into twinkle kernel namespaces) |
-| `swift.dev.template` / `template_contract` | swift-side template selection + `TemplateSpec` (serializable template description for remote mode) |
+| `swift.dev.template` | swift-side template selection; shared `TemplateSpec` comes from `twinkle.template.contract` in twinkle-kit |
 | `swift.dev.patch` | dev-side compatibility patches (Accelerate offload hook, torch conv3d / dist-save, transformers hub kernels, unsloth distributed, ...) |
 | `swift.dev.data_format` | re-exports the shared value types (`InputFeature`, `ModelOutput`, `LossOutput`) for dev-side code |
 | `swift.dev.components` | the infer component assembly |

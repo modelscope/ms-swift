@@ -14,7 +14,7 @@ Blue arrows represent control requests, green arrows training and sampling data,
 Server:
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install twinkle-server
 ```
 
 Install `ms-swift>=5.0.0` for the SWIFT model-family loader and `vllm` for a vLLM sampler. A gateway plus training model alone does not need an independent sampler.
@@ -22,7 +22,7 @@ Install `ms-swift>=5.0.0` for the SWIFT model-family loader and `vllm` for a vLL
 Component client:
 
 ```bash
-pip install 'twinkle-kit[client]'
+pip install twinkle-client
 ```
 
 A `swift sft --mode remote` client also needs `ms-swift>=5.0.0`. Direct clients install data-encoding dependencies such as `transformers` and `peft` as required.

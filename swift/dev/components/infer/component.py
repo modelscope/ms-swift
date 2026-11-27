@@ -776,7 +776,7 @@ def _initialize_for_sampling(
         # No local twinkle runtime to initialize: this process is a single-process client and the
         # sampler/model live in the twinkle-server. Only the client transport is bound (once; a
         # re-init for a second component in the same process is a no-op on the session layer).
-        from twinkle import init_twinkle_client
+        from twinkle_client import init_twinkle_client
 
         if not distributed_config.server_base_url:
             raise ValueError("--mode remote requires --server_base_url (the twinkle-server gateway root).")

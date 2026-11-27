@@ -89,7 +89,7 @@ jobs:
       # runtime dependency, rebuild the image, do not grow this file. A test that needs a specific
       # dependency version installs it itself, inside the test.
       - run: |
-          pip install --no-deps -e ./.twinkle -e .
+          pip install --no-deps -e ./.twinkle -e ./.twinkle/twinkle_cs/client -e ./.twinkle/twinkle_cs/server -e .
           pip install -r requirements/tests.txt
       # `&&` binds tighter than `||`, so the parentheses are load-bearing: without them a PR
       # renders the literal `true` as pytest's argument.
@@ -139,7 +139,7 @@ jobs:
         run: .github/slot_devices.sh >> "$GITHUB_ENV"
       - name: Install the side's version set
         run: |
-          pip install --no-deps -e ./.twinkle -e .
+          pip install --no-deps -e ./.twinkle -e ./.twinkle/twinkle_cs/client -e ./.twinkle/twinkle_cs/server -e .
           pip install -r requirements/tests.txt
           if [ "${{ matrix.side }}" = oldest ]; then
             pip install 'transformers~=5.8.0' 'peft~=0.11.0' 'accelerate==1.14.0' 'megatron-core~=0.18.0' 'mcore-bridge==1.6.5'

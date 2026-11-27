@@ -14,7 +14,7 @@ description: 部署 twinkle-server，通过组件 API 或 swift remote 训练，
 服务端：
 
 ```bash
-pip install 'twinkle-kit[server,client]'
+pip install twinkle-server
 ```
 
 使用 SWIFT 模型家族加载器时，还需安装 `ms-swift>=5.0.0`；部署 vLLM sampler 时单独安装 `vllm`。只有训练 model 和 gateway 的服务不需要独立 sampler。
@@ -22,7 +22,7 @@ pip install 'twinkle-kit[server,client]'
 组件客户端：
 
 ```bash
-pip install 'twinkle-kit[client]'
+pip install twinkle-client
 ```
 
 使用 `swift sft --mode remote` 的客户端还需要 `ms-swift>=5.0.0`。直接组件客户端按数据编码需要安装 `transformers`、`peft` 等依赖。
