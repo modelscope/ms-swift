@@ -71,6 +71,11 @@ def _dev_cli_argv(data_path, out_dir, steps, lr):
     Mirrors _run_legacy's list exactly (that is the point: the dev CLI claims argv compatibility on
     legacy's MegatronSftArguments surface). global_batch_size=WORLD_SIZE with micro_batch_size=1
     gives one sample per DP rank -> gradient_accumulation_steps derives to 1, matching _run_dev.
+
+    --tuner_type full is pinned on BOTH sides: legacy MegatronSftArguments defaults tuner_type to
+    'full', while the dev CLI deliberately defaults to LoRA on both backends (454f3d064 dropped the
+    megatron-only flip-to-full). Without the explicit flag the two sides train DIFFERENT tuners on
+    the same argv and the trajectories diverge for a default-policy reason, not a mapping bug.
     """
     world_size = os.environ.get('WORLD_SIZE', '2')
     return [
@@ -78,6 +83,8 @@ def _dev_cli_argv(data_path, out_dir, steps, lr):
         _model_path(),
         '--model_type',
         'qwen2',
+        '--tuner_type',
+        'full',
         '--dataset',
         data_path,
         '--template',
@@ -162,6 +169,10 @@ def _run_legacy(data_path, out_dir, steps, lr):
             model_path,
             '--model_type',
             'qwen2',
+            # Same explicit full-parameter pin as _dev_cli_argv (legacy's own default is 'full';
+            # pinned so both sides parse the identical flag rather than relying on defaults).
+            '--tuner_type',
+            'full',
             '--dataset',
             data_path,
             '--template',

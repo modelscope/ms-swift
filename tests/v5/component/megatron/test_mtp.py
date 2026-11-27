@@ -148,6 +148,7 @@ def test_unset_scaling_factor_is_not_forwarded_as_none():
         'mtp_freeze': False,
         'mtp_decoder_input_detach': False,
         'mtp_shared_weights': False,
+        'mtp_allow_random_init': False,
     }
 
 
@@ -164,6 +165,7 @@ def test_each_knob_reaches_the_bridge_under_its_own_name():
         'mtp_decoder_input_detach': True,
         'mtp_freeze': False,
         'mtp_shared_weights': False,
+        'mtp_allow_random_init': False,
     }
 
 

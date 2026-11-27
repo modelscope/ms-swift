@@ -21,8 +21,9 @@ Oracles (independent):
   once (input_ids identity against an independent seq_cls INFER render -- the batch sampler picks
   the pairing and the planner may reorder inside an update, so the contract is row identity);
 * update-2's logged loss equals an independent plain-HF ``Qwen2ForSequenceClassification``
-  recomputation: load checkpoint-1 (the PRE-update-2 weights), forward each captured row of
-  update-2 alone (no padding), CE against its label, mean over the two rows (fp32 band 1e-4);
+  recomputation in a FRESH subprocess (immune to process-global kernel patches left by earlier
+  tests, e.g. Liger rotary): load checkpoint-1 (the PRE-update-2 weights), forward each captured
+  row of update-2 alone (no padding), CE against its label, mean over the two rows (fp32 band 1e-4);
 * grad_norm finite >0 <1e3; the classification head ``score.weight`` Δθ nonzero between
   checkpoint-1 and checkpoint-final.
 
@@ -115,24 +116,49 @@ def _dataset_row_ids(model_path, data):
     return [tuple(template.encode({'messages': d['messages']}, intent=INFER)['input_ids']) for d in data]
 
 
-def _hf_row_ce(ckpt_dir, input_ids, label):
-    """Independent plain-HF seq_cls CE for ONE row (no padding), weights from a real checkpoint."""
-    import torch
-    from safetensors.torch import load_file
-    from transformers import Qwen2Config, Qwen2ForSequenceClassification
+def _hf_rows_ce(ckpt_dir, rows):
+    """Independent plain-HF seq_cls CE for each row (no padding), weights from a real checkpoint,
+    recomputed in a FRESH subprocess (CPU fp32 eager).
 
-    cfg = Qwen2Config.from_pretrained(ckpt_dir, num_labels=2)
-    model = Qwen2ForSequenceClassification(cfg)
-    state = {}
-    for name in sorted(os.listdir(ckpt_dir)):
-        if name.endswith('.safetensors'):
-            state.update(load_file(os.path.join(ckpt_dir, name)))
-    model.load_state_dict(state, strict=False)
-    model.eval().float()
+    Process isolation is load-bearing, not cosmetic: an earlier test in the same pytest process
+    may have installed process-global kernel patches -- twinkle ``kernelize`` installs dotted
+    FUNCTION targets via ``setattr`` on the owning transformers module (kernel/core.py), e.g. the
+    Liger rotary replaces ``modeling_qwen2.apply_rotary_pos_emb`` for the WHOLE process (class
+    targets are instance-scoped, module functions are not). A same-process "plain HF" oracle would
+    silently inherit those patches and crash on CPU (Triton kernels reject CPU tensors:
+    ``Pointer argument cannot be accessed from Triton``). A fresh interpreter guarantees the oracle
+    is the unpatched HF forward, independent of any in-process global state.
+    """
+    import subprocess
+    import sys
+
+    script = r'''
+import json, os, sys
+import torch
+from safetensors.torch import load_file
+from transformers import Qwen2Config, Qwen2ForSequenceClassification
+ckpt_dir, rows = json.loads(sys.stdin.read())
+cfg = Qwen2Config.from_pretrained(ckpt_dir, num_labels=2)
+model = Qwen2ForSequenceClassification(cfg)
+state = {}
+for name in sorted(os.listdir(ckpt_dir)):
+    if name.endswith('.safetensors'):
+        state.update(load_file(os.path.join(ckpt_dir, name)))
+model.load_state_dict(state, strict=False)
+model.eval().float()
+ces = []
+for input_ids, label in rows:
     ids = torch.tensor([input_ids], dtype=torch.long)
     with torch.inference_mode():
         out = model(input_ids=ids, labels=torch.tensor([label], dtype=torch.long))
-    return float(out.loss)
+    ces.append(float(out.loss))
+print(json.dumps(ces))
+'''
+    payload = json.dumps([str(ckpt_dir), [[r['input_ids'], r['labels']] for r in rows]])
+    proc = subprocess.run([sys.executable, '-c', script], input=payload, capture_output=True, text=True, timeout=600)
+    if proc.returncode != 0:
+        raise AssertionError(f'independent HF oracle subprocess failed (rc={proc.returncode}):\n{proc.stderr[-4000:]}')
+    return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
 def _head_tensor(ckpt_dir):
@@ -197,7 +223,7 @@ def test_seq_cls_micro_batch_unpacking_matches_independent_oracle(tmp_path, text
     ckpt1 = os.path.join(str(out_dir), 'checkpoint-1')
     final = os.path.join(str(out_dir), 'checkpoint-final')
     assert os.path.isdir(ckpt1) and os.path.isdir(final)
-    ces = [_hf_row_ce(ckpt1, row['input_ids'], row['labels']) for row in captured[1]]
+    ces = _hf_rows_ce(ckpt1, captured[1])
     oracle_loss = sum(ces) / len(ces)
     logged = history[1]['loss']
     assert abs(logged - oracle_loss) <= 1e-4, \
@@ -228,7 +254,7 @@ def test_reverse_dropped_micro_batch_diverges_from_oracle(tmp_path, text_model_p
     history = _train(text_model_path, data_path, out_dir, dump_dir)
 
     ckpt1 = os.path.join(str(out_dir), 'checkpoint-1')
-    ces = [_hf_row_ce(ckpt1, row['input_ids'], row['labels']) for row in captured[1]]
+    ces = _hf_rows_ce(ckpt1, captured[1])
     oracle_loss = sum(ces) / len(ces)
     logged = history[1]['loss']
     assert abs(logged - oracle_loss) > 1e-4, \

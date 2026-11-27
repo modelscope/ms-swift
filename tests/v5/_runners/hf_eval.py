@@ -27,16 +27,21 @@ def _run(data_path, out_dir):
     import importlib
     # `import ... as` would bind the FUNCTION the package __init__ re-exports under the
     # same name, not the module; importlib is explicit about wanting the module object.
+    # 6d1b5b766 (#10476) moved the training loop -- and with it the module-level evaluate_loss
+    # binding the loop calls -- out of run_sft into recipe.supervised; patch the module that
+    # actually binds the name now (run_sft no longer imports it at all).
     run_sft_mod = importlib.import_module('swift.dev.recipe.sft.run_sft')
+    supervised_mod = importlib.import_module('swift.dev.recipe.supervised')
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                   TrainConfig, TunerConfig)
     run_sft = run_sft_mod.run_sft
 
     # run_sft returns only the training history; the eval rows its evaluate() appends to a local
-    # eval_history are observed by wrapping the module-level evaluate_loss it calls (the helper lives
-    # in recipe.utils; run_sft binds it by name, so patching the module attribute is seen by the loop).
+    # eval_history are observed by wrapping the module-level evaluate_loss the loop calls (the
+    # helper lives in recipe.utils; supervised binds it by name, so patching the module attribute
+    # is seen by the loop).
     captured = []
-    orig_evaluate_loss = run_sft_mod.evaluate_loss
+    orig_evaluate_loss = supervised_mod.evaluate_loss
 
     def _capturing_evaluate_loss(*args, **kwargs):
         result = orig_evaluate_loss(*args, **kwargs)
@@ -44,7 +49,7 @@ def _run(data_path, out_dir):
             captured.append(result)
         return result
 
-    run_sft_mod.evaluate_loss = _capturing_evaluate_loss
+    supervised_mod.evaluate_loss = _capturing_evaluate_loss
     try:
         history = run_sft(
             ModelConfig(model=snapshot_download(MODEL), torch_dtype='bfloat16'),
@@ -68,7 +73,7 @@ def _run(data_path, out_dir):
             output_dir=out_dir,
             _save_final=False)
     finally:
-        run_sft_mod.evaluate_loss = orig_evaluate_loss
+        supervised_mod.evaluate_loss = orig_evaluate_loss
 
     return {
         'rank': int(os.environ.get('RANK', '0')),

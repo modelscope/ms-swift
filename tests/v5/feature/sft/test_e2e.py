@@ -415,17 +415,26 @@ def test_run_sft_megatron_two_bridges_bit_identical(tmp_path):
 
 @pytest.mark.slow
 def test_run_sft_megatron_ga_equivalence(tmp_path):
-    """GA>1 gate: Megatron ga=2/bs=2 must match ga=1/bs=4 (same 8 samples per optimizer step).
+    """GA>1 gate: Megatron ga=2/bs=2 must match ga=1/bs=2 at IDENTICAL micro-batch shape.
 
     Megatron accumulates gradients across the microbatch LIST inside one forward_backward, so
-    grouping ga=2 dataloader batches into one step must be gradient-equivalent to a single ga=1 step
-    over a proportionally larger batch. The dataloader batch is the GLOBAL batch
-    (per_device_train_batch_size * dp = per_device * 2 here), so the effective samples per optimizer
-    step are per_device * dp * ga = 8 for BOTH configs (2*2*2 and 4*2*1). At step 1 both see identical
-    initial weights over identical rows, so the step-1 loss is bit-identical; the grad_norm equality is
-    the real accumulation check (it reflects the summed/normalized gradient).
+    grouping ga=2 dataloader batches into one step must be gradient-equivalent to a single ga=1
+    step over the same micro-batches. With IDENTICAL rows the per-token-mean gradient is
+    mathematically independent of how many rows/microbatches a step aggregates, so ga=2 (2
+    microbatches of 2 rows/rank) and ga=1 (1 microbatch of 2 rows/rank) target the SAME gradient;
+    the grad_norm equality is the accumulation check (it reflects the summed/normalized gradient).
 
-    8 IDENTICAL rows: enough for both a global batch of 4 (ga=2 -> 2 batches/step) and of 8 (ga=1 ->
+    SHAPE CONTROL (HU1-GA attribution, 2026-11-27): the control arm deliberately keeps the
+    micro-batch shape (2 rows/rank) fixed. The older ga=1/bs=4 control changed the GEMM shapes
+    (4 rows/rank), which measures cuBLAS/TE reduction-order rounding rather than accumulation:
+    on this host the cross-shape grad_norm diff was 7.05e-3 with the default fp32 path (TF32-class
+    GEMM rounding active despite torch matmul.allow_tf32=False) and still 3.7e-4 with
+    NVIDIA_TF32_OVERRIDE=0 -- both above the 1e-4 band at grad_norm~56, while the SAME-shape
+    ga1-vs-ga2 pair was BIT-IDENTICAL (diff 0.0) in both environments (runs/H-U1
+    ga_megatron_diag_normal.log / ga_megatron_diag_tf32off.log). Accumulation is therefore exact;
+    only a shape-controlled comparison can freeze it at this tolerance.
+
+    8 IDENTICAL rows: enough for both a global batch of 4 (ga=2 -> 2 batches/step) and of 4 (ga=1 ->
     1 batch/step) to form complete groups under drop_last, and identical content so DP-rank slicing
     order cannot perturb the equality. Runs mcore-bridge only; max_steps=1 keeps the data window
     aligned to exactly one step.
@@ -434,7 +443,7 @@ def test_run_sft_megatron_ga_equivalence(tmp_path):
         pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
 
     data_path = str(tmp_path / 'toy_sft.jsonl')
-    _write_identical_dataset(data_path, n=8)  # 8 rows == one optimizer step at effective batch 8
+    _write_identical_dataset(data_path, n=8)  # >= one optimizer step at effective batch 8
 
     ga_hist = _run_megatron_sft(
         'mcore-bridge', data_path, str(tmp_path / 'out_ga2'), per_device_batch=2, ga=2, max_steps=1)
@@ -442,19 +451,20 @@ def test_run_sft_megatron_ga_equivalence(tmp_path):
     # or it collides on twinkle's deterministic worker-actor name (see reset_twinkle_runtime).
     reset_twinkle_runtime()
     big_hist = _run_megatron_sft(
-        'mcore-bridge', data_path, str(tmp_path / 'out_bs4'), per_device_batch=4, ga=1, max_steps=1)
+        'mcore-bridge', data_path, str(tmp_path / 'out_ga1'), per_device_batch=2, ga=1, max_steps=1)
 
     ga_loss = [r['loss'] for r in ga_hist]
     big_loss = [r['loss'] for r in big_hist]
     ga_gn = [r.get('grad_norm') for r in ga_hist]
     big_gn = [r.get('grad_norm') for r in big_hist]
-    print(f'\nGA equiv: ga2xbs2 loss={ga_loss} gn={ga_gn} | bs4 loss={big_loss} gn={big_gn}')
+    print(f'\nGA equiv: ga2xbs2 loss={ga_loss} gn={ga_gn} | ga1xbs2 loss={big_loss} gn={big_gn}')
     assert ga_loss and big_loss and len(ga_loss) == len(big_loss) == 1, \
-        f'expected 1 optimizer step each: ga2={ga_loss} bs4={big_loss}'
-    assert ga_loss == big_loss, (f'GA>1 diverged from equivalent large-batch loss: ga2xbs2={ga_loss} bs4={big_loss}')
+        f'expected 1 optimizer step each: ga2={ga_loss} ga1={big_loss}'
+    assert ga_loss == big_loss, (f'GA>1 diverged from equivalent single-window loss: ga2xbs2={ga_loss} '
+                                 f'ga1xbs2={big_loss}')
     if ga_gn[0] is not None and big_gn[0] is not None:
         assert abs(ga_gn[0] - big_gn[0]) < 1e-4, (
-            f'GA>1 grad_norm diverged (accumulation mismatch): ga2xbs2={ga_gn} bs4={big_gn}')
+            f'GA>1 grad_norm diverged (accumulation mismatch): ga2xbs2={ga_gn} ga1xbs2={big_gn}')
 
 
 def _run_megatron_sft(bridge_backend: str,
@@ -1429,8 +1439,14 @@ def test_run_sft_megatron_mtp_end_to_end(tmp_path):
         # 'unfused': this box's CUDA-13 driver disables TE's flash/fused kernels outright, and the
         # builder pins flash as the default kernel -- the run would die inside
         # dot_product_attention before the first step, unrelated to MTP.
+        # mtp_allow_random_init: Qwen2.5-0.5B ships NO MTP weights, and mcore-bridge 23d95fd
+        # (refactor mtp #237) fail-louds on a full-finetune load with missing MTP keys unless this
+        # documented opt-in is set (legacy megatron_args carries the same knob). Random-init MTP
+        # heads are exactly what this feature test trains -- the assertion is the joint-training
+        # dynamics (finite non-zero mtp_loss), not pretrained head weights.
         model_overrides={'mtp_num_layers': 1, 'enable_mtp_training': True,
-                         'mtp_loss_scaling_factor': 0.2, 'attn_impl': 'unfused'})
+                         'mtp_loss_scaling_factor': 0.2, 'mtp_allow_random_init': True,
+                         'attn_impl': 'unfused'})
 
     assert history, 'run_sft (megatron mtp) produced no optimizer steps'
     for record in history:
