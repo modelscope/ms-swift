@@ -57,7 +57,7 @@ dependencies = [
     "tqdm",
     "transformers>=5.8,<6.0",
     "trl>=0.15,<1.0",
-    "twinkle-kit>=0.4.0.dev0,<0.5",
+    "twinkle-kit>=1.0.0.dev0,<2.0",
     "uvicorn",
 ]
 
