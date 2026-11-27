@@ -128,7 +128,18 @@ def test_encode_accepts_message_list_and_std_inputs(template):
 
     expected = template.encode({"messages": copy.deepcopy(MSGS)})
     assert template.encode(copy.deepcopy(MSGS)) == expected
-    assert template.encode(StdTemplateInputs.from_dict({"messages": copy.deepcopy(MSGS)})) == expected
+    std = template.encode(StdTemplateInputs.from_dict({"messages": copy.deepcopy(MSGS)}))
+    # preserve_trajectory (twinkle 012aff34 "统一完整 Trajectory 返回与共享模板契约", adopted by the dev
+    # template-inheritance refactor) keeps the raw source columns verbatim. The StdTemplateInputs
+    # dataclass carries empty default media/kwargs columns (images/videos/audios/objects/tools/
+    # chat_template_kwargs/mm_processor_kwargs) that a sparse {'messages': ...} dict omits, so those
+    # raw columns and _trajectory_columns differ between the two forms. The encoding itself must be
+    # identical: compare every non-raw field, and assert the extra raw columns are genuinely empty.
+    raw_cols = {'images', 'videos', 'audios', 'objects', 'tools', 'chat_template_kwargs',
+                'mm_processor_kwargs', '_trajectory_columns'}
+    assert {k: v for k, v in std.items() if k not in raw_cols} == {
+        k: v for k, v in expected.items() if k not in raw_cols}
+    assert all(not std[k] for k in raw_cols - {'_trajectory_columns'} if k in std)
     with pytest.raises(TypeError, match="Cannot encode"):
         template.encode("hi")
 

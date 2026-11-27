@@ -21,13 +21,17 @@ from pathlib import Path
 
 import pytest
 
-EXAMPLES = Path(__file__).parents[4] / 'examples'
+# 1a1d516e7 split examples/ into examples/v5 (default dev CLI) + examples/v4 (main-branch migration);
+# 2818563be renamed v5 infer/code -> infer/plugin. The reference files this smoke covers are the v5
+# ones, so anchor at examples/v5 and use the infer/plugin spelling. The clean-interpreter PYTHONPATH
+# below points at the repo root (EXAMPLES.parents[1]) so `import swift`/`twinkle` still resolve.
+EXAMPLES = Path(__file__).parents[4] / 'examples' / 'v5'
 
 #: (file, kind, registered name) for files whose point is the registration.
 PLUGIN_FILES = [
-    ('infer/code/custom_plugins.py', 'reward', 'length_bonus'),
-    ('infer/code/custom_plugins.py', 'tool', 'word_count'),
-    ('infer/code/custom_tools.py', 'tool', 'calculator'),
+    ('infer/plugin/custom_plugins.py', 'reward', 'length_bonus'),
+    ('infer/plugin/custom_plugins.py', 'tool', 'word_count'),
+    ('infer/plugin/custom_tools.py', 'tool', 'calculator'),
     ('rl/opsd/opsd_plugin.py', 'dataset', None),  # names asserted dynamically below
     ('train/plugins/my_plugin.py', 'callback', 'progress_printer'),
 ]
@@ -61,7 +65,7 @@ result = None
 print("RESULT:", result)
 '''
     proc = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=300,
-                          env={'PATH': '/usr/local/bin:/usr/bin:/bin', 'PYTHONPATH': str(EXAMPLES.parent),
+                          env={'PATH': '/usr/local/bin:/usr/bin:/bin', 'PYTHONPATH': str(EXAMPLES.parents[1]),
                                'HOME': '/root'})
     assert proc.returncode == 0, f'{rel} failed to import in a clean interpreter:\n{proc.stderr[-3000:]}'
     return proc.stdout.strip().splitlines()[-1]

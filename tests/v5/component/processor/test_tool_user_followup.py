@@ -149,7 +149,22 @@ def test_qwen_literal_placeholders_and_structured_calls():
     native = copy.deepcopy(structured)
     native['messages'][1] = {'role': 'tool_call', 'content': call}
     native['messages'][2]['role'] = 'tool_response'
-    assert template.encode(structured) == template.encode(native)
+    # preserve_trajectory (twinkle 012aff34 "统一完整 Trajectory 返回与共享模板契约", adopted via the
+    # template-inheritance refactor) keeps the source messages verbatim, so the OpenAI tool_calls form
+    # and the native tool_call/tool_response form each preserve their own messages. The encoding itself
+    # must still be identical: compare every field except messages (position_ids is a tensor).
+    import torch
+    enc_structured = template.encode(structured)
+    enc_native = template.encode(native)
+    assert set(enc_structured) == set(enc_native)
+    for key in enc_structured:
+        if key == 'messages':
+            continue
+        va, vb = enc_structured[key], enc_native[key]
+        if isinstance(va, torch.Tensor):
+            assert isinstance(vb, torch.Tensor) and torch.equal(va, vb), key
+        else:
+            assert va == vb, key
 
 
 def test_placeholder_literals_in_a_user_turn_survive_verbatim():

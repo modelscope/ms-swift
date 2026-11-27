@@ -47,8 +47,9 @@ from tests.v5.infer.conftest import write_cache_file
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 _REPO = Path(__file__).resolve().parents[3]
-CUSTOM_PLUGINS = _REPO / 'examples' / 'infer' / 'code' / 'custom_plugins.py'
-CUSTOM_SAMPLER = _REPO / 'examples' / 'infer' / 'code' / 'custom_sampler.py'
+# 1a1d516e7 split examples into examples/v5, then 2818563be renamed infer/code -> infer/plugin.
+CUSTOM_PLUGINS = _REPO / 'examples' / 'v5' / 'infer' / 'plugin' / 'custom_plugins.py'
+CUSTOM_SAMPLER = _REPO / 'examples' / 'v5' / 'infer' / 'plugin' / 'custom_sampler.py'
 
 # The three prompts ``demo_synthetic``'s DatasetLoader synthesises (custom_plugins.py). The loader's rows
 # come back shuffled, so tests compare them as a set and key caches by prompt, never by position.
@@ -166,7 +167,7 @@ def test_reward_name_is_unresolvable_without_the_plugin_file():
     import subprocess
     import sys
 
-    custom_tools = _REPO / 'examples' / 'infer' / 'code' / 'custom_tools.py'
+    custom_tools = _REPO / 'examples' / 'v5' / 'infer' / 'plugin' / 'custom_tools.py'
     script = (
         'from swift.dev.utils.plugin import PluginRegistry;'
         'from swift.dev.config import PluginConfig;'

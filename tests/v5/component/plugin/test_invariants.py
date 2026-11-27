@@ -165,10 +165,12 @@ _CLIENT_NAME_SETTERS = {
         'the isinstance(model, RemoteModel) branch: RemoteModel delegates add_metric to the '
         'twinkle_client handle, whose setter is name-typed (the keyed LossMetric crosses HTTP '
         'as its name beside the scalar loss_key).',
-    "recipe/utils.py:sampler.set_template('swift.dev.template.Template', **{'template_spec': spec})":
+    "recipe/utils.py:sampler.set_template('SwiftTemplate', template_spec=spec)":
         'Under --mode remote, sampler is twinkle_client.sampler.vLLMSampler; its set_template is '
         'declared (template_cls: str) and posts the name to the server, which rebuilds the dev '
-        'Template from the serialized TemplateSpec beside it.',
+        "Template from the serialized TemplateSpec beside it. 6d82dd8ac switched the posted name "
+        "to the server-registered 'SwiftTemplate' (processor/server_plugin.py::register sets "
+        'twinkle.template.SwiftTemplate = Template at worker startup).',
 }
 
 

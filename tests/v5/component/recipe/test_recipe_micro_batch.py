@@ -398,7 +398,9 @@ def test_distill_entry_budgets_updates_across_prompt_loader_batches(monkeypatch,
     """
     recipe = import_module("swift.dev.recipe.distill.run_distill")
     prompts = [[{"role": "user", "content": str(i)}] for i in range(5)]
-    monkeypatch.setattr(recipe, "prompt_rows_from_dataset", lambda config: ([], prompts, [{}] * 5))
+    # 6d82dd8ac widened prompt_rows_from_dataset to (dataset_config, system=None) and run_distill
+    # now passes system=template_config.system; the fake mirrors that signature.
+    monkeypatch.setattr(recipe, "prompt_rows_from_dataset", lambda config, system=None: ([], prompts, [{}] * 5))
     monkeypatch.setattr(recipe, "initialize_rl_devices", lambda **kwargs: (None, None, None))
     monkeypatch.setattr(recipe, "distill_dataset_rows", lambda *args: [object()])
     monkeypatch.setattr("swift.dev.builders.build_dp_mesh", lambda *args: SimpleNamespace(data_world_size=1))

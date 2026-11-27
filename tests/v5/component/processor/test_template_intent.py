@@ -59,21 +59,38 @@ def test_encode_prompt_selects_images_for_backend(backend, monkeypatch):
     tensor = torch.ones(1, 3, 2, 2)
     engine_image = tensor if backend == "transformers" else "resized.png"
 
+    # d41e77952 ("统一完整 Trajectory 编码与采样契约") removed the PromptEncoding/RolloutState wrapper:
+    # encode_prompt now returns the full Trajectory (twinkle PromptEncoder protocol). The per-backend
+    # media selection moved INTO encode (base.py "Serving engines consume the media the engine encoding
+    # loaded"): 'images' carries the rollout media -- the ORIGINAL source for transformers (which
+    # consumes the expanded payload), the engine-preprocessed image for serving backends -- while the
+    # expanded tensor payload lives under 'pixel_values' (the d41e77952 dev media key), and
+    # mm_processor_kwargs lives IN the trajectory. Multimodal serving trajectories must carry
+    # engine_input_ids (twinkle template/contract/encoding.py::engine_input_ids guard); the transformers
+    # backend skips the placeholder check (7a0f31c79) because it consumes the expanded feature ids.
     def encode(_sample, *, intent, engine):
         assert engine == backend
-        image = tensor if intent.expand_media else engine_image
-        feature = {"input_ids": [1, 2], "images": [image]}
-        if not intent.expand_media and backend == "vllm":
+        assert intent.expand_media
+        rollout_image = "original.png" if backend == "transformers" else engine_image
+        feature = {
+            "input_ids": [1, 2],
+            "engine_input_ids": [1, 2],
+            "pixel_values": [tensor],
+            "images": [rollout_image],
+        }
+        if backend == "vllm":
             feature["mm_processor_kwargs"] = {"do_resize": False}
         return feature
 
     monkeypatch.setattr(template, "encode", encode)
-    state = template.encode_prompt(sample, backend=backend).state
+    prompt = template.encode_prompt(sample, backend=backend)
 
-    assert state.media.images == (("original.png" if backend == "transformers" else "resized.png"),)
-    assert state.feature["images"][0] is tensor
-    assert state.mm_processor_kwargs == ({"do_resize": False} if backend == "vllm" else {})
-    assert "mm_processor_kwargs" not in state.feature
+    assert prompt["images"] == ["original.png" if backend == "transformers" else "resized.png"]
+    assert prompt["pixel_values"][0] is tensor
+    if backend == "vllm":
+        assert prompt["mm_processor_kwargs"] == {"do_resize": False}
+    else:
+        assert "mm_processor_kwargs" not in prompt
 
 
 @pytest.mark.parametrize("with_image", [False, True])
@@ -82,24 +99,29 @@ def test_vllm_encode_prompt_keeps_resize_override_only_for_processed_images(with
     sample = {"messages": [{"role": "user", "content": "question"}], "videos": ["original.mp4"]}
     engine_kwargs = {"do_resize": False, "do_sample_frames": False, "video_metadata": [], "fps": 2}
 
+    # d41e77952 Trajectory contract (see above): encode returns the full trajectory once; the vllm
+    # resize-override fixup (#10602) still lives IN encode_prompt and now edits the trajectory's own
+    # mm_processor_kwargs: drop do_resize/do_sample_frames/video_metadata (they describe the
+    # template's pre-processing; vLLM must process the original videos itself), keep fps, and move
+    # do_resize into images_kwargs when processed images ride along.
     def encode(_sample, *, intent, engine):
-        if intent.expand_media:
-            return {"input_ids": [1, 2]}
+        assert intent.expand_media
         return {
             "input_ids": [1, 2],
+            "engine_input_ids": [1, 2],
             "images": ["resized.png"] if with_image else [],
             "videos": ["sampled_video"],
             "mm_processor_kwargs": engine_kwargs,
         }
 
     monkeypatch.setattr(template, "encode", encode)
-    state = template.encode_prompt(sample, backend="vllm").state
-    assert state.media.videos == ("original.mp4",)
-    assert state.media.images == (("resized.png",) if with_image else ())
+    prompt = template.encode_prompt(sample, backend="vllm")
+    assert prompt["videos"] == ["sampled_video"]
+    assert prompt["images"] == (["resized.png"] if with_image else [])
     expected = {"fps": 2}
     if with_image:
         expected["images_kwargs"] = {"do_resize": False}
-    assert state.mm_processor_kwargs == expected
+    assert prompt["mm_processor_kwargs"] == expected
     assert engine_kwargs["do_resize"] is False and engine_kwargs["do_sample_frames"] is False
 
 
@@ -161,7 +183,13 @@ def test_preference_split_is_rejected_before_pair_encoding(kto, monkeypatch):
         template.encode(kto_sample_from_row(row) if kto else preference_sample_from_row(row))
 
 
-@pytest.mark.parametrize("intent", [INFER, ENGINE, TRAIN, SCORE])
+# 6d82dd8ac scoped check_generation_prompt to intents that produce labels (TRAIN) or a generation
+# prompt (INFER/ENGINE): `intent.with_labels or intent.add_generation_prompt`. SCORE has neither
+# (with_labels=False, add_generation_prompt=False) -- scoring accepts a user-only query without a
+# generation prompt, so it is NOT a role conflict (covered by
+# test_scoring_tasks_accept_user_queries_without_emitting_labels). Only the three enforcing intents
+# are parametrized here; the rejection assertion is unchanged for them.
+@pytest.mark.parametrize("intent", [INFER, ENGINE, TRAIN])
 @pytest.mark.parametrize("form", ["dict", "template_inputs", "dataclass"])
 def test_explicit_intent_rejects_role_conflict_without_alias(intent, form):
     template = _template()

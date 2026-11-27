@@ -37,7 +37,8 @@ from twinkle.template.tools import HermesQwenParser
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 _REPO = Path(__file__).resolve().parents[3]
-_CUSTOM_TOOLS = _REPO / 'examples' / 'infer' / 'code' / 'custom_tools.py'
+# 1a1d516e7 split examples into examples/v5, then 2818563be renamed infer/code -> infer/plugin.
+_CUSTOM_TOOLS = _REPO / 'examples' / 'v5' / 'infer' / 'plugin' / 'custom_tools.py'
 
 _PARSER = HermesQwenParser()
 _OM, _CM = _PARSER.open_marker, _PARSER.close_marker

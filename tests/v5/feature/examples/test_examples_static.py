@@ -112,9 +112,12 @@ def test_ascend_examples_self_identify_and_stay_off_the_v5_flag():
     (ASCEND_RT_VISIBLE_DEVICES / PYTORCH_NPU_ALLOC_* / any npu spelling) so a CUDA-side collection
     can skip the group cleanly, and none of them sets USE_SWIFT_V5=1 (the NPU group is not v5-
     migrated; the flag would route them to the dev CLI that has not been validated on NPU)."""
-    ascend = EXAMPLES / 'ascend'
+    # 1a1d516e7 split examples/ into v5 + v4; the NPU (ascend) group is NOT v5-migrated, so it lives
+    # under examples/v4/ascend (the verbatim main-branch tree). The marker / no-v5-flag contract is
+    # unchanged -- only the location moved.
+    ascend = EXAMPLES / 'v4' / 'ascend'
     scripts = sorted(ascend.rglob('*.sh'))
-    assert scripts, 'examples/ascend disappeared; update this test with the tree'
+    assert scripts, 'examples/v4/ascend disappeared; update this test with the tree'
     unmarked, flagged = [], []
     for sh in scripts:
         text = sh.read_text(encoding='utf-8', errors='replace')

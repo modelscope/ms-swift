@@ -223,6 +223,14 @@ def test_megatron_grpo_online_rollout_and_weight_sync(tiny_qwen2_5, rl_data, tmp
         train_over=_megatron_train_over(),
         rlhf_over={'num_generations': 2}, reward_over={'orm': [_varied_content_reward]},
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
+        # This test's contract is the COLOCATE regime (docstring above): the sampler time-shares the
+        # trainer's 2 GPUs. 62718b5b5 flipped the fixture default to the shipped 'disaggregated'
+        # (sampler on its OWN GPUs -> nproc 2 + 1 = 3 ranks, exceeding the accel(2) gate), so the
+        # colocate placement must now be requested explicitly (conftest _force_rl_placement).
+        # generation_batch_size is pinned to the 4-prompt dataset: the derived default (16 prompts,
+        # 64258f47e) makes the colocate stream batch 32 rows while 4 prompts x 2 generations x 3
+        # epochs yield only 24 samples, so the driver would drop every row and train 0 steps.
+        rollout_over={'sampler_mode': 'colocate', 'generation_batch_size': 4},
     )
     history = run_rl(configs)
     assert_rl_trained(

@@ -165,6 +165,11 @@ def test_r2_record_megatron_moe_grpo(tiny_qwen3_moe, rl_data, tmp_path, assert_r
         max_steps=4,
         model_over={'torch_dtype': 'float32'},
         train_over={'per_device_train_batch_size': 2, 'optim': 'adamw_torch_fused'},
+        # The documented contract is a COLOCATE vLLM rollout (module docstring rows 1/1b). The fixture
+        # default flipped to the shipped 'disaggregated' placement in 62718b5b5 without migrating this
+        # accel(2) test: nproc2 + a dedicated sampler rank = 3 GPUs, infeasible on the 2 cards this test
+        # is gated for. Request colocate explicitly so the trainer/sampler time-share the two cards.
+        rollout_over={'sampler_mode': 'colocate'},
         reward_over={'orm': [_varied_content_reward]},
         rlhf_over={'num_generations': 2, 'router_replay_mode': 'R2'},
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
