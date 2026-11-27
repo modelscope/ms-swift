@@ -33,6 +33,15 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
             ]),
+            ModelGroup([
+                Model('HuggingFaceTB/SmolVLM-256M-Instruct', 'HuggingFaceTB/SmolVLM-256M-Instruct'),
+                Model('HuggingFaceTB/SmolVLM-500M-Instruct', 'HuggingFaceTB/SmolVLM-500M-Instruct'),
+                Model('HuggingFaceTB/SmolVLM-Instruct', 'HuggingFaceTB/SmolVLM-Instruct'),
+                Model('HuggingFaceTB/SmolVLM-256M-Base', 'HuggingFaceTB/SmolVLM-256M-Base'),
+                Model('HuggingFaceTB/SmolVLM-500M-Base', 'HuggingFaceTB/SmolVLM-500M-Base'),
+                Model('HuggingFaceTB/SmolVLM-Base', 'HuggingFaceTB/SmolVLM-Base'),
+                Model('HuggingFaceTB/SmolVLM2-2.2B-Base', 'HuggingFaceTB/SmolVLM2-2.2B-Base'),
+            ]),
         ],
         Idefics3Loader,
         template=TemplateType.idefics3,
@@ -40,6 +49,24 @@ register_model(
         architectures=['Idefics3ForConditionalGeneration'],
         tags=['vision'],
         requires=['transformers>=4.45'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.smolvlm2,
+        [
+            ModelGroup([
+                Model('HuggingFaceTB/SmolVLM2-256M-Video-Instruct', 'HuggingFaceTB/SmolVLM2-256M-Video-Instruct'),
+                Model('HuggingFaceTB/SmolVLM2-500M-Video-Instruct', 'HuggingFaceTB/SmolVLM2-500M-Video-Instruct'),
+                Model('HuggingFaceTB/SmolVLM2-2.2B-Instruct', 'HuggingFaceTB/SmolVLM2-2.2B-Instruct'),
+            ]),
+        ],
+        Idefics3Loader,
+        template=TemplateType.idefics3,
+        model_arch=ModelArch.idefics3,
+        architectures=['SmolVLMForConditionalGeneration'],
+        tags=['vision', 'video'],
+        requires=['transformers>=4.50', 'num2words'],
     ))
 
 
