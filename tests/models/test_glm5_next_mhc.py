@@ -15,8 +15,9 @@ def check(args):
     ops = model.get_cann_mhc_ops()
     if ops is None:
         raise RuntimeError('Requires CANN mHC operators')
-    pre = original if args.mode == 'post' else model._glm5_next_mhc_pre(ops[0], original)
-    post = model._glm5_next_native_post if args.mode == 'pre' else model._glm5_next_mhc_post(ops[1])
+    cann_pre, cann_post = (Mock(wraps=op) for op in ops)
+    pre = original if args.mode == 'post' else model._glm5_next_mhc_pre(cann_pre, original)
+    post = model._glm5_next_native_post if args.mode == 'pre' else model._glm5_next_mhc_post(cann_post)
     torch.npu.set_device(args.device)
     torch.manual_seed(1234)
     torch.npu.manual_seed_all(1234)
@@ -51,6 +52,10 @@ def check(args):
 
     ref = run(original, model._glm5_next_native_post)
     actual = run(pre, post)
+    if args.mode != 'post':
+        cann_pre.assert_called_once()
+    if args.mode != 'pre':
+        cann_post.assert_called_once()
     ok = True
     names = ('post', 'comb', 'h_in', 'output', 'dx', 'dA', 'dB')
     if args.full_grad:
@@ -129,6 +134,19 @@ def test_auto_uses_native_when_post_is_missing(monkeypatch):
 
     from swift.model.npu_patch import model
     monkeypatch.setitem(sys.modules, 'cann_ops_transformer.ops', SimpleNamespace(mhc_pre_sinkhorn=Mock()))
+    assert model._get_glm5_next_mhc_patches(glm) == {}
+
+
+def test_changed_decoder_signature_skips_both_patches(monkeypatch):
+    from swift.model.npu_patch import model
+
+    def forward(self, hidden_states, *, cache_position):
+        pass
+
+    glm = SimpleNamespace(
+        Glm5NextTextHyperConnection=SimpleNamespace(forward=Mock()),
+        Glm5NextTextDecoderLayer=SimpleNamespace(forward=forward))
+    monkeypatch.setattr(model, 'get_cann_mhc_ops', lambda: (Mock(), Mock()))
     assert model._get_glm5_next_mhc_patches(glm) == {}
 
 

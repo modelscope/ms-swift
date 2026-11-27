@@ -96,3 +96,10 @@ jobs:
           export MODELSCOPE_CACHE=~/.cache
           export CI_COMMAND='bash .dev_scripts/ci_container_test.sh python tests/run.py --parallel 2 --subprocess --run_config tests/run_config.yaml'
           bash .dev_scripts/dockerci_npu.sh
+      - name: Test GLM mHC patches
+        env:
+          CI_COMMAND: >-
+            python -m pytest -q -rs
+            tests/models/test_glm5_next_mhc.py
+            tests/models/test_megatron_mhc.py
+        run: bash .dev_scripts/dockerci_npu.sh
