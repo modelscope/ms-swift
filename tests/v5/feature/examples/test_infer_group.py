@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-EXAMPLES = Path(__file__).parents[4] / 'examples'
+EXAMPLES = Path(__file__).parents[4] / 'examples' / 'v5'  # 1a1d516e7 split examples -> examples/v5
 pytestmark = [pytest.mark.slow, pytest.mark.accel(1)]
 
 MODEL_TEXT = 'Qwen/Qwen2.5-0.5B-Instruct'

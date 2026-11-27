@@ -170,11 +170,22 @@ def test_bad_request_on_missing_fields(server):
     assert 'prompt' in no_prompt.json()['error']['message']
 
 
-def test_unknown_model_falls_back_to_the_single_served_model(server):
-    """With exactly one supported model, the gateway routes any ``model`` to it (documented fallback)
-    rather than 404-ing -- a 404 needs two or more supported models to disambiguate against."""
-    body = server.chat([{'role': 'user', 'content': 'Hi'}], model='not-a-real-model', max_tokens=8)
-    assert body['object'] == 'chat.completion' and body['choices'][0]['message']['content'] is not None
+def test_unknown_model_is_rejected_with_explicit_routing(server):
+    """Routing is explicit even with a single served model: an unknown ``model`` 404s ``model_not_found``.
+
+    twinkle a11ba7ba ("enforce explicit OpenAI model routing") removed the old single-served-model
+    fallback, so the gateway no longer routes an arbitrary ``model`` to the only deployment -- it
+    rejects it with the OpenAI-style 404 envelope (a configured alias or a listed model still routes).
+    """
+    resp = server.post('/chat/completions', {
+        'model': 'not-a-real-model',
+        'messages': [{'role': 'user', 'content': 'Hi'}],
+        'max_tokens': 8,
+    })
+    assert resp.status_code == 404
+    error = resp.json()['error']
+    assert error['type'] == 'model_not_found' and error['code'] == 'model_not_found'
+    assert error['param'] == 'model' and 'not-a-real-model' in error['message']
 
 
 def test_embeddings_is_unsupported_on_a_generation_model(server):

@@ -16,8 +16,9 @@ Known, deliberate divergences (the new gateway follows OpenAI convention where l
 - **auth failure**: legacy ``_check_api_key`` folded a bad key into ``create_error_response(BAD_REQUEST)``
   -> HTTP **400** with ``{'message', 'object': 'error'}``; the gateway returns HTTP **401** with an
   ``{'error': {'type': 'authentication_error', ...}}`` body.
-- **unknown model**: legacy ``_check_model`` rejected any model not in the list with **400**; the gateway,
-  with a single served model, routes any ``model`` to it (a documented fallback).
+- **unknown model**: legacy ``_check_model`` rejected any model not in the list with **400**; the gateway
+  rejects it with **404** ``model_not_found`` (twinkle a11ba7ba "enforce explicit OpenAI model routing"
+  removed the old single-served-model fallback -- routing is explicit, even with one model).
 - **owned_by**: legacy ``Model.owned_by`` defaulted to ``'ms-swift'``; the gateway reports ``'swift'``.
 - **route mount**: legacy exposed ``/health`` and ``/infer/`` at the root; the gateway mounts everything
   under ``route_prefix`` (``/v1`` here), so it is ``/v1/health`` and ``/v1/infer``.
@@ -167,7 +168,19 @@ def test_auth_failure_diverges_from_legacy_400_to_401(server):
 
 
 def test_unknown_model_diverges_from_legacy_rejection(server):
-    """Legacy ``_check_model`` 400-ed on a model absent from the list; the gateway falls back to the one model."""
-    body = server.chat([{'role': 'user', 'content': 'Hi'}], model='not-a-legacy-known-model', max_tokens=8)
-    assert body['object'] == _legacy_default(ChatCompletionResponse, 'object')
-    assert body['choices'][0]['message']['content'] is not None
+    """Legacy ``_check_model`` 400-ed on a model absent from the list; the gateway 404s ``model_not_found``.
+
+    twinkle a11ba7ba ("enforce explicit OpenAI model routing") removed the old single-served-model
+    fallback: routing is now explicit even with one served model, so an unknown ``model`` is rejected
+    with the OpenAI-style 404 envelope rather than silently routed to the only model.
+    """
+    resp = server.post('/chat/completions', {
+        'model': 'not-a-legacy-known-model',
+        'messages': [{'role': 'user', 'content': 'Hi'}],
+        'max_tokens': 8,
+    })
+    assert resp.status_code == 404
+    error = resp.json()['error']
+    assert error['type'] == 'model_not_found' and error['code'] == 'model_not_found'
+    assert error['param'] == 'model'
+    assert 'not-a-legacy-known-model' in error['message']

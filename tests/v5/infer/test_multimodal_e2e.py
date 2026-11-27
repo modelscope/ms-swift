@@ -24,16 +24,15 @@ from tests.v5.tiny_loader import build_tiny_multimodal
 
 pytestmark = [pytest.mark.slow, pytest.mark.accel(1)]
 
-#: REGISTERED PRODUCT GAP (do not delete): the dev template's rollout seam breaks VL generation on
-#: the transformers backend. ``encode_prompt`` builds the engine prompt by the vLLM contract (one
-#: collapsed image placeholder, the engine expands it), but the HF transformers engine consumes the
-#: processor's output verbatim -- EXPANDED placeholder ids with ``pixel_values`` and a per-token
-#: ``mm_token_type_ids`` aligned to them -- so the ids the engine pads (28) and the collated
-#: per-token tensor (31) cannot line up (IndexError in Qwen2_5VL.get_rope_index). Strict xfail: the
-#: day the product seam is fixed these fail loudly as XPASS and the marker comes out.
-_VL_ROLLOUT_BROKEN = pytest.mark.xfail(
-    True, reason='dev template x transformers-engine VL rollout seam: engine prompt placeholder '
-    'expansion / mm_token_type_ids alignment contract (registered product gap)', strict=True)
+#: The REGISTERED PRODUCT GAP that used to live here (dev template x transformers-engine VL rollout
+#: seam: collapsed vLLM-style placeholder ids vs the processor-expanded ids + per-token
+#: mm_token_type_ids the HF engine consumes) was CLOSED by d41e77952 "统一完整 Trajectory 编码与采样契约"
+#: (per-backend media selection moved INTO encode: the transformers branch keeps the expanded
+#: processor payload, base.py "the transformers engine consumes the expanded feature") with
+#: 7a0f31c79 scoping the placeholder check to serving backends. The strict-xfail marker fired
+#: XPASS on the real-weight run (stageB7_infer_slow.log, 2026-11-27) -- per the marker's own
+#: contract ("the day the product seam is fixed ... the marker comes out") it is removed and the
+#: tests now guard the fixed seam as ordinary assertions.
 
 MODEL_TYPE = 'qwen2_5_vl'
 TEMPLATE = 'qwen2_5_vl'
@@ -103,7 +102,6 @@ def _run_vl(model_dir, data_path, *, num_return_sequences=1, batch_size=1, out_p
         output_path=out_path)
 
 
-@_VL_ROLLOUT_BROKEN
 def test_vl_transformers_generation_consumes_image(vl_model, tmp_path):
     """A single image-bearing row generates on the transformers backend: the VL class loaded and the
     encoded ``pixel_values`` reached ``generate`` (a text-only path would raise on the image tokens)."""
@@ -126,7 +124,6 @@ def test_vl_transformers_generation_consumes_image(vl_model, tmp_path):
     assert written[0]['response'] == row['response']
 
 
-@_VL_ROLLOUT_BROKEN
 def test_vl_transformers_generation_batches_image_rows(vl_model, tmp_path):
     """Two image rows in one padded batch: ``_extra_model_inputs`` concatenates each row's
     ``pixel_values`` / ``image_grid_thw`` along dim 0, so a batched VL forward gets every image.

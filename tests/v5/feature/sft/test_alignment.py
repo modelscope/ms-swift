@@ -527,15 +527,21 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
     assert max_diff < 1e-5, f'resume param trajectory diverged: max|diff|={max_diff:.3e}'
 
 
-class _TinyTrainCfg:
-    learning_rate = 1e-4
-    optim = 'adamw'
-    weight_decay = 0.0
-    adam_beta1 = 0.9
-    adam_beta2 = 0.999
-    adam_epsilon = 1e-8
-    lr_scheduler_type = 'cosine'
-    warmup_ratio = 0.0
+def _TinyTrainCfg():
+    # Back the fake with the REAL TrainConfig so every knob build_param_groups_spec / configure_optimizer
+    # reads exists (vit_lr/aligner_lr added b03ee2d5b, plus galore_*/muon_*/qk_clip_*/weight_decay_incr_style).
+    # A hand-rolled namespace rotted the moment the product read a new field; the dataclass defaults track it.
+    from swift.dev.config import TrainConfig
+    return TrainConfig(
+        learning_rate=1e-4,
+        optim='adamw',
+        weight_decay=0.0,
+        adam_beta1=0.9,
+        adam_beta2=0.999,
+        adam_epsilon=1e-8,
+        lr_scheduler='cosine',
+        warmup_ratio=0.0,
+    )
 
 
 def _drive_micro(model, dataloader, *, n_micro, ga):
@@ -547,17 +553,21 @@ def _drive_micro(model, dataloader, *, n_micro, ga):
         model.clip_grad_and_step(max_grad_norm=1.0, gradient_accumulation_steps=ga)
 
 
-class _TinyTunerCfg:
-    tuner_type = 'lora'
-    lora_rank = 8
-    lora_alpha = 16
-    lora_dropout = 0.0
-    lora_bias = 'none'
-    target_modules = ['all-linear']
-    target_regex = None
-    modules_to_save = None
-    use_rslora = False
-    use_dora = False
+def _TinyTunerCfg():
+    # Real TunerConfig: the product reads cfg.tuner (f695138b3 renamed the retired tuner_type spelling);
+    # the dataclass carries every adapter knob so the fake cannot rot against a new field read.
+    from swift.dev.config import TunerConfig
+    return TunerConfig(
+        tuner='lora',
+        lora_rank=8,
+        lora_alpha=16,
+        lora_dropout=0.0,
+        lora_bias='none',
+        target_modules=['all-linear'],
+        target_regex=None,
+        use_rslora=False,
+        use_dora=False,
+    )
 
 
 # ----------------------------------------------------------------------
@@ -695,22 +705,27 @@ def test_grpo_ga_equivalence_equal_seq_strong_signal():
         lab[:P] = -100
         return lab
 
-    def seq_old(seed):
-        return -torch.rand(L, generator=torch.Generator().manual_seed(seed + 7)) * 2.0
-
     def seq_adv(seed):
         return 2.0 if (seed % 2 == 0) else -2.0  # strong +-2
 
     def loss_for(seeds):
         ids = torch.stack([seq_ids(s) for s in seeds]).to(device)
         labels = torch.stack([seq_labels(s) for s in seeds]).to(device)
-        old = torch.stack([seq_old(s) for s in seeds]).to(device)
         adv = torch.tensor([seq_adv(s) for s in seeds], dtype=torch.float32).to(device)
         logits = model(input_ids=ids).logits.float()
         mask = (labels != -100).bool()
         masked = labels.clone()
         masked[~mask] = 0
         logps = torch.log_softmax(logits, -1).gather(-1, masked.unsqueeze(-1)).squeeze(-1)
+        # GRPO old_logps are the ROLLOUT policy's own logps (detached), not arbitrary randoms. On a real
+        # model the random-id logps sit near -log(V); a random old_logps in [-2,0] puts ratio=exp(logps-old)
+        # ~exp(-10) far below the 1-eps clamp, so EVERY token is clamped and the gradient is exactly zero
+        # (the OLD-RED). Anchor old to the model's logps with a small per-seq perturbation so ratio stays
+        # in-band (~1) and GA-vs-bs equivalence is measured on a STRONG signal. Bound to the seq seed (not
+        # batch structure) so both paths feed identical old_logps for the same sequence.
+        old = logps.detach() + torch.stack([
+            torch.rand(L, generator=torch.Generator().manual_seed(s + 7)) * 0.1 - 0.05 for s in seeds
+        ]).to(device)
         return loss_fn(
             InputFeature({'labels': labels}), ModelOutput({'logps': logps}), old_logps=old, advantages=adv)['loss']
 

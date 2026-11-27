@@ -28,7 +28,7 @@ import pytest
 
 from tests.v5.feature.examples.conftest import MODEL_INSTRUCT, assert_smoke
 
-EXAMPLES = Path(__file__).parents[4] / 'examples'
+EXAMPLES = Path(__file__).parents[4] / 'examples' / 'v5'  # 1a1d516e7 split examples -> examples/v5
 
 pytestmark = [pytest.mark.slow, pytest.mark.accel(1)]
 

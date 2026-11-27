@@ -254,7 +254,7 @@ def test_yaml_example_smokes(tmp_path, sft_rows):
 
     from swift.cli.main import parse_yaml_args
 
-    src_yaml = Path(__file__).parents[4] / 'examples' / 'train' / 'yaml' / 'sft.yaml'
+    src_yaml = Path(__file__).parents[4] / 'examples' / 'v5' / 'train' / 'yaml' / 'sft.yaml'  # 1a1d516e7
     out_dir = str(tmp_path / 'yaml_out')
     text = src_yaml.read_text(encoding='utf-8')
     text = text.replace("- 'swift/self-cognition#600'", f"- '{sft_rows}'")

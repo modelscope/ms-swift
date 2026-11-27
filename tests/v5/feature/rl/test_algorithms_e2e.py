@@ -21,7 +21,7 @@ import os
 import pytest
 
 from tests.v5.feature.rl.conftest import rl_configs, run_rl
-from twinkle.data_format import last_assistant_text
+from twinkle.data_format import ground_truth, last_assistant_text
 
 _LN2 = math.log(2.0)
 
@@ -235,6 +235,9 @@ def test_gkd_e2e_separate_teacher(tiny_qwen2_5, tiny_qwen2_5_teacher, rl_data, t
         max_steps=2,
         rlhf_over={'teacher_model': [tiny_qwen2_5_teacher], 'lmbda': 1.0},
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
+        # e589e02d0 flipped the CLI default sampler_mode colocate->disaggregated; this 2-card design
+        # (policy+sampler share one card, teacher on its own) must now pin colocate explicitly.
+        rollout_over={'sampler_mode': 'colocate'},
     )
     history = run_rl(configs)
     assert_rl_trained(history, configs, 'gkd', max_loss=20.0)
@@ -300,6 +303,9 @@ def test_mopd_e2e_multi_teacher(tiny_qwen2_5, tiny_qwen2_5_teacher, tiny_qwen2_5
             'lmbda': 1.0,
         },
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
+        # e589e02d0 flipped the CLI default sampler_mode colocate->disaggregated; this 2-card design
+        # (policy+sampler share one card, the K teachers on their own shared group) pins colocate explicitly.
+        rollout_over={'sampler_mode': 'colocate'},
     )
     history = run_rl(configs)
     assert_rl_trained(history, configs, 'mopd', max_loss=20.0)
@@ -334,6 +340,9 @@ def test_ppo_e2e_policy_and_value_atomic(tiny_qwen2_5, rl_data, tmp_path, assert
         reward_over={'orm': [tiny_qwen2_5], 'orm_model_type': ['qwen2'], 'orm_task_type': ['seq_cls']},
         rlhf_over={'num_generations': 2},
         generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
+        # e589e02d0 flipped the CLI default sampler_mode colocate->disaggregated; this 2-card design
+        # (policy+critic+sampler share one card, the frozen RM on its own group) pins colocate explicitly.
+        rollout_over={'sampler_mode': 'colocate'},
     )
     history = run_rl(configs)
     assert_rl_trained(
@@ -425,7 +434,10 @@ def test_grpo_multi_reward_channel_rule_plus_scalar_rm(tiny_qwen2_5, rl_data, tm
             'orm_model_type': ['qwen2'],
             'orm_task_type': ['seq_cls'],
         },
-        generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16})
+        generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
+        # e589e02d0 flipped the CLI default sampler_mode colocate->disaggregated; this 2-card design
+        # (policy+sampler share one card, the scalar RM on its own reward_0 group) pins colocate explicitly.
+        rollout_over={'sampler_mode': 'colocate'})
     history = run_rl(configs)
     assert_rl_trained(history, configs, 'grpo', max_loss=50.0,
                       require_keys=('train/approx_kl', 'train/clip_ratio'))
@@ -588,7 +600,10 @@ def test_grpo_teacher_independent_frozen_places_own_group(tiny_qwen2_5, tiny_qwe
         out_dir=str(tmp_path / 'out_teacher_b'), max_steps=2,
         rlhf_over={'num_generations': 4, 'teacher_model': [tiny_qwen2_5_teacher]},
         reward_over={'orm': [_varied_content_reward]},
-        generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16})
+        generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
+        # e589e02d0 flipped the CLI default sampler_mode colocate->disaggregated; this 2-card design
+        # (policy+sampler share one card, the distinct teacher on its own group) pins colocate explicitly.
+        rollout_over={'sampler_mode': 'colocate'})
     history = run_rl(configs)
     rl_cfg = configs['rl_config']
     assert rl_cfg.teacher_model == [tiny_qwen2_5_teacher] and not rl_cfg._teacher_use_disable_adapter, (
@@ -623,9 +638,16 @@ def test_grpo_teacher_privileged_prompt_policy_self_grades(tiny_qwen2_5, rl_data
     tally = tmp_path / 'teacher_prompt_rows.txt'
 
     def _tallying_varied_reward(trajectories, **kwargs):
-        """A content-varied ORM that records whether every row in the batch carries teacher_prompt."""
+        """A content-varied ORM that records whether every row in the batch carries teacher_prompt.
+
+        6d82dd8ac packs the non-prompt dataset columns (teacher_prompt included) into the row's
+        ``user_data`` (build_prompt_dataloader's documented row contract: "A reward reads it with
+        twinkle.data_format.ground_truth(row, key)"); the flat column no longer rides the trajectory.
+        ground_truth is the official reader (packed user_data first, flat column second), so the
+        plumbing oracle is unchanged -- a dropped extra anywhere still leaves the tally without it.
+        """
         with open(tally, 'a', encoding='utf-8') as f:
-            f.write(f"{int(all(isinstance(t, dict) and t.get('teacher_prompt') for t in trajectories))}\n")
+            f.write(f"{int(all(isinstance(t, dict) and ground_truth(t, 'teacher_prompt') for t in trajectories))}\n")
         return [float(sum(ord(ch) for ch in last_assistant_text(completion)) % 11) / 11.0
                 for completion in trajectories]
 
@@ -878,7 +900,10 @@ def test_grpo_sync_ref_model_ema_full_param(tiny_qwen2_5, rl_data, tmp_path, ass
         rlhf_over={'num_generations': 4, 'beta': 5.0, 'calculate_KL': True,
                    'sync_ref_model': True, 'ref_model_sync_steps': 1, 'ref_model_mixup_alpha': 0.9},
         reward_over={'orm': [_varied_content_reward]},
-        generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16})
+        generation_over={'temperature': 1.0, 'top_p': 1.0, 'max_new_tokens': 16},
+        # e589e02d0 flipped the CLI default sampler_mode colocate->disaggregated; this 2-card design
+        # (policy+sampler share one card, the full-param reference on its own REF_GROUP) pins colocate explicitly.
+        rollout_over={'sampler_mode': 'colocate'})
     history = run_rl(configs)
     assert calls, (
         'sync_ref_model=True with beta>0 must construct the EMA manager (reference built as a distinct '

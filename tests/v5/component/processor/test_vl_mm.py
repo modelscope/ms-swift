@@ -190,15 +190,32 @@ def test_vl_single_row_keeps_the_batch_axis(vl):
 
 @pytest.mark.slow
 def test_vl_rollout_encode_preserves_image_refs(vl, tmp_path):
-    """Encoding preserves caller-owned raw media; each engine loads its own media view."""
+    """Encoding preserves caller-owned raw media; each engine loads its own media view.
+
+    e2f27753b made the serving-engine rollout trajectory carry the media the ENGINE encoding loaded
+    (serving engines do not accept raw paths/URLs), while the transformers engine keeps the original
+    refs (it consumes the expanded pixel_values). The caller's row is never mutated either way.
+    """
+    from PIL import Image
+
     dev, _ = vl
     path = str(tmp_path / "a.png")
-    _rand_image().save(path)
+    source = _rand_image()
+    source.save(path)
     images = [path, {"bytes": None, "path": path}]
     prompt = {"messages": [{"role": "user", "content": "<image><image>What is this?"}], "images": images}
-    encoded = dev.encode(prompt, add_generation_prompt=True)
+    encoded = dev.encode(prompt, add_generation_prompt=True)  # default serving engine (vllm)
     assert prompt["images"] is images and images == [path, {"bytes": None, "path": path}]
-    assert encoded["images"] == images
+    # serving view: one loaded PIL image per ref, pixel-identical to the caller's source
+    assert len(encoded["images"]) == len(images)
+    for loaded in encoded["images"]:
+        assert isinstance(loaded, Image.Image)
+        assert np.array_equal(np.asarray(loaded.convert("RGB")), np.asarray(source.convert("RGB")))
+    # transformers keeps the original refs (preserve_trajectory; expanded features carry the pixels)
+    tf_prompt = {"messages": [{"role": "user", "content": "<image><image>What is this?"}],
+                 "images": [path, {"bytes": None, "path": path}]}
+    tf_encoded = dev.encode(tf_prompt, add_generation_prompt=True, engine="transformers")
+    assert tf_encoded["images"] == [path, {"bytes": None, "path": path}]
     # a training encode leaves the row alone
     row = dict(_sample(1), images=[path])
     dev.encode(row)
