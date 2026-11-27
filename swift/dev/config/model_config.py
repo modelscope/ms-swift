@@ -53,6 +53,10 @@ class ModelConfig:
     # Stop the MTP gradient at the main hidden states (verl's detach_encoder): only the heads
     # learn; safer for RL -- the policy is provably unaffected.
     mtp_decoder_input_detach: bool = False
+    # Full-finetune checkpoints without MTP keys fail loud unless this is set (mcore-bridge
+    # gpt_bridge._convert_mtp_layer; legacy megatron_args carries the same knob). Opt in to
+    # train the MTP heads from random init on a base model that ships no MTP weights.
+    mtp_allow_random_init: bool = False
 
     # === FP4 low-precision training (Megatron only) ===
     # Only 'e2m1'; params quantized too only with fp4_param_gather. Needs Blackwell + TE >= 2.7.

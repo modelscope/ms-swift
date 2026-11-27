@@ -1129,15 +1129,24 @@ def resolve_generation_batch_size(generation_batch_size: Optional[int], *, num_p
     An explicit ``generation_batch_size`` passes through unchanged. The derived default fills
     whole optimizer updates: ``train_batch_size * gradient_accumulation_steps`` samples = that
     many completions = ``global_batch / num_generations`` prompts, times ``num_iterations``
-    replays and ``_STEPS_PER_ROLLOUT_BATCH`` updates. The previous fallback -- the whole
-    dataset in the first batch -- turned any sizeable dataset into hours of generation before
-    the first training log line, indistinguishable from a hang.
+    replays and ``_STEPS_PER_ROLLOUT_BATCH`` updates, capped at the prompt pool (a batch cannot
+    draw more prompts than the dataset holds). The previous fallback -- the whole dataset in the
+    first batch -- turned any sizeable dataset into hours of generation before the first training
+    log line, indistinguishable from a hang.
     """
     if generation_batch_size is not None:
         return generation_batch_size
     global_batch_size = train_batch_size * max(1, gradient_accumulation_steps)
     prompts_per_update = math.ceil(global_batch_size / max(1, num_generations))
-    return max(1, prompts_per_update * _STEPS_PER_ROLLOUT_BATCH * max(1, num_iterations))
+    derived = prompts_per_update * _STEPS_PER_ROLLOUT_BATCH * max(1, num_iterations)
+    # A generation batch draws prompts from the dataset, so the derived default must not exceed the
+    # prompt pool: a larger batch is degenerate (the dataloader cannot fill it) and, under colocate,
+    # ``stream_batch_size`` rounds the delivery batch UP to ``generation_batch_size * num_generations``
+    # -- beyond the rows the whole run can deliver, so the StreamingDriver never hands out a batch and
+    # the recipe silently trains zero steps (the 64258f47e regression). ``rollout_step_budget`` already
+    # caps at ``num_prompts``; capping here keeps the batch and the budget consistent. An explicit
+    # ``generation_batch_size`` still passes through unchanged.
+    return max(1, min(num_prompts, derived))
 
 
 def stream_batch_size(*, colocate: bool, generation_batch_size: int, num_generations: int,
@@ -2060,10 +2069,10 @@ def load_best_model(model: Any, best_ckpt: Optional[str], *, metric_for_best_mod
 def num_optimizer_steps(num_micro_batches: int, gradient_accumulation_steps: int) -> int:
     """Optimizer-update count for a given number of micro-batches under twinkle GA.
 
-    twinkle's do_grad_sync fires at cur_step = ga+1, 2*ga+1, ... (one micro-step late),
-    so over N micro-batches the number of optimizer steps is floor((N-1)/ga) for ga>1,
-    and N for ga==1. Used to size the LR scheduler's num_training_steps so it matches the
-    actual number of steps taken.
+    twinkle's do_grad_sync fires at cur_step = ga, 2*ga, ... (every COMPLETE accumulation window;
+    the one-micro-step lag was removed in twinkle ad08e5b1, #361 "synchronize gradients on completed
+    accumulation steps"), so over N micro-batches the number of optimizer steps is floor(N/ga).
+    Used to size the LR scheduler's num_training_steps so it matches the actual number of steps taken.
 
     No production caller today: every recipe runs ga=1 and sizes the scheduler horizon via
     plan_supervised_steps / the rollout step budget instead. The contract only bites at
@@ -2071,9 +2080,7 @@ def num_optimizer_steps(num_micro_batches: int, gradient_accumulation_steps: int
     pin configure_optimizer's num_training_steps against it).
     """
     ga = max(1, gradient_accumulation_steps)
-    if ga == 1:
-        return num_micro_batches
-    return max(0, (num_micro_batches - 1) // ga)
+    return num_micro_batches // ga
 
 
 def backend_owns_gradient_accumulation(model) -> bool:
@@ -2101,14 +2108,14 @@ def is_grad_sync_boundary(micro_step: int, gradient_accumulation_steps: int) -> 
     """Whether ``micro_step`` is an optimizer-update boundary, computed driver-side.
 
     Replicates twinkle's ``OptimizerGroup.do_grad_sync`` (a pure function of ``cur_step`` and the
-    accumulation size: boundary when ga==1, else one micro-step late at cur_step = ga+1, 2ga+1,
-    ...) using the caller's own ``micro_step`` as ``cur_step``. Module-level because the
-    optimizer group lives on the WORKERS: under Ray the driver-side model is a proxy with no such
-    attribute, so the webui component's loop must derive the boundary here instead of reaching
-    into the proxy.
+    accumulation size: boundary when ga==1, else at every complete window cur_step = ga, 2ga, ...;
+    the one-micro-step lag was removed in twinkle ad08e5b1) using the caller's own ``micro_step``
+    as ``cur_step``. Module-level because the optimizer group lives on the WORKERS: under Ray the
+    driver-side model is a proxy with no such attribute, so the webui component's loop must derive
+    the boundary here instead of reaching into the proxy.
     """
     ga = gradient_accumulation_steps
-    return ga == 1 or ((micro_step - 1) % ga == 0 and micro_step > 1)
+    return ga == 1 or (micro_step > 0 and micro_step % ga == 0)
 
 
 def start_manual_gc(enabled: bool) -> Optional[bool]:

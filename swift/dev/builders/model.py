@@ -1464,6 +1464,7 @@ def _apply_mtp_kwargs(kwargs: dict, model_config: ModelConfig, strict: set) -> N
         "mtp_freeze": model_config.mtp_freeze,
         "mtp_decoder_input_detach": model_config.mtp_decoder_input_detach,
         "mtp_shared_weights": model_config.mtp_shared_weights,
+        "mtp_allow_random_init": model_config.mtp_allow_random_init,
     }
     for name, value in values.items():
         if value is not None:

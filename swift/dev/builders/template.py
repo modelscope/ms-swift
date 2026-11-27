@@ -230,7 +230,14 @@ def build_template(template_config: TemplateConfig, processor: Any, *, task_type
     """
     from swift.dev.template.register import get_template, get_template_meta
 
-    truncation_strategy = template_config.truncation_strategy or 'raise'
+    # ``delete`` is realised dataset-side (rows that raise MaxLengthError are dropped/marked
+    # unusable before training), so the encoder itself always raises. Passing 'delete' through
+    # to the template would instead arm twinkle's batch_encode silent-drop branch
+    # (template/base.py: `except MaxLengthError: if self.truncation_strategy != 'delete': raise`),
+    # quietly emptying an over-budget batch -- the fail-loudly contract 7f194bfea dropped.
+    truncation_strategy = template_config.truncation_strategy
+    if truncation_strategy in (None, 'delete'):
+        truncation_strategy = 'raise'
 
     # None means "use the registry factory's default", not a false chat-template flag.
     kwargs = {}

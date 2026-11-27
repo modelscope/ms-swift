@@ -1806,7 +1806,7 @@ def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Opt
     """
     mtp_dependents = (
         'mtp_loss_scaling_factor', 'enable_mtp_training', 'mtp_freeze', 'mtp_decoder_input_detach',
-        'mtp_shared_weights')
+        'mtp_shared_weights', 'mtp_allow_random_init')
 
     if model_config.mtp_num_layers is None:
         for attr in mtp_dependents:
