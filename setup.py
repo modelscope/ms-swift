@@ -120,7 +120,7 @@ if __name__ == '__main__':
     # parse_requirements() silently returns [] for a missing file; fail closed so an sdist
     # that omitted a requirements file (see MANIFEST.in) cannot ship empty install_requires.
     for _req_file in ('requirements.txt', 'requirements/megatron.txt', 'requirements/eval.txt',
-                      'requirements/swanlab.txt', 'requirements/ray.txt', 'requirements/tests.txt'):
+                      'requirements/swanlab.txt', 'requirements/tests.txt'):
         if not os.path.exists(_req_file):
             raise FileNotFoundError(f'{_req_file} is required to build ms_swift but is missing; check MANIFEST.in')
     install_requires, deps_link = parse_requirements('requirements.txt')
@@ -129,11 +129,9 @@ if __name__ == '__main__':
     extra_requires['megatron'], _ = parse_requirements('requirements/megatron.txt')
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
     extra_requires['swanlab'], _ = parse_requirements('requirements/swanlab.txt')
-    extra_requires['ray'], _ = parse_requirements('requirements/ray.txt')
+    # ray is a base dependency of twinkle-kit; tracking backends (swanlab, wandb) stay opt-in.
     all_requires.extend(install_requires)
     all_requires.extend(extra_requires['eval'])
-    all_requires.extend(extra_requires['swanlab'])
-    all_requires.extend(extra_requires['ray'])
     extra_requires['all'] = all_requires
     extra_requires['client'] = ['twinkle-client>=0.4.0.dev0,<0.5']
     extra_requires['server'] = ['twinkle-server>=0.4.0.dev0,<0.5']

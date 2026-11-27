@@ -31,7 +31,7 @@ For development checkouts, follow [Source installation](./installation.mdx#sourc
 
 See [Installation](./installation.mdx) for environment requirements, [Docker](./docker.mdx) for containers, and [Models and Datasets](./models-and-datasets.mdx) for selection and data sources.
 
-SWIFT supports the following training modes:
+SWIFT supports the following training algorithms:
 
 | Training mode | Command | Paper | Examples |
 |---|---|---|---|
@@ -60,7 +60,7 @@ Non-training capabilities:
 | Export and quantization (GPTQ / AWQ / FP8, etc.) | `swift export` | [export](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
 | Evaluation | `swift eval` | [eval](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
 
-The local examples use NVIDIA GPUs, BF16, and the FlashAttention 2 kernel. Install PyTorch compatible with your driver and CUDA environment, plus flash-attn (`pip install flash-attn --no-build-isolation`).
+See the concrete examples below. The local examples use NVIDIA GPUs, BF16, and the FlashAttention 2 kernel. Install PyTorch compatible with your driver and CUDA environment, plus flash-attn (`pip install flash-attn --no-build-isolation`).
 
 ```bash
 # A simple sft example
@@ -352,6 +352,8 @@ python client_sft.py
 This tokenizer example fetches tokenizer files from Hugging Face without downloading base model weights. `labels` are already aligned with the next token; `-100` excludes prompt positions so only the answer is trained. Repeating one sample illustrates the API; use your own dataset and batches for real training.
 
 For access from another machine, set `TWINKLE_SERVER_URL` to the server address. With authentication enabled, provide the server-issued credentials through `TWINKLE_SERVER_TOKEN`. The returned `twinkle://` URI identifies a server-side checkpoint, not a client-side file path.
+
+twinkle-server also supports the tinker API; see [here](TODO: link to the tinker cookbook).
 
 ## Learn more
 

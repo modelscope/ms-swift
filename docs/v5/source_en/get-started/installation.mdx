@@ -1,116 +1,117 @@
 ---
 title: Installation & Hardware
-description: Prepare SWIFT v5 environments for local training, servers, and clients.
+description: Install SWIFT v5 for training, servers, and clients, and check images, supported hardware, and runtime versions.
 ---
+
+SWIFT v5 packages are split by machine role, so you do not need to install everything on the same machine. Use an isolated Python 3.12 environment and run installation commands in the Python environment that will execute training or serving.
+
+| Package | Role | Where to install |
+|---|---|---|
+| `ms-swift` | CLI and Python API for training, inference, deployment, and evaluation | Local training machines; clients that submit with `--mode remote` |
+| `twinkle-server` | Multi-tenant training and sampling service | Machines providing GPU compute |
+| `twinkle-client` | Python SDK and CLI for remote training | Machines that submit training jobs without a local GPU |
 
 ## Wheel installation
 
-Use an isolated Python 3.12 environment. Run installation commands in the Python environment that will execute training or serving.
-
 ### Local training with SWIFT
 
-Install with pip:
+Install SWIFT on the training machine; its dependencies are installed with it. The examples in [Quick Start](./quick-start.mdx) do not require `twinkle-server` or `twinkle-client`:
 
 ```bash
+# Install SWIFT v5
 pip install 'ms-swift>=5.0.0'
-```
 
-`twinkle-kit` is installed with SWIFT. The [SFT example](./quick-start.mdx) does not require `twinkle-server` or `twinkle-client`.
+# Optional dependencies
+pip install 'ms-swift[megatron]'  # Megatron backend: installs mcore-bridge and megatron-core; requires a matching CUDA environment, so it is not part of all
+pip install 'ms-swift[eval]'  # Evaluation: installs evalscope with the opencompass / vlmeval backends
+pip install 'ms-swift[all]'  # All optional dependencies: eval (excluding megatron)
+
+# Install with uv, which selects the PyTorch build matching your device
+pip install uv
+uv pip install 'ms-swift>=5.0.0' --torch-backend=auto
+```
 
 ### Deploy twinkle-server
 
-On the machine providing GPU compute, install:
+Install on the machine providing GPU compute. The server configures models, samplers, and resources, and clients submit training operations through it. `swift deploy` requires `ms-swift` on the same machine:
 
 ```bash
-pip install twinkle-server
+pip install twinkle-server ms-swift
 ```
 
-The server configures models, samplers, and resources; clients submit training operations. See [Remote Training & twinkle-server](../interfaces/server-client.mdx) for deployment.
+See [Remote Training & twinkle-server](../interfaces/server-client.mdx) for the full deployment procedure.
 
 ### Remote training with a client
 
-On the machine submitting requests, install:
+Install on the machine submitting training jobs. The client does not need a local GPU:
 
 ```bash
-pip install twinkle-client
+pip install twinkle-client ms-swift
 ```
 
-The client does not need a local GPU. To train remotely through SWIFT commands, install SWIFT in the client environment and select `--mode remote`.
+Add `--mode remote` when submitting remote training through SWIFT commands; `ms-swift` and `twinkle-client` must be installed in the same Python environment.
 
 ## Source installation
 
-For development checkouts, install the packages in the same Python environment. First enter the cloned [Twinkle repository](https://github.com/modelscope/twinkle) and install the core package:
+For development branches or local modifications, clone the repository and install it into the same Python environment:
 
 ```bash
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
 pip install -e .
+uv pip install -e . --torch-backend=auto  # With uv
 ```
 
-From that repository root, install only the additional package needed by this environment:
+After installation, the examples in [Models and Datasets](./models-and-datasets.mdx) run directly.
 
-```bash
-pip install -e ./twinkle_cs/client  # Remote Python SDK / --mode remote
-pip install -e ./twinkle_cs/server  # swift deploy / twinkle-server
-```
+## Images
 
-Then enter the cloned [ms-swift repository](https://github.com/modelscope/ms-swift) and run `pip install -e .`. Megatron users can also install [mcore-bridge](https://github.com/modelscope/mcore-bridge) from its checkout with `pip install -e .`.
+See [Docker](./docker.mdx) for Docker images with SWIFT, PyTorch, and inference engines preinstalled, and for container startup. Images still require host drivers and a device runtime. Mount persistent model and dataset caches to avoid downloading them again after recreating a container.
 
-## PyTorch and the compute environment
+## Runtime environment
 
-Choose a [PyTorch](https://pytorch.org/get-started/locally/) build compatible with the device and driver before installing SWIFT. CUDA, ROCm, and NPU installations are not interchangeable.
+| Component | Range | Recommended | Notes |
+|---|---|---|---|
+| python | `>=3.11,<3.14` | 3.12 | |
+| cuda | | | Not required for CPU, NPU, or MPS |
+| torch | `>=2.6,<3.0` | | Select the CUDA / ROCm / NPU build for your device |
+| transformers | `>=5.8,<6.0` | | |
+| datasets | `>=4.0,<4.8.5` | | |
+| peft | `>=0.11,<0.20` | | Lightweight tuning such as LoRA |
+| trl | `>=0.15,<1.0` | | RL |
+| ray | `>=2.55` | | Distributed execution and the server |
+| flash_attn | | | The NVIDIA BF16 examples use FlashAttention 2 |
+| vllm | | | Online sampling / deployment |
+| sglang | | | Online sampling / deployment |
 
-| Component | Requirement or purpose |
-| --- | --- |
-| Python | `>=3.11,<3.14`; 3.12 recommended |
-| PyTorch | twinkle requires `>=2.6.0,<3.0.0`; select a device-compatible build |
-| Transformers | `>=5.8,<6.0` |
-| datasets | `>=4.0,<4.8.5` |
-| Ray | `>=2.55`; a base dependency for distributed execution in Ray mode |
-| FlashAttention | The NVIDIA BF16 examples use FlashAttention 2 |
+Install in this order: first a [PyTorch](https://pytorch.org/get-started/locally/) build compatible with the device and driver (CUDA, ROCm, and NPU builds are not interchangeable), then SWIFT, and finally attention kernels and inference engines. Engine installation can also change PyTorch, Transformers, and other dependencies, so select compatible training and inference versions within the same isolated environment.
 
-Install FlashAttention 2 after PyTorch and a working CUDA build environment:
+Install FlashAttention 2 after PyTorch and a working CUDA build environment are available:
 
 ```bash
 pip install packaging ninja
 pip install flash-attn --no-build-isolation
 ```
 
-The examples select `--attn_impl flash_attention_2`. On hardware without FlashAttention, choose an implementation supported by the model and platform rather than copying CUDA installation commands.
+The examples on this site select `--attn_impl flash_attention_2`. On hardware without FlashAttention, choose an implementation supported by the model and platform rather than copying CUDA installation commands. See [requirements/install_all.sh](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh) for more optional dependencies.
 
-## Optional capabilities
+## Supported hardware
 
-### Online sampling
+| Hardware | Notes | Reference |
+|---|---|---|
+| NVIDIA GPUs | Supported by default; examples on this site use NVIDIA GPUs with BF16 | — |
+| AMD GPUs | Use ROCm-enabled PyTorch | [AMD Support](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source_en/BestPractices/AMD-support.md) |
+| Ascend NPUs | Install torch-npu matching CANN and the Ascend extension required by the inference engine | [NPU Support](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source_en/BestPractices/NPU-support.md) |
+| MetaX GPUs | | [MetaX Support](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source_en/BestPractices/Metax-support.md) |
+| Moore Threads MUSA GPUs | | [MUSA Support](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source_en/BestPractices/MUSA-support.md) |
+| Apple MPS | Local inference or small training jobs with compatible models | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
+| CPUs | Local inference or small training jobs with compatible models | — |
 
-Install the engine selected for sampling:
+Models, inference engines, and parallel backends have different hardware requirements; GPU-specific samplers and kernels cannot be reused directly on CPUs or MPS.
 
-```bash
-pip install vllm
-```
+## Notebook environment
 
-Or use SGLang:
+Most models supported by SWIFT for training run on an `A10` GPU. You can use the free GPU instance provided by ModelScope:
 
-```bash
-pip install 'sglang[all]'
-```
-
-Engine installation can also change PyTorch and Transformers dependencies. Select compatible training and inference versions within the same isolated environment. The extra dependency for the mathematical reward `--orm accuracy` is installed in the [Quick Start GRPO example](./quick-start.mdx); it is not required by every training task.
-
-### Megatron
-
-Install the dependencies for the Megatron backend:
-
-```bash
-pip install 'twinkle-kit[megatron]'
-```
-
-This includes Megatron-Core, Transformer Engine, and mcore-bridge. They must match the CUDA environment.
-
-## Hardware support
-
-SWIFT supports NVIDIA GPUs, AMD GPUs, Ascend NPUs, Apple MPS, and CPUs. Models, inference engines, and parallel backends have different hardware requirements.
-
-- **NVIDIA GPUs**: use CUDA-enabled PyTorch. Quick Start assumes NVIDIA GPUs and BF16.
-- **AMD GPUs**: use ROCm-enabled PyTorch. See [AMD Support](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source_en/BestPractices/AMD-support.md).
-- **Ascend NPUs**: install torch-npu matching CANN and the Ascend extension required by the inference engine. See [NPU Support](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source_en/BestPractices/NPU-support.md).
-- **Apple MPS / CPUs**: use compatible models for local inference or small training jobs; GPU-specific samplers and kernels cannot be reused directly.
-
-[Docker images](./docker.mdx) still require host drivers and a device runtime. Mount persistent model and dataset caches to avoid downloading them again after recreating a container.
+1. Sign in to the [ModelScope](https://www.modelscope.cn) website.
+2. Click **My Notebook** in the left sidebar and start a free GPU instance, then install SWIFT inside the instance as described above.

@@ -37,7 +37,7 @@ pip install 'ms-swift>=5.0.0'
 
 完整环境要求见[安装](./installation.mdx)，容器启动见 [Docker](./docker.mdx)，模型选择和数据来源见[模型与数据集](./models-and-datasets.mdx)。
 
-SWIFT 支持的训练模式包括：
+SWIFT 支持的训练算法包括：
 
 | 训练模式 | 命令 | 论文 | 示例 |
 |---|---|---|---|
@@ -66,7 +66,7 @@ SWIFT 支持的训练模式包括：
 | 导出与量化（GPTQ / AWQ / FP8 等） | `swift export` | [export](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
 | 评测 | `swift eval` | [eval](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
 
-本文的本地示例使用 NVIDIA GPU、BF16 与 FlashAttention 2。请安装与驱动、CUDA 环境匹配的 PyTorch，并安装 flash-attn（`pip install flash-attn --no-build-isolation`）。
+可以参见下面具体的样例。本文的本地示例使用 NVIDIA GPU、BF16 与 FlashAttention 2。请安装与驱动、CUDA 环境匹配的 PyTorch，并安装 flash-attn（`pip install flash-attn --no-build-isolation`）。
 
 ```bash
 # A simple sft example
@@ -364,6 +364,8 @@ with init_twinkle_client(
 ```bash
 python client_grpo.py
 ```
+
+twinkle-server 也支持 tinker 语法，详情请参考[这里](这里给出 tinker 的 cookbook 地址)
 
 ## 了解更多
 
