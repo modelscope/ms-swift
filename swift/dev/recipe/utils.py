@@ -1874,20 +1874,30 @@ def filter_perf_actors(candidates: Dict[str, Any]) -> Dict[str, Any]:
 def flatten_evalscope_report(summary: Any) -> Dict[str, float]:
     """Flatten EvalScope report rows into a ``{metric_name: score}`` dict.
 
-    ``summarize`` returns one report dict per benchmark (an ``evalscope.report.Report``): its overall
-    ``score`` is keyed by the benchmark ``name``, and each entry in ``metrics`` contributes its own
-    ``name``/``score``. ``metric_for_best_model`` on the generative path names one of these keys, so
+    ``summarize`` returns one report dict per benchmark (an ``evalscope.report.Report`` dump): its
+    overall score is keyed by the benchmark ``name``, and each entry in ``metrics`` contributes its
+    own name/score. ``metric_for_best_model`` on the generative path names one of these keys, so
     best-model tracking and ``on_evaluate`` read a flat mapping rather than the nested report.
+
+    Rows are read back through ``Report.from_dict`` -- evalscope's single read path -- because the
+    serialized shape is schema-versioned: report v2 (evalscope >= 1.11) stores ``metrics`` with
+    ``identity`` plus a ``primary_metric_identity`` instead of the v1 convenience ``score``/``name``
+    keys, and the model's compat properties (``Report.score``, ``Metric.name``) resolve both shapes.
+    Hand-picking the v1 keys off a v2 dump silently yielded an EMPTY mapping, leaving best-model
+    tracking blind on every Native eval.
     """
+    from evalscope.report.report import Report
+
     flat: Dict[str, float] = {}
     for row in summary or []:
         if not isinstance(row, dict):
             continue
-        if row.get('name') is not None and row.get('score') is not None:
-            flat[str(row['name'])] = float(row['score'])
-        for metric in row.get('metrics') or []:
-            if isinstance(metric, dict) and metric.get('name') is not None and metric.get('score') is not None:
-                flat[str(metric['name'])] = float(metric['score'])
+        report = Report.from_dict(row)
+        if report.score is not None:
+            flat[str(report.name)] = float(report.score)
+        for metric in report.metrics:
+            if metric.score is not None:
+                flat[str(metric.name)] = float(metric.score)
     return flat
 
 

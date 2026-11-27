@@ -151,6 +151,10 @@ class Gemma3nTemplate(Gemma3Template):
     boi_token_id = 255999
     boa_token_id = 256000
     placeholder_tokens = ["<start_of_image>", "<start_of_audio>"]
+    # vLLM has no gemma3n audio path; the rejection lives at the vLLM encode boundary
+    # (Template.encode), so the shared serving-format render used for transformers-bound
+    # engine_input_ids can still render the audio placeholder.
+    vllm_unsupported_media = ("audios",)
 
     def replace_tag(
         self, media_type: Literal["image", "video", "audio"], index: int, inputs: StdTemplateInputs
@@ -161,9 +165,19 @@ class Gemma3nTemplate(Gemma3Template):
             else:
                 return ["\n\n<start_of_image>"]
         elif media_type == "audio":
-            if self.mode == "vllm":
-                raise ValueError("Audio is not supported in vLLM")
-            inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
+            audio = inputs.audios[index]
+            sampling_rate = self.processor.feature_extractor.sampling_rate
+            if isinstance(audio, tuple):
+                # vLLM render mode: Template._prepare_inputs already pre-loaded the audio as
+                # (waveform, native_sr) for serving engines; resample to the feature extractor's
+                # rate instead of re-reading a file path that is no longer there.
+                import librosa
+                audio, native_sr = audio
+                if native_sr != sampling_rate:
+                    audio = librosa.resample(audio, orig_sr=native_sr, target_sr=sampling_rate)
+            else:
+                audio = load_audio(audio, sampling_rate)
+            inputs.audios[index] = audio
             return ["<start_of_audio>"]
         else:
             raise ValueError(f"Unsupported media type: {media_type}. Supported types are: image, audio")
@@ -250,9 +264,23 @@ class Gemma3nTemplate(Gemma3Template):
         input_features_mask = [b["input_features_mask"] for b in batch if b.get("input_features_mask") is not None]
 
         if input_features:
-            res["input_features"] = torch.concat(input_features)
-        if input_features_mask:
-            res["input_features_mask"] = torch.concat(input_features_mask)
+            # Rows encode their audios independently, so the feature time axis varies with the
+            # audio length (the feature extractor does not pad to a fixed 30 s). The HF model
+            # consumes a batch padded to the LONGEST audio with input_features_mask marking the
+            # valid frames (nonzero = valid; the forward inverts it for the audio tower), exactly
+            # like the processor's own multi-audio batching -- a plain concat dies on unequal
+            # lengths ("Expected size 203 but got size 418").
+            max_len = max(f.shape[-2] for f in input_features)
+            padded_features, padded_masks = [], []
+            for features, mask in zip(input_features, input_features_mask):
+                pad = max_len - features.shape[-2]
+                if pad:
+                    features = torch.nn.functional.pad(features, (0, 0, 0, pad))
+                    mask = torch.nn.functional.pad(mask, (0, pad), value=0)
+                padded_features.append(features)
+                padded_masks.append(mask)
+            res["input_features"] = torch.concat(padded_features)
+            res["input_features_mask"] = torch.concat(padded_masks)
 
         return res
 

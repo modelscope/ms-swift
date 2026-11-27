@@ -144,6 +144,12 @@ class Template(ProcessorMixin, TwinkleTemplate):
     support_padding_free = None
     supported_task_types: Optional[FrozenSet[str]] = None
     unsupported_capabilities: FrozenSet[TemplateCapability] = frozenset()
+    # Media kinds this family cannot serve to the vLLM engine. Enforced at the vLLM encode
+    # boundary (``encode(engine='vllm')``), NOT inside the shared placeholder renderer: the
+    # unified contract also renders serving-format ``engine_input_ids`` for transformers-bound
+    # trajectories (``_encode_engine`` borrows the vllm render mode), and a vLLM capability
+    # assertion there would reject media the target engine legitimately supports.
+    vllm_unsupported_media: Tuple[str, ...] = ()
     # Families whose media collation needs the row's text ids too (see ``_prepare_media_row``).
     media_requires_text = False
     requires_mm_token_type_ids = False
@@ -582,11 +588,16 @@ class Template(ProcessorMixin, TwinkleTemplate):
     def _replace_start_image_tags(inputs: StdTemplateInputs):
         # compat
         generate_mode = False
-        message = inputs.messages[-1]
-        content = message["content"]
-        if message["role"] == "user" and content.endswith("<start-image>"):
-            generate_mode = True
-            message["content"] = message["content"][: -len("<start-image>")]  # remove the <start-image>
+        # A conversation whose whole content is the leading system block has NO messages left:
+        # StdTemplateInputs lifts every leading system into `inputs.system`. The truncation
+        # projection re-encodes such a prefix (system-only) to recover message spans, so the
+        # last-message lookup must tolerate the empty list rather than assume a turn exists.
+        if inputs.messages:
+            message = inputs.messages[-1]
+            content = message["content"]
+            if message["role"] == "user" and content.endswith("<start-image>"):
+                generate_mode = True
+                message["content"] = message["content"][: -len("<start-image>")]  # remove the <start-image>
         inputs.generate_mode = generate_mode
 
     @staticmethod
@@ -804,6 +815,12 @@ class Template(ProcessorMixin, TwinkleTemplate):
             return super().encode(sample, add_generation_prompt, intent=intent, engine=engine,
                                   return_length=return_length, **kwargs)
         check_backend(engine)
+        if engine == 'vllm' and self.vllm_unsupported_media:
+            bundle = MediaBundle.from_sources(sample)
+            for kind in self.vllm_unsupported_media:
+                if getattr(bundle, kind, ()):
+                    raise ValueError(f'{kind[:-1].capitalize()} is not supported in vLLM '
+                                     f'for {type(self).__name__}')
         if kwargs:
             raise TypeError(f'encode accepts no extra keyword arguments, got {sorted(kwargs)}')
         sample = normalize_sample(sample)
@@ -2301,7 +2318,11 @@ class Template(ProcessorMixin, TwinkleTemplate):
             prefix = template_meta.system_prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
-        assert len(inputs.messages) > 0, f"inputs.messages: {inputs.messages}"
+        # A conversation can render with ZERO turns: StdTemplateInputs lifts every leading system
+        # block into `system`, so a system-only prefix (the truncation span-recovery re-encode of
+        # messages[:1]) legitimately reaches here with an empty message list. The system block is
+        # already rendered above; such a render is that block alone, with no response to weigh.
+        assert len(inputs.messages) > 0 or system, f"inputs.messages: {inputs.messages}"
         # A round is a maximal run of user/tool messages (the round's queries) followed by one
         # assistant message (the round's response) -- the shape the official jinja renders: every
         # query message its own turn block, the opener once, right before the response. A
@@ -2317,6 +2338,10 @@ class Template(ProcessorMixin, TwinkleTemplate):
         wants_generation_prompt = True if requested_prompt is None else bool(requested_prompt)
 
         response_prefix = self._get_response_prefix(inputs) if wants_generation_prompt else None
+        # Zero-round render (system-only): neither a response nor a suffix is produced, so the
+        # answer length below must read defined values rather than the loop's last iteration.
+        response = None
+        extra_context_list: List[Context] = []
         for round_idx, (query_messages, response_message) in enumerate(rounds):
             last_round = round_idx == len(rounds) - 1
             # Each query message renders its own block, in message order. The opener is not part

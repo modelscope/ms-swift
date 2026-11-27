@@ -133,7 +133,9 @@ TRAIN_UNSUPPORTED_FIELDS: Tuple[str, ...] = (
     # config, OOM batch halving, the ZeRO-3 gather, eval offload/precision. The last two are builtin now.
     'torch_compile', 'torch_compile_backend', 'torch_compile_mode', 'accelerator_config', 'auto_find_batch_size',
     'ds3_gather_for_generation', 'eval_accumulation_steps', 'bf16_full_eval', 'fp16_full_eval',
-    'average_tokens_across_devices', 'use_logits_to_keep') + ENTROPACK_FIELDS + ('min_p',)
+    # transformers 5.16 added the torch>=2.6 DataLoader in_order knob to TrainingArguments; the v5
+    # dataloader path exposes no ordering control, so the legacy flag is refused, not silently dropped.
+    'average_tokens_across_devices', 'use_logits_to_keep', 'dataloader_in_order') + ENTROPACK_FIELDS + ('min_p',)
 # The decision augmentation knobs are LIVE DatasetConfig fields (builders.dataset._augment_configs
 # binds them into the preprocessor channel), and Decision.md documents them on `swift sft` -- they
 # stay unsupported only on the non-training commands, which never build a training dataset.

@@ -123,30 +123,38 @@ def _dump_train_tensors(global_step: int, samples: list) -> None:
     rank = int(os.environ.get('RANK') or os.environ.get('LOCAL_RANK') or 0)
     records = []
     for position, sample in enumerate(samples):
-        tensors = {}
-        for key, value in sample.items():
-            if torch.is_tensor(value):
-                tensors[key] = value.detach().to('cpu').contiguous()
-            elif isinstance(value, (list, tuple)) and value and all(
-                    isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
-                tensors[key] = torch.tensor(value)
-        scalars = {key: value for key, value in sample.items()
-                   if not torch.is_tensor(value) and isinstance(value, (str, int, float, bool))}
-        # Media ride as raw objects/paths, so only their COUNT is recordable here. The placeholder
-        # tokens they expand to are in input_ids; pairing the two is what catches media dropped or
-        # duplicated between the dataset and the trainer. After the processor runs, the raw list is
-        # gone and the count lives in the grid tensor's first dimension instead.
-        for key in ('images', 'videos', 'audios'):
-            value = sample.get(key)
-            if isinstance(value, (list, tuple)):
-                scalars[f'{key}_count'] = len(value)
-        grid = sample.get('image_grid_thw')
-        if torch.is_tensor(grid) and grid.dim() == 2 and 'images_count' not in scalars:
-            scalars['images_count'] = int(grid.shape[0])
-        name = f'step{global_step:05d}.rank{rank}.s{position:03d}.pt'
-        torch.save({'tensors': tensors, 'scalars': scalars}, os.path.join(root, name))
-        records.append({'global_step': int(global_step), 'rank': rank, 'sample': position, 'file': name,
-                        'tensor_keys': sorted(tensors), 'scalars': scalars})
+        # A packing unit arrives as a LIST of encoded rows (the collator concatenates the group
+        # downstream inside forward_backward); a non-packed sample is a single row dict. Dump each
+        # member row so the seam covers the packing dataset's own sample shape, not just dict rows.
+        is_group = isinstance(sample, (list, tuple))
+        members = sample if is_group else [sample]
+        for member_index, row in enumerate(members):
+            tensors = {}
+            for key, value in row.items():
+                if torch.is_tensor(value):
+                    tensors[key] = value.detach().to('cpu').contiguous()
+                elif isinstance(value, (list, tuple)) and value and all(
+                        isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+                    tensors[key] = torch.tensor(value)
+            scalars = {key: value for key, value in row.items()
+                       if not torch.is_tensor(value) and isinstance(value, (str, int, float, bool))}
+            # Media ride as raw objects/paths, so only their COUNT is recordable here. The placeholder
+            # tokens they expand to are in input_ids; pairing the two is what catches media dropped or
+            # duplicated between the dataset and the trainer. After the processor runs, the raw list is
+            # gone and the count lives in the grid tensor's first dimension instead.
+            for key in ('images', 'videos', 'audios'):
+                value = row.get(key)
+                if isinstance(value, (list, tuple)):
+                    scalars[f'{key}_count'] = len(value)
+            grid = row.get('image_grid_thw')
+            if torch.is_tensor(grid) and grid.dim() == 2 and 'images_count' not in scalars:
+                scalars['images_count'] = int(grid.shape[0])
+            suffix = f'.m{member_index:03d}' if is_group else ''
+            name = f'step{global_step:05d}.rank{rank}.s{position:03d}{suffix}.pt'
+            torch.save({'tensors': tensors, 'scalars': scalars}, os.path.join(root, name))
+            records.append({'global_step': int(global_step), 'rank': rank, 'sample': position,
+                            'pack_member': member_index if is_group else None, 'file': name,
+                            'tensor_keys': sorted(tensors), 'scalars': scalars})
     with open(os.path.join(root, f'index.rank{rank}.jsonl'), 'a', encoding='utf-8') as handle:
         for record in records:
             handle.write(json.dumps(record, default=str) + '\n')

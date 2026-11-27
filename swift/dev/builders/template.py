@@ -63,7 +63,7 @@ def _build_meta_model(config, model_type: Optional[str], model_dir: str):
 
 
 def _multimodal_graph_adapter(processor: Any):
-    from swift.dev.model.loader import get_model_loader
+    from swift.dev.model.loader.base import MODEL_MAPPING
 
     if not _media_types(processor):
         return None
@@ -71,7 +71,12 @@ def _multimodal_graph_adapter(processor: Any):
     model_type = model_info.model_type or getattr(processor.model_meta, "model_type", None)
     if model_type is None:
         return None
-    loader = get_model_loader(model_type)(model_info)
+    loader_cls = MODEL_MAPPING.get(model_type)
+    if loader_cls is None:
+        # An unregistered family rides the generic Auto* load path (resolve_loader_cls /
+        # build_model_loader return None for it); there is no family-declared graph adapter.
+        return None
+    loader = loader_cls(model_info)
     return loader.build_multimodal_graph_adapter(processor, model_info.config)
 
 

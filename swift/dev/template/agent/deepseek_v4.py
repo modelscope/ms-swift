@@ -107,8 +107,11 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
+        # the engine emits the turn separator (chat_sep = eos) after the assistant tool-call
+        # response; the official encoding then merges the tool results into a USER block
+        # (merge_tool_messages), so the block starts at <｜User｜> with no separator of its own.
         res = [
-            "<｜end▁of▁sentence｜><｜User｜>",
+            "<｜User｜>",
             self._get_tool_responses(tool_messages),
             "<｜Assistant｜>",
         ]
@@ -141,3 +144,9 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
 
         tool_calls_str = "\n".join(invocations)
         return f"<{DSML_TOKEN}tool_calls>\n{tool_calls_str}\n</{DSML_TOKEN}tool_calls>"
+
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        # official encoding_dsv4.render_message: tc_content = '\n\n' + tool_calls block,
+        # unconditionally -- the blank line separates the (possibly empty) response/think
+        # part from the DSML block.
+        return "\n\n" + tool_content
