@@ -27,9 +27,9 @@ def liger_fused_ce_enabled(train_config: TrainConfig) -> bool:
     """True when the run asked for Liger's fused-linear-cross-entropy loss path.
 
     Both switches must be on: ``use_liger_kernel`` and the op-level
-    ``liger_kernel_config['fused_linear_cross_entropy']``. Single source of truth shared with the
-    recipe (which sets the forward task to ``'fused_lm_ce'``) -- the two must agree, else the loss
-    silently degrades to unfused CE or reads hidden states as logits.
+    ``liger_kernel_config['fused_linear_cross_entropy']``. It selects the loss only; the
+    ``liger_fused_linear_cross_entropy`` loss declares ``fused_lm_head``, which is what makes
+    twinkle's forward skip the lm_head GEMM, so no forward-task switch goes with it.
     """
     return bool(
         train_config.use_liger_kernel and (train_config.liger_kernel_config or {}).get("fused_linear_cross_entropy")
@@ -73,7 +73,8 @@ def configure_loss(
     belong to :func:`configure_rl_loss`); the loss is constructed with ``reduction``/``dft``/``**kwargs``
     and must accept them. ``reduction='sum'`` is GA-correct (aligns legacy). ``enable_channel_loss``/``dft`` add the
     channel-grouped / DFT-weighted aggregations. ``fused_linear_cross_entropy`` selects Liger's fused
-    lm_head+CE loss (see :func:`liger_fused_ce_enabled`) and requires forward under task='fused_lm_ce'.
+    lm_head+CE loss (see :func:`liger_fused_ce_enabled`); the loss's ``fused_lm_head`` flag makes the
+    forward skip the lm_head GEMM.
     """
     from swift.dev.utils.naming import resolve_loss
 

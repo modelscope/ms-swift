@@ -10,7 +10,8 @@ tier by moving to ``tests/v5``, where it declares what hardware it needs with
 ``@pytest.mark.accel(n)`` instead of pinning devices at import time.
 
 ``testpaths`` keeps ``tests`` in the default collection, so the scheduled CI's bare ``pytest`` still
-runs this tree; PR CI passes ``-m "not slow"`` and collects only ``tests/v5``.
+runs this tree. PR CI passes ``tests/v5``: a marker alone would not do, since ``-m "not slow"``
+deselects after collection and collecting this tree imports it.
 """
 from pathlib import Path
 

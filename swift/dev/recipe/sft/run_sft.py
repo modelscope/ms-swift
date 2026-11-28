@@ -87,8 +87,8 @@ def run_sft(
     """
     from swift.dev.loss import configure_loss, liger_fused_ce_enabled
 
-    # Fused-linear-CE pairs a loss choice with the loop's forward task (one predicate feeds both):
-    # configure_loss selects Liger's kernel, forward_task='fused_lm_ce' skips the lm_head GEMM.
+    # Liger's fused-linear-CE is a loss choice, nothing more: the loss declares ``fused_lm_head``
+    # and twinkle's forward skips the lm_head GEMM whenever that loss is the only logits consumer.
     fused_ce = liger_fused_ce_enabled(train_config)
 
     def sft_loss(model) -> None:

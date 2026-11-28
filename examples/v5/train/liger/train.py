@@ -4,10 +4,11 @@
 # v5 LIGER-KERNEL SFT at the COMPONENT level -- the code twin of train.sh.
 #
 # Liger's fused linear+cross-entropy kernel computes the CE loss WITHOUT materializing the full
-# [batch, seq, vocab] logits tensor -- large memory savings on big vocabs. It is a PAIRED choice:
-# configure_loss(fused_linear_cross_entropy=True) selects the kernel AND loop_task='fused_lm_ce'
-# tells the forward to skip the lm_head GEMM (the kernel does it internally). The predicate
-# liger_fused_ce_enabled(train_config) feeds both, exactly as run_sft does.
+# [batch, seq, vocab] logits tensor -- large memory savings on big vocabs. It is ONE choice:
+# configure_loss(fused_linear_cross_entropy=True) selects the kernel, and that loss declares
+# ``fused_lm_head``, which makes twinkle's forward skip the lm_head GEMM (the kernel does it
+# internally). The predicate liger_fused_ce_enabled(train_config) selects the loss, exactly as
+# run_sft does.
 #
 # RAY MODE: mode='ray', nproc_per_node=1 mirrors train.sh. SIMPLIFIED vs the recipe: no resume /
 # eval / best-model tracking -- full scaffolding in swift/dev/recipe/supervised.py::run_supervised.
@@ -71,8 +72,8 @@ def main() -> None:
     quantize_config = cfg['quantize_config']
     output_dir = checkpoint_config.output_dir
 
-    # THE OBJECTIVE + THE FUSED KERNEL: one predicate feeds both the loss choice and the loop's
-    # forward task (fused_lm_ce skips the lm_head GEMM that the kernel performs internally).
+    # THE OBJECTIVE: liger_fused_ce_enabled selects the fused kernel; the loss itself carries the
+    # lm_head GEMM skip (``fused_lm_head``), so the loop's forward task stays the template's.
     fused_ce = liger_fused_ce_enabled(train_config)
 
     def objective(model):
@@ -85,8 +86,7 @@ def main() -> None:
         recipe='run_sft', model_config=model_config, template_config=template_config,
         dataset_config=dataset_config, train_config=train_config, distributed_config=distributed_config,
         checkpoint_config=checkpoint_config, tuner_config=tuner_config, logging_config=logging_config,
-        quantize_config=quantize_config, configure_loss=objective, output_dir=output_dir,
-        loop_task=('fused_lm_ce' if fused_ce else None))
+        quantize_config=quantize_config, configure_loss=objective, output_dir=output_dir)
     model, dataloader = cluster.model, cluster.dataloader
     ga = train_config.gradient_accumulation_steps
 

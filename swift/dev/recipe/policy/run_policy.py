@@ -588,19 +588,19 @@ def run_policy(configs: RecipeConfigs, *, output_dir: str = "output", _save_fina
         for source, key in (("absmean_advantage", "absmean"), ("zero_advantage_rows", "zero_rows")):
             if source in summary:
                 advantage_summary[key] = summary[source]
+        # Matched by prefix: the estimator emits one ``unscored_<lane>_rows`` per lane (orm / prm /
+        # baseline / env ...), and a fixed list here silently dropped every lane it did not name.
+        for key, value in summary.items():
+            if key.startswith("unscored_"):
+                advantage_summary[key] = value
         if resources.critic is not None:
+            # The critic estimator reports flags per row instead of per-lane counts.
             advantage_summary["unscored_orm_rows"] = sum(summary.get("unscored_flags") or ())
             reward_metric.reset()
             reward_metric.accumulate(
                 rewards={"total": list(summary.get("reward_totals") or ())},
                 completion_lengths=list(kept.get("response_lengths") or ()),
             )
-        else:
-            # Matched by prefix: the estimator emits one ``unscored_<lane>_rows`` per lane (orm / prm /
-            # baseline / env ...), and a fixed list here silently dropped every lane it did not name.
-            for key, value in summary.items():
-                if key.startswith("unscored_"):
-                    advantage_summary[key] = value
         correction.update(summary.get("rollout_correction") or {})
         _train_mini_batches(
             state,

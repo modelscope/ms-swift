@@ -159,6 +159,7 @@ def build_checkpoint_manager(model: Any, sampler: Any, rollout_config: Any, *, r
         sync_backend=rollout_config.weight_sync_backend,
         sleep_level=(rollout_config.sleep_level if colocate else 0),
         offload_kwargs=(offload_kwargs(rollout_config) if colocate else None),
+        rpc_timeout=rollout_config.weight_sync_timeout,
         **({'remote_group': CONTROL_GROUP} if remote else {}))
 
 

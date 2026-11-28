@@ -359,15 +359,17 @@ class SentenceTransformerModel(TwinkleTransformersModel):
 
         @contextmanager
         def merged_lora_layer(layer):
-            """Have one LoRA layer report ``<name>.weight`` as its merged base weight."""
-            merged = copy.deepcopy(layer).cpu()
-            # PEFT's own merge math (scaling, fan_in_fan_out, every LoRA variant), on the copy only.
-            merged.merge()
-            base = merged.get_base_layer()
+            """Have one LoRA layer report ``<name>.weight`` as its merged base weight.
 
+            The merged copy is built when the layer's state dict is asked for and dropped once it
+            is written: holding every copy for the whole ``save`` would put a second full model on
+            the CPU."""
             def state_dict(*args, destination=None, prefix="", keep_vars=False):
+                merged = copy.deepcopy(layer).cpu()
+                # PEFT's own merge math (scaling, fan_in_fan_out, every LoRA variant), on the copy only.
+                merged.merge()
                 return torch.nn.Module.state_dict(
-                    base, *args, destination=destination, prefix=prefix, keep_vars=keep_vars)
+                    merged.get_base_layer(), *args, destination=destination, prefix=prefix, keep_vars=keep_vars)
 
             layer.state_dict = state_dict
             try:

@@ -37,7 +37,6 @@ def build_offline_objects(
 
     from swift.dev.builder import build_dataset, build_dp_mesh
     from swift.dev.builder.remote import configure_remote_loss, configure_remote_metric
-    from swift.dev.loss import liger_fused_ce_enabled
 
     model_config, template_config, train_config = configs.model, configs.template, configs.train
     distributed_config, tuner_config, rl_config = configs.distributed, configs.tuner, configs.rl
@@ -131,8 +130,6 @@ def build_offline_objects(
     )
     if forward_task is None:
         forward_task = template.task_type
-        if rl_config is None and forward_task == "causal_lm" and liger_fused_ce_enabled(train_config):
-            forward_task = "fused_lm_ce"
     return OfflineResources(
         model=model,
         processor=processor,

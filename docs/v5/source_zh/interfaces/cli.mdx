@@ -738,7 +738,8 @@ teacher模型参数在gkd，opsd，mopd，rft与grpo（rlsd，sdar）中使用�
 - async_mode: [v5] rollout相对训练的异步程度：'none'同步采样；'one_step_off'采样使用上一轮更新后的模型，提升训练速度，不支持多轮场景；'fully_async'采样与训练完全异步，由max_staleness限制落后的策略版本数。默认为'none'。
 - async_generate: 等价于`--async_mode one_step_off`，与async_mode同时设置时二者需一致。默认为False。
 - max_staleness: [v5] fully_async模式下，进行中的轨迹最多落后训练策略多少个版本；one_step_off固定为1。默认为1。
-- weight_sync_backend: [v5] 权重同步的传输方式：'full'传输完整权重；'delta_sharded'只传输变化的元素，首次同步仍传输完整权重。delta_sharded需要disaggregated放置与vllm采样器。默认为'full'。
+- weight_sync_backend: [v5] 权重同步的传输方式：'full'传输完整权重；'delta_sharded'只传输变化的元素，首次同步仍传输完整权重。delta_sharded需要disaggregated放置 与vllm采样器。默认为'full'。
+- weight_sync_timeout: [v5] 每次权重同步调用（同步权重、预热、关闭）的时间上限（秒），对端卡在通信集合中时调用会超时报错，而不是一直阻塞driver。None取各后端默认值（full一小时，delta_sharded 300秒）；超大模型或慢链路可调大。默认为None。
 - parameter_sync_step: [v5] 每隔多少步发布一次权重，1为每步同步。默认为1。
 - sleep_level: colocate模式下训练时释放vLLM显存：0不释放，1卸载权重并丢弃KV缓存，2二者都丢弃。resource_mode为adaptive时只接受0和1。默认为0。
 - offload_optimizer: colocate模式下rollout时是否卸载优化器状态。resource_mode为adaptive时必须开启offload_optimizer与offload_model中的至少一个。默认为False。

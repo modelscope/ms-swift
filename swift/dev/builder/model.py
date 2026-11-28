@@ -216,7 +216,6 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
                 model_cls = AutoModelForCausalLM
             if hasattr(model_cls, "_tp_plan"):  # a None tp_plan breaks from_pretrained (legacy fix)
                 model_cls._tp_plan = model_cls._tp_plan or {}
-            built_by_loader = False
             if return_dummy_model:
                 # cls(config) without reading the checkpoint; the caller's init_empty_weights
                 # context (merge's streaming path) lands every parameter on meta. The default-dtype
@@ -235,7 +234,6 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
                 # multimodal attribute re-exposure all live in the loader's build_model.
                 with _patch_tp_plan():
                     model = loader.build_model(model_dir, config, processor, **load_kwargs)
-                built_by_loader = True  # its build_model already initialized generation_config
             else:
                 with _patch_tp_plan():
                     trust = {} if auto_model_cls is not None else {"trust_remote_code": True}
@@ -247,8 +245,9 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
             model.model_info = info
             model.model_meta = info
             model.model_dir = model_dir
-            if not built_by_loader:
-                ModelLoader.init_generation_config(model, model_dir)
+            # Every construction path lands here: from_pretrained reads generation_config.json
+            # itself, while the family loaders' build_model and the weightless build do not.
+            ModelLoader.init_generation_config(model, model_dir)
             HfConfigFactory.set_config_attr(model.config, "pad_token_id", pad_token_id)
         return model, processor
 

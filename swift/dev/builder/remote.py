@@ -399,7 +399,7 @@ def configure_remote_metric(model: Any, task_type: Optional[str] = None) -> None
 
 
 def _liger_fused_ce_enabled(train_config: 'TrainConfig') -> bool:
-    """Same predicate the local recipe uses to pair the loss with loop_task='fused_lm_ce'."""
+    """Same predicate the local recipe uses to select the fused-linear loss."""
     from swift.dev.loss import liger_fused_ce_enabled
 
     return liger_fused_ce_enabled(train_config)

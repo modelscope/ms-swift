@@ -8,10 +8,10 @@ the task_type / inputs. This one varies the framework that builds and drives the
     rotary / swiglu / ...) in place via ``twinkle.kernel.kernelize`` (gated worker-side in
     ``TransformersModel._apply_liger_kernel``, reached through the constructor kwarg),
     and the op-level ``liger_kernel_config['fused_linear_cross_entropy']`` additionally swaps the loss to
-    Liger's fused lm_head+CE kernel, which the recipe pairs with ``loop_task='fused_lm_ce'`` so the
-    forward skips the lm_head GEMM (recipe/run_sft.py::liger_fused_ce_enabled). Both paths are driven
-    here on a real causal_lm run; a clean finite-loss trajectory means the kernels really replaced the
-    eager ops (a mismatched fused-CE task would read hidden states as logits and blow up).
+    Liger's fused lm_head+CE kernel; that loss declares ``fused_lm_head``, which makes twinkle's forward
+    skip the lm_head GEMM (no task switch: the loop's forward task stays ``causal_lm``). Both paths are
+    driven here on a real causal_lm run; a clean finite-loss trajectory means the kernels really
+    replaced the eager ops (hidden states read as logits would blow the loss up).
   - **sentence_transformers** -- an embedding checkpoint whose family loader declares
     ``model_framework='sentence_transformers'`` (or whose local dir carries the ST layout) is diverted
     off ``TransformersModel`` onto ``SentenceTransformerModel`` (builders/model.py::_resolve_model_framework),
@@ -102,13 +102,16 @@ def test_run_sft_liger_kernel_end_to_end(tmp_path, text_model_path, assert_train
 
 
 def test_run_sft_liger_fused_cross_entropy_end_to_end(tmp_path, text_model_path, assert_trained, write_jsonl):
-    """Liger fused-linear-cross-entropy: the loss path AND the loop forward task switch together.
+    """Liger fused-linear-cross-entropy: the loss path AND the forward's lm_head skip switch together.
 
     ``liger_fused_ce_enabled`` requires both ``use_liger_kernel`` and
-    ``liger_kernel_config['fused_linear_cross_entropy']``; the recipe then sets ``loop_task='fused_lm_ce'``
-    so the forward skips the lm_head GEMM and stashes the head for the fused kernel. This is the pairing
-    the predicate guards: a fused loss under the plain task degrades to unfused CE, and a plain CE under
-    the fused task reads hidden states as logits. A finite, normalized loss here means both sides agreed.
+    ``liger_kernel_config['fused_linear_cross_entropy']``; it selects ``liger_fused_linear_cross_entropy``,
+    whose ``fused_lm_head`` flag makes the forward skip the lm_head GEMM and stash the head for the
+    fused kernel. The loss falls back to materialised CE whenever a forward runs unpatched, and both
+    paths give the same value, so this trajectory alone cannot tell them apart: what it proves is
+    that the loss was selected and nothing read hidden states as logits (that would blow the loss
+    up). The forward-side decision is covered on CPU by twinkle's
+    ``tests/transformers/test_fused_lm_head_context.py``.
     """
     if not torch.cuda.is_available():
         pytest.skip('CUDA not available')

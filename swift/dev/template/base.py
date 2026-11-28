@@ -933,7 +933,7 @@ class Template(ProcessorMixin, TwinkleTemplate):
                     with _rendering(intent.render_mode(engine)):
                         return renderer._encode_sample(prefix)['input_ids']
                 trajectory['messages'] = project_sliced_messages(
-                    source.get('messages') or [], original_ids, kept,
+                    self._rendered_messages(source), original_ids, kept,
                     render_prefix=render_prefix, span_cache=span_cache,
                     decode=lambda values: self.tokenizer.decode(values, skip_special_tokens=True))
             ids = row.get('input_ids')
@@ -1027,35 +1027,45 @@ class Template(ProcessorMixin, TwinkleTemplate):
                              "the conversation would re-render from its head. Put the instruction "
                              "in a user message, or start a new conversation.")
         renderer = self.replace(max_length=None)
+        intent = EncodeIntent(add_generation_prompt=True, with_labels=False, expand_media=not engine)
 
-        def render(messages: List[Dict[str, Any]], gen_prompt: bool) -> List[int]:
+        def sample(messages: List[Dict[str, Any]], gen_prompt: bool) -> Dict[str, Any]:
             messages = [dict(message) for message in messages]
-            sample = {"messages": messages, "tools": tools} if tools else {"messages": messages}
+            row = {"messages": messages, "tools": tools} if tools else {"messages": messages}
             # The two renders must differ ONLY in add_generation_prompt, or the appended turns are
             # not a prefix-extension of the history. A shared no-labels intent (SCORE -> INFER)
             # keeps the render mode constant; TRAIN would not, because the thinking policy keys on
             # is_training and would strip the history's reasoning in one render and keep it in the
             # other. preserve_thinking is pinned for the same reason: the banked ids carry the
             # sampled thinking tokens verbatim, so the renders must keep them.
-            sample["chat_template_kwargs"] = {"preserve_thinking": True}
+            row["chat_template_kwargs"] = {"preserve_thinking": True}
             # ``EncodeIntent`` alone does not reach the encoder: the jinja path derives the
             # generation prompt from the last message's role, which is right for a dataset sample
             # and wrong here, where the ``before`` side is a prefix rather than a complete
             # conversation. Pin it per sample so the two renders differ only in this flag.
-            sample["add_generation_prompt"] = gen_prompt
-            intent = EncodeIntent(
-                add_generation_prompt=gen_prompt,
-                with_labels=False,
-                expand_media=not engine,
-            )
+            row["add_generation_prompt"] = gen_prompt
             # The shared no-labels intent is not TRAIN, so the encoder's implicit eos check
             # (which keys on is_training) never fires: both render paths must pin add_eos
             # themselves, or the appended assistant turn loses its closing token (im_end).
             if not gen_prompt:
-                sample["add_eos"] = True
+                row["add_eos"] = True
+            return row
+
+        def render(messages: List[Dict[str, Any]], gen_prompt: bool) -> List[int]:
             with _rendering(intent.render_mode(backend)):
-                encoded = renderer._encode_sample(sample)
+                encoded = renderer._encode_sample(sample(messages, gen_prompt))
             return list(renderer._finalize(encoded, intent)["input_ids"])
+
+        def render_text(messages: List[Dict[str, Any]], gen_prompt: bool) -> Optional[str]:
+            # The seam re-tokenization of the contract needs the rendered TEXT; None means this
+            # render is already partly tokens (a template piece the encoder adds as ids).
+            with _rendering(intent.render_mode(backend)):
+                inputs = TemplateInputs.from_dict(sample(messages, gen_prompt)).chosen
+                renderer._preprocess_inputs(inputs)
+                return renderer._render_text(inputs)
+
+        def encode(text: str) -> List[int]:
+            return list(renderer._encode_context_list([text])[0])
 
         return render_delta_tokens(
             messages_before,
@@ -1063,6 +1073,8 @@ class Template(ProcessorMixin, TwinkleTemplate):
             gen_prompt_before=gen_prompt_before,
             gen_prompt_after=gen_prompt_after,
             render=render,
+            render_text=render_text,
+            encode=encode,
         )
 
     def finalize_appended_features(self, input_features: List[InputOrderRow]) -> List[EncodedRow]:
@@ -1116,6 +1128,17 @@ class Template(ProcessorMixin, TwinkleTemplate):
             if value is not None:
                 result[key] = copy_trajectory({key: value})[key]
         return result
+
+    def _rendered_messages(self, source: Trajectory) -> List[Dict[str, Any]]:
+        """The messages the encoder renders for ``source``: the raw normalization applied and every
+        leading system block folded into one head message.
+
+        ``original_ids`` and each prefix render are renders of this list. Spans recovered against
+        the raw list mis-place the turn that follows the folded system blocks, which drops it from
+        the projected messages (17-F-1).
+        """
+        chosen = source.chosen if isinstance(source, TemplateInputs) else TemplateInputs.from_dict(dict(source)).chosen
+        return self._public_conversation(chosen)["messages"]
 
     def _encode_preference(
         self,
@@ -2537,19 +2560,8 @@ class Template(ProcessorMixin, TwinkleTemplate):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs.messages = deepcopy(inputs.messages)
-        template_backend = self.template_backend
-        if (
-            self.template_meta.template_type == "dummy"
-            and self.use_chat_template
-            and not self.is_training
-            and self.task_type == "causal_lm"
-        ):
-            template_backend = "jinja"
-            logger.info_once(f"Setting template_backend: {template_backend}")
         self._swift_prepare_inputs(inputs)
-        res_context_list, loss_scale_list, answer_len = (
-            self._swift_encode(inputs) if template_backend == "swift" else self._jinja_encode(inputs)
-        )
+        res_context_list, loss_scale_list, answer_len = self._render_contexts(inputs)
         encoded = {}
         if self.is_encoder_decoder:
             total_len = len(res_context_list)
@@ -2585,6 +2597,31 @@ class Template(ProcessorMixin, TwinkleTemplate):
                 if k.endswith("labels") or k.endswith("loss_scale"):
                     encoded[k] = None
         return encoded
+
+    def _render_contexts(self, inputs: StdTemplateInputs) -> Tuple[List[Context], List[float], int]:
+        """The conversation as the template backend in effect renders it: contexts, weights, answer length."""
+        backend = self.template_backend
+        if (
+            self.template_meta.template_type == "dummy" and self.use_chat_template and not self.is_training
+            and self.task_type == "causal_lm"
+        ):
+            backend = "jinja"
+            logger.info_once(f"Setting template_backend: {backend}")
+        if backend == "swift":
+            return self._swift_encode(inputs)
+        return self._jinja_encode(inputs)
+
+    def _render_text(self, inputs: StdTemplateInputs) -> Optional[str]:
+        """The rendered conversation as one text, or None when a context is already token ids.
+
+        The text is what ``_encode_context_list`` tokenizes as one string, so re-tokenizing a
+        slice of it (``render_delta``'s seam) yields the ids a decoder continuing the prefix
+        produces.
+        """
+        contexts, _, _ = self._render_contexts(inputs)
+        if not all(isinstance(context, str) for context in contexts):
+            return None
+        return "".join(contexts)
 
     def _get_megatron_cp_length(self, length) -> int:
         cp_size = self.sequence_parallel_size

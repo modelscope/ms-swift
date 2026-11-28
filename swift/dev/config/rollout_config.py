@@ -74,6 +74,11 @@ class RolloutConfig:
     # disaggregated/server) and a vllm rollout sampler; the sync stays `sync_weights`, so the
     # training loop itself is unchanged.
     weight_sync_backend: Literal['full', 'delta_sharded'] = 'full'
+    # Bound in seconds on every weight-sync call (weights, warm-up, close), so a peer stuck inside
+    # a collective fails the call instead of blocking the driver forever. None takes each backend's
+    # own default (full: one hour; delta_sharded: 300 s). Raise it for a multi-terabyte weight set
+    # on a slow link.
+    weight_sync_timeout: Optional[int] = None
     # One weight publication every K recorded steps; 1 = every step (historical cadence), K > 1
     # publishes sparsely (verl's trigger_parameter_sync_step). Inert on the sync fallback.
     parameter_sync_step: int = 1

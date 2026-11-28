@@ -104,9 +104,10 @@ exclude = ["tests", "tests.*"]
 ]
 
 [tool.pytest.ini_options]
-# The whole ``tests`` tree is collected: ``tests/conftest.py`` marks everything outside ``tests/v5``
-# ``slow``, so PR runs (``-m "not slow"``) keep only the maintained suites while the scheduled bare
-# ``pytest`` still runs the legacy end-to-end scripts.
+# The whole ``tests`` tree is collected, so the scheduled bare ``pytest`` runs the legacy end-to-end
+# scripts too. ``tests/conftest.py`` marks everything outside ``tests/v5`` ``slow``; PR runs pass
+# ``tests/v5 -m "not slow"`` (ci.yaml) because a marker deselects only after collection, and
+# collecting the legacy tree imports it.
 testpaths = ["tests"]
 addopts = "--strict-markers -ra"
 markers = [

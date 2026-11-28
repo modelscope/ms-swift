@@ -92,8 +92,10 @@ jobs:
           pip install --no-deps -e ./.twinkle -e ./.twinkle/twinkle_cs/client -e ./.twinkle/twinkle_cs/server -e .
           pip install -r requirements/tests.txt
       # `&&` binds tighter than `||`, so the parentheses are load-bearing: without them a PR
-      # renders the literal `true` as pytest's argument.
-      - run: pytest ${{ github.event_name == 'schedule' && '' || '-m "not slow"' }}
+      # renders the literal `true` as pytest's argument. The PR tier names ``tests/v5`` instead of
+      # relying on ``-m "not slow"``: a marker deselects after collection, and collecting the legacy
+      # tree imports it -- 54 files assign CUDA_VISIBLE_DEVICES at import time.
+      - run: pytest ${{ github.event_name == 'schedule' && '' || 'tests/v5 -m "not slow"' }}
       # The container is root, the runner is not: leave the workspace deletable or the next run
       # fails in checkout. This is what citest.yaml's ResetFileMode step was working around.
       - if: always()
