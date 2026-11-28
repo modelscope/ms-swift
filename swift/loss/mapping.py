@@ -1,6 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .causal_lm import CustomCrossEntropyLoss
-from .decision import CERPSLoss, DistillRPSLoss, ScoringLoss, SmoothBrierLoss
+from .decision import CERPSLoss, DistillRPSLoss, GS1DecisionLoss, ScoringLoss, SmoothBrierLoss
 from .embedding import ContrastiveLoss, CosineSimilarityLoss, InfonceLoss, OnlineContrastiveLoss
 from .reranker import ListwiseRerankerLoss, PointwiseRerankerLoss
 
@@ -19,4 +19,5 @@ loss_map = {
     'distill_rps': DistillRPSLoss,
     'smooth_brier': SmoothBrierLoss,
     'ce_rps': CERPSLoss,
+    'gs1': GS1DecisionLoss,
 }

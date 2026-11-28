@@ -2093,10 +2093,12 @@ class Template(ProcessorMixin):
         # -- flatten + pad target_probs into [total_q, max_opt] labels tensor --
         if not all(t is None for t in record_targets) and max_opt > 0:
             rows: List[List[float]] = []
-            for targets in record_targets:
-                if targets is None:
+            for meta, targets in zip(record_metas, record_targets):
+                if meta is None:
                     continue
-                for q in targets:
+                targets = targets or []
+                for question_index in range(len(meta.get('n_options') or [])):
+                    q = targets[question_index] if question_index < len(targets) else []
                     row = [0.0] * max_opt
                     n = min(len(q), max_opt)
                     row[:n] = [float(x) for x in q[:n]]

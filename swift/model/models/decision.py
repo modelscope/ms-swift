@@ -671,6 +671,56 @@ class GenericDecisionLoader(ScoringModelLoader):
         return model
 
 
+class GS1ModelLoader(ModelLoader):
+    """Load the checkpoint's native GS1 model and adapt outputs to the decision trainer."""
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor, model_kwargs):
+        from transformers import AutoModel
+
+        self.auto_model_cls = AutoModel
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        model.calibrator.requires_grad_(False)
+        origin_forward = get_original_forward(model)
+
+        @wraps(origin_forward.__func__ if hasattr(origin_forward, '__func__') else origin_forward)
+        def forward(self, input_ids, decision_meta=None, labels=None, **kwargs):
+            if decision_meta is None:
+                return origin_forward(input_ids=input_ids, labels=labels, **kwargs)
+            if not decision_meta.get('gs1_branches'):
+                raise ValueError('GS1 forward requires native compiled branch metadata.')
+            branches = decision_meta['gs1_branches']
+            output = origin_forward(
+                input_ids=input_ids,
+                branches=[item['branch'] for item in branches],
+                state_lengths=[item['state_length'] for item in branches],
+                **kwargs,
+            )
+            if output.logits is None:
+                raise ValueError('GS1 native forward returned no decision logits.')
+            from swift.model.decision_head import ScoringOutput
+            n_options = torch.as_tensor(decision_meta['n_options'], device=output.logits.device)
+            option_mask = torch.arange(output.logits.shape[-1], device=output.logits.device)[None] < n_options[:, None]
+            kinds = torch.as_tensor(decision_meta['kinds'], dtype=torch.long, device=output.logits.device)
+            counts = torch.as_tensor(decision_meta.get('counts') or [1] * len(branches), device=output.logits.device)
+            return ScoringOutput(logits=output.logits, option_mask=option_mask, kinds=kinds, counts=counts)
+
+        patch_module_forward(model, forward)
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.gs1, [
+            ModelGroup([Model(f'bigai/GS1-{size}', f'bigai/GS1-{size}')
+                        for size in ('0.8B', '2B', '4B', '9B')], TemplateType.gs1)
+        ],
+        GS1ModelLoader,
+        model_arch=ModelArch.gs1,
+        task_type='decision',
+        architectures=['GS1Model'],
+        requires=['transformers>=5.3.0', 'typesafe-sdk==0.7.0'],
+        tags=['vision', 'decision']))
+
 register_model(
     ModelMeta(
         LLMModelType.generic_decision, [],

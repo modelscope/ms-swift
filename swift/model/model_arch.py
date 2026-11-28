@@ -26,6 +26,7 @@ class LLMModelArch:
 
 
 class MLLMModelArch:
+    gs1 = 'gs1'
     lfm3_vl = 'lfm3_vl'
     moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
@@ -922,6 +923,14 @@ register_model_arch(
         aligner='model.visual.merger',
         vision_tower='model.visual',
         mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.gs1,
+        language_model='language_model',
+        vision_tower='visual',
+        mlp='language_model.layers.{}.mlp',
     ))
 
 register_model_arch(

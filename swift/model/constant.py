@@ -168,6 +168,7 @@ class MLLMModelType:
     qwen4_exp = 'qwen4_exp'
 
     # typed-decision (System-1 scoring) task_type models
+    gs1 = 'gs1'
     jev = 'jev'
     clef = 'clef'
     omnijev = 'omnijev'
