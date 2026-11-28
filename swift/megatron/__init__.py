@@ -17,6 +17,7 @@ try:
     from .init import init_megatron_env
     if is_torch_npu_available():
         from swift.model.npu_patch.megatron_gdn import patch_megatron_gdn
+        from swift.model.npu_patch.megatron_mhc import patch_megatron_mhc
         from swift.model.npu_patch.megatron_moe import patch_megatron_moe
         from swift.model.npu_patch.megatron_norm import patch_megatron_norm
         from swift.model.npu_patch.megatron_optimizer import patch_megatron_optimizer
@@ -25,6 +26,7 @@ try:
         patch_megatron_optimizer()
         patch_megatron_moe()
         patch_megatron_norm()
+        patch_megatron_mhc()
         from swift.utils import get_logger
         get_logger().info('Installed Swift Megatron NPU optimizer, normalization and permutation performance patches.')
     init_megatron_env()
