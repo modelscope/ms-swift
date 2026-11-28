@@ -9,7 +9,7 @@ TB_COLOR, TB_COLOR_SMOOTH = '#FFE2D9', '#FF7043'
 
 def read_tensorboard_file(fpath: str) -> Dict[str, List[Item]]:
     from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-    if not os.path.isfile(fpath):
+    if not os.path.exists(fpath):
         raise FileNotFoundError(f'fpath: {fpath}')
     ea = EventAccumulator(fpath)
     ea.Reload()
@@ -56,7 +56,8 @@ def plot_images(images_dir: str,
                 matches.append(os.path.join(root, f))
     if not matches:
         return
-    tb_path = matches[0]
+    # TensorBoard merges event files and handles resumed steps within a run.
+    tb_path = os.path.dirname(matches[0])
     data = read_tensorboard_file(tb_path)
 
     for k in data.keys():
