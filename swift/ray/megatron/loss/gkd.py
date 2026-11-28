@@ -11,7 +11,7 @@ from swift.megatron.trainers.gkd_utils import cp_reduce, tp_gather_topk, vocab_p
 from swift.megatron.trainers.utils import prepare_batch
 from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
 from swift.megatron.utils import forward_step_helper
-from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
+from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss, gkd_monitoring_stats
 from swift.utils import get_current_device, to_device
 from .base import Loss
 
@@ -29,6 +29,7 @@ class GKDLoss(Loss):
         data = next(data_iterator)
         teacher_output = data.pop('teacher_output', TeacherOutput())
         data_source = data.pop('data_source', None)
+        num_turns = data.pop('num_turns', None)
         data.pop('grpo_batch', None)  # RL signals packed in GRPOBatch (not used by GKD loss)
         data = prepare_batch(self.args, data)
 
@@ -43,6 +44,7 @@ class GKDLoss(Loss):
             labels=labels,
             teacher_output=teacher_output,
             data_source=data_source,
+            num_turns=num_turns,
             model=model,
         )
 
@@ -73,11 +75,23 @@ class GKDLoss(Loss):
                     outputs.append(TeacherOutput())
                     continue
                 teacher_logits = teacher_logits.detach()
+                target_logprobs = None
+                if labels is not None:
+                    safe_labels = labels.masked_fill(labels == -100, 0).long()
+                    teacher_logprobs = vocab_parallel_log_softmax(teacher_logits.float())
+                    target_logprobs = tp_gather_topk(teacher_logprobs, safe_labels.unsqueeze(-1)).squeeze(-1)
+                    target_logprobs = target_logprobs.masked_fill(labels == -100, float('nan'))
                 if gkd_logits_topk is not None:
                     topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=gkd_logits_topk)
-                    outputs.append(TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices, labels=labels))
+                    outputs.append(
+                        TeacherOutput(
+                            topk_logprobs=topk_logits,
+                            topk_indices=topk_indices,
+                            target_logprobs=target_logprobs,
+                            labels=labels))
                 else:
-                    outputs.append(TeacherOutput(full_logits=teacher_logits, labels=labels))
+                    outputs.append(
+                        TeacherOutput(full_logits=teacher_logits, target_logprobs=target_logprobs, labels=labels))
                 del collated
         return outputs
 
@@ -85,7 +99,7 @@ class GKDLoss(Loss):
     # Loss computation
     # ------------------------------------------------------------------
 
-    def loss_func(self, output_tensor, *, labels, teacher_output, data_source=None, model=None):
+    def loss_func(self, output_tensor, *, labels, teacher_output, data_source=None, num_turns=None, model=None):
         args = self.args
         student_logits = output_tensor
 
@@ -128,6 +142,29 @@ class GKDLoss(Loss):
             loss = loss + self.sft_alpha * sft_loss
 
         metric = {'loss': loss.detach().clone()}
+        if num_turns is not None:
+            metric['num_turns'] = loss.new_tensor(num_turns)
+        if data_source == DataSource.STUDENT:
+            monitor = gkd_monitoring_stats(
+                student_logits,
+                teacher_output,
+                labels,
+                full_vocab_topk=getattr(args, 'gkd_logits_topk', None) or 16,
+                student_topk_fn=vocab_parallel_topk,
+                teacher_topk_fn=vocab_parallel_topk,
+                gather_fn=tp_gather_topk,
+                target_logprob_fn=lambda logits, target_ids: tp_gather_topk(
+                    vocab_parallel_log_softmax(logits.float()), target_ids.unsqueeze(-1)).squeeze(-1))
+            packed = torch.stack([
+                monitor['topk_overlap_sum'], monitor['topk_overlap_count'], monitor['teacher_student_gap_sum'],
+                monitor['teacher_student_gap_count']
+            ])
+            if args.context_parallel_size > 1:
+                torch.distributed.all_reduce(
+                    packed, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
+            torch.distributed.all_reduce(packed, op=torch.distributed.ReduceOp.SUM, group=mpu.get_data_parallel_group())
+            metric['gkd/topk_overlap'] = packed[0] / packed[1].clamp(min=1)
+            metric['gkd/teacher_student_gap'] = packed[2] / packed[3].clamp(min=1)
         if sft_loss is not None:
             metric['jsd_loss'] = jsd_loss_val.detach().clone()
             metric['sft_loss'] = sft_loss.detach().clone()

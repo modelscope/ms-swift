@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Data types — shared across all backends
@@ -26,6 +26,10 @@ class TeacherOutput:
     full_logits: Optional[torch.Tensor] = None
     topk_logprobs: Optional[torch.Tensor] = None
     topk_indices: Optional[torch.Tensor] = None
+    # Log-probability assigned by the teacher to the actually observed response
+    # token at each position. This keeps the teacher-student gap exact even when
+    # the distillation loss itself only retains the teacher's top-k support.
+    target_logprobs: Optional[torch.Tensor] = None
     labels: Optional[torch.Tensor] = None
 
     @property
@@ -35,7 +39,7 @@ class TeacherOutput:
     def to_device(self, device) -> 'TeacherOutput':
         """Move all tensor fields to ``device`` in place (Ray: teacher_output is
         collated on the CPU driver, moved to the GPU worker before forward)."""
-        for name in ('full_logits', 'topk_logprobs', 'topk_indices', 'labels'):
+        for name in ('full_logits', 'topk_logprobs', 'topk_indices', 'target_logprobs', 'labels'):
             v = getattr(self, name)
             if isinstance(v, torch.Tensor):
                 setattr(self, name, v.to(device))
@@ -52,6 +56,7 @@ class TeacherOutput:
             full_logits=self.full_logits[mask] if self.full_logits is not None else None,
             topk_logprobs=self.topk_logprobs[mask] if self.topk_logprobs is not None else None,
             topk_indices=self.topk_indices[mask] if self.topk_indices is not None else None,
+            target_logprobs=self.target_logprobs[mask] if self.target_logprobs is not None else None,
             labels=self.labels[mask] if self.labels is not None else None,
         )
 
@@ -64,6 +69,7 @@ class TeacherOutput:
         return TeacherOutput(
             topk_logprobs=vals,
             topk_indices=ids,
+            target_logprobs=self.target_logprobs,
             labels=self.labels,
         )
 
@@ -214,6 +220,99 @@ def extract_active(
             s_active = s_active[keep]
             t_active = t_active.select(keep)
     return s_active, t_active, torch.tensor(int(s_active.shape[0]), device=labels.device)
+
+
+@torch.no_grad()
+def gkd_monitoring_stats(
+    student_logits: torch.Tensor,
+    teacher_output: TeacherOutput,
+    labels: torch.Tensor,
+    *,
+    full_vocab_topk: int = 16,
+    student_topk_fn: Callable = torch.topk,
+    teacher_topk_fn: Callable = torch.topk,
+    gather_fn: Callable = default_gather,
+    target_logprob_fn: Optional[Callable] = None,
+) -> Dict[str, torch.Tensor]:
+    """Return additive GKD diagnostics over active response tokens.
+
+    ``topk_overlap`` follows the standard token-level definition
+    ``|TopK(student) intersect TopK(teacher)| / K``. In a top-k teacher path,
+    K is the retained teacher width; for full-vocabulary distillation it defaults
+    to 16.
+
+    ``teacher_student_gap`` is computed on the observed response token exactly as
+    ``log p_teacher(y_t) - log p_student(y_t)``. The returned values are sums and
+    counts so callers can aggregate them correctly across DP/CP ranks.
+    """
+    s_active, t_active, num_valid = extract_active(student_logits, teacher_output, labels)
+    zero = student_logits.new_zeros((), dtype=torch.float32)
+    if int(num_valid.item()) == 0:
+        return {
+            'topk_overlap_sum': zero,
+            'topk_overlap_count': zero,
+            'teacher_student_gap_sum': zero,
+            'teacher_student_gap_count': zero,
+        }
+
+    if t_active.is_topk_mode:
+        k = min(t_active.topk_indices.shape[-1], s_active.shape[-1])
+        teacher_topk_ids = t_active.topk_indices[..., :k]
+    else:
+        k = min(full_vocab_topk, s_active.shape[-1], t_active.full_logits.shape[-1])
+        _, teacher_topk_ids = teacher_topk_fn(t_active.full_logits, k)
+
+    _, student_topk_ids = student_topk_fn(s_active, k)
+    overlap_count = (teacher_topk_ids.unsqueeze(-1) == student_topk_ids.unsqueeze(-2)).any(dim=-1).sum(dim=-1)
+    overlap_sum = (overlap_count.float() / k).sum()
+
+    if t_active.labels is not None:
+        active_target_ids = t_active.labels.long()
+    else:
+        active_target_ids = labels[labels != -100].long()
+        if active_target_ids.numel() != s_active.shape[0]:
+            # A legacy top-k path can omit entire uncovered rows without carrying
+            # teacher labels. The overlap metric is still valid, but an exact gap
+            # cannot be aligned to the remaining observed tokens.
+            return {
+                'topk_overlap_sum': overlap_sum.float(),
+                'topk_overlap_count': num_valid.float(),
+                'teacher_student_gap_sum': zero,
+                'teacher_student_gap_count': zero,
+            }
+    if target_logprob_fn is None:
+        # Avoid materializing a second full-vocabulary log-probability tensor in
+        # the common non-TP path.
+        student_target_logits = gather_fn(s_active.float(), active_target_ids.unsqueeze(-1)).squeeze(-1)
+        student_target_logprobs = student_target_logits - torch.logsumexp(s_active.float(), dim=-1)
+    else:
+        student_target_logprobs = target_logprob_fn(s_active, active_target_ids)
+
+    if t_active.target_logprobs is not None:
+        teacher_target_logprobs = t_active.target_logprobs.float()
+        gap_mask = torch.isfinite(teacher_target_logprobs)
+    elif t_active.full_logits is not None:
+        if target_logprob_fn is None:
+            teacher_target_logits = gather_fn(t_active.full_logits.float(), active_target_ids.unsqueeze(-1)).squeeze(-1)
+            teacher_target_logprobs = teacher_target_logits - torch.logsumexp(t_active.full_logits.float(), dim=-1)
+        else:
+            teacher_target_logprobs = target_logprob_fn(t_active.full_logits, active_target_ids)
+        gap_mask = torch.ones_like(teacher_target_logprobs, dtype=torch.bool)
+    else:
+        # Compatibility fallback for top-k tensors produced by older paths. It
+        # is exact only where the observed token is present in the retained set.
+        matches = t_active.topk_indices == active_target_ids.unsqueeze(-1)
+        gap_mask = matches.any(dim=-1)
+        match_pos = matches.float().argmax(dim=-1, keepdim=True)
+        teacher_target_logprobs = torch.gather(t_active.topk_logprobs.float(), -1, match_pos).squeeze(-1)
+
+    gap = teacher_target_logprobs - student_target_logprobs
+    return {
+        'topk_overlap_sum': overlap_sum.float(),
+        'topk_overlap_count': num_valid.float(),
+        'teacher_student_gap_sum': gap.masked_fill(~gap_mask, 0).sum().float(),
+        'teacher_student_gap_count': gap_mask.sum().float(),
+    }
 
 
 # ---------------------------------------------------------------------------
