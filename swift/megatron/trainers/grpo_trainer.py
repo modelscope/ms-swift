@@ -573,6 +573,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             global_rewards = (global_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
             mode = 'train' if self.unwrapped_models[0].training else 'eval'
             num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
+            if self.scale_rewards == 'gdpo':
+                # 'gdpo' advantages are not a function of the raw weighted sum (std(R)=0 does not imply
+                # zero advantage), so take the std on the actual gdpo advantages instead.
+                global_rewards, _ = compute_advantages(global_rewards_per_func, self.reward_weights, num_generations,
+                                                       self.advantage_estimator, 'gdpo')
             grouped_rewards = global_rewards.view(-1, num_generations)
             # Handle edge case when num_generations=1
             if num_generations > 1:
