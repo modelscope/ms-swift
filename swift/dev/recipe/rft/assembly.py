@@ -59,8 +59,6 @@ def initialize_rft_cluster(
     reward_config = configs.reward
     tuner_config = configs.tuner
     quantize_config = configs.quantize
-    megatron_config = configs.megatron
-    moe_config = configs.moe
     generation_config = configs.generation
     assert rl_config is not None and rollout_config is not None and reward_config is not None
     from swift.dev.builder import build_dp_mesh

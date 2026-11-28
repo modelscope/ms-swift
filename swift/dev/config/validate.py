@@ -553,7 +553,7 @@ def _check_policy_recipe(
     _check_chord(cfg)
     _check_router_replay(cfg)
     _check_sampling_replay(cfg, rollout_config)
-    _check_score_centering(cfg, train_config, rollout_config, distributed_config)
+    _check_score_centering(cfg, train_config, rollout_config)
     _check_segments(cfg, rollout_config, reward_config)
     _check_prm(cfg, reward_config)
     _check_self_distillation(cfg, train_config, reward_config)
@@ -1368,7 +1368,6 @@ def _check_score_centering(
     cfg: "RLConfig",
     train_config: "TrainConfig",
     rollout_config: Optional["RolloutConfig"],
-    distributed_config: Optional["DistributedConfig"],
 ) -> None:
     """The centering term reads full training logits plus sampler top-k heads; GPG only."""
     if not cfg.score_centering:

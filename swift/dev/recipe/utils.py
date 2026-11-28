@@ -1446,7 +1446,7 @@ def initialize_rl_devices(
     from twinkle.perf import Perf
     from twinkle_agentic.async_rl import estimate_plan, resource_device_groups
 
-    from swift.dev.builder import build_dp_mesh, build_template, load_model_processor
+    from swift.dev.builder import build_dp_mesh
     from swift.dev.builder.sandbox import SANDBOX
     from swift.dev.builder.streaming import CONTROL_GROUP, ENV_GROUP, ROLLOUT_GROUP
     from swift.dev.config import process_configs, validate_configs

@@ -131,9 +131,6 @@ def initialize_distill_cluster(
     rollout_config = configs.rollout
     rl_config = configs.rl
     tuner_config = configs.tuner
-    quantize_config = configs.quantize
-    megatron_config = configs.megatron
-    moe_config = configs.moe
     generation_config = configs.generation
     assert rl_config is not None and rollout_config is not None
     from swift.dev.builder import build_dp_mesh
