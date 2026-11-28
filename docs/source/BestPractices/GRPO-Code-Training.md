@@ -95,6 +95,7 @@ swift rlhf \
 - 设置环境变量：
     - （必需）JUDGE0_ENDPOINT: judge0访问地址。
     - （可选）JUDGE0_X_AUTH_TOKEN: judge0访问Token。
+    - （可选）JUDGE0_MAX_CONCURRENCY: 并发提交到 Judge0 的最大请求数（正整数）。
 - `--reward_funcs`添加`external_code_reward_by_judge0`作为奖励函数。
 - `--external_plugins`设置为plugin.py的路径。
 

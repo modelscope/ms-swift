@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import os
 import random
 import re
@@ -7,7 +8,9 @@ import textwrap
 import torch
 from collections import Counter
 from copy import deepcopy
-from typing import Dict, List, Union
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from typing import Dict, List, Optional, Union
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutInferRequest
@@ -368,16 +371,35 @@ class CodeRewardByJudge0(ORM):
         'visual basic.net': 84
     }
     PYTHON_ID = 71
+    DEFAULT_MAX_RETRIES = 8
+    DEFAULT_INITIAL_BACKOFF = 0.5
+    DEFAULT_MAX_BACKOFF = 30.0
 
     def __init__(self, args, **kwargs):
         super().__init__(args)
         self.endpoint = os.getenv('JUDGE0_ENDPOINT')
         assert self.endpoint is not None, (
             'Judge0 endpoint is not set. Please set the JUDGE0_ENDPOINT environment variable.')
+        self._submissions_url = f"{self.endpoint.rstrip('/')}/submissions/?wait=true"
         x_auth_token = os.getenv('JUDGE0_X_AUTH_TOKEN')
         self.headers = {'Content-Type': 'application/json'}
         if x_auth_token is not None:
             self.headers['X-Auth-Token'] = x_auth_token
+        max_concurrency_raw = os.getenv('JUDGE0_MAX_CONCURRENCY')
+        if max_concurrency_raw is not None and max_concurrency_raw.strip() != '':
+            try:
+                max_concurrency = int(max_concurrency_raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f'JUDGE0_MAX_CONCURRENCY must be a positive integer, got {max_concurrency_raw!r}.') from exc
+            if max_concurrency <= 0:
+                raise ValueError(f'JUDGE0_MAX_CONCURRENCY must be a positive integer, got {max_concurrency_raw!r}.')
+            self.max_concurrency: Optional[int] = max_concurrency
+        else:
+            self.max_concurrency = None
+        self.max_retries = self.DEFAULT_MAX_RETRIES
+        self.retry_backoff = self.DEFAULT_INITIAL_BACKOFF
+        self.max_retry_backoff = self.DEFAULT_MAX_BACKOFF
 
     @staticmethod
     def extract_code(completion: str, language: str) -> str:
@@ -392,29 +414,110 @@ class CodeRewardByJudge0(ORM):
             return cls.PYTHON_ID
         return cls.LANGUAGE_ID_MAP.get(language.lower().strip(), cls.PYTHON_ID)
 
-    async def _evaluate_code(self, code, test_cases, language_id):
+    @staticmethod
+    def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
+        if header_value is None:
+            return None
+        raw = header_value.strip()
+        if not raw:
+            return None
+        try:
+            seconds = float(raw)
+        except ValueError:
+            try:
+                target = parsedate_to_datetime(raw)
+            except (TypeError, ValueError, IndexError):
+                return None
+            if target.tzinfo is None:
+                target = target.replace(tzinfo=timezone.utc)
+            return max(0.0, (target - datetime.now(timezone.utc)).total_seconds())
+        if not math.isfinite(seconds) or seconds < 0:
+            return None
+        return seconds
+
+    def _compute_retry_delay(self, attempt: int, retry_after: Optional[str]) -> float:
+        exp_delay = min(self.retry_backoff * (2**attempt), self.max_retry_backoff)
+        parsed_retry_after = self._parse_retry_after(retry_after)
+        if parsed_retry_after is not None:
+            if attempt == 0:
+                return min(parsed_retry_after, self.max_retry_backoff)
+            return min(max(parsed_retry_after, exp_delay), self.max_retry_backoff)
+        return exp_delay
+
+    async def _sleep_before_retry(self, attempt: int, retry_after: Optional[str], reason: str) -> None:
+        delay = self._compute_retry_delay(attempt, retry_after)
+        headroom = max(0.0, self.max_retry_backoff - delay)
+        jitter = random.uniform(0.0, min(headroom, max(0.005, delay * 0.25)))
+        sleep_seconds = delay + jitter
+        logger.warning(f'{reason} (attempt {attempt + 1}); retrying in {sleep_seconds:.2f}s')
+        await asyncio.sleep(sleep_seconds)
+
+    async def _post_submission(self, session, payload: dict):
+        async with session.post(self._submissions_url, json=payload, headers=self.headers) as response:
+            status = response.status
+            retry_after = response.headers.get('Retry-After')
+            if 200 <= status < 300:
+                response_json = await response.json()
+                return status, retry_after, None, response_json
+            body_text = await response.text()
+            return status, retry_after, body_text, None
+
+    async def _submit_case(self, session, payload: dict, semaphore: Optional[asyncio.Semaphore] = None):
         import aiohttp
+        for attempt in range(self.max_retries + 1):
+            try:
+                if semaphore is not None:
+                    async with semaphore:
+                        status, retry_after, body_text, response_json = await self._post_submission(session, payload)
+                else:
+                    status, retry_after, body_text, response_json = await self._post_submission(session, payload)
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                if attempt < self.max_retries:
+                    await self._sleep_before_retry(attempt, None, f'Transient error from Judge0 executor: {exc}')
+                    continue
+                raise
+
+            if status == 429 or 500 <= status < 600:
+                if attempt < self.max_retries:
+                    await self._sleep_before_retry(attempt, retry_after, f'Judge0 returned HTTP {status}')
+                    continue
+                snippet = (body_text or '')[:200]
+                raise RuntimeError(f'Judge0 returned HTTP {status} after {self.max_retries + 1} attempts: {snippet}')
+
+            if not (200 <= status < 300):
+                snippet = (body_text or '')[:200]
+                raise RuntimeError(f'Judge0 returned non-retryable HTTP {status}: {snippet}')
+
+            if not isinstance(response_json, dict) or not isinstance(response_json.get('status'), dict):
+                raise ValueError(f'Unexpected Judge0 response payload: {response_json}')
+            return response_json
+
+    async def _evaluate_code(self, code, test_cases, language_id, session=None, semaphore=None):
+        import aiohttp
+        total = len(test_cases)
+        if total == 0 or code is None or code == '':
+            return 0.0
         try:
             passed = 0
-            total = len(test_cases)
-
-            for case in test_cases:
-                if code is not None and code != '':
-                    async with aiohttp.ClientSession() as session:
-                        payload = {
-                            'source_code': code,
-                            'language_id': language_id,
-                            'stdin': case['input'],
-                            'expected_output': case['output']
-                        }
-                        logger.debug(f'Payload: {payload}')
-                        async with session.post(
-                                self.endpoint + '/submissions/?wait=true', json=payload,
-                                headers=self.headers) as response:
-                            response_json = await response.json()
-                            logger.debug(f'Response: {response_json}')
-                            if response_json['status']['description'] == 'Accepted':
-                                passed += 1
+            own_session = session is None
+            if own_session:
+                session = aiohttp.ClientSession()
+            try:
+                for case in test_cases:
+                    payload = {
+                        'source_code': code,
+                        'language_id': language_id,
+                        'stdin': case['input'],
+                        'expected_output': case['output']
+                    }
+                    logger.debug(f'Payload: {payload}')
+                    response_json = await self._submit_case(session, payload, semaphore=semaphore)
+                    logger.debug(f'Response: {response_json}')
+                    if response_json['status'].get('description') == 'Accepted':
+                        passed += 1
+            finally:
+                if own_session:
+                    await session.close()
 
             success_rate = (passed / total)
             return success_rate
@@ -424,7 +527,6 @@ class CodeRewardByJudge0(ORM):
 
     def run_async_from_sync(self):
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
             rewards = loop.run_until_complete(self.run_async())
         finally:
@@ -432,11 +534,19 @@ class CodeRewardByJudge0(ORM):
         return rewards
 
     async def run_async(self):
-        tasks = [
-            self._evaluate_code(code, info['test_cases'], CodeRewardByJudge0.get_language_id(info['language']))
-            for code, info in zip(self.code_snippets, self.verification_info)
-        ]
-        results = await asyncio.gather(*tasks)
+        import aiohttp
+        semaphore = asyncio.Semaphore(self.max_concurrency) if self.max_concurrency is not None else None
+        async with aiohttp.ClientSession() as session:
+            tasks = [
+                self._evaluate_code(
+                    code,
+                    info['test_cases'],
+                    CodeRewardByJudge0.get_language_id(info['language']),
+                    session=session,
+                    semaphore=semaphore,
+                ) for code, info in zip(self.code_snippets, self.verification_info)
+            ]
+            results = await asyncio.gather(*tasks)
         rewards = list(results)
         return rewards
 
