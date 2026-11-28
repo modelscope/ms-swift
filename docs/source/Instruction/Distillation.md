@@ -64,6 +64,7 @@ $$-\log P_S(y^*_t) = \text{KL}(\delta_{y^*} \,\|\, P_S)$$
 
 在 swift 中：
 - GKD 默认 $\beta=0.5$（JSD），可通过 `--beta` 在 Forward / JSD / Reverse 之间选择；
+- GKD 也支持通过 `--loss_type abkd` 使用 [ABKD](https://proceedings.mlr.press/v267/wang25dz.html)，以 `--abkd_alpha` 和 `--abkd_beta` 调节 alpha-beta 散度；
 - OPD-RL 的实现固定使用 Reverse KL 的 k1 估计量 $\log\pi_{\text{teacher}}(y_t)-\log\pi_{\text{student}}(y_t)$ 作为 per-token advantage。
 
 **(b) 计算粒度**
@@ -84,7 +85,7 @@ $$-\log P_S(y^*_t) = \text{KL}(\delta_{y^*} \,\|\, P_S)$$
 | 信号传递 | 把信号作为 loss | 把信号当 advantage，走 policy gradient |
 | 梯度流经 | 学生**全词表** logits（或 top-k） | 仅学生**采样 token** 的 $\nabla\log\pi(y_t)$ |
 | 教师信息需求 | 全词表分布（或 top-k logits） | 采样 token 上的单个 logp |
-| 散度选择 | Forward / Reverse / JSD（`--beta`） | Reverse KL（k1 log-ratio） |
+| 散度选择 | Forward / Reverse / JSD（`--beta`），或 ABKD（`--loss_type abkd`） | Reverse KL（k1 log-ratio） |
 | 与任务奖励组合 | 通过 `sft_alpha` 混合 SFT loss | 可与 GRPO reward 叠加为 advantage |
 
 两者**共享同一套教师基础设施**（见下文），区别只在如何使用 teacher KL 信号。
@@ -127,7 +128,7 @@ swift 提供三种蒸馏训练方法，它们共享同一套教师基础设施�
 
 通过 `swift deploy --model xxx --infer_backend vllm` 部署教师服务后，训练进程按 prompt 向 API 请求 logprobs，无需在训练卡上加载教师权重。
 
-- **GKD**：需设置 `--gkd_logits_topk`（API 仅返回 top-k logprobs），用于计算 JSD 散度损失。
+- **GKD**：需设置 `--gkd_logits_topk`（API 仅返回 top-k logprobs），用于计算所选散度损失。
 - **OPD-RL**：取采样 token 的 logp（`prompt_logprobs=0`），注入 advantage；系数由全局 `--teacher_kl_coef` 控制（见 [3.2](#32-opd-rlkl-作为-rl-advantage)）。
 
 #### Multi-Teacher（多教师路由）
@@ -217,6 +218,22 @@ $$
 
 其中散度 $D$ 由 `--beta` 选择（见 2.1）：$\beta=0$ 为 Forward KL，$\beta=1$ 为 Reverse KL，$0<\beta<1$ 为广义 JSD（默认 $0.5$）。
 
+**Alpha-beta 散度（ABKD）**
+
+设置 `--loss_type abkd`，即可在现有 GKD 训练流程中使用 [ABKD](https://proceedings.mlr.press/v267/wang25dz.html)。两个参数用于调节损失对师生概率差异和学生置信度的关注程度。该散度族包含 Forward KL（`abkd_alpha=1, abkd_beta=0`）和 Reverse KL（`abkd_alpha=0, abkd_beta=1`）。
+
+在现有 GKD 命令中添加：
+
+```bash
+--loss_type abkd \
+--abkd_alpha 0.2 \
+--abkd_beta 0.7
+```
+
+`abkd_alpha` 和 `abkd_beta` 独立于 JSD 插值参数 `beta`，支持零值和负值，以及任一参数或两者之和为零时的连续极限。低精度 logits 会在 FP32 中完成归一化和散度计算。
+
+ABKD 复用现有的 completion mask、温度、token 归一化和 token 分块。当设置 `gkd_logits_topk` 时，与现有 JSD 路径一样，师生分布在教师选出的 token 子集上重新归一化，再计算该条件分布上的 ABKD。HF、Megatron 和 Ray 共用损失实现；Megatron 全词表路径保留张量并行的归一化与归约。启用 Liger 模型算子时，ABKD 使用共享损失函数计算，而不调用融合 JSD 损失。
+
 **On-Policy vs Off-Policy：`lmbda`**
 
 GKD 通过 `lmbda` 控制每个 batch 用学生在线采样的概率：
@@ -239,6 +256,9 @@ loss = D(P_teacher(·|x, y), P_student(·|x, y))
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
+| `--loss_type` | str | jsd | GKD 损失：`jsd` 或 `abkd` |
+| `--abkd_alpha` | float | 0.2 | `loss_type=abkd` 时的 alpha 参数 |
+| `--abkd_beta` | float | 0.7 | `loss_type=abkd` 时的 beta 参数 |
 | `--beta` | float | 0.5 | 散度插值：0=Forward KL，0.5=JSD，1=Reverse KL |
 | `--lmbda` | float | 0.5 | 在线采样概率：0=离线，1=纯在线 |
 | `--sft_alpha` | float | 0 | 混合 SFT loss 比例，最终 `loss = gkd_loss + sft_alpha * sft_loss`（仅对**非学生生成**的数据生效） |

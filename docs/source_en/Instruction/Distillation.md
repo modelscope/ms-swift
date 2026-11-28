@@ -62,6 +62,7 @@ At each token position, quantify the difference between teacher distribution $P_
 
 In swift:
 - GKD defaults to $\beta=0.5$ (JSD); use `--beta` to choose among Forward / JSD / Reverse;
+- GKD also supports [ABKD](https://proceedings.mlr.press/v267/wang25dz.html) via `--loss_type abkd`, with `--abkd_alpha` and `--abkd_beta` controlling the alpha-beta divergence;
 - OPD-RL uses the Reverse KL k1 estimator $\log\pi_{\text{teacher}}(y_t)-\log\pi_{\text{student}}(y_t)$ as per-token advantage.
 
 **(b) Computation granularity**
@@ -82,7 +83,7 @@ In swift:
 | Signal delivery | Use signal as loss | Use signal as advantage via policy gradient |
 | Gradient flows through | Student **full-vocabulary** logits (or top-k) | Only student **sampled token** $\nabla\log\pi(y_t)$ |
 | Teacher information needed | Full distribution (or top-k logits) | Single logp on sampled token |
-| Divergence choice | Forward / Reverse / JSD (`--beta`) | Reverse KL (k1 log-ratio) |
+| Divergence choice | Forward / Reverse / JSD (`--beta`), or ABKD (`--loss_type abkd`) | Reverse KL (k1 log-ratio) |
 | Combine with task reward | Mix SFT loss via `sft_alpha` | Can stack with GRPO reward as advantage |
 
 Both paths **share the same teacher infrastructure** (see below); they differ only in how teacher KL is used.
@@ -124,7 +125,7 @@ Full parameter details: [command-line parameters](./Command-line-parameters.md#r
 
 Deploy the teacher via `swift deploy --model xxx --infer_backend vllm`; the training process requests logprobs by prompt without loading teacher weights on training GPUs.
 
-- **GKD**: Requires `--gkd_logits_topk` (API returns only top-k logprobs) for JSD divergence loss.
+- **GKD**: Requires `--gkd_logits_topk` (API returns only top-k logprobs) for the selected divergence loss.
 - **OPD-RL**: Uses sampled-token logp (`prompt_logprobs=0`) injected into advantage; coefficient is global `--teacher_kl_coef` (see [3.2](#32-opd-rl-kl-as-rl-advantage)).
 
 #### Multi-Teacher Routing
@@ -214,6 +215,22 @@ $$
 
 Divergence $D$ is chosen via `--beta` (see 2.1): $\beta=0$ is Forward KL, $\beta=1$ is Reverse KL, $0<\beta<1$ is generalized JSD (default $0.5$).
 
+**Alpha-beta divergence (ABKD)**
+
+Set `--loss_type abkd` to use [ABKD](https://proceedings.mlr.press/v267/wang25dz.html) in the same GKD training loop. Its two parameters control how the loss emphasizes teacher-student probability mismatches and student confidence. The family includes forward KL at `(abkd_alpha, abkd_beta) = (1, 0)` and reverse KL at `(0, 1)`.
+
+Add these options to an existing GKD command:
+
+```bash
+--loss_type abkd \
+--abkd_alpha 0.2 \
+--abkd_beta 0.7
+```
+
+`abkd_alpha` and `abkd_beta` are separate from the JSD interpolation parameter `beta`. The loss supports zero and negative parameter values, including the continuous limits when either parameter or their sum is zero. Low-precision logits are normalized and compared in FP32.
+
+ABKD uses the existing completion mask, temperature, token normalization, and token chunks. With `gkd_logits_topk`, both distributions are renormalized over the teacher's selected tokens, as in the existing JSD path. This computes ABKD on that conditional distribution. HF, Megatron, and Ray use the shared loss implementation; Megatron's full-vocabulary path retains tensor-parallel normalization and reduction. When Liger model kernels are enabled, ABKD uses the shared loss instead of the fused JSD loss.
+
 **On-Policy vs Off-Policy: `lmbda`**
 
 GKD uses `lmbda` to control the probability that each batch uses student online sampling:
@@ -236,6 +253,9 @@ loss = D(P_teacher(·|x, y), P_student(·|x, y))
 
 | Parameter | Type | Default | Description |
 |------|------|--------|------|
+| `--loss_type` | str | jsd | GKD objective: `jsd` or `abkd` |
+| `--abkd_alpha` | float | 0.2 | Alpha parameter when `loss_type=abkd` |
+| `--abkd_beta` | float | 0.7 | Beta parameter when `loss_type=abkd` |
 | `--beta` | float | 0.5 | Divergence interpolation: 0=Forward KL, 0.5=JSD, 1=Reverse KL |
 | `--lmbda` | float | 0.5 | Online sampling probability: 0=offline, 1=pure online |
 | `--sft_alpha` | float | 0 | SFT loss mixing ratio; final `loss = gkd_loss + sft_alpha * sft_loss` (only for **non-student-generated** data) |
