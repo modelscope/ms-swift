@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" role="img" aria-labelledby="title desc">
+<title id="title">多轮 rollout 的组件与数据流</title>
+<desc id="desc">Dataloader 把 prompt 交给 StreamingDriver；driver 按 episode 向 MultiTurnRollout 副本提交 step，rollout 调用 sampler 生成，通过 ToolManager 与 Env 执行工具并把观察写回；完成的 episode 由 ORM/PRM 评分，整组就绪后以 rows 与 facts 交给训练循环；Advantage Stage 计算优势，TrainableModel 更新策略，CheckpointEngine 把权重同步回 sampler；driver 持有的 ClusterAdapter 按压力增减 sampler 与奖励模型副本，并在训练器等待时借出 GPU。</desc>
+<defs>
+<marker id="b" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3566a0"/></marker>
+<marker id="g" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#277a60"/></marker>
+<marker id="p" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7a4fa3"/></marker>
+<style>
+text{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif;fill:#20354e;font-size:16px}
+.bandlb{font-size:13px;fill:#6b7d90;letter-spacing:.5px}
+.box{fill:#fff;stroke:#9bb7d0;stroke-width:1.5}
+.roll{fill:#eef7f2;stroke:#6fb39a;stroke-width:1.5}
+.gpu{fill:#f3effa;stroke:#b9a3d4;stroke-width:1.5}
+.sub{font-size:12.5px;fill:#5a6d82}
+.lb{font-size:12.5px;fill:#3566a0}
+.lg{font-size:12.5px;fill:#277a60}
+.lp{font-size:12.5px;fill:#7a4fa3}
+.ctl{fill:none;stroke:#3566a0;stroke-width:2;marker-end:url(#b)}
+.data{fill:none;stroke:#277a60;stroke-width:2;marker-end:url(#g)}
+.sync{fill:none;stroke:#7a4fa3;stroke-width:2;stroke-dasharray:7 5;marker-end:url(#p)}
+</style>
+</defs>
+<rect width="1000" height="800" rx="16" fill="#fff"/>
+<text x="40" y="42" font-size="24" font-weight="600">多轮 rollout 的组件与数据流</text>
+<text x="40" y="66" class="sub">StreamingDriver 按样本调度；每个 episode 一次 step 推进一轮；整组就绪后才交给训练循环</text>
+
+<!-- bands first: background cards must sit below every box and connector -->
+<rect x="30" y="88" width="940" height="150" rx="12" fill="#f4f8fc"/>
+<text x="46" y="110" class="bandlb">调度（CPU 进程）</text>
+<rect x="30" y="248" width="940" height="300" rx="12" fill="#f6faf8"/>
+<text x="46" y="270" class="bandlb">rollout 副本 × rollout_num_workers</text>
+<rect x="30" y="568" width="940" height="200" rx="12" fill="#faf8fc"/>
+<text x="46" y="590" class="bandlb">训练（GPU）</text>
+
+<!-- band 1: scheduling -->
+<rect x="60" y="138" width="160" height="60" rx="10" class="box"/>
+<text x="140" y="173" text-anchor="middle">Dataloader</text>
+<rect x="280" y="138" width="220" height="60" rx="10" class="box"/>
+<text x="390" y="163" text-anchor="middle">StreamingDriver</text>
+<text x="390" y="183" text-anchor="middle" class="sub">准入 · 提交 step · 整组就绪</text>
+<rect x="720" y="138" width="220" height="60" rx="10" class="box"/>
+<text x="830" y="163" text-anchor="middle">ORM / PRM scorers</text>
+<text x="830" y="183" text-anchor="middle" class="sub">规则 · 奖励模型</text>
+<path d="M220 168H278" class="ctl"/>
+<path d="M500 160H718" class="ctl"/>
+<text x="609" y="153" text-anchor="middle" class="lb">轨迹引用</text>
+<path d="M720 190C660 216 560 216 500 190" class="data"/>
+<text x="610" y="226" text-anchor="middle" class="lg">分数（按行对齐）</text>
+
+<!-- driver <-> rollout -->
+<path d="M400 198V330" class="ctl"/>
+<text x="392" y="270" text-anchor="end" class="lb">step / stop</text>
+<path d="M440 330V200" class="data"/>
+<text x="448" y="270" class="lg">rows + RolloutStatus</text>
+
+<!-- band 2: rollout replicas -->
+<rect x="330" y="330" width="360" height="64" rx="10" class="roll"/>
+<text x="510" y="356" text-anchor="middle">MultiTurnRollout</text>
+<text x="510" y="378" text-anchor="middle" class="sub">一次 step：生成 → 工具调用 → 观察写回（观察 token 的 labels = -100）</text>
+
+<rect x="720" y="330" width="220" height="64" rx="10" class="box"/>
+<text x="830" y="356" text-anchor="middle">ClusterAdapter</text>
+<text x="830" y="378" text-anchor="middle" class="sub">迁移副本 · 借出 / 收回 GPU</text>
+<path d="M495 198V311H740V328" class="ctl"/>
+<text x="618" y="305" text-anchor="middle" class="lb">adjust · lend · reclaim</text>
+<path d="M830 330V200" class="ctl"/>
+<text x="838" y="270" class="lb">RM 副本</text>
+
+<path d="M420 394L230 468" class="data"/>
+<text x="262" y="436" text-anchor="end" class="lg">env session</text>
+<path d="M510 394V468" class="data"/>
+<text x="518" y="436" class="lg">工具调用</text>
+<path d="M600 394L800 468" class="data"/>
+<text x="705" y="436" text-anchor="end" class="lg">生成</text>
+<path d="M900 394V468" class="ctl"/>
+<text x="908" y="436" class="lb">加减副本</text>
+
+<rect x="110" y="470" width="240" height="60" rx="10" class="box"/>
+<text x="230" y="495" text-anchor="middle">Env × sandbox_num_workers</text>
+<text x="230" y="515" text-anchor="middle" class="sub">local · agentenv · openenv · openenv_client</text>
+<rect x="390" y="470" width="240" height="60" rx="10" class="box"/>
+<text x="510" y="495" text-anchor="middle">ToolManager</text>
+<text x="510" y="515" text-anchor="middle" class="sub">共享工具插件，每个 episode 一份</text>
+<rect x="670" y="470" width="260" height="60" rx="10" class="gpu"/>
+<text x="800" y="495" text-anchor="middle">Sampler（GPU）</text>
+<text x="800" y="515" text-anchor="middle" class="sub">vLLM / SGLang，当前策略权重</text>
+<text x="500" y="540" text-anchor="middle" class="sub">返回采样 token，工具输出与 env 观察；episode 结束前运行数据行声明的 checks</text>
+
+<!-- driver -> advantage (left margin) -->
+<path d="M300 138V124H44V650H58" class="ctl"/>
+<text x="56" y="612" class="lb">(rows, facts)：整组就绪</text>
+<!-- cluster adapter -> trainable model (right margin) -->
+<path d="M940 375H958V700H530V682" class="ctl"/>
+<text x="744" y="722" text-anchor="middle" class="lb">lend / reclaim：训练器等待时借出 GPU，交付 batch 前收回</text>
+
+<!-- band 3: training -->
+<rect x="60" y="620" width="220" height="60" rx="10" class="gpu"/>
+<text x="170" y="645" text-anchor="middle">Advantage Stage</text>
+<text x="170" y="665" text-anchor="middle" class="sub">组内归一化 · KL</text>
+<rect x="380" y="620" width="300" height="60" rx="10" class="gpu"/>
+<text x="530" y="645" text-anchor="middle">TrainableModel</text>
+<text x="530" y="665" text-anchor="middle" class="sub">forward_backward / clip_grad_and_step</text>
+<rect x="760" y="620" width="200" height="60" rx="10" class="box"/>
+<text x="860" y="645" text-anchor="middle">CheckpointEngine</text>
+<text x="860" y="665" text-anchor="middle" class="sub">发布策略权重</text>
+<path d="M280 650H378" class="data"/>
+<text x="329" y="643" text-anchor="middle" class="lg">advantage</text>
+<path d="M680 650H758" class="ctl"/>
+<path d="M860 620V608H230V534" class="sync"/>
+<text x="545" y="602" text-anchor="middle" class="lp">权重同步：NCCL（分离式）/ CUDA-IPC（colocate）/ 增量 patch</text>
+</svg>

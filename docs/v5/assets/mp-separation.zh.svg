@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 680" role="img" aria-labelledby="title desc">
-<title id="title">SWIFT、twinkle 与执行基础设施</title>
-<desc id="desc">入口共用 Config、builders 和 recipe。twinkle 提供组件，infra 提供本地与分布式执行；远程模式经过 twinkle-server。训练数据从数据组件传给模型，模型更新同步给 sampler。</desc>
+<title id="title">SWIFT，twinkle 与执行基础设施</title>
+<desc id="desc">入口共用 Config，builders 和 recipe。twinkle 提供组件，infra 提供本地与分布式执行；远程模式经过 twinkle-server。训练数据从数据组件传给模型，模型更新同步给 sampler。</desc>
 <defs>
 <marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#3566a0"/></marker>
 <marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#277a60"/></marker>
@@ -10,7 +10,7 @@
 <text x="40" y="38" font-size="23">SWIFT v5：算法决策与执行机制分离</text>
 <rect class="box" x="40" y="65" width="175" height="50" rx="8"/><text x="66" y="97">CLI / Python</text>
 <rect class="box" x="260" y="65" width="175" height="50" rx="8"/><text x="301" y="97">WebUI</text>
-<rect class="box" x="40" y="155" width="395" height="70" rx="8"/><text x="65" y="185">SWIFT Config → builders → recipe</text><text x="65" y="210">模型/数据适配、目标、更新与保存</text>
+<rect class="box" x="40" y="155" width="395" height="70" rx="8"/><text x="65" y="185">SWIFT Config → builders → recipe</text><text x="65" y="210">模型/数据适配，目标，更新与保存</text>
 <path class="ctrl" d="M128 115V155"/><path class="ctrl" d="M348 115V155"/>
 <rect x="25" y="260" width="610" height="215" rx="12" fill="#f5f9fc" stroke="#9bb7d0"/><text x="45" y="290">twinkle 可复用组件</text>
 <rect class="box" x="45" y="320" width="165" height="60" rx="8"/><text x="58" y="345">Dataset / Template</text><text x="72" y="368">DataLoader</text>
@@ -22,7 +22,7 @@
 <rect class="box" x="680" y="170" width="280" height="135" rx="8"/><text x="702" y="202">twinkle-server 服务边界</text><text x="702" y="235">gateway / model / sampler</text><text x="702" y="265">processor / session / queue</text>
 <path class="ctrl" d="M435 190H680"/><text x="485" y="177">remote / HTTP</text>
 <path class="ctrl" d="M820 305V355H635"/>
-<rect class="box" x="40" y="520" width="920" height="85" rx="8"/><text x="65" y="550">twinkle infra：设备放置、DeviceMesh、远程调用、权重同步、checkpoint 存储</text><text x="65" y="583">local 进程 / Ray worker / 服务端 worker → Transformers 或 Megatron → CPU / GPU / NPU</text>
+<rect class="box" x="40" y="520" width="920" height="85" rx="8"/><text x="65" y="550">twinkle infra：设备放置，DeviceMesh，远程调用，权重同步，checkpoint 存储</text><text x="65" y="583">local 进程 / Ray worker / 服务端 worker → Transformers 或 Megatron → CPU / GPU / NPU</text>
 <path class="ctrl" d="M323 475V520"/><path class="ctrl" d="M820 355V520"/>
 <path class="ctrl" d="M45 640H95"/><text x="108" y="646">配置与控制</text><path class="data" d="M300 640H350"/><text x="363" y="646">训练数据</text><path class="sync" d="M565 640H615"/><text x="628" y="646">权重同步</text>
 </svg>

@@ -3,7 +3,7 @@ title: 服务端与客户端
 description: 部署 twinkle-server，通过组件 API 或 swift remote 训练，管理多租户与 checkpoint。
 ---
 
-远程训练把 GPU、模型权重和 optimizer 状态放在服务端。客户端负责数据和算法步骤，通过 HTTP 调用 forward/backward、optimizer update、采样与保存接口。客户端不需要加载基础模型权重，但需要 tokenizer、数据处理及所选入口的依赖。
+远程训练把 GPU，模型权重和 optimizer 状态放在服务端。客户端负责数据和算法步骤，通过 HTTP 调用 forward/backward，optimizer update，采样与保存接口。客户端不需要加载基础模型权重，但需要 tokenizer，数据处理及所选入口的依赖。
 
 <ArchitectureDiagram src="/images/v5/server-client.zh.svg" alt="twinkle-server 架构" />
 
@@ -25,7 +25,7 @@ pip install twinkle-server
 pip install twinkle-client
 ```
 
-使用 `swift sft --mode remote` 的客户端还需要 `ms-swift>=5.0.0`。直接组件客户端按数据编码需要安装 `transformers`、`peft` 等依赖。
+使用 `swift sft --mode remote` 的客户端还需要 `ms-swift>=5.0.0`。直接组件客户端按数据编码需要安装 `transformers`，`peft` 等依赖。
 
 ## 部署单模型 LoRA 服务
 
@@ -73,9 +73,9 @@ CUDA_VISIBLE_DEVICES=0 ray start --head --num-gpus=1
 twinkle-server launch --config server_config.yaml
 ```
 
-已有 Ray 集群时连接既有 head，不重复创建。等待所有应用就绪再提交训练。`supported_models`、model 路由尾部和客户端模型名一致；`model_id` 可以使用 Hub 前缀，而 CLI 模型名使用裸 ID。
+已有 Ray 集群时连接既有 head，不重复创建。等待所有应用就绪再提交训练。`supported_models`，model 路由尾部和客户端模型名一致；`model_id` 可以使用 Hub 前缀，而 CLI 模型名使用裸 ID。
 
-单机 localhost 例子不开放公网。跨机器访问前配置可信网络、认证和 TLS，之后再调整监听地址。`persistence.mode=memory` 仅保存当前服务进程的状态；生产部署需配置持久化与 checkpoint 存储，不能把 API 会话持久化当作模型 optimizer 的备份。
+单机 localhost 例子不开放公网。跨机器访问前配置可信网络，认证和 TLS，之后再调整监听地址。`persistence.mode=memory` 仅保存当前服务进程的状态；生产部署需配置持久化与 checkpoint 存储，不能把 API 会话持久化当作模型 optimizer 的备份。
 
 ## 用 SWIFT CLI 训练
 
@@ -113,7 +113,7 @@ init_twinkle_client → client.model → add_adapter_to_model
     → save → close
 ```
 
-组件接口允许客户端自定义循环；输入 token、labels、attention mask 的对齐契约由调用者保证。微批累积和 optimizer update 必须对应，不要在数据分组与模型调用中重复累积。
+组件接口允许客户端自定义循环；输入 token，labels，attention mask 的对齐契约由调用者保证。微批累积和 optimizer update 必须对应，不要在数据分组与模型调用中重复累积。
 
 完整的多 adapter 训练与采样示例：
 
@@ -126,18 +126,18 @@ TWINKLE_SERVER_URL=http://127.0.0.1:8000 \
     python examples/v5/server/client.py
 ```
 
-该配置包含训练模型、vLLM sampler 和 CPU processor，需要为 trainer 与 sampler 分配独立 GPU。源配置和脚本见 [examples/v5/server](https://github.com/modelscope/ms-swift/tree/main/examples/v5/server)，模型模板按该模型家族选择，不把默认通用模板套到所有模型上。
+该配置包含训练模型，vLLM sampler 和 CPU processor，需要为 trainer 与 sampler 分配独立 GPU。源配置和脚本见 [examples/v5/server](https://github.com/modelscope/ms-swift/tree/main/examples/v5/server)，模型模板按该模型家族选择，不把默认通用模板套到所有模型上。
 
 ## Checkpoint 与多租户
 
-服务端保存返回 `twinkle://` URI，表示受管理的远端 checkpoint，不是客户端文件路径。优先使用服务端存储；只有两端确实共享文件系统时，客户端传入的目录才可能成为服务端可用路径。恢复训练需要 adapter、optimizer 状态和算法进度；仅有采样用 adapter 不足以等价恢复训练。
+服务端保存返回 `twinkle://` URI，表示受管理的远端 checkpoint，不是客户端文件路径。优先使用服务端存储；只有两端确实共享文件系统时，客户端传入的目录才可能成为服务端可用路径。恢复训练需要 adapter，optimizer 状态和算法进度；仅有采样用 adapter 不足以等价恢复训练。
 
-同一基础模型可承载多个命名 LoRA adapter。session / token 标识调用方，`per_token_model_limit` 限制模型句柄数量，`max_loras` 限制驻留 adapter 容量，queue 的 RPS / TPS 配置约束请求资源。多租户不意味着无限并发或完全独立的基础权重；设置容量、访问权限和数据保留规则，并关闭不用的句柄。
+同一基础模型可承载多个命名 LoRA adapter。session / token 标识调用方，`per_token_model_limit` 限制模型句柄数量，`max_loras` 限制驻留 adapter 容量，queue 的 RPS / TPS 配置约束请求资源。多租户不意味着无限并发或完全独立的基础权重；设置容量，访问权限和数据保留规则，并关闭不用的句柄。
 
-在线 RL 的 remote 模式还需部署采样应用、奖励依赖与权重同步能力。支持范围由当前 recipe 校验和服务端应用共同决定，不能把一个 OpenAI 推理地址当作训练 API。Tinker 兼容入口见 [服务介绍](/zh/services/tinker)。
+在线 RL 的 remote 模式还需部署采样应用，奖励依赖与权重同步能力。支持范围由当前 recipe 校验和服务端应用共同决定，不能把一个 OpenAI 推理地址当作训练 API。Tinker 兼容入口见 [服务介绍](/zh/services/tinker)。
 
 ## 远程与本机的效率和效果
 
-同一训练目标不保证相同墙钟时间。HTTP、排队、输入编码、服务端分片和 checkpoint 保存都可能增加开销。有效 batch 必须按实际数据分发与梯度累积核算，不能只比较客户端 `gradient_accumulation_steps` 的数值。
+同一训练目标不保证相同墙钟时间。HTTP，排队，输入编码，服务端分片和 checkpoint 保存都可能增加开销。有效 batch 必须按实际数据分发与梯度累积核算，不能只比较客户端 `gradient_accumulation_steps` 的数值。
 
-Qwen3.5-35B-A3B 的 30 步 SFT 记录中，v4 / v5-ray / remote 稳态分别为 6.90 / 6.56 / 11.36 s/it；终点 loss 相对差分别为 v4-ray 3.416%、v4-remote 2.308%、ray-remote 1.071%，符合该批回归判据。4B GRPO 的 local 和 remote 记录混合全周期与 trainer compute 口径，不能直接计算加速倍数。协议、硬件、曲线与来源统一见 [性能](../performance.mdx) 和 [性能图表](/zh/performance)。
+Qwen3.5-35B-A3B 的 30 步 SFT 记录中，v4 / v5-ray / remote 稳态分别为 6.90 / 6.56 / 11.36 s/it；终点 loss 相对差分别为 v4-ray 3.416%，v4-remote 2.308%，ray-remote 1.071%，符合该批回归判据。4B GRPO 的 local 和 remote 记录混合全周期与 trainer compute 口径，不能直接计算加速倍数。协议，硬件，曲线与来源统一见 [性能](../performance.mdx) 和 [性能图表](/zh/performance)。

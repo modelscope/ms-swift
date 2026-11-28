@@ -4,17 +4,17 @@ description: 了解 swift 的基本使用方法
 ---
 
 SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于以简洁的API 支持大模型的训练与训练后操作，并 day0 保持新模型和新算法的高效更新。
-到目前为止，SWIFT 已支持纯文本和多模态大模型逾千个，原生支持 基于 ray 的 Agentic RL，可以轻松融合大量的 harness、沙箱进行高效异步的强化学习训练。
+到目前为止，SWIFT 已支持纯文本和多模态大模型逾千个，原生支持 基于 ray 的 Agentic RL，可组合多种 harness 与沙箱进行异步强化学习训练。
 
 **为什么选择 SWIFT？**
 
 - **写单机代码，训任意规模**：同一份代码从单卡扩展到大规模集群化训练，分布式与采样调度通过配置驱动。
-- **稳定性与速度**：支持 Async RL、Delta同步、低精度训练、训练集群自动扩缩容等技术，支持高效稳定的训练
-- **训练技术**：原生完整支持 PT、SFT、GRPO、PPO、OPD、MOPD、OPSD 等各类监督训练、强化学习和蒸馏方案，在新算法兼容上仍极具扩展性
-- **丰富的训练后端**：不仅支持 transformers、megatron，还通过组件化方式兼容了 unsloth、sentence-transformers 训练，并且具有兼容更多模型框架的能力
+- **稳定性与速度**：支持 Async RL，Delta同步，低精度训练，训练集群自动扩缩容等技术，支持高效稳定的训练
+- **训练技术**：原生完整支持 PT，SFT，GRPO，PPO，OPD，MOPD，OPSD 等各类监督训练，强化学习和蒸馏方案，在新算法兼容上仍极具扩展性
+- **丰富的训练后端**：不仅支持 transformers，megatron，还通过组件化方式兼容了 unsloth，sentence-transformers 训练，并且具有兼容更多模型框架的能力
 - **数据集**：内置 150+ 任务数据集，支持数据湖（Data Lake），并支持新数据集动态添加
-- **硬件支持**：丰富的硬件支持，除NVIDIA GPU外，还支持AMD GPU、昇腾 NPU、昆仑芯 XPU、平头哥、沐曦、Apple MPS 等生态
-- **训练即服务**：在算力集群进行部署一个 API 化的训练服务，使用者可以远端连接，本地无需显卡即可训练大模型，适合希望开放训练服务的个人和厂商
+- **硬件支持**：丰富的硬件支持，除NVIDIA GPU外，还支持AMD GPU，昇腾 NPU，昆仑芯 XPU，平头哥，沐曦，Apple MPS 等生态
+- **训练即服务**：在算力集群部署一个 API 化的训练服务，使用者可远端连接，本地无需显卡即可训练大模型，适合希望开放训练服务的个人和厂商
 
 ## 环境安装与样例
 
@@ -26,7 +26,7 @@ SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于�
 SaaS 功能：
 
 - twinkle-server: 服务化训练框架，可以将 swift 所有支持的训练类型和模型转换为远端 HTTP 训练模式
-- twinkle-client: 远程训练SDK，原生完整支持 PT、SFT、GRPO、PPO、OPD、MOPD、OPSD 等各类训练方案
+- twinkle-client: 远程训练SDK，原生完整支持 PT，SFT，GRPO，PPO，OPD，MOPD，OPSD 等各类训练方案
 
 ### 本地训练
 
@@ -45,7 +45,7 @@ SWIFT 支持的训练算法包括：
 | 训练模式 | 命令 | 论文 | 示例 |
 |---|---|---|---|
 | 预训练 | `swift pt` | — | [pretrain](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/pretrain) |
-| 监督微调（`--task_type` 选择对话生成 [`causal_lm`]、序列分类 [`seq_cls`]、embedding [`embedding`]、reranker [`reranker`]、生成式 reranker [`generative_reranker`]、决策打分 [`decision`]） | `swift sft` | — | [train](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| 监督微调（`--task_type` 选择对话生成 [`causal_lm`]，序列分类 [`seq_cls`]，embedding [`embedding`]，reranker [`reranker`]，生成式 reranker [`generative_reranker`]，决策打分 [`decision`]） | `swift sft` | — | [train](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
 | DPO 直接偏好优化 | `swift rl --rl_type dpo` | [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) | [dpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/dpo) |
 | ORPO 偏好对齐（无参考模型） | `swift rl --rl_type orpo` | [ORPO](https://arxiv.org/abs/2403.07691) | [orpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/orpo) |
 | SimPO 偏好对齐（无参考模型） | `swift rl --rl_type simpo` | [SimPO](https://arxiv.org/abs/2405.14734) | [simpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/simpo) |
@@ -63,12 +63,13 @@ SWIFT 支持的训练算法包括：
 
 | 功能 | 命令 | 示例 |
 |---|---|---|
-| 推理（交互 / 批量，含 embedding、reranker、奖励模型等任务头） | `swift infer` | [infer](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer) |
+| 推理（交互 / 批量，含 embedding，reranker，奖励模型等任务头） | `swift infer` | [infer](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer) |
 | 合并 LoRA | `swift merge` | [merge](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export/merge) |
 | 部署推理服务（vLLM / SGLang 等） | `swift deploy` | [deploy](https://github.com/modelscope/ms-swift/tree/main/examples/v5/deploy) |
 | 导出与量化（GPTQ / AWQ / FP8 等） | `swift export` | [export](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
 | 评测 | `swift eval` | [eval](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
 
+SFT 例子：
 ```bash
 # A simple sft example
 CUDA_VISIBLE_DEVICES=0 \
@@ -85,6 +86,7 @@ swift sft \
     --output_dir output/sft
 ```
 
+GRPO 例子：
 ```bash
 # A simple grpo example
 # pip install vllm math-verify
@@ -109,6 +111,7 @@ swift rl \
     --output_dir output/grpo
 ```
 
+代码式 MOPD（多教师蒸馏）例子：
 ```python
 # A simple mopd code example
 # pip install vllm
@@ -202,16 +205,15 @@ if __name__ == '__main__':
     main()
 ```
 
-以上示例使用 `Qwen/Qwen3.5-4B`。默认通过 ModelScope 下载模型；需要 Hugging Face 时，在 SWIFT 命令中添加 `--use_hf true`。
-
-### 部署 server
+### 部署训练服务
 
 ```bash
-# Use swift model in twinkle-server
 pip install twinkle-server ms-swift
 ```
 
-训练模型和采样引擎都由下面的 `server_config.yaml` 描述，三个应用共用一个网关：训练模型（transformers 后端，LoRA）走 swift 自己的模型加载器；vLLM sampler 负责采样，开着 LoRA 以便每轮加载学生权重：
+注意 twinkle-server 是专用的训练服务化基础设施，和`swift deploy`不同，该命令是 swift 提供的采样服务命令。
+
+训练模型和采样引擎都由下面的 `server_config.yaml` 描述：
 
 ```yaml
 http_options:
@@ -274,13 +276,13 @@ TWINKLE_WORKER_SETUP_HOOK=swift.dev.builder.server_plugin:register twinkle-serve
 
 ### 客户端远程训练
 
-客户端需要 `twinkle-client` 连接服务，以及 `ms-swift` 提供的数据集、模板配置和奖励函数：
+客户端需要 `twinkle-client` 连接服务，以及 `ms-swift` 提供的数据集，模板配置和奖励函数：
 
 ```bash
 pip install twinkle-client ms-swift
 ```
 
-将以下代码保存为 `client_grpo.py`。数据集、模板和奖励都来自 swift：`prompt_rows_from_dataset` 读取 GSM8K 的 `grpo` 视图（答案保留在 `solution` 列）并把它打包进 `user_data`，`configure_remote_processor` 把 swift 的 `TemplateSpec` 发给模型服 务，`set_template` 把同一份 spec 钉到 sampler，训练和采样编码一致，`MathAccuracy` 按 `solution` 打分。每一轮先把当前权重发布给 sampler，再采样 、打分、按组归一化得到 advantage，最后更新：
+将以下代码保存为 `client_grpo.py`。数据集，模板和奖励都来自 swift：`prompt_rows_from_dataset` 读取 GSM8K 的 `grpo` 视图（答案保留在 `solution` 列）并把它打包进 `user_data`，`configure_remote_processor` 把 swift 的 `TemplateSpec` 发给模型服 务，`set_template` 把同一份 spec 钉到 sampler，训练和采样编码一致，`MathAccuracy` 按 `solution` 打分。每一轮先把当前权重发布给 sampler，再采样 ，打分，按组归一化得到 advantage，最后更新：
 
 ```python
 import os
@@ -363,9 +365,9 @@ with init_twinkle_client(
 python client_grpo.py
 ```
 
-twinkle-server 也支持 tinker 语法，详情请参考[这里](这里给出 tinker 的 cookbook 地址)
+twinkle-server 也支持 tinker 语法，详见 tinker cookbook（待补充链接）。
 
 ## 了解更多
 
-- [在线学习](/zh/blog/online-rl)：GRPO 原理、奖励与采样调度。
+- [在线学习](/zh/blog/online-rl)：GRPO 原理，奖励与采样调度。
 - [组件与 MP 分离](../interfaces/mp-separation.mdx)：复用组件和修改训练循环。

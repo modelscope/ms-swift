@@ -1,6 +1,6 @@
 ---
 title: Agentic 训练
-description: 学习工具轨迹，在环境中生成多轮训练数据。
+description: 工具轨迹 SFT 与多轮在线 RL：StreamingDriver，环境，harness，奖励通道与资源自动扩缩容。
 ---
 
-[Agentic 训练](./agentic.mdx)介绍工具轨迹 SFT、多轮 GRPO，以及 agent、工具、环境、rollout 和奖励的分工。在线算法原理见[在线 RL 博客](/zh/blog/online-rl)，代码级训练见[MP 分离](../interfaces/mp-separation.mdx)。
+[Agentic 训练](./agentic.mdx)介绍 StreamingDriver 的按样本调度，训推一致性（token-in-token-out，MoE 路由回放 R2/R3），异构与 colocate 放置，local/agentenv/openenv 环境，harness，ORM/PRM 与环境奖励通道，Ray 与 remote 下的通用性，资源自动扩缩容，并给出工具轨迹 SFT 与完整的 AgentENV RL 代码。在线算法原理见[在线 RL 博客](/zh/blog/online-rl)，代码级训练见[MP 分离](../interfaces/mp-separation.mdx)。

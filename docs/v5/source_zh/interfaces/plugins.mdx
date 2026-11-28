@@ -1,6 +1,6 @@
 ---
 title: 插件
-description: 奖励、过程奖励分段、回调、参数分组、工具、harness、采样器、模型、对话模板、Agent 模板、数据集、格式转换器、存储格式、loss_scale 策略与 loss 的注册与加载方式。
+description: 奖励，过程奖励分段，回调，参数分组，工具，harness，采样器，模型，对话模板，Agent 模板，数据集，格式转换器，存储格式，loss_scale 策略与 loss 的注册与加载方式。
 ---
 
 插件用于替换训练流程中的一个明确扩展点，不需要重写 recipe。SWIFT 定义扩展点的基类和注册名，twinkle 负责加载插件源与执行通用组件。
@@ -13,27 +13,27 @@ description: 奖励、过程奖励分段、回调、参数分组、工具、harn
 
 | 扩展点 | 基类 | 注册方式 | 实现方法 | 选择参数 | 内置注册名 |
 | --- | --- | --- | --- | --- | --- |
-| 奖励规则 | `RewardRule` | `register('reward', name)` | `__call__(self, trajectories, **kwargs)`，可为 `async def` | `--orm`、`--prm` | `accuracy`、`format`、`math`、`cosine`、`repetition`、`soft_overlong`、`react_format`、`toolbench`、`code_execution` |
-| 过程奖励分段 | `PRMSegmentScorer` | `register('prm_scorer', name)` | `build()` 返回分段判断函数 | `--prm_scorer` | `turn`、`delimiter` |
-| 训练回调 | `TrainCallback` | `register('callback', name)` | 覆盖 `on_*` 事件方法 | `--callbacks` | `early_stop`、`perf_log`、`graceful_exit` |
+| 奖励规则 | `RewardRule` | `register('reward', name)` | `__call__(self, trajectories, **kwargs)`，可为 `async def` | `--orm`，`--prm` | `accuracy`，`format`，`math`，`cosine`，`repetition`，`soft_overlong`，`react_format`，`toolbench`，`code_execution` |
+| 过程奖励分段 | `PRMSegmentScorer` | `register('prm_scorer', name)` | `build()` 返回分段判断函数 | `--prm_scorer` | `turn`，`delimiter` |
+| 训练回调 | `TrainCallback` | `register('callback', name)` | 覆盖 `on_*` 事件方法 | `--callbacks` | `early_stop`，`perf_log`，`graceful_exit` |
 | Optimizer 参数分组 | `ParamGroupsPlugin` | `register('param_groups', name)` | `__call__(self, *, train_config, tuner_config)` 返回分组规则 | `--param_groups_plugins` | `no_decay_embeddings` |
 | 工具 | `ToolPlugin` | `register('tool', name)` | `build()` 返回工具实例列表 | `--tools` | `sandbox` |
-| harness | `HarnessPlugin` | `register('harness', name)` | `build()` 返回 `CliAgent` | `--harness` | `codex`、`ms_agent` |
-| 采样器 | twinkle `Sampler` | 只能传源文件路径，见下文 | 实现采样引擎协议 | `--sampler` | `vllm`、`sglang`、`transformers` |
-| 模型 | `ModelLoader` | `@register_model` | 类属性声明 `model_type`、`models`、`template`、`model_cls` | `--model_type` | 各模型家族 |
-| 对话模板 | `TemplateMeta` | `register_template(TemplateMeta(...))` | 用 `{{SYSTEM}}`、`{{QUERY}}` 占位符描述对话格式 | `--template` | 各模型默认模板 |
-| Agent 模板 | `BaseAgentTemplate` | 写入 `agent_template_map['name']` | `_format_tools`、`_format_tool_calls`、`_format_tool_responses`、`get_toolcall` | `--agent_template` | `hermes`、`qwen3`、`qwen3_5`、`toolbench` 等 |
+| harness | `HarnessPlugin` | `register('harness', name)` | `build()` 返回 `CliAgent` | `--harness` | `codex`，`ms_agent` |
+| 采样器 | twinkle `Sampler` | 只能传源文件路径，见下文 | 实现采样引擎协议 | `--sampler` | `vllm`，`sglang`，`transformers` |
+| 模型 | `ModelLoader` | `@register_model` | 类属性声明 `model_type`，`models`，`template`，`model_cls` | `--model_type` | 各模型家族 |
+| 对话模板 | `TemplateMeta` | `register_template(TemplateMeta(...))` | 用 `{{SYSTEM}}`，`{{QUERY}}` 占位符描述对话格式 | `--template` | 各模型默认模板 |
+| Agent 模板 | `BaseAgentTemplate` | 写入 `agent_template_map['name']` | `_format_tools`，`_format_tool_calls`，`_format_tool_responses`，`get_toolcall` | `--agent_template` | `hermes`，`qwen3`，`qwen3_5`，`toolbench` 等 |
 | 数据集 | `DatasetLoader` | `@register_dataset` | `preprocess(row)` 把原始行转为标准行 | `--dataset 注册名` | 内置数据集表 |
-| 格式转换器 | `FormatConverter` | `@register_format` | `detect(columns)`、`convert(row)` | `DatasetLoader.format_name` 或按列名自动检测 | `openai`、`preference`、`alpaca`、`response` |
-| 存储格式 | `DatasetStorage` | `@register_storage` | `read`、`write`，增量格式另有 `append` | `--store_format`；读取按路径识别 | `arrow`、`jsonl`、`bin`、`orc`、`lance`、`builder` |
-| loss_scale 策略 | `LossScale` | 写入 `loss_scale_map['name']` | `get_loss_scale(context, **kwargs)` 返回片段与权重 | `--loss_scale` | `base`、`ignore_empty_think`、`react`、`hermes`、`qwen`、`agentflan`、`alpha_umi` |
+| 格式转换器 | `FormatConverter` | `@register_format` | `detect(columns)`，`convert(row)` | `DatasetLoader.format_name` 或按列名自动检测 | `openai`，`preference`，`alpaca`，`response` |
+| 存储格式 | `DatasetStorage` | `@register_storage` | `read`，`write`，增量格式另有 `append` | `--store_format`；读取按路径识别 | `arrow`，`jsonl`，`bin`，`orc`，`lance`，`builder` |
+| loss_scale 策略 | `LossScale` | 写入 `loss_scale_map['name']` | `get_loss_scale(context, **kwargs)` 返回片段与权重 | `--loss_scale` | `base`，`ignore_empty_think`，`react`，`hermes`，`qwen`，`agentflan`，`alpha_umi` |
 | loss | twinkle `Loss` | `@register_loss('name')` | `__call__(self, inputs, outputs, **kwargs)` 返回 `LossOutput` | `--loss` | 见下文 |
 
-以下名字表是固定的，不能通过插件扩展：optimizer（`--optim`）、lr_scheduler（`--lr_scheduler`）、tuner（`--tuner`）、量化方法（`--quant_method`）和评测指标。optimizer 的参数分组可以通过 `param_groups` 插件改。
+以下名字表是固定的，不能通过插件扩展：optimizer（`--optim`），lr_scheduler（`--lr_scheduler`），tuner（`--tuner`），量化方法（`--quant_method`）和评测指标。optimizer 的参数分组可以通过 `param_groups` 插件改。
 
 ## 自定义奖励
 
-奖励规则是 `RewardRule` 子类。`__call__` 接收轨迹列表，返回与输入等长、同顺序的分数列表；每个轨迹是一个字典，`self.completion(t)` 取回复文本，`self.column(t, 'solution')` 取数据集的额外列。字段结构见[自定义数据集](./custom-dataset.mdx)。
+奖励规则是 `RewardRule` 子类。`__call__` 接收轨迹列表，返回与输入等长，同顺序的分数列表；每个轨迹是一个字典，`self.completion(t)` 取回复文本，`self.column(t, 'solution')` 取数据集的额外列。字段结构见[自定义数据集](./custom-dataset.mdx)。
 
 保存为 `my_plugin.py`：
 
@@ -54,7 +54,7 @@ class MathBonus(RewardRule):
         return scores
 ```
 
-涉及外部 API 的奖励写成 `async def __call__`，不需要另一个基类；同一次训练可以混用同步与异步奖励。设置 API 超时与失败处理，避免一个未返回的评分请求阻塞训练；不要把凭据写进插件或日志。
+涉及外部 API 的奖励实现为 `async def __call__`，不需要另一个基类；同一次训练可以混用同步与异步奖励。设置 API 超时与失败处理，避免一个未返回的评分请求阻塞训练；凭据不应写入插件或日志。
 
 使用自定义奖励：
 
@@ -80,20 +80,20 @@ CUDA_VISIBLE_DEVICES=0,1 swift rl \
     --output_dir output/reward-plugin
 ```
 
-`--orm` 的每一项可以是注册名、插件类，也可以是奖励模型 id；模型 id 走独立的奖励模型通道，用 `--orm_weights` 对齐权重，相关参数见[命令行参数](./cli.mdx)和[在线 RL](../alignment/online-rl.mdx)。奖励不要依赖 batch 内顺序。长度类奖励只用于演示接口，实际任务应同时约束正确性、格式和无效输出，避免模型仅通过延长回答提高分数。
+`--orm` 的每一项可以是注册名，插件类，也可以是奖励模型 id；模型 id 走独立的奖励模型通道，用 `--orm_weights` 对齐权重，相关参数见[命令行参数](./cli.mdx)和[在线 RL](../alignment/online-rl.mdx)。奖励不要依赖 batch 内顺序。长度类奖励只用于演示接口，实际任务应同时约束正确性，格式和无效输出，避免模型仅通过延长回答提高分数。
 
 内置奖励：
 
 | 注册名 | 评分规则 | 读取的列与参数 |
 | --- | --- | --- |
-| `accuracy`、`math` | 用 math_verify 解析回复与参考答案，相同得 1.0，否则 0.0 | `solution` |
+| `accuracy`，`math` | 用 math_verify 解析回复与参考答案，相同得 1.0，否则 0.0 | `solution` |
 | `format` | 回复同时含 think 块和 answer 块得 1.0 | |
 | `react_format` | 回复符合 think 块后接 Action 与 Action Input 的格式得 1.0 | |
 | `toolbench` | 解析回复中的 action，与参考 action 计算 F1 | `solution` |
-| `cosine` | 正确答案的奖励随长度递减，错误答案随长度递增 | `solution`、`response_token_ids`；`cosine_min_len_value_wrong`、`cosine_max_len_value_wrong`、`cosine_min_len_value_correct`、`cosine_max_len_value_correct`、`cosine_max_len` |
-| `repetition` | 按 n-gram 重复比例给负奖励 | `repetition_n_grams`、`repetition_max_penalty` |
-| `soft_overlong` | 在惩罚区间内给线性负奖励，超过上限固定为 -1 | `response_token_ids`；`soft_max_length`、`soft_cache_length` |
-| `code_execution` | 执行回复中的代码，得分为通过的测试用例比例 | `test_cases` + `language`，或 `verification_info`；`code_language`、`code_timeout`、`code_max_concurrency`、`code_memory_limit_gb`、`code_sandbox_template` |
+| `cosine` | 正确答案的奖励随长度递减，错误答案随长度递增 | `solution`，`response_token_ids`；`cosine_min_len_value_wrong`，`cosine_max_len_value_wrong`，`cosine_min_len_value_correct`，`cosine_max_len_value_correct`，`cosine_max_len` |
+| `repetition` | 按 n-gram 重复比例给负奖励 | `repetition_n_grams`，`repetition_max_penalty` |
+| `soft_overlong` | 在惩罚区间内给线性负奖励，超过上限固定为 -1 | `response_token_ids`；`soft_max_length`，`soft_cache_length` |
+| `code_execution` | 执行回复中的代码，得分为通过的测试用例比例 | `test_cases` + `language`，或 `verification_info`；`code_language`，`code_timeout`，`code_max_concurrency`，`code_memory_limit_gb`，`code_sandbox_template` |
 
 ## 过程奖励分段
 
@@ -114,7 +114,7 @@ class DoubleNewlineScorer(PRMSegmentScorer):
 
 通过 `--prm_scorer double_newline` 选择。内置 `turn` 以每个 assistant 轮为一步，`delimiter` 以文本中出现 `--prm_step_delimiter`（默认换行）的轮为一步；不设置时多轮 rollout 用 `turn`，否则用 `delimiter`。
 
-每个 segment 关闭时，`--prm` 里的条目对「到当前 segment 为止的轨迹」打一次分，分数记到该 segment 并广播到它覆盖的 token，再与 `--orm` 的结果奖励按 `--prm_orm_mix` 凸组合。`--prm` 与 `--orm` 一样混排规则名与模型 id：规则就是上一节的 `RewardRule` 子类，无需另写基类，此时 `self.completion(t)` 取到的是刚结束这一步的文本；模型 id 必须是标量奖励模型。设了 `--prm` 而没有 `--orm` 时须 `--prm_orm_mix 1.0`，且不能与 RLSD/SDAR 同开。
+每个 segment 关闭时，`--prm` 里的条目对"到当前 segment 为止的轨迹"评分一次，分数记到该 segment 并广播到它覆盖的 token，再与 `--orm` 的结果奖励按 `--prm_orm_mix` 凸组合。`--prm` 与 `--orm` 一样混排规则名与模型 id：规则就是上一节的 `RewardRule` 子类，无需另写基类，此时 `self.completion(t)` 取到的是刚结束这一步的文本；模型 id 必须是标量奖励模型。设了 `--prm` 而没有 `--orm` 时须 `--prm_orm_mix 1.0`，且不能与 RLSD/SDAR 同开。
 
 ```python
 @PluginRegistry.register('reward', 'step_format')
@@ -160,19 +160,19 @@ swift sft --model Qwen/Qwen3.5-4B \
     --output_dir output/callback
 ```
 
-`CallbackState` 是只读的训练位置和最近指标（`global_step`、`epoch`、`loss`、`metrics`、`best_metric`）；通过 `CallbackControl` 的 `should_training_stop`、`should_save`、`should_evaluate`、`should_log` 请求相应操作，不直接修改循环计数器。事件：
+`CallbackState` 是只读的训练位置和最近指标（`global_step`，`epoch`，`loss`，`metrics`，`best_metric`）；通过 `CallbackControl` 的 `should_training_stop`，`should_save`，`should_evaluate`，`should_log` 请求相应操作，不直接修改循环计数器。事件：
 
 | 事件 | 签名 | 触发时机 |
 | --- | --- | --- |
-| `on_init_end`、`on_train_begin`、`on_train_end` | `(state, control)` | 训练对象构建完成、训练开始与结束 |
-| `on_epoch_begin`、`on_epoch_end`、`on_step_begin`、`on_step_end` | `(state, control)` | 每个 epoch 与每个 optimizer step 的前后 |
-| `on_pre_optimizer_step`、`on_optimizer_step` | `(state, control)` | 参数更新前、梯度裁剪后 |
+| `on_init_end`，`on_train_begin`，`on_train_end` | `(state, control)` | 训练对象构建完成，训练开始与结束 |
+| `on_epoch_begin`，`on_epoch_end`，`on_step_begin`，`on_step_end` | `(state, control)` | 每个 epoch 与每个 optimizer step 的前后 |
+| `on_pre_optimizer_step`，`on_optimizer_step` | `(state, control)` | 参数更新前，梯度裁剪后 |
 | `on_log` | `(state, control, logs)` | 日志输出 |
 | `on_evaluate` | `(state, control, metrics)` | 评估结束 |
 | `on_save` | `(state, control, checkpoint_dir)` | checkpoint 保存后 |
-| `on_push_begin`、`on_predict` | `(state, control, checkpoint_dir)` / `(state, control)` | 推送 checkpoint 到 Hub 前、生成式评测 |
+| `on_push_begin`，`on_predict` | `(state, control, checkpoint_dir)` / `(state, control)` | 推送 checkpoint 到 Hub 前，生成式评测 |
 
-内置回调：`early_stop` 在监控指标连续若干次评估没有提升后停止训练；`perf_log` 按 `logging_steps` 窗口记录吞吐；`graceful_exit` 把 SIGTERM/SIGINT 变成完成当前 step、保存 checkpoint 后退出。签名以 [callbacks/base.py](https://github.com/modelscope/ms-swift/blob/main/swift/dev/callback/base.py) 为准。
+内置回调：`early_stop` 在监控指标连续若干次评估没有提升后停止训练；`perf_log` 按 `logging_steps` 窗口记录吞吐；`graceful_exit` 把 SIGTERM/SIGINT 变成完成当前 step，保存 checkpoint 后退出。签名以 [callbacks/base.py](https://github.com/modelscope/ms-swift/blob/main/swift/dev/callback/base.py) 为准。
 
 ## Optimizer 参数分组
 
@@ -191,7 +191,7 @@ class NoDecayEmbeddings(ParamGroupsPlugin):
 
 ## 工具与 harness
 
-`ToolPlugin.build()` 返回 twinkle `Tool` 实例列表，每个 episode 可调用，rollout 按 episode 复制。`--tools sandbox` 使用沙箱环境自己的 `run_command`、`write_file`、`read_file`，并绑定到每个 episode 的 session，不从全局共享工作目录执行模型生成的命令。
+`ToolPlugin.build()` 返回 twinkle `Tool` 实例列表，每个 episode 可调用，rollout 按 episode 复制。`--tools sandbox` 使用沙箱环境自己的 `run_command`，`write_file`，`read_file`，并绑定到每个 episode 的 session，不从全局共享工作目录执行模型生成的命令。
 
 ```python
 from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
@@ -203,7 +203,7 @@ class MyTools(ToolPlugin):
         return [MyTool()]
 ```
 
-`HarnessPlugin.build()` 返回 `twinkle_agentic.harness.CliAgent`，即每个 episode 启动的外部 CLI agent 程序；内置 `codex` 和 `ms_agent`。rollout 管理 episode 环境、模型回调入口和生成记录，harness 只负责外部程序。完整数据流见 [Agentic 训练](../training/agentic.mdx)。
+`HarnessPlugin.build()` 返回 `twinkle_agentic.harness.CliAgent`，即每个 episode 启动的外部 CLI agent 程序；内置 `codex` 和 `ms_agent`。rollout 管理 episode 环境，模型回调入口和生成记录，harness 只负责外部程序。完整数据流见 [Agentic 训练](../training/agentic.mdx)。
 
 ```python
 from swift.dev.harness import HarnessPlugin
@@ -218,22 +218,22 @@ class MyAgent(HarnessPlugin):
 
 ## 采样器
 
-`--sampler` 选择推理与 rollout 的采样引擎：`vllm`、`sglang`、`transformers`（别名 `pt`），以及`openai`：不启动本地服务，直接使用标准 OpenAI 服务的地址（见[命令行参数](./cli.mdx)）。自定义采样器继承 `Sampler`类，以源文件路径或类传入，例如 `--sampler ./my_sampler.py`；引擎参数经 `--engine_kwargs` 原样传入。`sampler` kind 在首次解析时才声明，插件文件导入时它还不存在，所以自定义采样器不要用 `@PluginRegistry.register('sampler', ...)`，直接传路径。
+`--sampler` 选择推理与 rollout 的采样引擎：`vllm`，`sglang`，`transformers`（别名 `pt`），以及`openai`：不启动本地服务，直接使用标准 OpenAI 服务的地址（见[命令行参数](./cli.mdx)）。自定义采样器继承 `Sampler`类，以源文件路径或类传入，例如 `--sampler ./my_sampler.py`；引擎参数经 `--engine_kwargs` 原样传入。`sampler` kind 在首次解析时才声明，插件文件导入时它还不存在，所以自定义采样器不要用 `@PluginRegistry.register('sampler', ...)`，直接传路径。
 
 ## loss
 
-`--loss` 对预训练、SFT、Embedding、Reranker、决策四类监督任务生效；序列分类和在线 RL 不设 `--loss`，前者由 `problem_type` 决定目标，后者由 `--rl_type` 决定。各任务的内置名：
+`--loss` 对预训练，SFT，Embedding，Reranker，决策四类监督任务生效；序列分类和在线 RL 不设 `--loss`，前者由 `problem_type` 决定目标，后者由 `--rl_type` 决定。各任务的内置名：
 
 | 任务 | `--loss` 可选值 |
 | --- | --- |
-| 预训练、SFT | `cross_entropy`（默认）。同时开启 `--use_liger_kernel` 且 `liger_kernel_config` 含 `fused_linear_cross_entropy` 时走 Liger 融合 CE；`--enable_channel_loss`、`--enable_dft_loss` 改变聚合方式 |
-| Embedding | `infonce`（默认）、`cosine_similarity`、`contrastive`、`online_contrastive` |
-| Reranker | `pointwise_reranker`（默认）、`listwise_reranker` |
-| 序列分类、回归 | 不设置，由 `problem_type` 决定：回归 MSE、单标签 CE、多标签 BCE |
-| 决策 | `scoring`（默认）、`distill_rps`、`smooth_brier`、`ce_rps` |
-| 在线 RL | 不设置，由 `--rl_type` 决定；GRPO 的变体用 `--loss_type` 选 `grpo`、`gspo`、`cispo`、`dis`、`bnpo`、`dr_grpo`、`real`、`gpg`、`dapo`、`fipo`、`sapo`、`dro`、`dppo_tv`、`dppo_kl`、`geo_mean`、`clip_cov`、`kl_cov` |
+| 预训练，SFT | `cross_entropy`（默认）。同时开启 `--use_liger_kernel` 且 `liger_kernel_config` 含 `fused_linear_cross_entropy` 时走 Liger 融合 CE；`--enable_channel_loss`，`--enable_dft_loss` 改变聚合方式 |
+| Embedding | `infonce`（默认），`cosine_similarity`，`contrastive`，`online_contrastive` |
+| Reranker | `pointwise_reranker`（默认），`listwise_reranker` |
+| 序列分类，回归 | 不设置，由 `problem_type` 决定：回归 MSE，单标签 CE，多标签 BCE |
+| 决策 | `scoring`（默认），`distill_rps`，`smooth_brier`，`ce_rps` |
+| 在线 RL | 不设置，由 `--rl_type` 决定；GRPO 的变体用 `--loss_type` 选 `grpo`，`gspo`，`cispo`，`dis`，`bnpo`，`dr_grpo`，`real`，`gpg`，`dapo`，`fipo`，`sapo`，`dro`，`dppo_tv`，`dppo_kl`，`geo_mean`，`clip_cov`，`kl_cov` |
 
-自定义 loss 是 twinkle `Loss` 子类，用 `@register_loss('名字')` 注册后 `--loss 名字` 选择。`__call__` 接收编码后的 batch `inputs`（含 `labels`、`loss_scale`）和模型输出 `outputs`（含 `logps`，需要 logits 时设 `require_logits = True`），返回 `LossOutput`，其中 `loss` 是标量 tensor，`num_tokens` 是本 batch 参与损失的 token 数，用于跨 step 归一化。SFT 的 loss 构造时还会收到 `reduction='sum'`、`dft`、`label_smoothing`，Embedding 收到 `mrl_dims`，构造函数要能接收这些参数；继承同名内置 loss（如 `CrossEntropyLoss`）改写 `__call__` 最省事：
+自定义 loss 是 twinkle `Loss` 子类，用 `@register_loss('名字')` 注册后 `--loss 名字` 选择。`__call__` 接收编码后的 batch `inputs`（含 `labels`，`loss_scale`）和模型输出 `outputs`（含 `logps`，需要 logits 时设 `require_logits = True`），返回 `LossOutput`，其中 `loss` 是标量 tensor，`num_tokens` 是本 batch 参与损失的 token 数，用于跨 step 归一化。SFT 的 loss 构造时还会收到 `reduction='sum'`，`dft`，`label_smoothing`，Embedding 收到 `mrl_dims`，构造函数要能接收这些参数；继承同名内置 loss（如 `CrossEntropyLoss`）改写 `__call__` 最省事：
 
 ```python
 from twinkle.data_format import LossOutput
@@ -282,11 +282,11 @@ class KeywordLossScale(LossScale):
 loss_scale_map['keyword'] = KeywordLossScale
 ```
 
-通过 `--loss_scale keyword` 使用，也可以与基础策略和其他策略用 `+` 串联，例如 `last_round+hermes+keyword`，各策略依次处理前一个的输出，权重相乘。内置策略：`base`、`ignore_empty_think`、`react`、`hermes`、`qwen`、`agentflan`、`alpha_umi`。
+通过 `--loss_scale keyword` 使用，也可以与基础策略和其他策略用 `+` 串联，例如 `last_round+hermes+keyword`，各策略依次处理前一个的输出，权重相乘。内置策略：`base`，`ignore_empty_think`，`react`，`hermes`，`qwen`，`agentflan`，`alpha_umi`。
 
 ## Agent 模板
 
-Agent 模板把 `tools`、`tool_call`、`tool_response` 消息渲染成模型自己的工具调用格式，`--agent_template` 选择；不设置时用模型 `TemplateMeta` 声明的默认值。自定义模板是 `BaseAgentTemplate` 子类：`_format_tools` 把 tools 与 system 合成完整 system，`_format_tool_calls` 把连续 `tool_call` 渲染为 assistant 文本，`_format_tool_responses` 渲染工具返回，`get_toolcall` 从模型输出解析工具名和参数（推理与部署用）。注册即写入映射表：
+Agent 模板把 `tools`，`tool_call`，`tool_response` 消息渲染成模型自己的工具调用格式，`--agent_template` 选择；不设置时用模型 `TemplateMeta` 声明的默认值。自定义模板是 `BaseAgentTemplate` 子类：`_format_tools` 把 tools 与 system 合成完整 system，`_format_tool_calls` 把连续 `tool_call` 渲染为 assistant 文本，`_format_tool_responses` 渲染工具返回，`get_toolcall` 从模型输出解析工具名和参数（推理与部署用）。注册即写入映射表：
 
 ```python
 from swift.dev.template.agent import BaseAgentTemplate, agent_template_map
@@ -299,13 +299,13 @@ class MyAgentTemplate(BaseAgentTemplate):
 agent_template_map['my_agent'] = MyAgentTemplate
 ```
 
-内置名：`react_en`、`react_zh`、`qwen_en`、`qwen_zh`、`qwen_en_parallel`、`qwen_zh_parallel`、`qwen3_coder`、`qwen3`、`qwen3_5`、`hermes`、`hunyuan_hermes`、`hy_v3`、`hy_v3_preview`、`toolbench`、`chatglm4`、`glm4`、`glm4_5`、`glm4_7`、`glm5_1`、`glm_ocr`、`llama3`、`llama4`、`deepseek_v3_1`、`deepseek_v4`、`minimax_m2`、`minimax_m3`、`seed_oss`、`gemma4`、`react_grpo`、`mistral`、`youtu`、`kimi_k25`、`kimi_k3`、`minicpm5`。
+内置名：`react_en`，`react_zh`，`qwen_en`，`qwen_zh`，`qwen_en_parallel`，`qwen_zh_parallel`，`qwen3_coder`，`qwen3`，`qwen3_5`，`hermes`，`hunyuan_hermes`，`hy_v3`，`hy_v3_preview`，`toolbench`，`chatglm4`，`glm4`，`glm4_5`，`glm4_7`，`glm5_1`，`glm_ocr`，`llama3`，`llama4`，`deepseek_v3_1`，`deepseek_v4`，`minimax_m2`，`minimax_m3`，`seed_oss`，`gemma4`，`react_grpo`，`mistral`，`youtu`，`kimi_k25`，`kimi_k3`，`minicpm5`。
 
 ## 数据格式转换器与存储格式
 
 格式转换器按列名识别原始数据并改写为标准 `messages`。`@register_format` 装饰的 `FormatConverter` 子类声明 `format_name` 与检测优先级 `priority`，实现 `detect(columns)` 与 `convert(row)`；在 `DatasetLoader` 子类上设 `format_name` 固定使用它，否则按优先级自动检测。内置与识别规则见[自定义数据集](./custom-dataset.mdx)。
 
-存储格式决定数据集文件怎么读写。`@register_storage` 装饰的 `DatasetStorage` 子类声明 `name` 与 `extensions`，实现 `read` 与 `write`；需要推理或转换命令边跑边写时另实现 `append` 并声明 `incremental = True`。写入格式由 `--store_format` 选择，读取按路径扩展名或目录形状自动识别。
+存储格式决定数据集文件的读写方式。`@register_storage` 装饰的 `DatasetStorage` 子类声明 `name` 与 `extensions`，实现 `read` 与 `write`；需要推理或转换命令边执行边写入时另实现 `append` 并声明 `incremental = True`。写入格式由 `--store_format` 选择，读取按路径扩展名或目录形状自动识别。
 
 ```python
 from swift.dev.dataset.storage import DatasetStorage, register_storage
@@ -325,7 +325,7 @@ class MyStorage(DatasetStorage):
 
 ## 模型与对话模板
 
-自定义模型家族是 `@register_model` 装饰的 `ModelLoader` 子类，在类上声明 `model_type`、覆盖的 checkpoint `models`、使用的模板 `template` 和 transformers 类 `model_cls`；AutoModel 路径不够时覆盖 `build_config`、`build_processor`、`build_model`。自定义对话模板用 `register_template` 注册 `TemplateMeta`，`prefix`、`prompt`、`chat_sep` 描述对话格式。模型与模板都要在 `swift.model` 和 `swift.dev.template` 两个注册表各注册一次，两者互不派生。完整示例见 [examples/v5/train/custom/model_template](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/custom/model_template)：
+自定义模型家族是 `@register_model` 装饰的 `ModelLoader` 子类，在类上声明 `model_type`，覆盖的 checkpoint `models`，使用的模板 `template` 和 transformers 类 `model_cls`；AutoModel 路径不够时覆盖 `build_config`，`build_processor`，`build_model`。自定义对话模板用 `register_template` 注册 `TemplateMeta`，`prefix`，`prompt`，`chat_sep` 描述对话格式。模型与模板都要在 `swift.model` 和 `swift.dev.template` 两个注册表各注册一次，两者互不派生。完整示例见 [examples/v5/train/custom/model_template](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/custom/model_template)：
 
 ```python
 from swift.dev.model.loader import ModelLoader, register_model
@@ -373,8 +373,8 @@ swift sft --model Qwen/Qwen2.5-0.5B-Instruct \
 
 ## 加载与复用
 
-`--external_plugins` 接受本地 `.py` 文件、本地目录以及 `hf://` / `ms://` 插件 id，目录和远端源的解析由 twinkle 的 `load_module` 统一完成，SWIFT 不另建加载器。插件导入会执行代码，只加载可信来源并固定版本。
+`--external_plugins` 接受本地 `.py` 文件，本地目录以及 `hf://` / `ms://` 插件 id，目录和远端源的解析由 twinkle 的 `load_module` 统一完成，SWIFT 不另建加载器。插件导入会执行代码，只加载可信来源并固定版本。
 
-每个扩展点的选择参数都接受三种写法：注册名、插件类对象（程序化调用时）、外部源路径或 id；传入源时加载器返回文件里对应基类的子类。
+每个扩展点的选择参数都接受三种写法：注册名，插件类对象（程序化调用时），外部源路径或 id；传入源时加载器返回文件里对应基类的子类。
 
 新增整个扩展点用 `PluginRegistry.register_kind(name, base, config_field=...)`，新增实现用 `PluginRegistry.register(kind, name)`；注册时会检查实现是否继承该 kind 的基类。注册不等于自动接入 recipe：新 kind 的选择字段和使用位置仍须由调用者定义。完整示例见 [examples/v5/train/plugins](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/plugins)。

@@ -1,11 +1,11 @@
 ---
 title: 模板
-description: 模板选择、messages 编码、多模态输入、thinking 与 loss mask。
+description: 模板选择，messages 编码，多模态输入，thinking 与 loss mask。
 ---
 
-同一份 `messages` 在不同模型上需要不同的角色标记、分隔符、结束 token 和媒体处理方式。模板把标准样本转换为模型输入，并决定哪些 token 参与训练损失。数据集格式与模型格式因此可以独立维护。
+同一份 `messages` 在不同模型上需要不同的角色标记，分隔符，结束 token 和媒体处理方式。模板把标准样本转换为模型输入，并决定哪些 token 参与训练损失。数据集格式与模型格式因此可以独立维护。
 
-编码流程是：`messages` 与媒体列 → 模板渲染 → tokenizer / processor → `input_ids`、`labels` 和媒体 tensor → batch padding 或 packing。推理时添加生成前缀，训练时保留目标回复并构造监督范围；二者不是直接复制同一个字符串。
+编码流程是：`messages` 与媒体列 → 模板渲染 → tokenizer / processor → `input_ids`，`labels` 和媒体 tensor → batch padding 或 packing。推理时添加生成前缀，训练时保留目标回复并构造监督范围；二者不是直接复制同一个字符串。
 
 ## 选择模板
 
@@ -28,7 +28,7 @@ swift sft --model Qwen/Qwen3.5-4B \
 |---|---|---|
 | `template` | 自动选择 | 使用模型注册的默认模板 |
 | `system` | 模板默认值 | 数据集中的 system 消息优先 |
-| `max_length` | `None` | 总序列长度，包括 prompt、回复及媒体 token |
+| `max_length` | `None` | 总序列长度，包括 prompt，回复及媒体 token |
 | `truncation_strategy` | `None` | 超长样本处理；默认编码报超长，由数据处理环节丢弃 |
 | `padding_side` | `right` | batch 的 padding 方向 |
 | `padding_free` | `false` | 无 padding 输入；需后端和 attention 实现支持 |
@@ -66,7 +66,7 @@ print(encoded['labels'])
 
 ## 共享组件接口
 
-`swift.dev.template.Template` 继承 `twinkle.template.Template`。SWIFT 保留原有构造链和模型家族注册表，不改用 twinkle 的模型模板。两边的 `encode`、`batch_encode`、`encode_prompt`、`append_completion`、解码和 batch hook 使用一致的参数。
+`swift.dev.template.Template` 继承 `twinkle.template.Template`。SWIFT 保留原有构造链和模型家族注册表，不改用 twinkle 的模型模板。两边的 `encode`，`batch_encode`，`encode_prompt`，`append_completion`，解码和 batch hook 使用一致的参数。
 
 ```python
 from twinkle.template.contract import TRAIN
@@ -77,9 +77,9 @@ prompt = template.encode_prompt(sample, backend='vllm')
 continued = template.append_completion(prompt, generated_tokens)
 ```
 
-`TRAIN/INFER/ENGINE/SCORE` 定义于 `twinkle.template.contract`，也由 `swift.dev.template` 导出。默认或 False 使用 TRAIN，True 使用 INFER；推理和打分不返回训练 labels。因果 labels 只左移一次，末位为 -100。返回轨迹同时保留原始会话、媒体和模型字段；list 批次返回平铺 list，列存批次返回等长列。
+`TRAIN/INFER/ENGINE/SCORE` 定义于 `twinkle.template.contract`，也由 `swift.dev.template` 导出。默认或 False 使用 TRAIN，True 使用 INFER；推理和打分不返回训练 labels。因果 labels 只左移一次，末位为 -100。返回轨迹同时保留原始会话，媒体和模型字段；list 批次返回平铺 list，列存批次返回等长列。
 
-`set_template` 接受实例、携带构造参数的子类或注册名称。HTTP 仅传名称和配置；SWIFT 复用现有 TemplateSpec，并通过现有 worker 启动 hook 注册 SwiftTemplate。delete 下单条 encode 抛 MaxLengthError，batch_encode 丢弃整条样本，配对两侧一起处理。文本 split 可以返回多条轨迹，encode_prompt 拒绝多条结果；多模态 payload 不能安全分割。追加生成 token 不截断已记录历史。
+`set_template` 接受实例，携带构造参数的子类或注册名称。HTTP 仅传名称和配置；SWIFT 复用现有 TemplateSpec，并通过现有 worker 启动 hook 注册 SwiftTemplate。delete 下单条 encode 抛 MaxLengthError，batch_encode 丢弃整条样本，配对两侧一起处理。文本 split 可以返回多条轨迹，encode_prompt 拒绝多条结果；多模态 payload 不能安全分割。追加生成 token 不截断已记录历史。
 
 ## 监督范围与 loss mask
 
@@ -117,12 +117,12 @@ swift infer --model Qwen/Qwen3.5-4B \
 {"messages": [{"role": "user", "content": "<image>描述图片"}, {"role": "assistant", "content": "一只猫。"}], "images": ["/data/cat.png"], "chat_template_kwargs": {"max_pixels": 1048576}}
 ```
 
-媒体占位符与顶层媒体列表一一对应。processor 决定图像缩放、视频帧读取、音频特征和媒体 token 数量；`max_length` 必须覆盖最终编码长度，不能只按可见文本字数估计。
+媒体占位符与顶层媒体列表一一对应。processor 决定图像缩放，视频帧读取，音频特征和媒体 token 数量；`max_length` 必须覆盖最终编码长度，不能只按可见文本字数估计。
 
 工具轨迹由 assistant 发出工具调用，工具返回观察，assistant 再继续。标准数据转换器处理工具消息结构，模板负责把工具定义和调用渲染为模型协议。工具观察是上下文，通常不作为模型回复监督；工具调用动作是否监督由训练数据与 loss 策略决定。示例与运行入口见 [Agentic](../training/agentic.mdx)。
 
 ## 长度和 batch
 
-超长数据可选择 `delete`、`left`、`right` 或 `split`。删除保留完整样本语义但减少样本数；截断可能移除问题或最终答案；切分可能破坏多轮、媒体或工具关联，需要结合任务确认。先检查有效样本数和回复是否被保留，再调整长度。
+超长数据可选择 `delete`，`left`，`right` 或 `split`。删除保留完整样本语义但减少样本数；截断可能移除问题或最终答案；切分可能破坏多轮，媒体或工具关联，需要结合任务确认。先检查有效样本数和回复是否被保留，再调整长度。
 
-packing / padding-free 改变 batch 的组织方式，不改变原始消息协议。序列边界、位置编码和 loss mask 必须随 batch 一起保留，由模板与 dataloader 处理。完整参数见 [CLI](./cli.mdx)，组件分工见 [MP 分离](./mp-separation.mdx)。
+packing / padding-free 改变 batch 的组织方式，不改变原始消息协议。序列边界，位置编码和 loss mask 必须随 batch 一起保留，由模板与 dataloader 处理。完整参数见 [CLI](./cli.mdx)，组件分工见 [MP 分离](./mp-separation.mdx)。

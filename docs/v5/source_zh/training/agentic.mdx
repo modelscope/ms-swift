@@ -1,37 +1,457 @@
 ---
 title: Agentic 训练
-description: 从工具调用数据到多轮 rollout，理解 agent、环境、奖励和训练的关系。
+description: 多轮在线 RL：StreamingDriver 的按样本调度，异构放置与 colocate，四类环境，harness，ORM/PRM 奖励通道，Ray 与 remote 通用性，资源自动扩缩容，以及完整的 AgentENV RL 代码。
 ---
 
-Agentic 训练让模型学习在任务中调用工具、读取观察并继续决策。SFT 学习已有的工具轨迹；在线 RL 让当前模型在环境中执行任务，再用奖励更新。工具执行成功不等于任务完成，奖励必须衡量最终目标。
+Agentic 训练是在线 RL 的一种：当前策略在环境中执行任务——调用工具，读取观察，继续决策——训练器根据环境给出的奖励更新策略。GRPO 的算法原理见[在线学习](../alignment/online-rl.mdx)，本文介绍多轮 rollout 的调度，放置，环境，奖励通道，以及它们在 Ray 与 remote 下的运行方式。
 
-## 数据流与组件
+## 组件与数据流
 
-```text
-任务 prompt → 模型生成 → 工具调用 → 环境执行 → tool 观察
-                  ↑                           │
-                  └──────── 下一轮 ────────────┘
-完整轨迹 → 奖励 → advantage → 模型更新 → sampler 权重同步
+<ArchitectureDiagram src="/images/v5/agentic-rollout.zh.svg" alt="多轮 rollout 的组件与数据流" />
+
+- **Policy**：训练器持有的模型；每个 episode 的每一轮都由 sampler 用当前权重生成。
+- **Tool**：有名称，参数 schema 和执行接口。工具分两类：共享工具（calculator，搜索 API 等）放在 `ToolManager` 里，每个 episode 拷贝一份；环境工具（`run_command` / `write_file` / `read_file`）绑定到该 episode 的 env session，模型只能在 episode 自己的工作区里操作。
+- **Env**：管理一个 episode 的工作目录，进程或 microVM 的生命周期。`reset` 开 session，`step` 执行工具，`close` 结束并可选地给出环境奖励。
+- **Rollout**（`MultiTurnRollout`）：一次 `step` 做一轮"生成 → 工具调用 → 观察写回"。它维护 token 级记录：模型生成的 token 进 `labels`，工具观察的 token 置 `-100`，历史不重新 decode-encode（见下文 token-in-token-out）。
+- **StreamingDriver**：读 prompt，把每行展开成 `num_generations` 个 episode，逐个推进，逐个评分，整组就绪后按 `batch_size` 行交给训练循环。
+- **Reward**：ORM（结果奖励）在 episode 结束时评分；PRM（过程奖励）在每个闭合的 segment 上评分；环境自身也可以评分。
+- **Recipe**：组装以上对象并运行训练循环；并行与远程由 twinkle 管理，recipe 本身按单机程序写。
+
+## StreamingDriver：按样本而非按批调度
+
+按批调度的做法是一批 prompt 同时生成，等待最慢的一条结束后再进入训练。多轮 rollout 的轨迹长度差异极大（1 轮即提交与用满 `max_turns` 可相差十倍），按批等待会使采样器长时间空闲。`StreamingDriver` 采用按样本调度：
+
+- **按样本准入**：driver 维持一个有界窗口（`(max_staleness + 1) × parameter_sync_step × batch_size` 行），窗口里有空位就从 dataloader 取下一行并立即提交，不等当前 batch 到齐。
+- **每个 episode 独立推进**：一次 `rollout.step` 是一次远程调用，返回后由完成回调放回事件队列；driver 线程只消费队列，成本不随在途 episode 数增长。
+- **完成即评分**：episode 结束就提交给所有 ORM；若配置了 PRM，每个闭合 segment 立即评分。`on_step` 钩子可读取 PRM 分数决定是否继续该 episode。
+- **整组就绪后再交给训练循环**：一个 prompt 的 `num_generations` 个 episode 全部有分，该组才进入就绪队列；`__next__` 取出 `batch_size` 行，连同元数据 `facts`（长度，轮数，策略版本，按行对齐的分数列）一起返回。轨迹本身在 Ray 下始终是 ObjectRef，driver 从不打开它。
+- **单成员容错**：失败的 episode 只重新生成自身对应的样本槽（`max_group_regenerations` 次），已评分的同组成员保留；超过 `max_staleness` 的成员按单条剔除并重生成，不影响整组。env 没有空闲 session 时，`step` 以 `session_wait=0` 立即返回无 slot 标记，该成员按指数退避重试，不计入失败也不占再生预算。
+- **组级回调**：`on_group` 读取整组的 `RolloutStatus`（只含元数据与分数），可以返回新轨迹替换整组（动态采样），或返回一条 baseline 轨迹（ReMax）。
+
+driver 是整个 RL 任务中唯一的全局单点，但不承压：它只维护准入窗口与就绪队列，一次 `rollout.step` 的返回值里轨迹以 ObjectRef 透传（`stash`），driver 不打开轨迹内容，完成回调只把状态放回事件队列。路由与负载均衡由 infra 完成，driver 与 recipe 不感知副本：
+
+- **粘滞路由**：`rollout.step` 声明 `sticky_key` 为 episode id，同一 episode 的所有轮次落到同一 rollout 副本，该副本持有 episode 状态与 `TurnLedger`。rollout 调用 `sampler.sample` 时传 `session_id=episode_id`，sampler 的 `sample` 同样声明为粘滞，同一 episode 的多轮生成落到同一 vLLM DP 副本；token-in-token-out 保证前缀逐 token 不变，该副本的 prefix cache 直接命中。绑定表保存在调用方进程内（LRU，空闲过期），副本下线时重新绑定。
+- **负载均衡**：没有绑定的新 key 由 infra 按各副本在途请求数最少优先分配（`_PoolView.assign`），一次调用只落一个副本，不扇出到全部副本。`--rollout_num_workers` 与采样器 DP 副本数随并发 episode 数扩展，吞吐随副本数线性增长，driver 的成本只随完成事件数增长。
+
+这套调度是 `async_mode` 的实现基础：`none` 对应 `max_staleness=0`，窗口只用于提前生成；`one_step_off` / `fully_async` 放宽版本约束，让采样器在训练期间继续生成下一批。
+
+### driver 只做调度
+
+driver 只做调度：读 dataloader，提交 step，提交评分，组装 batch。以下工作都不在 driver 内进行：
+
+- 评分：ORM/PRM 是独立的 scorer 句柄（规则在 CPU 组，奖励模型在自己的 DeviceGroup），driver 只持有 Future。
+- 优势计算，基线（reference logps），动态采样重生成：都在训练循环里作为独立 Stage 调用（`advantage`，`reference.forward_only`）。
+- 权重同步：由 `CheckpointEngineManager` 完成，driver 只通过 `checkpoint_manager.version()` 读到版本号。
+
+这样 driver 的内存和 CPU 占用与轨迹长度无关，也不会因为一个耗时的奖励模型或一次 advantage 计算而停止调度。
+
+## 训推一致性
+
+GRPO 的 ratio 是"训练策略在该 token 上的 logprob"与"采样时的 logprob"之比。两项必须在相同条件下计算，否则比值里混入的不是策略差异，而是两个引擎的差异：token 序列不同（重新 encode 导致位置漂移），MoE 模型的专家路由不同（训练前向重新路由，bf16 下的微小数值差就能让 token 换一个专家）。我们采用了两个机制消除这两类差异：token-in-token-out 保证训练的 token 就是采样返回的 token；路由回放保证训练前向使用采样时的 MoE 路由（`--router_replay_mode R3|R2`）。两者在 Ray 与 remote 下都可用，remote 的限制是 R2 不支持。
+
+### token-in-token-out
+
+多轮 rollout 若每轮把 `messages` 重新encode，训练数据会错位。tokenizer 对同一字符串的编码依赖上文（BPE 合并边界跨消息），模板渲染的空白也与模型实际生成的不同。重新 encode 后历史 token 的位置发生了改变，而 sampler 返回的 logprob 仍对应旧位置，训练照常进行，没有任何报错。
+
+实现上分为"策略"与"记录"两部分：`MultiTurnRollout` 负责策略（轮数，工具调用方式，结束条件），每个 episode 的 token 由 `TurnLedger`（`twinkle_agentic/rollout/ledger.py`）记录，原则是训练使用的 token 就是 sampler 返回的 token，不事后重新 encode。记录过程在一个 episode 里包含四个动作：
+
+1. **`open`：整个 episode 唯一一次 encode**。system prompt 与首条 user 消息由 template 编码得到 `input_ids`（trajectory 已带 `input_ids` 则直接采用）。同一个 episode 自始至终只用这一个 template，两个 template 对特殊 token 的处理可能不同，差异会落在轨迹中间。
+2. **`record`：采样的 token 原样记录**。每轮生成将当前记录的 `input_ids` 直接作为 prompt 交给 sampler（`sampler.sample([ledger.input_feature])`），引擎按 token id 续写。返回的 `SampledSequence` 带 `tokens`，逐 token 的 `logprobs`，以及 `new_input_feature`——由 `Template.append_completion` 在原 feature 上追加 `tokens` 得到（`labels` 以 token 为准，`messages` 追加一条 assistant 消息）。记录整体采用它，并校验前缀：`input_ids` 必须等于旧前缀 + `tokens`，`labels` / `completion_mask` 的新增段必须标为可训练，否则抛错。
+3. **`observe`：工具观察只编码增量**。工具结果与下一轮的 generation prompt 作为 bridge 追加：`template.render_delta` 分别渲染"已有消息"与"已有消息 + 新增消息"两份文本，只取公共前缀之后的 token。刻意不与 `tokenizer.decode(input_ids)` 做 diff——模板渲染与模型生成的空白差异会让 `startswith` 对齐失败，而对齐只需对新增部分成立。bridge 的 `labels` 置 `-100`，`completion_mask` 置 0。bridge 放不下（超过 template 的 `--max_length`）时返回 False，记录停在最后一个放得下的状态，episode 以 truncated 结束，已采样的轮次完整保留。`--max_trajectory_tokens` 是另一个上限：每次生成后检查，达到即结束 episode，不再调工具。
+4. **`merge` 与 `audit`：交付训练视图**。`audit` 要求 logprob 数等于 `(labels != -100) & completion_mask` 选出的位置数；`merge` 输出 `response_token_ids`，`response_positions`（shifted labels 契约下的打分位置）与 `rollout_logps`（GRPO 的 old_logps），并调用 `validate_trajectory`。契约在轨迹的产生处断言，而不是在训练 batch 里才暴露。
+
+配套细节：
+
+- **预算**：单轮输出由 sampler 的 `max_tokens`（`--max_completion_length`）限制；整个 episode 的长度在每轮生成前检查（`unfit`）。首轮就放不下时压缩该轮预算（`capped_turn_params`），得到截断的部分回复而不是一条零 token 的样本。
+- **多模态**：训练侧的 `input_ids` 与引擎侧的 `engine_input_ids` 分开记录（图像占位符在引擎侧被投影成不同数量的 token），对两者各做一次前缀校验。
+- **harness 与记录机制解耦**：外部 agent 程序不调用 rollout 的任何接口，只拿到一个 OpenAI 形状的 base URL。`MultiTurnRollout` 为每个 episode 开启一个 `PolicyEndpoint`，API key 标识 episode；程序发出的每个请求被解析为 `EndpointRequest`，交给该 episode 的 `TurnLedger`，走与工具循环相同的四个动作：请求的对话是已记录对话的延长时只编码增量（`observe`）；回复被 `length` 截断，程序回显后要求继续时从当前记录续写而不开新 segment（`_continue_generation`）。harness 无关性由此而来：程序用什么语言，怎样管理工具与循环，是否压缩上下文，记录机制都不感知，程序只需遵守 OpenAI 协议。
+- **上下文压缩**：程序压缩了上下文后，请求不再是已记录对话的延长，此时不能追加，重新 encode 又会错位。`--segment_policy` 决定压缩前记录的去向：`drop`（默认）只训练最后一段；`collect` 在每个压缩边界冻结当前记录为一行（`segment_index` 标记段序），压缩后的对话开启新记录，episode 结束时各行一起交付：独立编码，共享同一 episode 身份与结果奖励，advantage 按 episode 计算一次后广播到各行，`--segment_discount` 可对靠前的行打折。这与 Context-Folding（arXiv 2510.11967）的训练方式一致，压缩前各段与压缩后的续写一起参与训练；若摘要由模型生成（经 endpoint 请求），它作为压缩前一段的最后一次回复被记录，摘要生成本身也在训练范围内。`collect` 下 `--prm` 不可用，PRM 的 segment 核算是 episode 级，不映射到多行。
+
+### MoE 路由回放：R3 与 R2
+
+MoE 模型在训练前向里重新计算路由，与采样引擎（vLLM / SGLang）在 bf16 下的数值差异足以让个别 token 落到不同专家，训练计算的 logprob 就不是产生该 token 的路由所对应的 logprob。路由回放让训练前向直接使用采样时的专家选择，按路由来源分两种模式：
+
+- **R3：重放 sampler 导出的路由**。vLLM 引擎在生成时记录每个 token 每层选中的 top-k 专家，随 `SampledSequence.routed_experts` 带出，记录 `merge` 时与 `replay_mask`（`labels != -100 & completion_mask`，只回放可训练 token）一起写进轨迹。GRPO 组装期的 `_prepare_routing_replay` 逐条校验 `routed_experts` 存在，缺失即报错而不降级；训练 forward 以 REPLAY 消费，backward 自动切到对应的回放模式。没有额外前向。
+- **R2：重放训练模型自己捕获的路由**。用于采样器不导出路由的场景：权重同步后，对整批轨迹做一次 `forward_only(router_replay_mode='R2')`，记录训练模型在该权重下的路由写回各轨迹的 `routed_experts`，再做训练。代价是多一次全序列前向；Megatron 在 PP > 1 或 VPP 下 R2 的记录重建直接报错。
+
+共同约束：`--router_replay_mode` 当前只在 GRPO recipe 接线（模型层对 loss 类型无感知，R3 的路由张量随轨迹交付，PPO 的 clipped ratio 同样适用；其他 recipe 的 assembly 与前向 kwargs 未传该参数，配置校验显式拒绝而不是静默失效），与 `--chord_sft_dataset` 互斥；模型需以 `enable_router_replay=True` 构建（Megatron 侧翻译为 mcore 的 `moe_enable_routing_replay`，remote 部署时写在服务端的模型应用参数里）；路由张量覆盖全部 transformer 层（含 dense 层），形状 `[bs, seq, layers, topk]`，各后端按本 rank 的 PP / CP / SP 切片取用。
+
+### Ray 与 remote 下的支持
+
+| 机制 | `--mode ray` | `--mode remote` |
+|---|---|---|
+| token-in-token-out | 支持 | 支持。rollout 在客户端进程内运行，`HTTPSampler` 把带 `input_ids` 的完整 trajectory 发给服务端引擎，客户端侧用同一 template 重建 `new_input_feature`，记录逻辑不变（要求 `--rollout_sampler vllm`） |
+| R3 | 支持 | 支持。采样器导出的路由经协议回传，在服务端模型上回放；服务端模型需以 `enable_router_replay=True` 部署 |
+| R2 | 支持 | 不支持。捕获与收集路由的工作流只在本地 actor 间实现，`--mode remote` 下配置 R2 会被 `validate` 拒绝并提示改用 R3 或 `disabled` |
+
+## 异构放置与 colocate：训练器与采样器是两类 actor
+
+RL 把训练器和采样器建成两类独立的 actor，各自有独立的并行布局：训练器由 `--parallel_spec`（或 `nproc_per_node` 推导的 `dp`/`dp tp`）描述，采样器由 `--vllm_tensor_parallel_size` / `--vllm_data_parallel_size`（或 `--sglang_tp_size` / `--sglang_dp_size`）描述，二者可以不同宽度，不同副本数，训练后端可以是 Megatron 或 transformers，采样引擎可以是 vLLM 或 SGLang。奖励模型通道还有自己的 `--orm_parallel_spec`。这就是文档所说的异构：同一份训练循环，不要求训练与采样使用相同的 GPU 或相同的切分方式。
+
+在此之上有两种放置方式：
+
+| `sampler_mode` | GPU | 权重同步 | 阶段切换 | 适用 |
+|---|---|---|---|---|
+| `disaggregated`（默认） | 训练器与采样器占不相交的 GPU | NCCL / 分片 patch | 无 | GPU 充足；可与 `one_step_off` / `fully_async` 叠用 |
+| `colocate` | 采样器共享训练器的 DeviceGroup | CUDA-IPC | rollout 时 sampler 驻留，trainer 卸载；训练时 sampler sleep，trainer 重载 | GPU 不足；必须 `async_mode none`，`parameter_sync_step 1` |
+
+colocate 的切换参数：`--sleep_level`（0 不释放，1 卸载权重并丢 KV cache，2 二者都丢）控制 sampler；`--offload_model` / `--offload_optimizer` 控制 trainer，二者独立。`resource_mode estimate|adaptive` 会按显存预算覆盖放置请求：预算不够时即使请求了 colocate 也会放到不相交的卡上，代码里通过 `effective_colocate(rollout_config, resource_plan)` 读实际放置，而不是读请求。
+
+无论哪种放置，`weight_sync_backend` 决定同步方式：`full` 传全量权重；`delta_sharded` 只传变化的元素（首次仍全量），需要分离式放置与 vLLM。
+
+## 环境：local / agentenv / openenv / openenv_client
+
+`--tools sandbox` 打开环境，`--sandbox_kind` 选择环境家族，其余由 `--sandbox_*` 控制：
+
+| `sandbox_kind` | 运行位置 | 隔离 | 必填参数 | 适用 |
+|---|---|---|---|---|
+| `local`（默认） | 训练进程内的子进程 | 无（只有 `RLIMIT_AS` 与超时） | 无 | 快速验证；`--sandbox_workspace_root` 指定工作区根目录 |
+| `agentenv` | 独立 Firecracker microVM | microVM（KVM） | `--sandbox_template` | 真实操作系统语义：写文件，装包，子进程，SWE 类任务 |
+| `openenv` | 训练进程内嵌入 OpenEnv 环境包 | 无 | `--sandbox_env_name` | 纯计算环境（棋类，文本游戏），无需部署 |
+| `openenv_client` | 连接运行中的 OpenEnv server（WebSocket） | 进程 / 容器 | `--sandbox_env_name` + `--sandbox_api_url`（或环境变量 `OPENENV_BASE_URL`） | 需要执行代码但标准库已够用；资源开销远小于 microVM |
+
+通用参数：
+
+- `--sandbox_num_envs`：全部副本上同时持有的 session 上限，即最大并发 episode 数；`--sandbox_num_workers`：环境运行的 Ray CPU 副本数，每个副本持有 `ceil(num_envs / num_workers)` 个 session；只有 Ray 放置才会分片，客户端进程内（remote）始终一个副本。
+- `--sandbox_command_timeout`：单条命令超时（local 与 agentenv 共用）；`--sandbox_memory_limit_gb` 只对 local 的地址空间上限生效；`--sandbox_timeout` 是 agentenv 沙箱的空闲超时。
+- `--max_turns`：开启多轮并限制轮数；`--max_completion_length` 限制单轮输出；`--max_trajectory_tokens` 限制整条轨迹，三者独立。
+- `--rollout_num_workers`：rollout 自身的 CPU 副本数，episode 按 id 路由到固定副本（它持有该 episode 的状态）；工具执行密集时增加它。
+
+隔离边界：local 与嵌入式 openenv 不提供针对恶意代码的安全隔离；agentenv 服务本身没有认证，端口可达即等于任意代码执行可达，应绑定内网地址并用安全组白名单，沙箱出口默认封禁内网网段与云元数据地址。system prompt 必须如实描述后端语义（状态是否跨轮保留，可用模块，轮数预算），否则模型会按错误的前提写代码。
+
+### harness：让外部 agent 程序驱动 episode
+
+默认模式是模型直接输出工具调用，rollout 执行工具循环。`--harness codex|ms_agent|<自定义>` 切换到另一种模式：每个 episode 在自己的 env session 里启动一个外部 CLI agent 程序，程序通过 rollout 提供的模型入口（`PolicyEndpoint`）发请求，rollout 记录它生成的全部 token 并计入轨迹。程序自己管理工具与循环，所以 `--harness` 与除 `sandbox` 外的 `--tools` 互斥（环境保留，程序在 session 内运行）。`--segment_policy drop|collect` 决定程序压缩上下文时，被写出的 segment 是丢弃（只训练最后一段）还是各自冻结成一行（同一 episode 的多行共享一次 advantage）。
+
+harness 插件只需实现 `HarnessPlugin.build()` 返回一个 `CliAgent`（`command` 与 `noise_reply`），见[插件](../interfaces/plugins.mdx#工具与-harness)。
+
+## 奖励通道：ORM / PRM 与环境奖励
+
+GRPO/PPO 至少需要一个奖励通道，否则每个组的 advantage 都是 NaN 或零。有三类通道，可以叠加：
+
+1. **ORM（结果奖励）**：`--orm` 的每一项可以是注册规则名（`accuracy`，`format`，`repetition`，`soft_overlong`，`code_execution`），通过 `--external_plugins` 注册的插件名，或一个冻结的奖励模型 ID；`--orm_weights` 对齐加权，缺省等权。模型 ID 可配 `--orm_task_type seq_cls`（标量头），`--orm_template`，`--orm_parallel_spec`。
+2. **PRM（过程奖励）**：`--prm` 语法同上，对每个闭合 segment 评分，通过 `--prm_orm_mix`（`mix × process + (1 - mix) × orm`）融合到每个 response token 的奖励；设了 `--prm` 而 `prm_orm_mix` 小于 1 时必须同时设 `--orm`。segment 的划分由 `--prm_scorer turn|delimiter` 决定（多轮默认按 assistant 轮切，单轮默认按 `--prm_step_delimiter` 切）。
+3. **环境奖励**：数据行的 `checks` 列在 episode 结束，env session 关闭之前在同一沙箱里执行，得分写入 `rewards.check`；env 自身的 `step` / `close` 返回的分数写入 `rewards.env`（local 与 agentenv 不评分）。`--env_reward_weight` 控制这类奖励是否计入训练（1.0 计入，0.0 只记录到指标）。配置了 `--tools sandbox` 即视为已有奖励通道。
+
+`checks` 是程序化验证，不经裁判模型，同一条轨迹永远得同一个分：
+
+```jsonl
+{"messages": [{"role": "user", "content": "在仓库里实现 utils/parse.py 的 parse_config 函数，并通过 tests/test_parse.py。"}], "checks": [{"kind": "shell", "code": "python -m pytest tests/test_parse.py -q", "timeout": 120}, {"kind": "file_exists", "path": "utils/parse.py", "weight": 0.2}]}
 ```
 
-- **Agent / policy**：根据历史消息选择动作或最终回答。
-- **Tool**：有名称、参数 schema 和执行接口，返回模型可读的观察。
-- **Env**：管理每个 episode 的工作目录、文件和执行状态。
-- **Rollout**：控制多轮生成、工具执行、终止条件和 token 预算。
-- **Reward**：根据轨迹、参考答案或任务验证器评分。
-- **Recipe**：组织数据、采样、评分和训练更新；并行执行由 twinkle 管理。
+支持的 `kind`：`file_exists`，`file_absent`，`file_contains`，`file_equals`，`file_json`，`shell`，`python`，`answer_contains`，`answer_equals`，`answer_regex`。得分是按 `weight` 加权的通过比例。
 
-工具消息属于上下文，只有模型生成的动作与回复 token 参与策略更新。多轮轨迹的监督范围由模板与 rollout 构造的 mask 保留，不能把工具观察当作模型输出训练。
+工具执行成功不等于任务完成：只给"调用过工具"奖励会鼓励无效调用；仅给格式奖励也不能保证正确性。组合任务正确性，格式与失败惩罚时，分别记录各项，并观察 reward 趋势，任务成功率，工具错误率，轨迹长度，超时，grad_norm 与 KL。组内奖励全同产生零 advantage，应调整难度或奖励区分度。
+
+## 同一份代码在 Ray 与 remote 下运行
+
+driver，rollout，env，scorer 的代码在 `--mode ray` 与 `--mode remote` 下完全相同，差别只在它们被放到哪里：
+
+| | `--mode ray` | `--mode remote` |
+|---|---|---|
+| 训练器，参考模型，奖励模型 | 本地 Ray actor，各占 DeviceGroup | twinkle-server 上的 served model，训练循环持有 client 句柄 |
+| sampler | 本地 Ray actor（vLLM / SGLang） | 服务端已部署的引擎，经 HTTPSampler 访问 |
+| StreamingDriver | `control` CPU 组的一个 actor | 客户端进程内 |
+| MultiTurnRollout / Env | `rollout` / `env` CPU 组的副本 | 客户端进程内（`rollout_num_workers` / `sandbox_num_workers` 不分片） |
+| 权重同步 | CheckpointEngine（NCCL / IPC / 分片 patch） | 保存 LoRA → `adapter_uri` 交给服务端加载 |
+
+remote 下被拒绝的只有真正依赖本地 actor 结构的部分：`sampler_mode colocate`，`resource_mode adaptive`，`weight_sync_backend delta_sharded`，`--tuner full`（同步通道是 adapter），`--sync_ref_model`，`router_replay_mode R2`，`--enable_sampling_replay`，PPO 的 `resume_from_checkpoint`。多轮 tools，harness 与四类环境在 remote 下均可使用。
+
+### 按单机程序编写的代码
+
+因此训练循环在形式上与单机程序一致：
+
+```python
+for trajs, facts in driver:            # driver 位于其它进程时同样可迭代
+    ...
+    trajs, _ = cluster.advantage(trajs, ref_out=ref_out, scores=facts['scores'])
+    cluster.model.forward_backward(inputs=..., micro_batch_size=...)
+    cluster.model.clip_grad_and_step(max_grad_norm=...)
+cluster.engine.sync_weights()
+```
+
+跨进程只传可序列化的 spec，类名与标量，mock/patch 不能跨进程边界生效。这也是通过拖拽组件组合新算法的前提。
+
+## 速度优化与资源自动扩缩容
+
+多轮 RL 的耗时主要在等待：等待最慢的轨迹，等待 env，等待权重同步。调度层做了以下优化：
+
+- **按样本准入与整组交付**：长轨迹不阻塞其他 prompt 的生成；先完成的组先进入训练。
+- **异步窗口**：`--async_mode one_step_off|fully_async` 与 `--max_staleness` 让 sampler 在训练期间继续生成，`--parameter_sync_step K` 降低同步频率。
+- **增量权重同步**：`--weight_sync_backend delta_sharded` 只传变化的 LoRA 元素。
+- **CPU 分片**：`--rollout_num_workers`，`--sandbox_num_workers` 把工具执行和环境调用分散到多个进程，避免 GIL 与单核成为瓶颈；vLLM 的 prefix caching 对同组 `num_generations` 条共享 prompt 的轨迹直接命中。
+- **DP lane 均衡**：训练 batch 按 token 负载切到各 DP rank，整组不拆（GRPO 的组内归一化需要完整块），再按 micro-batch 二次均衡。
+- **无空闲 session 时不阻塞**：env 没有空闲 session 时，调度线程不会阻塞在 `reset` 上，而是退避重试，其它 episode 继续推进。
+
+资源层面由 `--resource_mode` 三档控制：
+
+| `resource_mode` | 行为 |
+|---|---|
+| `manual`（默认） | 完全按用户给的并行参数布局 |
+| `estimate` | 读取 HF config 的形状与 dtype，prompt 长度的 p50/p95/p99（最多抽样 2048 行），按 `--resource_gpu_memory_gib` 与引擎显存比例计算出训练器与采样器各自的最小并行宽度，采样器副本数与 `vllm_max_num_seqs`，写回配置后按静态方案启动 |
+| `adaptive` | 在 `estimate` 的基础上，训练期间由 `ClusterAdapter` 调整采样副本；要求 `--offload_model` 或 `--offload_optimizer` 至少一个开启，`--sleep_level` 只接受 0/1 |
+
+`adaptive` 做三种调整，全部由 driver 在权重版本变化与等待 batch 时触发：
+
+1. **按负载迁移副本（`adjust`）**：每次权重同步后读取各角色（采样器，奖励模型池）的 `pressure()`，对最近 `--resource_window_steps` 次取平均；最忙角色超过最闲角色 1.5 倍时，把一个副本宽度的 GPU 迁给它——优先用 `--resource_flex_gpus` 预留的 flex 池，否则移除最闲角色的一个副本（不能是最后一个）。新副本先经 `checkpoint_manager.warm` 加载当前权重再接请求。每次迁移后等待 `--resource_min_hold_steps` 次同步；比例回落到 1.2 倍以下停止。
+2. **训练器 GPU 借出（`lend` / `reclaim`）**：driver 等待下一个 batch 时，若上一步训练器等待时间占比超过 0.3，且本次等待预计超过最近几次借出/回收周期的实测耗时，就把训练器模型卸载到 CPU，在这些 GPU 上启动临时采样副本；batch 就绪后移除副本，重载训练器再交给训练循环。借出期间若因训练器残留显存导致 OOM，自动恢复训练器并跳过本次借出。
+3. **训练器布局固定**：训练器的通信组在启动时确定，运行期不扩缩；所有调整只发生在采样器与奖励模型一侧。
+
+## 完整示例：AgentENV 上的代码任务 GRPO
+
+任务：模型在 microVM 内读取文件，编写代码，运行测试；`checks` 在同一个 microVM 内运行 `pytest`，通过比例作为奖励。先准备数据 `swe_tasks.jsonl`（格式见上文的 `checks` 示例），部署 AgentENV 并构建模板（依赖预装在模板里，运行时不执行 `pip install`），然后：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 swift rl \
+    --rl_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --dataset ./swe_tasks.jsonl \
+    --system 'You are a coding agent. Each command runs in a fresh process; make every snippet self-contained. Finish by passing the tests.' \
+    --mode ray \
+    --nproc_per_node 2 \
+    --sampler_mode colocate \
+    --rollout_sampler vllm \
+    --vllm_gpu_memory_utilization 0.5 \
+    --sleep_level 1 \
+    --tuner lora --lora_rank 8 --lora_alpha 32 --target_modules all-linear \
+    --tools sandbox \
+    --max_turns 8 \
+    --max_completion_length 1024 \
+    --max_trajectory_tokens 8192 \
+    --sandbox_kind agentenv \
+    --sandbox_template swift-code \
+    --sandbox_api_url http://10.0.1.20:8000 \
+    --sandbox_timeout 900 \
+    --sandbox_command_timeout 120 \
+    --sandbox_num_envs 16 \
+    --sandbox_num_workers 4 \
+    --env_reward_weight 1.0 \
+    --num_generations 8 \
+    --generation_batch_size 4 \
+    --per_device_train_batch_size 2 \
+    --gradient_accumulation_steps 4 \
+    --learning_rate 1e-4 \
+    --beta 0.04 \
+    --max_steps 200 \
+    --logging_steps 1 \
+    --output_dir output/agentenv-grpo
+```
+
+`--sandbox_num_envs 16` 要求 AgentENV 主机有 `16 × 模板内存 + 8 GB` 的内存。并发沙箱数等于同时在途的 episode 数，上限由它决定。
+
+同一流程用组件实现，训练循环完全可见：
+
+```python
+import math
+
+from swift.dev.builder import build_dp_mesh, build_prompt_dataloader
+from swift.dev.builder.optimizer import resolve_max_grad_norm
+from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, GenerationConfig, LoggingConfig,
+                              ModelConfig, QuantizeConfig, RewardConfig, RLConfig, RolloutConfig, TemplateConfig,
+                              TrainConfig, TunerConfig)
+from swift.dev.recipe.batching import balance_lanes, balance_update
+from swift.dev.recipe.grpo.assembly import build_driver, grpo_group_requests, initialize_cluster
+from swift.dev.recipe.offload import sleep_for_rollout
+from swift.dev.recipe.utils import (RolloutStepState, build_save_knobs, close_driver_preserving_error, effective_colocate,
+                                    finalize_rl_resources, initialize_rl_devices, optimizer_batch_slices,
+                                    prompt_rows_from_dataset, resolve_generation_batch_size, resolve_rollout_max_steps,
+                                    rollout_step_budget, save_final_checkpoint, save_training_step,
+                                    snapshot_initial_adapter, stream_batch_size)
+from swift.dev.utils.scoring import copy_inputs
+
+
+def build_configs() -> dict:
+    return {
+        'model_config': ModelConfig(attn_impl='flash_attention_2', model='Qwen/Qwen3.5-4B', torch_dtype='bfloat16'),
+        'template_config': TemplateConfig(
+            max_length=12288,
+            system='You are a coding agent. Each command runs in a fresh process; make every snippet '
+                   'self-contained. Finish by passing the tests.'),
+        'dataset_config': DatasetConfig(dataset=['./swe_tasks.jsonl']),
+        'train_config': TrainConfig(
+            num_train_epochs=1, per_device_train_batch_size=2, gradient_accumulation_steps=4,
+            learning_rate=1e-4, warmup_ratio=0.05, gradient_checkpointing=True, max_steps=200),
+        'distributed_config': DistributedConfig(mode='ray', nproc_per_node=2),
+        'checkpoint_config': CheckpointConfig(output_dir='output', save_steps=50, save_total_limit=2),
+        'logging_config': LoggingConfig(report_to=['tensorboard'], logging_steps=1),
+        'tuner_config': TunerConfig(tuner='lora', lora_rank=8, lora_alpha=32, target_modules=['all-linear']),
+        'generation_config': GenerationConfig(temperature=1.0),
+        'rl_config': RLConfig(
+            rl_type='grpo', num_generations=8, advantage_estimator='grpo', epsilon=0.2, num_iterations=1,
+            beta=0.04, max_completion_length=1024, log_completions=True),
+        # The agentic face: sandbox tools on an AgentENV microVM, bounded turns / trajectory / concurrency.
+        'rollout_config': RolloutConfig(
+            sampler_mode='colocate', rollout_sampler='vllm', vllm_gpu_memory_utilization=0.5, sleep_level=1,
+            tools=['sandbox'], max_turns=8, max_trajectory_tokens=8192,
+            sandbox_kind='agentenv', sandbox_template='swift-code', sandbox_api_url='http://10.0.1.20:8000',
+            sandbox_timeout=900, sandbox_command_timeout=120, sandbox_num_envs=16, sandbox_num_workers=4,
+            generation_batch_size=4),
+        # The dataset's ``checks`` column is the reward channel (rewards.check); no ORM needed.
+        'reward_config': RewardConfig(env_reward_weight=1.0),
+        'quantize_config': QuantizeConfig(),
+    }
+
+
+def main() -> None:
+    cfg = build_configs()
+    model_config, template_config = cfg['model_config'], cfg['template_config']
+    dataset_config, train_config = cfg['dataset_config'], cfg['train_config']
+    distributed_config, checkpoint_config = cfg['distributed_config'], cfg['checkpoint_config']
+    rollout_config, rl_config = cfg['rollout_config'], cfg['rl_config']
+    reward_config, tuner_config = cfg['reward_config'], cfg['tuner_config']
+    logging_config, generation_config, quantize_config = cfg['logging_config'], cfg['generation_config'], cfg['quantize_config']
+    output_dir = checkpoint_config.output_dir
+    ga = train_config.gradient_accumulation_steps
+
+    # 1. prompts
+    prompt_rows, prompts, prompt_extras = prompt_rows_from_dataset(dataset_config)
+
+    # 2. twinkle initialize + template + the device-group plan for every actor
+    template, resource_plan, auxiliary_meshes = initialize_rl_devices(
+        model_config=model_config, template_config=template_config, dataset_config=dataset_config,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        reward_config=reward_config, tuner_config=tuner_config, logging_config=logging_config,
+        quantize_config=quantize_config, megatron_config=None, moe_config=None,
+        output_dir=output_dir, prompt_rows=prompt_rows,
+        group_requests=lambda: grpo_group_requests(rl_config, reward_config, distributed_config, tuner_config))
+
+    # batch geometry
+    dp_size = build_dp_mesh(distributed_config, template_config.sequence_parallel_size).data_world_size
+    train_batch_size = train_config.per_device_train_batch_size * dp_size
+    generation_batch_size = resolve_generation_batch_size(
+        rollout_config.generation_batch_size, num_prompts=len(prompts), num_generations=rl_config.num_generations,
+        num_iterations=rl_config.num_iterations, train_batch_size=train_batch_size, gradient_accumulation_steps=ga)
+    colocate = effective_colocate(rollout_config, resource_plan)
+    batch_size = stream_batch_size(
+        colocate=colocate, generation_batch_size=generation_batch_size, num_generations=rl_config.num_generations,
+        train_batch_size=train_batch_size, gradient_accumulation_steps=ga)
+    budget = rollout_step_budget(
+        num_prompts=len(prompts), num_generations=rl_config.num_generations, train_batch_size=train_batch_size,
+        gradient_accumulation_steps=ga, num_train_epochs=math.ceil(train_config.num_train_epochs),
+        generation_batch_size=generation_batch_size, num_iterations=rl_config.num_iterations, stream_batch_rows=batch_size)
+    max_steps = resolve_rollout_max_steps(train_config.max_steps, budget, recipe='agentenv-grpo')
+
+    # 3. every actor GRPO trains with: policy, sampler, reference, advantage, checkpoint engine
+    cluster = initialize_cluster(
+        model_config=model_config, template_config=template_config, template=template,
+        train_config=train_config, distributed_config=distributed_config,
+        checkpoint_config=checkpoint_config, rollout_config=rollout_config, rl_config=rl_config,
+        reward_config=reward_config, tuner_config=tuner_config, max_steps=max_steps,
+        batch_size=batch_size, quantize_config=quantize_config, megatron_config=None, moe_config=None,
+        generation_config=generation_config, resource_plan=resource_plan,
+        auxiliary_meshes=auxiliary_meshes, teacher_prompt=False)
+
+    # 4. prompt stream + StreamingDriver (rollout, env pool and scorers are built inside)
+    dataloader = build_prompt_dataloader(
+        prompts, prompt_extras, seed=dataset_config.data_seed,
+        shuffle=dataset_config.train_dataloader_shuffle, batch_size=generation_batch_size)
+    steps_per_batch = max(1, batch_size * max(1, rl_config.num_iterations) // (train_batch_size * ga))
+    driver = build_driver(
+        cluster=cluster, rl_config=rl_config, rollout_config=rollout_config, reward_config=reward_config,
+        prompt_dataloader=dataloader, batch_size=batch_size,
+        num_train_epochs=math.ceil(train_config.num_train_epochs),
+        max_steps=math.ceil(max_steps / steps_per_batch))
+
+    # step cadence + checkpoints
+    state = RolloutStepState(
+        cluster.model, train_config, padding_free=template_config.padding_free,
+        dp_balance=train_config.dp_balance, gradient_accumulation_steps=ga, max_steps=max_steps,
+        max_grad_norm=resolve_max_grad_norm(train_config), logging_config=logging_config,
+        output_dir=output_dir, save_steps=checkpoint_config.save_steps)
+    save_knobs = build_save_knobs(checkpoint_config, dataset_config, distributed_config, tuner_config,
+                                  output_dir=output_dir)
+
+    def save(name: str, is_final: bool = False) -> str:
+        state.publish_state()
+        return save_training_step(cluster.model, state.handler, name, save_knobs,
+                                  consumed_train_samples=state.global_step,
+                                  component_states={'training': {'micro_step': state.micro_step}},
+                                  is_final=is_final)
+
+    snapshot_initial_adapter(cluster.model, save_knobs.initial_adapter_dir)
+
+    # 5. the loop
+    temperature = float(cluster.sampling_params.get('temperature', 1.0))
+    micro_batch_size = max(1, train_batch_size // dp_size)
+    batching = {'micro_batch_size': micro_batch_size}
+    sync_every = rollout_config.parameter_sync_step
+    cluster.engine.sync_weights()
+    batches = 0
+    state.handler.on_train_begin()
+    try:
+        for trajs, facts in driver:
+            if cluster.colocate:
+                sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
+                cluster.model.reload_to_gpu()
+            lengths = [p + r for p, r in zip(facts.get('prompt_lengths') or (), facts.get('response_lengths') or ())]
+            lane_trajs, lane_order, lane_restore = balance_lanes(
+                state, trajs, lengths, group_size=rl_config.num_generations,
+                micro_batch_kwargs=batching, episode_ids=facts.get('episode_ids'))
+            lane_scores = facts['scores'] if lane_order is None else [facts['scores'][i] for i in lane_order]
+            pad_count = (-len(lane_trajs)) % dp_size
+            if pad_count:
+                dummies = cluster.traj_update.pad_rows(lane_trajs[0], pad_count=pad_count)
+                lane_trajs = list(lane_trajs) + dummies
+                lane_scores = list(lane_scores) + [{} for _ in dummies]
+
+            ref_out = None
+            if cluster.reference is not None:
+                ref_out = cluster.reference.forward_only(
+                    inputs=lane_trajs, output_frame='response', output_fields=('logps',),
+                    temperature=temperature, **batching,
+                    **({'disable_lora': True} if cluster.reference is cluster.model else {}))
+
+            trajs, _ = cluster.advantage(lane_trajs, ref_out=ref_out, global_step=state.global_step, scores=lane_scores)
+            if pad_count:
+                trajs = trajs[:len(trajs) - pad_count]
+            if lane_restore is not None:
+                trajs = [trajs[i] for i in lane_restore]
+
+            total_samples = len(trajs) * max(1, rl_config.num_iterations)
+            for lo, hi in optimizer_batch_slices(total_samples, train_batch_size, ga):
+                if state.reached_max() or state.should_stop():
+                    break
+                indices = [i % len(trajs) for i in range(lo, hi)]
+                update, balance_metrics = balance_update(
+                    state, [trajs[i] for i in indices], [lengths[i] for i in indices], micro_batch_kwargs=batching)
+                state.handler.on_step_begin()
+                cluster.model.forward_backward(inputs=copy_inputs(update), gradient_accumulation_steps=1,
+                                               micro_batch_size=micro_batch_size, temperature=temperature)
+                state.handler.on_pre_optimizer_step()
+                cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+                state.handler.on_optimizer_step()
+                state.micro_step += (hi - lo) // train_batch_size
+                state.record(extra_metrics=balance_metrics)
+                state.step_tail(save=save)
+
+            batches += 1
+            if batches % sync_every == 0 and not (state.reached_max() or state.should_stop()):
+                cluster.engine.sync_weights()
+            if state.reached_max() or state.should_stop():
+                break
+        state.handler.on_train_end()
+        save_final_checkpoint(cluster.model, save, enabled=True)
+    finally:
+        state.stream_stats = close_driver_preserving_error(driver)
+        finalize_rl_resources(
+            state, cluster, remote_run=False, driver=driver, recipe='agentenv-grpo',
+            finish=lambda: state.finish_rollout_metrics(stream_stats=state.stream_stats, status='loop_completed'))
+
+
+if __name__ == '__main__':
+    main()
+```
+
+换环境只改 `rollout_config` 的 `sandbox_*` 字段；换 `distributed_config.mode='remote'` 并去掉 colocate 相关字段即可连接到已部署的 twinkle-server，训练循环不变。
 
 ## 工具轨迹 SFT
 
-训练行中保存用户问题、工具定义、调用和观察。例如 OpenAI 格式：
+工具调用格式与基本策略可以先用高质量工具轨迹做 SFT 学会，再做在线 RL。训练行保存用户问题，工具定义，调用和观察。例如 OpenAI 格式：
 
 ```jsonl
 {"messages": [{"role": "user", "content": "计算 17×23"}, {"role": "assistant", "content": null, "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "calculator", "arguments": "{\"expression\":\"17*23\"}"}}]}, {"role": "tool", "tool_call_id": "call_1", "content": "391"}, {"role": "assistant", "content": "结果是 391。"}], "tools": [{"type": "function", "function": {"name": "calculator", "description": "计算数学表达式", "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}}}]}
 ```
-
-保存为 `agent_train.jsonl`：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift sft \
@@ -46,60 +466,10 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --output_dir output/agent-sft
 ```
 
-SFT 重放已有轨迹，不需要在训练期间执行 calculator。训练和部署必须使用相同工具 schema 与模板约定；数据中成功轨迹和失败轨迹的监督策略要明确。数据格式见 [自定义数据集](../interfaces/custom-dataset.mdx)，组件例子见 [train/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/agentic)。
+SFT 重放已有轨迹，训练期间不执行工具。训练与部署必须使用相同的工具 schema 与模板约定；工具消息属于上下文，只有模型生成的动作与回复 token 参与更新。数据格式见[自定义数据集](../interfaces/custom-dataset.mdx)，组件例子见 [train/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/agentic)。
 
-## 多轮 GRPO
+## 自定义工具
 
-数据沿用 [快速启动](../get-started/quick-start.mdx) 的数学数据集：`messages` 不含答案、`solution` 只用于奖励。安装 vLLM；这个数学正确性奖励还需要 math-verify：
+工具插件继承 `ToolPlugin`，`build()` 返回工具列表；通过 `--external_plugins` 加载并用 `--tools 注册名` 选择（可与 `sandbox` 并列）。环境工具由 rollout 绑定到 episode session，自定义工具若持有可变状态也要按 episode 隔离。完整合同见[插件](../interfaces/plugins.mdx#工具与-harness)，推理期例子见 [infer/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer/agentic)，本地沙箱与 OpenEnv 的 RL 例子见 [rl/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/agentic)。
 
-```bash
-pip install vllm math-verify
-CUDA_VISIBLE_DEVICES=0,1 swift rl \
-    --rl_type grpo \
-    --model Qwen/Qwen3.5-4B \
-    --attn_impl flash_attention_2 \
-    --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
-    --system 'You may run Python to verify computations. Put the final answer within \boxed{}.' \
-    --mode ray \
-    --nproc_per_node 1 \
-    --rollout_sampler vllm \
-    --sampler_mode disaggregated \
-    --tuner lora \
-    --orm accuracy \
-    --max_turns 3 \
-    --tools sandbox \
-    --sandbox_num_envs 2 \
-    --sandbox_command_timeout 60 \
-    --sandbox_memory_limit_gb 2 \
-    --max_trajectory_tokens 3072 \
-    --max_completion_length 512 \
-    --max_length 4096 \
-    --vllm_max_model_len 4096 \
-    --generation_batch_size 2 \
-    --num_generations 4 \
-    --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 8 \
-    --learning_rate 1e-5 \
-    --max_steps 100 \
-    --logging_steps 1 \
-    --output_dir output/agent-grpo
-```
-
-这个例子用一张 trainer GPU 和一张 sampler GPU。每个 prompt 生成四条轨迹，完整轨迹评分后计算组内相对 advantage。`tools` 需要多轮配置；`max_turns` 限制轮数，`max_completion_length` 限制单轮输出，`max_trajectory_tokens` 限制整条轨迹，`max_length` 是编码总长度。
-
-`tools=sandbox` 使用环境自身的命令、文件读写工具。没有远端模板时使用本地环境槽；`sandbox_num_envs` 限制同时租用的环境数。LocalEnv 不是对敌意代码的安全隔离边界。模型可生成命令时，用低权限进程、独立数据目录和网络策略，生产任务按需求使用隔离环境；不要向工作目录暴露密钥或宿主敏感文件。
-
-## 自定义工具与环境
-
-工具插件继承 `ToolPlugin`，`build()` 返回工具列表；通过 `--external_plugins` 加载并用 `--tools 注册名` 选择。环境工具必须绑定 episode session，避免多个轨迹共享可变文件。完整工具合同与示例见 [插件](../interfaces/plugins.mdx) 和 [infer/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer/agentic)。
-
-外部环境接入和 OpenEnv 示例见 [rl/agentic](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/agentic)。远端环境的 URL、认证、镜像、超时和工作区生命周期需要与环境服务一致。harness 模式由外部 CLI agent 驱动 episode，rollout 记录它通过模型入口生成的轨迹；这与模型直接输出工具调用的模式不同。
-
-## 奖励和观察
-
-数学任务可验证最终答案，代码任务应使用隔离测试或任务验证器。仅给“调用过工具”奖励会鼓励无效调用；只给格式奖励也不能保证正确性。必要时组合任务正确性、格式、资源成本和失败惩罚，并分别记录各项。
-
-检查 reward 趋势、任务成功率、工具错误、轨迹长度、超时、grad_norm 和 KL。组内奖励全部相同会产生零 advantage，应调整任务难度或奖励区分度。训练 reward 上升不代表未见任务上的泛化，验证集应与训练任务隔离。
-
-远程模型和采样服务部署见 [服务端与客户端](../interfaces/server-client.mdx)，算法数据流见 [在线 RL 博客](/zh/blog/online-rl)。
+远程模型与采样服务部署见[服务端与客户端](../interfaces/server-client.mdx)，GRPO 原理见[在线学习](../alignment/online-rl.mdx)。

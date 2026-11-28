@@ -1,42 +1,32 @@
 ---
 title: 环境安装与硬件支持
-description: 按训练、服务端和客户端场景安装 SWIFT v5，查看镜像、支持的硬件与运行环境版本。
+description: 按训练，服务端和客户端场景安装 SWIFT v5，查看镜像，支持的硬件与运行环境版本。
 ---
-
-SWIFT v5 在不同使用场景下可以
-
-| 包 | 职责 | 安装位置 |
-|---|---|---|
-| `ms-swift` | 训练、推理、部署、评测的 CLI 与 Python API | 本地训练机；通过 `--mode remote` 提交任务的客户端 |
-| `twinkle-server` | 多租户训练与采样服务 | 提供 GPU 算力的机器 |
-| `twinkle-client` | 远程训练的 Python SDK 与命令行 | 提交训练任务、没有本地 GPU 的机器 |
 
 ## Wheel 包安装
 
 ### 本地训练
 
-在训练机上安装 SWIFT，底层依赖会一并安装。运行[快速启动](./quick-start.mdx)中的示例不需要 `twinkle-server` 或 `twinkle-client`：
-
 ```bash
-# 安装 SWIFT v5
 pip install 'ms-swift>=5.0.0'
 
 # 可选依赖
-pip install 'ms-swift[megatron]'  # Megatron 后端：会安装 mcore-bridge、megatron-core；需匹配本机 CUDA 环境，所以不包含在 all 中
+pip install 'ms-swift[megatron]'  # Megatron 后端：会安装 mcore-bridge，megatron-core；需匹配本机 CUDA 环境，所以不包含在 all 中
 pip install 'ms-swift[eval]'  # 可用于评测，会安装 evalscope 及 opencompass / vlmeval 后端
-pip install 'ms-swift[all]'  # 全部可选依赖：eval（不含 megatron）
 
 # 使用 uv 安装，并自动选择匹配当前设备的 PyTorch
 pip install uv
 uv pip install 'ms-swift>=5.0.0' --torch-backend=auto
 ```
 
-### 部署 twinkle-server
+### 部署SaaS化训练服务
 
-在提供 GPU 算力的机器上安装。服务端负责模型、采样器与资源配置，客户端通过它提交训练操作；使用 `swift deploy` 启动服务时需要同机安装 `ms-swift`：
+<ArchitectureDiagram src="/images/v5/package-dependencies.zh.svg" alt="ms-swift 与 twinkle 的依赖关系" />
+
+在提供 GPU 算力的机器上安装。服务端负责模型，采样器与资源配置，客户端通过它提交训练操作；使用 `swift deploy` 启动服务时需要同机安装 `ms-swift`：
 
 ```bash
-pip install twinkle-server ms-swift
+pip install twinkle-server ms-swift>=5.0.0
 ```
 
 完整部署步骤见[远程训练与 twinkle-server](../interfaces/server-client.mdx)。
@@ -46,10 +36,11 @@ pip install twinkle-server ms-swift
 在提交训练任务的机器上安装，客户端不需要本地 GPU：
 
 ```bash
-pip install twinkle-client ms-swift
-```
+pip install twinkle-client
 
-通过 SWIFT 命令发起远程训练时加 `--mode remote`，`ms-swift` 与 `twinkle-client` 需要安装在同一个 Python 环境。
+# swift的`--mode remote`参数可以将训练平滑切换到训练服务上运行，如需使用：
+pip install ms-swift>=5.0.0
+```
 
 ## 源码安装
 
@@ -62,56 +53,58 @@ pip install -e .
 uv pip install -e . --torch-backend=auto  # 使用 uv
 ```
 
-安装完成后，[支持的模型与数据集](./models-and-datasets.mdx)中的示例可以直接运行。
-
-## 镜像
-
-预装 SWIFT、PyTorch 与推理引擎的 Docker 镜像及容器启动方式见 [Docker](./docker.mdx)。使用镜像同样需要宿主机驱动与设备运行时；模型和数据集缓存应挂载到持久目录，避免容器重建后重复下载。
-
-## 运行环境
-
-| 组件 | 范围 | 推荐版本 | 备注 |
-|---|---|---|---|
-| python | `>=3.11,<3.14` | 3.12 | |
-| cuda | | | 使用 CPU、NPU、MPS 时无需安装 |
-| torch | `>=2.6,<3.0` | | 按设备选择 CUDA / ROCm / NPU 构建 |
-| transformers | `>=5.8,<6.0` | | |
-| datasets | `>=4.0,<4.8.5` | | |
-| peft | `>=0.11,<0.20` | | LoRA 等轻量微调 |
-| trl | `>=0.15,<1.0` | | RL |
-| ray | `>=2.55` | | 分布式执行与服务端 |
-| flash_attn | | | NVIDIA BF16 示例使用 FlashAttention 2 |
-| vllm | | | 在线采样 / 部署 |
-| sglang | | | 在线采样 / 部署 |
-
-安装顺序：先安装与设备、驱动匹配的 [PyTorch](https://pytorch.org/get-started/locally/) 构建（CUDA、ROCm、NPU 构建不能互相替代），再安装 SWIFT，最后安装 attention 内核与推理引擎。引擎安装可能同时调整 PyTorch、Transformers 等依赖，应在同一个隔离环境中确定训练与推理引擎的版本组合。
-
-FlashAttention 2 需要在已有可用 PyTorch 和 CUDA 编译环境后安装：
-
-```bash
-pip install packaging ninja
-pip install flash-attn --no-build-isolation
-```
-
-本站示例使用 `--attn_impl flash_attention_2`。在不提供 FlashAttention 的硬件上，按模型与平台支持选择 attention 实现，不要直接照搬 CUDA 安装命令。更多可选依赖参考 [requirements/install_all.sh](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。
-
 ## 支持的硬件
 
 | 硬件 | 说明 | 参考 |
 |---|---|---|
-| NVIDIA GPU | 默认支持；本站示例以 NVIDIA GPU、BF16 为例 | — |
-| AMD GPU | 使用 ROCm 版 PyTorch | [AMD 支持](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source/BestPractices/AMD-support.md) |
-| 昇腾 NPU | 安装与 CANN 匹配的 torch-npu，并按推理引擎准备昇腾扩展 | [NPU 支持](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source/BestPractices/NPU-support.md) |
-| 沐曦 MetaX GPU | | [MetaX 支持](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source/BestPractices/Metax-support.md) |
-| 摩尔线程 MUSA GPU | | [MUSA 支持](https://github.com/modelscope/ms-swift/blob/main/docs/v4/source/BestPractices/MUSA-support.md) |
+| NVIDIA GPU | 默认支持；本站示例以 NVIDIA GPU，BF16 为例 | — |
+| AMD GPU | 使用 ROCm 版 PyTorch | [AMD GPU 支持](../platforms/amd-support.mdx) |
+| 昇腾 NPU | 安装与 CANN 匹配的 torch-npu，并按推理引擎准备昇腾扩展 | [昇腾 NPU 支持](../platforms/npu-support.mdx) |
+| 昆仑芯 XPU | 使用昆仑芯提供的 torch_xmlir 与 vLLM 镜像；twinkle 通过 `xpu-smi` 识别，多卡通信使用 BKCL | — |
+| 沐曦 MetaX GPU | 使用 MACA 版 PyTorch 与官方预构建镜像 | [沐曦 MetaX 支持](../platforms/metax-support.mdx) |
+| 摩尔线程 MUSA GPU | 通过 torch_musa 与 torchada 支持，使用官方训练镜像 | [摩尔线程 MUSA 支持](../platforms/musa-support.mdx) |
 | Apple MPS | 可用于兼容模型的本地推理或小规模训练 | [issue](https://github.com/modelscope/ms-swift/issues/4572) |
 | CPU | 可用于兼容模型的本地推理或小规模训练 | — |
 
-不同模型、推理引擎和并行后端对硬件的要求不同：GPU 专用采样器及内核不能在 CPU、MPS 上直接复用。
 
-## Notebook 环境
+## 支持的模型框架
 
-SWIFT 支持训练的绝大多数模型都可以在 `A10` 显卡上运行，可以使用 ModelScope 官方提供的免费 GPU 实例：
+前三种由 `--backend` 选择，不填即 transformers；sentence_transformers 没有开关，只在 `embedding` 任务下自动选中。
 
-1. 进入 [ModelScope](https://www.modelscope.cn) 官网并登录。
-2. 点击左侧的「我的 Notebook」并开启一个免费 GPU 实例，在实例中按上文安装 SWIFT。
+| 能力 | transformers | megatron | unsloth | sentence_transformers |
+|---|---|---|---|---|
+| 安装 | — | `pip install 'ms-swift[megatron]'` | `pip install unsloth` | `pip install sentence-transformers` |
+| 任务类型 | 全部 | 全部 | `causal_lm` | `embedding` |
+| 训练方式 | 全参 / LoRA | 全参 / LoRA | 全参 / LoRA | 全参 / LoRA |
+| TP / PP / CP / EP | 部分支持 | 支持 | 不支持 | 不支持 |
+| DeepSpeed | 支持 | 不支持 | 不支持 | 不支持 |
+| FSDP | 支持 | 支持 | 不支持 | 支持 |
+| 量化训练 | 支持 | 不支持 | 仅 BNB | 不支持 |
+
+unsloth 不支持训练中评估。
+
+## 支持的采样器
+
+采样器后端有 `vllm`，`sglang`，`transformers` 三种。下表只列 swift 侧的限制，模型能否运行还取决于引擎本身是否支持。
+
+### 任务类型
+
+| 任务类型 | vllm | sglang | transformers |
+|---|---|---|---|
+| 文本 / 多模态生成（`causal_lm`） | 支持 | 支持 | 支持 |
+| `generative_reranker` | 支持 | 支持 | 支持 |
+| `embedding`，`seq_cls`，`reranker` | 支持 | 支持 | 不支持 |
+| `decision` | 不支持 | 仅 `kev`，`clef`，不支持 `--adapters` | 不支持 |
+
+### 训练支持
+
+| 能力 | vllm | sglang | transformers |
+|---|---|---|---|
+| 模型加载量化（`--quant_method`） | 不支持 | 不支持 | 支持 |
+| 引擎加载量化（`--vllm_quantization` / `--sglang_quantization`） | 支持 | 支持 | 无 |
+| 低精度权重同步 | FP8，部分模型MXFP4 | 不支持 | — |
+| LoRA 服务（`--adapters`） | 支持 | 支持 | 支持 |
+| 在线 RL rollout 与权重同步 | 支持 | 支持 | 不支持 |
+| `delta 同步` | 支持，不含 MoE 与量化模型 | 支持 | 无 |
+| `colocate 模式` | 支持，需 `--parameter_sync_step 1` | 同 vllm | 无 |
+
