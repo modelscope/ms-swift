@@ -119,3 +119,82 @@ class HunYuanVLTemplate(Template):
 
 
 register_template(HunYuanVLTemplateMeta(MLLMTemplateType.hunyuan_ocr, template_cls=HunYuanVLTemplate))
+
+
+class HY4FlashTemplate(Template):
+    def _add_non_thinking_prefix(self, inputs, thinking_prefix='<think:opensource>'):
+        super()._add_non_thinking_prefix(inputs, thinking_prefix=thinking_prefix)
+
+    def _remove_thinking_content(self, content, thinking_suffix='</think:opensource>'):
+        return super()._remove_thinking_content(content, thinking_suffix=thinking_suffix)
+
+
+class HY4FlashVLTemplate(HY4FlashTemplate):
+    image_token_id = 120120
+    video_token_id = 120124
+    use_model = True
+    requires_mm_token_type_ids = True
+    support_padding_free = False
+
+    def replace_tag(self, media_type, index, inputs):
+        if media_type == 'image':
+            inputs.images[index] = self._load_image(inputs.images[index], True)
+            return [[self.image_token_id]]
+        if media_type == 'video':
+            return [[self.video_token_id]]
+        raise ValueError(f'HY4 Flash supports images and videos, not {media_type}.')
+
+    def _encode(self, inputs):
+        encoded = super()._encode(inputs)
+        ids, labels, scales = encoded['input_ids'], encoded['labels'], encoded.get('loss_scale')
+        mm_mask = [False] * len(ids)
+        for kind, token in (('images', self.image_token_id), ('videos', self.video_token_id)):
+            media = getattr(inputs, kind)
+            if not media:
+                continue
+            processor = self.processor.image_processor if kind == 'images' else getattr(
+                self.processor, 'video_processor', self.processor.image_processor)
+            values = processor(**{kind: media}, return_tensors='pt')
+            grids = values['image_grid_thw' if kind == 'images' else 'video_grid_thw']
+            indices = findall(ids, token)
+            if len(indices) != len(grids):
+                raise ValueError(f'HY4 Flash {kind} placeholders must match media grids.')
+            merge = self.processor.image_processor.merge_size
+
+            def expand(index):
+                t, h, w = (int(value) for value in grids[index])
+                count = (h // merge) * (w // merge + 1)
+                return [token] * (count if kind == 'images' else t * count)
+
+            ids, labels, scales, mm_mask = self._extend_tokens(ids, labels, scales, indices, expand, mm_mask=mm_mask)
+            encoded.update(values)
+        encoded.update(input_ids=ids, labels=labels, loss_scale=scales)
+        encoded['mm_token_type_ids'] = torch.tensor([
+            (1 if token == self.image_token_id else 2) if masked else 0 for token, masked in zip(ids, mm_mask)
+        ], dtype=torch.long)
+        return encoded
+
+    def _get_position_ids(self, inputs):
+        if inputs.get('image_grid_thw') is None and inputs.get('video_grid_thw') is None:
+            return {}
+        model = self.get_base_model(self._get_model())
+        owner = model if hasattr(model, 'get_rope_index') else model.model
+        positions, _ = owner.get_rope_index(
+            inputs['input_ids'], mm_token_type_ids=inputs['mm_token_type_ids'],
+            image_grid_thw=inputs.get('image_grid_thw'), video_grid_thw=inputs.get('video_grid_thw'),
+            attention_mask=inputs.get('attention_mask'),
+        )
+        return {'position_ids': self._concat_text_position_ids(positions)}
+
+
+for name, template_cls in (('hy_v4_flash', HY4FlashTemplate), ('hy_v4_flash_vl', HY4FlashVLTemplate)):
+    register_template(TemplateMeta(
+        name, prefix=[],
+        system_prefix=['<｜hy_start:opensource｜>system<｜hy_middle:opensource｜>{{SYSTEM}}<｜hy_end:opensource｜>'],
+        prompt=['<｜hy_start:opensource｜>user<｜hy_middle:opensource｜>{{QUERY}}<｜hy_end:opensource｜>'],
+        response_opener=['<｜hy_start:opensource｜>assistant<｜hy_middle:opensource｜>'],
+        chat_sep=['<｜hy_end:opensource｜>'], suffix=['<｜hy_end:opensource｜>'],
+        default_system='<｜reasoning_mode:opensource｜>reasoning_effort:no_think',
+        thinking_prefix='<think:opensource>', non_thinking_prefix='<think:opensource></think:opensource>',
+        train_final_think_block='<think:opensource></think:opensource>', template_cls=template_cls,
+    ))

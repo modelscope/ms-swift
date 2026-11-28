@@ -5,7 +5,16 @@ from typing import Any, List, Literal, Optional
 
 # The f-divergences DPO can stand in for the KL; validate derives its accepted set from this alias
 # via typing.get_args, so the static type and the validator cannot drift apart.
-F_DIVERGENCE_TYPE = Literal['reverse_kl', 'forward_kl', 'js_divergence', 'alpha_divergence']
+F_DIVERGENCE_TYPE = Literal["reverse_kl", "forward_kl", "js_divergence", "alpha_divergence"]
+
+# Recipe families: a new on-policy algorithm joins POLICY_RL_TYPES, not each validator gate.
+POLICY_RL_TYPES = frozenset({"grpo", "ppo", "real"})
+DISTILL_RL_TYPES = frozenset({"gkd", "opsd", "mopd"})
+PREFERENCE_RL_TYPES = frozenset({"dpo", "kto", "cpo", "orpo", "simpo", "rm"})
+#: Rollout + weight publish.
+ONLINE_RL_TYPES = POLICY_RL_TYPES | DISTILL_RL_TYPES | frozenset({"rft"})
+#: Online recipes that read the streaming resource plan (RFT's round loop does not).
+STREAMING_RL_TYPES = POLICY_RL_TYPES | DISTILL_RL_TYPES
 
 
 @dataclass
@@ -14,8 +23,9 @@ class RLConfig:
 
     # === Core ===
     # Which algorithm the RL command runs; opsd/mopd/rft are this refactor's first-class additions.
-    rl_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo', 'gkd', 'opsd', 'mopd',
-                     'rft'] = 'dpo'
+    rl_type: Literal[
+        "dpo", "orpo", "simpo", "kto", "cpo", "rm", "ppo", "grpo", "gkd", "opsd", "mopd", "rft", "real"
+    ] = "dpo"
     ref_model: Optional[str] = None
     ref_adapters: List[str] = field(default_factory=list)
     ref_model_type: Optional[str] = None
@@ -61,17 +71,27 @@ class RLConfig:
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
-    advantage_estimator: Literal[
-        'grpo', 'rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline', 'remax', 'opo', 'gpg', 'grpo_passk'
-    ] = 'grpo'
+    advantage_estimator: Optional[
+        Literal[
+            "grpo",
+            "rloo",
+            "reinforce_plus_plus",
+            "reinforce_plus_plus_baseline",
+            "remax",
+            "opo",
+            "gpg",
+            "grpo_passk",
+            "gae",
+        ]
+    ] = None
     f_norm: float = 1.0  # GPG advantage normalization divisor; 1.0 disables
     # Discount of an earlier collected segment's broadcast advantage by the trainable tokens its
     # episode still generates after it (gamma ** N, CompactionRL's trajectory-position
     # correction); 1.0 is the uniform broadcast. Needs segment_policy='collect'.
     segment_discount: float = 1.0
     kl_in_reward: Optional[bool] = None
-    scale_rewards: Optional[Literal['group', 'batch', 'none', 'gdpo']] = None
-    importance_sampling_level: Literal['token', 'sequence', 'sequence_token'] = 'token'
+    scale_rewards: Optional[Literal["group", "batch", "none", "gdpo"]] = None
+    importance_sampling_level: Literal["token", "sequence", "sequence_token"] = "token"
     dynamic_sample: bool = False
     max_resample_times: int = 3
     overlong_filter: bool = False
@@ -116,7 +136,7 @@ class RLConfig:
     teacher_kl_coef: float = 1.0
 
     # === RLSD / SDAR self-distillation ===
-    advantage_reweight: Optional[Literal['rlsd']] = None
+    advantage_reweight: Optional[Literal["rlsd"]] = None
     rlsd_lambda: float = 0.5
     rlsd_reweight_clip_range: float = 0.2
     rlsd_lambda_warmup_steps: int = 0
@@ -125,11 +145,15 @@ class RLConfig:
     sdar_loss_coef: float = 0.0
     sdar_gate_beta: float = 5.0
 
-    rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
-                                                       'sequence_mask']] = None
+    rollout_importance_sampling_mode: Optional[
+        Literal["token_truncate", "token_mask", "sequence_truncate", "sequence_mask"]
+    ] = None
     rollout_importance_sampling_threshold: float = 2.0
     log_rollout_offpolicy_metrics: bool = False
     off_policy_sequence_mask_delta: Optional[float] = None
+    # Additive score-centering term over the sampler's top-k heads (GPG only).
+    score_centering: bool = False
+    score_centering_top_k: int = 8
 
     # === GKD ===
     sft_alpha: float = 0
@@ -160,7 +184,7 @@ class RLConfig:
     teacher_parallel_spec: Optional[str] = None
     # How MOPD's K teachers are PLACED: 'pack' (default) shares one group (card-frugal, serial);
     # 'spread' gives each its own group (concurrent at K x the GPUs).
-    auxiliary_placement: Literal['pack', 'spread'] = 'pack'
+    auxiliary_placement: Literal["pack", "spread"] = "pack"
     # OPSD divergence direction (OPSDLoss.reverse); True = the paper's teacher - student.
     opsd_reverse: bool = True
 
@@ -169,7 +193,7 @@ class RLConfig:
     rft_num_samples: Optional[int] = None
     # How sampled completions are filtered: 'best_of_n' keeps the best per prompt, 'threshold'
     # keeps >= rft_threshold, 'top_k' keeps the rft_top_k best. Empty selection fails loudly.
-    rft_select: Literal['best_of_n', 'threshold', 'top_k'] = 'best_of_n'
+    rft_select: Literal["best_of_n", "threshold", "top_k"] = "best_of_n"
     rft_threshold: float = 0.0  # reward cutoff for rft_select='threshold'
     rft_top_k: int = 1  # per-prompt keep count for rft_select='top_k'
     # Rejection-sampling rounds (sample -> score -> filter -> SFT -> re-sync); 1 = one best-of-n pass.
@@ -179,7 +203,7 @@ class RLConfig:
 
     # Compute the KL term explicitly rather than folding it into the advantage; None = per-algorithm.
     calculate_KL: Optional[bool] = None
-    f_divergence_type: F_DIVERGENCE_TYPE = 'reverse_kl'
+    f_divergence_type: F_DIVERGENCE_TYPE = "reverse_kl"
     f_alpha_divergence_coef: float = 0.5  # only read when f_divergence_type='alpha_divergence'
     # Drop the reference model and score against a constant: removes a whole model from memory and
     # the anchor keeping the policy near where it started.
@@ -187,7 +211,7 @@ class RLConfig:
     real_tau: float = 0.5  # temperature on the REAL objective's soft constraint
     # Replay the router's expert choices from the generating pass in the training pass, so an MoE
     # policy's log-probs are computed under the routing that produced the tokens.
-    router_replay_mode: Literal['disabled', 'R2', 'R3'] = 'disabled'
+    router_replay_mode: Literal["disabled", "R2", "R3"] = "disabled"
     # Replay the sampler's per-token distribution in the training forward so the GRPO ratio is
     # measured against the exact support set (GRPO-only; no KL penalty, no multi-turn).
     enable_sampling_replay: bool = False

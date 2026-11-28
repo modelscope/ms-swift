@@ -2,7 +2,6 @@
 """Shared supervised training for SFT, classification, embedding, ranking, and preference recipes."""
 
 from __future__ import annotations
-
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
@@ -25,18 +24,16 @@ from swift.dev.recipe.utils import (
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from twinkle.dataloader import DataLoader
+
     from swift.dev.config import (
-        CheckpointConfig,
-        DatasetConfig,
         DistributedConfig,
-        LoggingConfig,
-        MegatronConfig,
-        ModelConfig,
-        QuantizeConfig,
-        TemplateConfig,
         TrainConfig,
-        TunerConfig,
     )
+    from swift.dev.recipe.configs import RecipeConfigs
+    from swift.dev.recipe.preparation import TrainingModel
+    from swift.dev.recipe.resources import OfflineResources
+
 logger = get_logger()
 
 
@@ -44,8 +41,9 @@ def _is_vpp_megatron(distributed_config: "DistributedConfig") -> bool:
     """Whether the active backend is megatron with virtual pipeline stages enabled."""
     from swift.dev.builder import is_megatron_backend
 
-    return (is_megatron_backend(distributed_config)
-            and (distributed_config.virtual_pipeline_model_parallel_size or 1) > 1)
+    return (
+        is_megatron_backend(distributed_config) and (distributed_config.virtual_pipeline_model_parallel_size or 1) > 1
+    )
 
 
 def _probe_batch_identity(global_step: int, samples: list) -> None:
@@ -60,10 +58,11 @@ def _probe_batch_identity(global_step: int, samples: list) -> None:
     and a different sample all change it.
     """
     import hashlib
-    import json
     import os
 
-    prefix = os.environ.get('SWIFT_BATCH_IDENTITY_PROBE')
+    import json
+
+    prefix = os.environ.get("SWIFT_BATCH_IDENTITY_PROBE")
     if not prefix:
         return
     import torch
@@ -71,7 +70,7 @@ def _probe_batch_identity(global_step: int, samples: list) -> None:
     def digest(value) -> str:
         hasher = hashlib.blake2b(digest_size=8)
         if torch.is_tensor(value):
-            tensor = value.detach().to('cpu').contiguous().flatten()
+            tensor = value.detach().to("cpu").contiguous().flatten()
             hasher.update(str(tuple(value.shape)).encode())
             hasher.update(str(value.dtype).encode())
             # A byte view rather than ``.numpy()``: bfloat16 has no numpy counterpart, and the digest
@@ -89,14 +88,14 @@ def _probe_batch_identity(global_step: int, samples: list) -> None:
         return hasher.hexdigest()
 
     record = {
-        'rank': int(os.environ.get('RANK') or os.environ.get('LOCAL_RANK') or 0),
-        'global_step': int(global_step),
-        'num_samples': len(samples),
-        'batch': digest(samples),
-        'per_sample': [digest(sample) for sample in samples],
+        "rank": int(os.environ.get("RANK") or os.environ.get("LOCAL_RANK") or 0),
+        "global_step": int(global_step),
+        "num_samples": len(samples),
+        "batch": digest(samples),
+        "per_sample": [digest(sample) for sample in samples],
     }
-    with open(f'{prefix}.rank{record["rank"]}.jsonl', 'a') as handle:
-        handle.write(json.dumps(record) + '\n')
+    with open(f"{prefix}.rank{record['rank']}.jsonl", "a") as handle:
+        handle.write(json.dumps(record) + "\n")
 
 
 def _dump_train_tensors(global_step: int, samples: list) -> None:
@@ -113,14 +112,15 @@ def _dump_train_tensors(global_step: int, samples: list) -> None:
     scope. Padding the collator adds is downstream of this point and is not visible in these files.
     """
     import os
-    root = os.environ.get('SWIFT_TRAIN_TENSOR_DUMP')
+
+    root = os.environ.get("SWIFT_TRAIN_TENSOR_DUMP")
     if not root:
         return
     import json
-
     import torch
+
     os.makedirs(root, exist_ok=True)
-    rank = int(os.environ.get('RANK') or os.environ.get('LOCAL_RANK') or 0)
+    rank = int(os.environ.get("RANK") or os.environ.get("LOCAL_RANK") or 0)
     records = []
     for position, sample in enumerate(samples):
         # A packing unit arrives as a LIST of encoded rows (the collator concatenates the group
@@ -132,47 +132,63 @@ def _dump_train_tensors(global_step: int, samples: list) -> None:
             tensors = {}
             for key, value in row.items():
                 if torch.is_tensor(value):
-                    tensors[key] = value.detach().to('cpu').contiguous()
-                elif isinstance(value, (list, tuple)) and value and all(
-                        isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+                    tensors[key] = value.detach().to("cpu").contiguous()
+                elif (
+                    isinstance(value, (list, tuple))
+                    and value
+                    and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value)
+                ):
                     tensors[key] = torch.tensor(value)
-            scalars = {key: value for key, value in row.items()
-                       if not torch.is_tensor(value) and isinstance(value, (str, int, float, bool))}
+            scalars = {
+                key: value
+                for key, value in row.items()
+                if not torch.is_tensor(value) and isinstance(value, (str, int, float, bool))
+            }
             # Media ride as raw objects/paths, so only their COUNT is recordable here. The placeholder
             # tokens they expand to are in input_ids; pairing the two is what catches media dropped or
             # duplicated between the dataset and the trainer. After the processor runs, the raw list is
             # gone and the count lives in the grid tensor's first dimension instead.
-            for key in ('images', 'videos', 'audios'):
+            for key in ("images", "videos", "audios"):
                 value = row.get(key)
                 if isinstance(value, (list, tuple)):
-                    scalars[f'{key}_count'] = len(value)
-            grid = row.get('image_grid_thw')
-            if torch.is_tensor(grid) and grid.dim() == 2 and 'images_count' not in scalars:
-                scalars['images_count'] = int(grid.shape[0])
-            suffix = f'.m{member_index:03d}' if is_group else ''
-            name = f'step{global_step:05d}.rank{rank}.s{position:03d}{suffix}.pt'
-            torch.save({'tensors': tensors, 'scalars': scalars}, os.path.join(root, name))
-            records.append({'global_step': int(global_step), 'rank': rank, 'sample': position,
-                            'pack_member': member_index if is_group else None, 'file': name,
-                            'tensor_keys': sorted(tensors), 'scalars': scalars})
-    with open(os.path.join(root, f'index.rank{rank}.jsonl'), 'a', encoding='utf-8') as handle:
+                    scalars[f"{key}_count"] = len(value)
+            grid = row.get("image_grid_thw")
+            if torch.is_tensor(grid) and grid.dim() == 2 and "images_count" not in scalars:
+                scalars["images_count"] = int(grid.shape[0])
+            suffix = f".m{member_index:03d}" if is_group else ""
+            name = f"step{global_step:05d}.rank{rank}.s{position:03d}{suffix}.pt"
+            torch.save({"tensors": tensors, "scalars": scalars}, os.path.join(root, name))
+            records.append(
+                {
+                    "global_step": int(global_step),
+                    "rank": rank,
+                    "sample": position,
+                    "pack_member": member_index if is_group else None,
+                    "file": name,
+                    "tensor_keys": sorted(tensors),
+                    "scalars": scalars,
+                }
+            )
+    with open(os.path.join(root, f"index.rank{rank}.jsonl"), "a", encoding="utf-8") as handle:
         for record in records:
-            handle.write(json.dumps(record, default=str) + '\n')
+            handle.write(json.dumps(record, default=str) + "\n")
 
 
 #: Forward tasks whose eval must submit each dataloader batch as ONE whole forward: their
 #: labels live per record (decision) or one record expands into several sequences (embedding
 #: anchor+positives, reranker query+candidates), so the forward-only micro-batcher's
 #: sample-level split desynchronizes labels from logits.
-_WHOLE_BATCH_EVAL_TASKS = frozenset({'decision', 'embedding', 'reranker', 'generative_reranker'})
+_WHOLE_BATCH_EVAL_TASKS = frozenset({"decision", "embedding", "reranker", "generative_reranker"})
 
 
 class _Evaluation:
     def __init__(
         self,
-        cluster,
-        state,
-        train_config,
+        model: TrainingModel,
+        eval_dataloader: Optional[DataLoader],
+        forward_task: str,
+        state: StepState,
+        train_config: TrainConfig,
         generative,
         micro_step_fn,
         output_dir,
@@ -183,7 +199,8 @@ class _Evaluation:
         eval_group_size: int = 1,
         packed_eval: bool = False,
     ):
-        self.cluster, self.state, self.model = cluster, state, cluster.model
+        self.state, self.model = state, model
+        self.eval_dataloader = eval_dataloader
         self.generative, self.micro_step_fn = generative, micro_step_fn
         self.output_dir = output_dir
         self.manual_gc, self.manual_gc_eval = manual_gc, manual_gc_eval
@@ -200,7 +217,7 @@ class _Evaluation:
         # desynchronizes from the merged logps' axis. All of these must run each batch whole --
         # micro_batch_size=None disables micro-batching while per_device_eval_batch_size still
         # governs the DataLoader.
-        if cluster.forward_task in _WHOLE_BATCH_EVAL_TASKS or packed_eval:
+        if forward_task in _WHOLE_BATCH_EVAL_TASKS or packed_eval:
             self.micro_batch_size = None
         else:
             self.micro_batch_size = train_config.per_device_eval_batch_size
@@ -210,7 +227,7 @@ class _Evaluation:
 
     def eval_capable(self) -> bool:
         """Whether an eval path is wired: val-loss needs a dataloader, generative a sampler."""
-        return self.generative is not None if self.predict_with_generate else self.cluster.eval_dataloader is not None
+        return self.generative is not None if self.predict_with_generate else self.eval_dataloader is not None
 
     def evaluate(self) -> Optional[dict]:
         """Run one evaluation pass (val-loss or generative) and track the best checkpoint.
@@ -238,7 +255,7 @@ class _Evaluation:
         else:
             result = evaluate_loss(
                 self.model,
-                self.cluster.eval_dataloader,
+                self.eval_dataloader,
                 eval_iters=self.eval_iters,
                 manual_gc=self.manual_gc,
                 manual_gc_eval=self.manual_gc_eval,
@@ -250,7 +267,7 @@ class _Evaluation:
         if result is None:
             return None
         self.history.append(result)
-        self.state.tracker.log(result, self.state.global_step, stage='evaluation')
+        self.state.tracker.log(result, self.state.global_step, stage="evaluation")
         self.state.best_metric, self.best_step, self.best_ckpt = track_best(
             result,
             (self.state.best_metric, self.best_step, self.best_ckpt),
@@ -272,17 +289,8 @@ class _Evaluation:
 
 
 def run_supervised(
-    cluster: Any,
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    dataset_config: "DatasetConfig",
-    train_config: "TrainConfig",
-    distributed_config: "DistributedConfig",
-    checkpoint_config: Optional["CheckpointConfig"],
-    tuner_config: Optional["TunerConfig"],
-    logging_config: Optional["LoggingConfig"],
-    quantize_config: Optional["QuantizeConfig"],
-    megatron_config: Optional["MegatronConfig"],
+    cluster: OfflineResources,
+    configs: RecipeConfigs,
     *,
     micro_step_fn: Callable[..., Dict[str, Any]],
     output_dir: str = "output",
@@ -292,7 +300,7 @@ def run_supervised(
 ) -> List[dict]:
     """The supervised family's training main: resume, run the epochs, then the final save.
 
-    Each entry assembles its cluster (:func:`build_supervised_objects`) and hands it here with its
+    Each entry assembles its cluster (:func:`build_offline_objects`) and hands it here with its
     loss closure as ``micro_step_fn`` -- how a batch becomes forward kwargs. The loop scaffolding
     (:class:`StepState` cadence, eval + best-model tracking, save/resume) is this function's.
     ``wire_callbacks`` runs once with the assembled ``CallbackHandler``, for task-specific wiring
@@ -302,6 +310,10 @@ def run_supervised(
 
     from swift.dev.builder.optimizer import resolve_max_grad_norm
 
+    model_config, template_config, dataset_config = configs.model, configs.template, configs.dataset
+    train_config, distributed_config = configs.train, configs.distributed
+    checkpoint_config, tuner_config, logging_config = configs.checkpoint, configs.tuner, configs.logging
+    quantize_config, megatron_config = configs.quantize, configs.megatron
     model = cluster.model
     dataloader = cluster.dataloader
     ga = train_config.gradient_accumulation_steps
@@ -357,7 +369,9 @@ def run_supervised(
         wire_callbacks(handler)
 
     evaluation = _Evaluation(
-        cluster,
+        model,
+        cluster.eval_dataloader,
+        cluster.forward_task,
         state,
         train_config,
         generative,
@@ -366,8 +380,9 @@ def run_supervised(
         manual_gc=manual_gc,
         manual_gc_eval=manual_gc_eval,
         greater_is_better=greater_is_better,
-        eval_group_size=(max(1, train_config.gradient_accumulation_steps)
-                         if _is_vpp_megatron(distributed_config) else 1),
+        eval_group_size=(
+            max(1, train_config.gradient_accumulation_steps) if _is_vpp_megatron(distributed_config) else 1
+        ),
         packed_eval=bool(dataset_config.packing),
     )
     evaluate = evaluation.evaluate
@@ -399,8 +414,7 @@ def run_supervised(
         # site, so the span is recorded on the rank that actually runs them. forward_backward is
         # declared sync=True on the model: an actor-side failure raises at this call, failing THIS
         # step instead of riding an unread handle into a green-looking failed run.
-        model.forward_backward(
-            **micro_step_fn(samples, micro_batch_size=train_config.per_device_train_batch_size))
+        model.forward_backward(**micro_step_fn(samples, micro_batch_size=train_config.per_device_train_batch_size))
         handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
         handler.on_optimizer_step()
@@ -475,7 +489,7 @@ def run_supervised(
                 if pending_error is None and cleanup_error is None:
                     cleanup_error = exc
                 else:
-                    logger.exception('Secondary error during supervised training cleanup.')
+                    logger.exception("Secondary error during supervised training cleanup.")
 
         cleanup(Perf.shutdown)
         cleanup(state.publish_state)
@@ -486,10 +500,10 @@ def run_supervised(
         handler.state.training_failed = pending_error is not None or cleanup_error is not None
         cleanup(handler.on_train_end)
         if generative is not None:
-            cleanup(lambda: getattr(generative.sampler, 'shutdown', lambda: None)())
+            cleanup(lambda: getattr(generative.sampler, "shutdown", lambda: None)())
         cleanup(lambda: finish_manual_gc(gc_was_enabled))
         # Record terminal status before the tracker writes its summary.
-        status = 'failed' if pending_error is not None or cleanup_error is not None else 'loop_completed'
+        status = "failed" if pending_error is not None or cleanup_error is not None else "loop_completed"
         cleanup(lambda: state.finish_metrics(status=status))
         cleanup(state.tracker.close)
         if cleanup_error is not None:

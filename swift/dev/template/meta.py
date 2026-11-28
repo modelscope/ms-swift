@@ -42,7 +42,11 @@ class TemplateMeta:
     stop_words: List[Word] = field(default_factory=list)
     agent_template: Optional[str] = None
     # thinking
-    is_thinking: bool = False  # the template thinks by default: enable_thinking defaults on
+    is_thinking: bool = False
+    #: Default thinking policy; None leaves the official template's switch unspecified.
+    default_enable_thinking: Optional[bool] = False
+    #: Thinking-only models ignore an explicit request to disable reasoning.
+    force_thinking: bool = False
     thinking_prefix: str = ""  # response prefix when thinking is enabled
     non_thinking_prefix: str = ""  # response prefix without thinking (the empty thinking block)
     #: empty think block the official jinja places before the final response of a training render
@@ -94,6 +98,8 @@ class TemplateMeta:
             assert x is None or isinstance(x, list)
 
     def __post_init__(self):
+        if self.force_thinking:
+            self.default_enable_thinking = True
         if self._has_system(self.prefix):
             assert self.system_prefix is None, "The prefix already contains {{SYSTEM}}."
             self.system_prefix = self.prefix

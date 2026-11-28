@@ -326,7 +326,7 @@ class GLM4_5Template(GLM4Template):
         return super()._jinja_encode(inputs)
 
 
-register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
+register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template, default_enable_thinking=True))
 
 
 class GLM4_7Template(GLM4_5Template):
@@ -335,7 +335,9 @@ class GLM4_7Template(GLM4_5Template):
         # message; earlier turns keep just the closing marker (their thinking was stripped).
         # '<think></think>' for GLM5.1, '</think>' only everywhere for GLM4.7
         history_block = self.template_meta.history_thinking_prefix
-        final_block = self.template_meta.non_thinking_prefix
+        final_block = (
+            history_block if self._get_enable_thinking(inputs) is False else self.template_meta.non_thinking_prefix
+        )
         # the merged tool turn carries the trailing user content, so it counts as a user position
         # for the jinja's last_user_index
         last_user = -1
@@ -350,13 +352,16 @@ class GLM4_7Template(GLM4_5Template):
         return super()._swift_encode(inputs)
 
     def _get_response_prefix(self, inputs=None):
-        # this jinja prefills the think opener at every generation prompt regardless of the flag:
-        # the markers are part of the format, not of an enable_thinking switch
+        # The generation prefill follows the official enable_thinking switch.
         explicit = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
         if explicit is not None:
             return explicit
         if self.response_prefix is not None:
             return self.response_prefix
+        if not self.use_chat_template:
+            return ""
+        if self._get_enable_thinking(inputs) is False:
+            return self.template_meta.history_thinking_prefix
         return self.template_meta.thinking_prefix or None
 
 
@@ -375,9 +380,7 @@ class GLM4_7TemplateMeta(GLM4_5TemplateMeta):
 
 register_template(
     GLM4_7TemplateMeta(
-        LLMTemplateType.glm4_7,
-        template_cls=GLM4_7Template,
-        agent_template="glm4_7",
+        LLMTemplateType.glm4_7, template_cls=GLM4_7Template, agent_template="glm4_7", default_enable_thinking=True
     )
 )
 
@@ -389,6 +392,7 @@ register_template(
         # the end-of-turn empty block is full, but stripped history turns keep only '</think>'
         non_thinking_prefix="<think></think>",
         history_thinking_prefix="</think>",
+        default_enable_thinking=True,
     )
 )
 
@@ -426,6 +430,7 @@ register_template(
         # this jinja renders the full empty block on every turn, history included
         non_thinking_prefix="<think></think>",
         history_thinking_prefix="<think></think>",
+        default_enable_thinking=True,
     )
 )
 
@@ -511,7 +516,9 @@ class GLM4_5VTemplateMeta(GLM4_5TemplateMeta):
     suppress_opener_after_tool: bool = True
 
 
-register_template(GLM4_5VTemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate))
+register_template(
+    GLM4_5VTemplateMeta(MLLMTemplateType.glm4_5v, template_cls=GLM4_5VTemplate, default_enable_thinking=True)
+)
 
 glm4z1rumination_system = (
     "你是一个专业的深度研究助手，通过提供的工具与模拟浏览器交互，来帮助用户完成深度信息调研和报告撰写任务。"
@@ -555,6 +562,11 @@ class GLM4Z1RuminationTemplateMeta(GLM4TemplateMeta):
 
 
 class GLM4Z1RuminationTemplate(GLM4Template):
+    def _get_current_round_start(self, messages) -> int:
+        if not self.is_training:
+            return len(messages)
+        return super()._get_current_round_start(messages)
+
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
         super()._preprocess_inputs(inputs)
         inputs.system = self.template_meta.default_system
@@ -567,6 +579,8 @@ register_template(
         template_cls=GLM4Z1RuminationTemplate,
         default_system=glm4z1rumination_system,
         is_thinking=True,
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 

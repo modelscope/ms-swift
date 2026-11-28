@@ -244,7 +244,9 @@ def _postprocess_load_config(config, info, attn_impl) -> None:
     included, so a tower built from the config picks it up), ZeRO-3 compat and the attention
     implementation write."""
     from swift.dev.utils import HfConfigFactory
+    from twinkle.patch.awq import apply_awq_compat
 
+    apply_awq_compat(config)
     if not hasattr(config, "keys_to_ignore_at_inference"):
         config.keys_to_ignore_at_inference = []
     if "past_key_values" not in config.keys_to_ignore_at_inference:

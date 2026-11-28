@@ -428,5 +428,7 @@ register_template(
         default_system=None,
         is_thinking=True,
         thinking_prefix="<think>\n",
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )

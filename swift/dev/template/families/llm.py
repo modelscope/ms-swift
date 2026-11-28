@@ -13,6 +13,39 @@ from .llama import Llama3_2Template, Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
+
+class Ling3Template(Template):
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        if system and ('detailed thinking on' in system or 'detailed thinking off' in system):
+            return system
+        option = 'on' if self._get_enable_thinking(inputs) else 'off'
+        return (system + '\n' if system else '') + 'detailed thinking ' + option
+
+    def _get_preserve_thinking(self, inputs=None):
+        explicit = self._get_chat_template_arg('preserve_thinking', inputs)
+        if explicit is None and self.preserve_thinking is None:
+            return True
+        return super()._get_preserve_thinking(inputs)
+
+    def _post_collate(self, inputs):
+        if self.padding_free and not self.use_megatron:
+            from ...model.loader._ling3_compat import get_packed_seq_params
+
+            inputs.update(get_packed_seq_params(inputs['position_ids']))
+        return inputs
+
+
+register_template(TemplateMeta(
+    'ling3', prefix=['<role>SYSTEM</role><|role_end|>'],
+    system_prefix=['<role>SYSTEM</role>{{SYSTEM}}<|role_end|>'],
+    prompt=['<role>HUMAN</role>{{QUERY}}<|role_end|>'],
+    response_opener=['<role>ASSISTANT</role>\n'],
+    chat_sep=['<|role_end|>'], suffix=['<|role_end|>'], template_cls=Ling3Template,
+    is_thinking=True, thinking_prefix='<think>', non_thinking_prefix='<think></think>',
+    default_enable_thinking=True, agent_template='ling3',
+))
+
 register_template(
     TemplateMeta(
         LLMTemplateType.default,
@@ -465,6 +498,7 @@ register_template(
         is_thinking=True,
         non_thinking_prefix="<think>\n\n</think>\n",
         agent_template="hunyuan_hermes",
+        default_enable_thinking=True,
     )
 )
 
@@ -557,12 +591,19 @@ register_template(
         non_thinking_prefix="<think></think>",
         history_thinking_prefix="<think></think>",
         agent_template="hy_v3_preview",
+        default_enable_thinking=False,
     )
 )
 
 
 class HyV3Template(HyV3PreviewTemplate):
     HYTK = ":opensource"
+
+    def _get_preserve_thinking(self, inputs=None):
+        explicit = self._get_chat_template_arg("preserve_thinking", inputs)
+        if explicit is None and self.preserve_thinking is None and inputs is not None and inputs.tools:
+            return True
+        return super()._get_preserve_thinking(inputs)
 
 
 register_template(
@@ -582,6 +623,7 @@ register_template(
         non_thinking_prefix="<think:opensource></think:opensource>",
         history_thinking_prefix="<think:opensource></think:opensource>",
         agent_template="hy_v3",
+        default_enable_thinking=False,
     )
 )
 
@@ -679,6 +721,8 @@ register_template(
         suffix=[],
         is_thinking=True,
         thinking_prefix="<think>\n",
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 
@@ -693,6 +737,8 @@ register_template(
         suffix=["<|role_end|>\n\n"],
         is_thinking=True,
         strip_opener_whitespace=True,
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 
@@ -759,6 +805,7 @@ register_template(
         # only the final response carries the empty block (see _add_non_thinking_prefix)
         train_final_think_block="<think>\n\n</think>\n\n",
         agent_template="youtu",
+        default_enable_thinking=True,
     )
 )
 

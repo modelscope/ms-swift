@@ -361,6 +361,88 @@ class Qwen3_5MoeLoader(Qwen3_5Loader):
 
 
 @register_model
+class Qwen3_8Loader(Qwen3_5Loader):
+    model_type = "qwen3_8"
+    architectures = []
+    template = "qwen3_8"
+    models = ["Qwen/Qwen3.8-27B", "Qwen/Qwen3.8-27B-FP8"]
+
+
+@register_model
+class Qwen3_8MoeLoader(Qwen3_5MoeLoader):
+    model_type = "qwen3_8_moe"
+    architectures = []
+    template = "qwen3_8"
+    models = ["Qwen/Qwen3.8-2.4T-A95B", "Qwen/Qwen3.8-2.4T-A95B-FP8"]
+
+
+@register_model
+class Qwen4ExpLoader(Qwen3VLLoader):
+    model_type = "qwen4_exp"
+    model_cls = "transformers:Qwen4ExpForConditionalGeneration"
+    architectures = ["Qwen4ExpForConditionalGeneration"]
+    template = "qwen3_8"
+    requires = ["transformers>=5.16.0", "qwen_vl_utils>=0.0.14", "decord"]
+    is_moe = True
+    mcore_model_type = "qwen4_exp"
+    models = ["Qwen/Qwen3.8-Flash-Next", "Qwen/Qwen3.8-Flash-Next-FP8"]
+
+    def process_model(self, model):
+        from ._qwen4_exp import _patch_qwen4_exp_ple_input_ids
+
+        _patch_qwen4_exp_ple_input_ids(model)
+        return model
+
+    def prepare_model_for_training(self, model, strategy):
+        import torch
+        import torch.distributed as dist
+        from peft import PeftModel
+        from twinkle.model.transformers.strategy import NativeFSDPStrategy
+
+        from ._qwen4_exp import (
+            _export_qwen4_exp_ple_ngram_cache,
+            _load_qwen4_exp_ple_ngram_from_cache,
+            _pin_qwen4_exp_ple_ngram_on_host,
+            _qwen4_exp_ple_ngram_cache_path,
+            _qwen4_exp_single_ngram_module,
+        )
+
+        if not isinstance(strategy, NativeFSDPStrategy):
+            return
+        if isinstance(model, PeftModel):
+            model = model.get_base_model()
+        config = getattr(model.config, "text_config", model.config)
+        if len(getattr(config, "ple_layer_ids", []) or []) > 1:
+            raise ValueError("Qwen4Exp FSDP2 supports at most one PLE layer.")
+        for module in model.modules():
+            if type(module).__name__ == "Qwen4ExpTextQSAIndexer" and not getattr(module, "_swift_no_grad", False):
+                module.forward = torch.no_grad()(module.forward)
+                module._swift_no_grad = True
+        table = _qwen4_exp_single_ngram_module(model)
+        if table is None or table.weight.requires_grad:
+            return
+        model_dir = self.model_info.model_dir
+        cache_path = _qwen4_exp_ple_ngram_cache_path(model_dir)
+        distributed = dist.is_available() and dist.is_initialized()
+        is_source = not distributed or strategy.is_pretrained_loading_source()
+        error = None
+        try:
+            if is_source:
+                _export_qwen4_exp_ple_ngram_cache(model, cache_path, model_dir)
+        except Exception as exc:
+            error = f'{type(exc).__name__}: {exc}'
+        if distributed:
+            errors = [None] * dist.get_world_size()
+            dist.all_gather_object(errors, error)
+            error = next((value for value in errors if value is not None), None)
+        if error is not None:
+            raise RuntimeError(f'Qwen4Exp PLE cache preparation failed: {error}')
+        if table.weight.is_meta:
+            _load_qwen4_exp_ple_ngram_from_cache(model, cache_path, model_dir)
+        _pin_qwen4_exp_ple_ngram_on_host(model)
+
+
+@register_model
 class Qwen3VLEmbLoader(Qwen3VLLoader):
     """Embedding variant: the entire legacy subclass was three env defaults."""
 
@@ -1062,6 +1144,21 @@ class _QwenOmniLoader(Qwen2VLLoader):
     build a quantized base through this path.
     """
 
+    @staticmethod
+    def _omni_model_arch(aligner, generator):
+        from packaging.version import Version
+        from transformers import __version__
+
+        nested = Version(__version__) >= Version('5.23')
+        prefix = 'thinker.model' if nested else 'thinker'
+        language_model = f'{prefix}.language_model' if nested else 'thinker.model'
+        return ModelArch(
+            language_model=[language_model, 'thinker.lm_head'],
+            aligner=[f'{prefix}.{name}' for name in aligner],
+            vision_tower=[f'{prefix}.audio_tower', f'{prefix}.visual'],
+            generator=generator,
+        )
+
     def build_multimodal_graph_adapter(self, processor, config):
         return None
 
@@ -1107,12 +1204,7 @@ class Qwen2_5OmniLoader(_QwenOmniLoader):
 
     @property
     def model_arch(self) -> ModelArch:
-        return ModelArch(
-            language_model=["thinker.model", "thinker.lm_head"],
-            aligner=["thinker.audio_tower.proj", "thinker.visual.merger"],
-            vision_tower=["thinker.audio_tower", "thinker.visual"],
-            generator=["talker", "token2wav"],
-        )
+        return self._omni_model_arch(['audio_tower.proj', 'visual.merger'], ['talker', 'token2wav'])
 
 
 @register_model
@@ -1141,16 +1233,9 @@ class Qwen3OmniMoeLoader(_QwenOmniLoader):
 
     @property
     def model_arch(self) -> ModelArch:
-        return ModelArch(
-            language_model=["thinker.model", "thinker.lm_head"],
-            aligner=[
-                "thinker.audio_tower.proj1",
-                "thinker.audio_tower.proj2",
-                "thinker.visual.merger",
-                "thinker.visual.merger_list",
-            ],
-            vision_tower=["thinker.audio_tower", "thinker.visual"],
-            generator=["talker", "code2wav"],
+        return self._omni_model_arch(
+            ['audio_tower.proj1', 'audio_tower.proj2', 'visual.merger', 'visual.merger_list'],
+            ['talker', 'code2wav'],
         )
 
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):

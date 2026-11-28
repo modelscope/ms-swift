@@ -595,11 +595,35 @@ class DeepseekV2_5TemplateMeta(TemplateMeta):
 
 register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 
-register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_thinking=True, thinking_prefix="<think>\n"))
+register_template(
+    DeepseekV2_5TemplateMeta(
+        LLMTemplateType.deepseek_r1,
+        is_thinking=True,
+        thinking_prefix="<think>\n",
+        default_enable_thinking=True,
+        force_thinking=True,
+    )
+)
 
 
 class DeepseekV3_1Template(Template):
     jinja_enable_thinking_key = "thinking"
+
+    def _remove_history_thinking(self, inputs) -> None:
+        messages = inputs.messages
+        last_assistant = next(
+            (i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "assistant"), -1
+        )
+        for i, message in enumerate(messages):
+            if message["role"] != "assistant" or (self.is_training and i == last_assistant):
+                continue
+            if i + 1 < len(messages) and messages[i + 1]["role"] in ("tool", "tool_call"):
+                continue
+            content = message["content"]
+            if isinstance(content, list) and content and isinstance(content[0], str):
+                content[0] = self._remove_thinking_content(content[0])
+            elif isinstance(content, str):
+                message["content"] = self._remove_thinking_content(content)
 
 
 register_template(
@@ -609,14 +633,16 @@ register_template(
         is_thinking=True,
         template_cls=DeepseekV3_1Template,
         thinking_prefix="<think>",
-                non_thinking_prefix="</think>",
+        non_thinking_prefix="</think>",
         # the think-close marker on every post-user assistant turn comes from response_opener;
         # a history turn therefore needs no additional head once its thinking is stripped.
         history_thinking_prefix="",
         # the official V3.1 jinja opens every post-user assistant turn with the think-close
         # marker, and an assistant turn continuing after tool outputs renders headerless.
         response_opener=["<｜Assistant｜></think>"],
+        generation_opener=["<｜Assistant｜>"],
         suppress_opener_after_tool=True,
+        default_enable_thinking=False,
     )
 )
 
@@ -631,6 +657,15 @@ REASONING_EFFORT_MAX = (
 
 
 class DeepseekV4Template(DeepseekV3_1Template):
+    def _remove_thinking_content(self, content, thinking_suffix="</think>"):
+        _, closed, answer = content.rpartition(thinking_suffix)
+        return self.template_meta.history_thinking_prefix + (answer if closed else answer.strip())
+
+    def _remove_history_thinking(self, inputs) -> None:
+        if inputs.tools:
+            return
+        Template._remove_history_thinking(self, inputs, keep_tool_call_history=True)
+
     def init_env_args(self):
         super().init_env_args()
         # reasoning_effort: "max", "high", or None
@@ -721,6 +756,7 @@ register_template(
         train_final_think_block="</think>",
         response_opener=["<｜Assistant｜>"],
         suppress_opener_after_tool=True,
+        default_enable_thinking=True,
     )
 )
 

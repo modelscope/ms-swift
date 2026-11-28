@@ -3,29 +3,24 @@
 # RFT's device and cluster assembly: the frozen-reward groups and the explicit actor build.
 from __future__ import annotations
 from copy import copy
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from swift.dev.config.adapter_config import has_adapter
+from swift.dev.recipe.configs import RecipeConfigs
+from swift.dev.recipe.preparation import prepare_training_model
+from swift.dev.recipe.resources import RFTResources
 from swift.dev.recipe.utils import build_rl_sampler, effective_colocate, resolve_reward_scorers
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from twinkle.dataloader import DataLoader
+    from twinkle_agentic.async_rl import StreamingDriver
+    from twinkle_agentic.async_rl.cluster_adapter import RLResourcePlan
+
     from swift.dev.config import (
-        CheckpointConfig,
-        DatasetConfig,
-        DistributedConfig,
-        GenerationConfig,
-        MegatronConfig,
-        ModelConfig,
-        MoEConfig,
-        QuantizeConfig,
         RewardConfig,
-        RLConfig,
-        RolloutConfig,
-        TemplateConfig,
-        TrainConfig,
-        TunerConfig,
     )
+    from swift.dev.template import Template
 
 logger = get_logger()
 
@@ -45,59 +40,34 @@ def rft_group_requests(reward_config: "RewardConfig") -> List[Tuple[str, Optiona
     ]
 
 
-class RFTCluster(NamedTuple):
-    """Every actor RFT's visible loop drives (a plain handle bundle, not a layer)."""
-
-    model: Any
-    sampler: Any
-    rollout: Any
-    engine: Any
-    sampling_params: Dict[str, Any]
-    colocate: bool
-    orm_scorers: List[Any]
-    #: One metric-column name per orm scorer, in the scorer order (rules then models).
-    orm_scorer_names: List[str]
-
-
 def initialize_rft_cluster(
+    configs: RecipeConfigs,
     *,
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    template: Any,
-    train_config: "TrainConfig",
-    distributed_config: "DistributedConfig",
-    checkpoint_config: Optional["CheckpointConfig"],
-    rollout_config: "RolloutConfig",
-    rl_config: "RLConfig",
-    reward_config: "RewardConfig",
-    tuner_config: Optional["TunerConfig"],
+    template: Template,
     max_steps: int,
-    quantize_config: Optional["QuantizeConfig"] = None,
-    megatron_config: Optional["MegatronConfig"] = None,
-    moe_config: Optional["MoEConfig"] = None,
-    generation_config: Optional[Any] = None,
-    resource_plan: Any = None,
+    resource_plan: Optional[RLResourcePlan] = None,
     inflight: Optional[int] = None,
-) -> RFTCluster:
-    """Build every actor RFT trains with: the policy, the sampler, the orm reward channel.
-
-    GRPO's :func:`~swift.dev.recipe.grpo.assembly.initialize_cluster` mirrored minus the
-    auxiliaries RFT does not have (no reference, no teacher, no PRM, no elastic adapter) and with
-    the SFT cross-entropy loss instead of an RL one; ``max_steps`` is the resolved step budget
-    (the LR-scheduler horizon), derived by the caller BEFORE this stage. ``inflight`` is the
-    episodes a round runs at once (see :func:`~swift.dev.builder.streaming.inflight_rows`).
-    """
-    from swift.dev.builder import apply_full_param_freeze, build_dp_mesh, build_model
-    from swift.dev.builder.adapter import apply_tuner
-    from swift.dev.builder.optimizer import configure_optimizer
+) -> RFTResources:
+    """Assemble the supervised policy and reward scorers for fixed-round rejection sampling."""
+    model_config = configs.model
+    template_config = configs.template
+    train_config = configs.train
+    distributed_config = configs.distributed
+    checkpoint_config = configs.checkpoint
+    rollout_config = configs.rollout
+    rl_config = configs.rl
+    reward_config = configs.reward
+    tuner_config = configs.tuner
+    quantize_config = configs.quantize
+    generation_config = configs.generation
+    assert rl_config is not None and rollout_config is not None and reward_config is not None
+    from swift.dev.builder import build_dp_mesh
     from swift.dev.builder.streaming import (
         CONTROL_GROUP,
-        build_checkpoint_manager,
         build_rollout,
         rollout_sampling_params,
     )
     from swift.dev.loss import configure_loss
-    from swift.dev.processor import InputProcessor, input_processor_kwargs
 
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         raise ValueError(
@@ -107,74 +77,39 @@ def initialize_rft_cluster(
     sp = template_config.sequence_parallel_size
     # mode='remote' runs ONE client process (the sft assembly's remote shape for the model;
     # the sampler / weight sync / rollout take their remote object sources below).
-    remote_run = distributed_config.mode == 'remote'
+    remote_run = distributed_config.mode == "remote"
     # build_dp_mesh is the only seam that reads and validates parallel_spec on the local path, so
     # it must not be gated behind SP>1; ray keeps the gate (see its docstring) so no ray chain moves.
-    sp_mesh = (None if remote_run or (distributed_config.mode == 'ray' and sp <= 1)
-               else build_dp_mesh(distributed_config, sp))
-    resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
-    policy_config = model_config
-    if resume_dir and not has_adapter(tuner_config) and not remote_run:
-        # A full-parameter resume loads weights from the ckpt dir instead of the original model id;
-        # a tuned policy keeps the original base and reloads its adapter via resume (run_grpo).
-        policy_config = copy(model_config)
-        policy_config.model = resume_dir
-    # The model / tuner / freeze ride the ONE builders entry in every mode (mode='remote'
-    # self-dispatches inside build_model / apply_tuner / apply_full_param_freeze to the client
-    # handle); what genuinely differs by mode is the processor / loss source below.
-    model = build_model(
-        policy_config,
-        distributed_config,
-        train_config,
-        tuner_config,
-        device_mesh=sp_mesh,
-        quantize_config=quantize_config,
-        megatron_config=megatron_config,
-        moe_config=moe_config,
+    sp_mesh = (
+        None if remote_run or (distributed_config.mode == "ray" and sp <= 1) else build_dp_mesh(distributed_config, sp)
     )
-    if has_adapter(tuner_config):
-        apply_tuner(
-            model,
-            tuner_config,
-            gradient_accumulation_steps=1,
-            task_type=model_config.task_type,
-            model_config=model_config,
-        )
-    else:
-        apply_full_param_freeze(model, train_config)
-    if remote_run:
-        from swift.dev.builder.remote import (
-            configure_remote_loss,
-            configure_remote_processor,
-        )
 
-        configure_remote_processor(model, template_config, model_config, distributed_config)
-        # RFT trains the kept completions with plain cross-entropy SFT -- the same causal_lm
-        # cross-entropy the remote supervised path sets by name (reduction='sum', no DFT).
-        configure_remote_loss(model, train_config, task_type=model_config.task_type,
-                              model_config=model_config)
-    else:
-        model.set_processor(
-            InputProcessor,
-            **input_processor_kwargs(template, template_config, distributed_config, model_config),
-        )
-        model.set_template(template)
-        # RFT trains the kept completions with plain cross-entropy SFT -- NOT an RL loss.
-        configure_loss(model, loss_type="cross_entropy", reduction="sum")
-    configure_optimizer(
-        model,
-        train_config,
+    def sft_loss(model):
+        if remote_run:
+            from swift.dev.builder.remote import configure_remote_loss
+
+            configure_remote_loss(model, train_config, task_type=model_config.task_type, model_config=model_config)
+        else:
+            configure_loss(model, loss_type="cross_entropy", reduction="sum")
+
+    build_config = model_config
+    resume = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
+    if resume and not has_adapter(tuner_config) and distributed_config.mode != "remote":
+        build_config = copy(model_config)
+        build_config.model = resume
+    model = prepare_training_model(
+        configs,
+        template,
         num_training_steps=max_steps,
-        distributed_config=distributed_config,
-        tuner_config=tuner_config,
-        plugin_config=None,
+        device_mesh=sp_mesh,
+        configure_loss=sft_loss,
+        build_config=build_config,
     )
     colocate = effective_colocate(rollout_config, resource_plan)
     sampler = build_rl_sampler(
         model_config=model_config,
         rollout_config=rollout_config,
         template=template,
-        tuner_config=tuner_config,
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,
@@ -185,14 +120,12 @@ def initialize_rft_cluster(
     # One rollout for every generation (single-turn is the one-turn degenerate); under ray it is
     # an actor on the CPU rollout group, remotely a plain in-process object over the client
     # sampler handle.
-    rollout = build_rollout(sampler, template, rollout_config, sampling_params=params,
-                            remote=not remote_run, inflight=inflight)
-    if remote_run:
-        from swift.dev.builder.remote import RemoteWeightSync
+    rollout = build_rollout(
+        sampler, template, rollout_config, sampling_params=params, remote=not remote_run, inflight=inflight
+    )
+    from swift.dev.recipe.online import build_policy_stream
 
-        engine = RemoteWeightSync(model, sampler)
-    else:
-        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
+    engine, _ = build_policy_stream(model, sampler, rollout_config, distributed_config, resource_plan)
     orm_scorers, orm_scorer_names = resolve_reward_scorers(
         "orm",
         reward_config=reward_config,
@@ -214,9 +147,9 @@ def initialize_rft_cluster(
     if list(reward_config.prm):
         raise ValueError(
             "RFT does not consume a --prm channel (it trains on whole completions); put the "
-            "reward in --orm, or use run_grpo for per-token process rewards."
+            "reward in --orm, or use the policy recipe (rl_type=grpo/ppo) for per-token process rewards."
         )
-    return RFTCluster(
+    return RFTResources(
         model=model,
         sampler=sampler,
         rollout=rollout,
@@ -228,8 +161,9 @@ def initialize_rft_cluster(
     )
 
 
-def build_rft_driver(*, cluster: RFTCluster, rollout_config: "RolloutConfig", prompt_dataloader: Any,
-                     num_samples: int, window: int) -> Any:
+def build_rft_driver(
+    configs: RecipeConfigs, *, cluster: RFTResources, prompt_dataloader: DataLoader, num_samples: int, window: int
+) -> StreamingDriver:
     """One round's StreamingDriver: every prompt once, one group of ``num_samples`` per batch.
 
     No checkpoint manager: the policy is frozen for the round (synced once before it), so nothing is
@@ -237,6 +171,7 @@ def build_rft_driver(*, cluster: RFTCluster, rollout_config: "RolloutConfig", pr
     The orm channel scores every finished episode; ``orm_scorer_names`` name the scores the
     batches' summaries carry.
     """
+    rollout_config = configs.rollout
     import math
 
     from swift.dev.builder.streaming import build_streaming_driver

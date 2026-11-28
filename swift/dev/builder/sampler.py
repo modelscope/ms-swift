@@ -291,10 +291,10 @@ def build_sampler(
         loader = _resolve_model_loader(model_config)
         if loader is not None:
             kwargs.setdefault("trust_remote_code", loader.trust_remote_code)
-            if engine == "transformers":
-                # AutoModelForCausalLM cannot load a VL checkpoint; hand the family loader's declared
-                # model_cls ('module:ClassName': engine-resolvable, Ray-safe); setdefault keeps overrides.
-                kwargs.setdefault("model_cls", loader.model_cls)
+            if engine == 'transformers' and 'model_cls' not in kwargs:
+                # A class name survives Ray/JSON and replays the full family construction lifecycle.
+                cls = type(loader)
+                kwargs.setdefault('model_loader', f'{cls.__module__}:{cls.__name__}')
 
     validate_capabilities = getattr(template, "require_capabilities", None)
     if validate_capabilities is not None:

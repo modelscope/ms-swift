@@ -756,7 +756,15 @@ class ModelLoader:
         assert cls.model_cls is not None, f"{cls.__name__} must declare `model_cls`."
         return _import_cls(cls.model_cls)
 
+    @classmethod
+    def from_model_dir(cls, model_dir: str):
+        """Rebuild a family loader from its class name inside a sampler worker."""
+        return cls(LoaderModelInfo(model_type=cls.model_type, model_dir=model_dir))
+
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
+        from twinkle.patch.awq import apply_awq_compat
+
+        apply_awq_compat(config)
         self._apply_trust_remote_code(kwargs)
         model = self.resolve_model_cls().from_pretrained(model_dir, config=config, **kwargs)
         if self.is_multimodal:
@@ -789,6 +797,9 @@ class ModelLoader:
 
     def process_model(self, model):
         return model
+
+    def prepare_model_for_training(self, model, strategy) -> None:
+        """Finalize family-local placement after tuning and before distributed wrapping."""
 
     def build_multimodal_graph_adapter(self, processor, config):
         media_tags = {"image" if tag == "vision" else tag for tag in self.tags if tag in {"vision", "image", "audio"}}

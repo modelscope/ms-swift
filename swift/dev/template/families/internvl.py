@@ -399,6 +399,7 @@ register_template(
         # render; history turns stay bare.
         train_final_think_block="<think>\n\n</think>\n",
         thinking_prefix="<think>",
+        default_enable_thinking=True,
     )
 )
 

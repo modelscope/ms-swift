@@ -64,7 +64,14 @@ register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
 
 register_template(
-    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, is_thinking=True, thinking_prefix="<think>\n")
+    QwenTemplateMeta(
+        LLMTemplateType.qwq,
+        default_system=None,
+        is_thinking=True,
+        thinking_prefix="<think>\n",
+        default_enable_thinking=True,
+        force_thinking=True,
+    )
 )
 
 
@@ -76,7 +83,11 @@ class Qwen3MixedTemplateMeta(QwenTemplateMeta):
     train_final_think_block: Optional[str] = "<think>\n\n</think>\n\n"
 
 
-register_template(Qwen3MixedTemplateMeta(LLMTemplateType.qwen3, is_thinking=True, agent_template="qwen3"))
+register_template(
+    Qwen3MixedTemplateMeta(
+        LLMTemplateType.qwen3, is_thinking=True, agent_template="qwen3", default_enable_thinking=True
+    )
+)
 
 #: The shipped Qwen3Guard jinja embeds its whole assessment protocol; these fragments are copied
 #: verbatim from it (prompt moderation first, assistant moderation second).
@@ -138,10 +149,18 @@ register_template(
 
 
 register_template(
-    QwenTemplateMeta(LLMTemplateType.qwen3_thinking, default_system=None, is_thinking=True, thinking_prefix="<think>\n", agent_template="qwen3",
-    # the official Thinking jinja renders the mixed-family empty think block on the final
-    # response when training, while still prefilling thinking_prefix at the generation prompt
-    train_final_think_block="<think>\n\n</think>\n\n")
+    QwenTemplateMeta(
+        LLMTemplateType.qwen3_thinking,
+        default_system=None,
+        is_thinking=True,
+        thinking_prefix="<think>\n",
+        agent_template="qwen3",
+        # the official Thinking jinja renders the mixed-family empty think block on the final
+        # response when training, while still prefilling thinking_prefix at the generation prompt
+        train_final_think_block="<think>\n\n</think>\n\n",
+        default_enable_thinking=True,
+        force_thinking=True,
+    )
 )
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen3_nothinking, default_system=None, agent_template="qwen3"))
@@ -418,6 +437,8 @@ class Qwen2VLTemplate(Template):
 
     @property
     def requires_mm_token_type_ids(self):
+        if getattr(self.config, "vision_config", None) is None:
+            return False
         return self.transformers_5_3 and self._requires_mm_token_type_ids
 
     def _get_max_pixels(self, inputs=None):
@@ -698,6 +719,8 @@ register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen3_vl_thinking,
         template_cls=Qwen3VLTemplate,
+        default_enable_thinking=True,
+        force_thinking=True,
         default_system=None,
         agent_template="qwen3",
         is_thinking=True,
@@ -807,6 +830,66 @@ class Qwen3_5Template(Qwen3VLTemplate):
         super()._swift_prepare_inputs(inputs)
 
 
+class Qwen3_8Template(Qwen3_5Template):
+    reasoning_effort_instructions = {
+        'xhigh': ('Reasoning effort is set to xhigh. Please think carefully through the task, validate key '
+                  'assumptions, consider plausible alternatives, and prioritize correctness, consistency, '
+                  'and clarity in the final answer.'),
+        'medium': '',
+        'low': ('Reasoning effort is set to low. Keep your thinking brief and focused, moving directly to the '
+                'conclusion without unnecessary elaboration.'),
+    }
+    default_reasoning_effort = 'xhigh'
+
+    def _get_preserve_thinking(self, inputs=None):
+        explicit = self._get_chat_template_arg('preserve_thinking', inputs)
+        if explicit is None and self.preserve_thinking is None:
+            return True
+        return super()._get_preserve_thinking(inputs)
+
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        if not self._get_enable_thinking(inputs):
+            return system
+        effort = self._get_chat_template_arg('reasoning_effort', inputs)
+        if effort is None:
+            effort = self.default_reasoning_effort
+        if effort not in self.reasoning_effort_instructions:
+            raise ValueError(f'Unexpected reasoning effort {effort}; expected '
+                             f'{list(self.reasoning_effort_instructions)}.')
+        instruction = self.reasoning_effort_instructions[effort]
+        if instruction:
+            return instruction + ('\n\n' + system if system else '')
+        return system
+
+    def _post_encode(self, model, inputs):
+        encoded = super()._post_encode(model, inputs)
+        if self.is_training:
+            base_model = self.get_base_model(model)
+            config = getattr(base_model.config, 'text_config', base_model.config)
+            if getattr(config, 'ple_layer_ids', None):
+                encoded['ple_input_ids'] = inputs['input_ids']
+        return encoded
+
+    def _jinja_encode(self, inputs):
+        for message in inputs.messages:
+            content = message.get('content')
+            if (message.get('role') == 'assistant' and isinstance(content, str)
+                    and message.get('reasoning_content') is None and content.startswith('<think>')
+                    and '</think>' in content):
+                reasoning, _, answer = content.partition('</think>')
+                message['reasoning_content'] = reasoning[len('<think>'):].strip()
+                message['content'] = answer.lstrip('\n')
+        return super()._jinja_encode(inputs)
+
+
+register_template(QwenTemplateMeta(
+    'qwen3_8', template_cls=Qwen3_8Template, default_system=None,
+    thinking_prefix='<think>\n', non_thinking_prefix='<think>\n\n</think>\n\n',
+    agent_template='qwen3_5', default_enable_thinking=True, is_thinking=True,
+))
+
+
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen3_5,
@@ -816,6 +899,8 @@ register_template(
         non_thinking_prefix="<think>\n\n</think>\n\n",
         agent_template="qwen3_5",
         is_thinking=True,
+        # The v5 representative's official jinja emits the empty block when no switch is supplied.
+        default_enable_thinking=False,
     )
 )
 
@@ -904,23 +989,38 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         if processor is None:
             return
         super().init_processor(processor)
-        if self.version == "omni_v2_5":
-            from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
+        self.seconds_per_chunk = getattr(processor, 'seconds_per_chunk', None)
+        self.position_id_per_seconds = getattr(processor, 'position_id_per_seconds', None)
+        if self.seconds_per_chunk is None or self.position_id_per_seconds is None:
+            if self.version == 'omni_v2_5':
+                from transformers.models.qwen2_5_omni.processing_qwen2_5_omni import Qwen2_5OmniProcessorKwargs
 
-            default = Qwen2_5OmniProcessorKwargs._defaults
-        elif self.version == "omni_v3":
-            from transformers.models.qwen3_omni_moe.processing_qwen3_omni_moe import Qwen3OmniMoeProcessorKwargs
+                defaults = Qwen2_5OmniProcessorKwargs._defaults
+            else:
+                from transformers.models.qwen3_omni_moe.processing_qwen3_omni_moe import Qwen3OmniMoeProcessorKwargs
 
-            default = Qwen3OmniMoeProcessorKwargs._defaults
-            # Fix: WhisperFeatureExtractor defaults to truncation=True, which silently
-            # truncates audio longer than 30s. Qwen3 Omni supports variable-length audio,
-            # so we must disable truncation. See: huggingface/transformers#41473
-            default.setdefault("audio_kwargs", {})
-            default["audio_kwargs"]["truncation"] = False
-        self.seconds_per_chunk = default["videos_kwargs"]["seconds_per_chunk"]
-        self.position_id_per_seconds = default["videos_kwargs"]["position_id_per_seconds"]
+                defaults = Qwen3OmniMoeProcessorKwargs._defaults
+            self.seconds_per_chunk = defaults['videos_kwargs']['seconds_per_chunk']
+            self.position_id_per_seconds = defaults['videos_kwargs']['position_id_per_seconds']
+            audio_defaults = defaults.setdefault('audio_kwargs', {})
+        else:
+            audio_defaults = getattr(processor, 'audio_kwargs', None)
+        if self.version == 'omni_v3' and audio_defaults is not None:
+            # Omni accepts variable-length audio; do not inherit Whisper's 30-second truncation.
+            audio_defaults['truncation'] = False
         self.use_audio_in_video = get_env_args("use_audio_in_video", bool, False)
         self.sampling_rate = get_env_args("sampling_rate", int, self.processor.feature_extractor.sampling_rate)
+
+    def _media_placeholder_text(self, inputs):
+        text = ''
+        for name, media in (('audio_token', inputs.audios), ('image_token', inputs.images),
+                            ('video_token', inputs.videos)):
+            if media:
+                token = getattr(self.processor, name, None)
+                if token is None:
+                    raise AttributeError(f'{type(self.processor).__name__} has no {name!r} media placeholder.')
+                text += token * len(media)
+        return text
 
     def _trim_omni_v3_audios(self, audios):
         """Trim waveforms to hop-length multiple (omni_v3 only). Matches native HF floor framing."""
@@ -1072,7 +1172,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 video_audios_mask.append(False)
         video_audios_mask = torch.tensor(video_audios_mask)
         media_inputs = processor(
-            text="",
+            text=self._media_placeholder_text(inputs),
             audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
@@ -1167,13 +1267,17 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         feature_attention_mask = inputs.get("feature_attention_mask")
 
         base_model = self.get_base_model(model)
-        inputs_embeds = base_model.thinker.model.embed_tokens(input_ids)
-        thinker_config = model.config.thinker_config
+        thinker = base_model.thinker
+        inputs_embeds = thinker.get_input_embeddings()(input_ids)
+        thinker_config = base_model.config.thinker_config
+        visual = getattr(thinker, 'visual', None)
+        if visual is None:
+            visual = thinker.model.visual
         inputs_embeds = self._get_inputs_embeds_hf(
-            inputs_embeds, inputs, model.thinker.visual, self.processor, thinker_config
+            inputs_embeds, inputs, visual, self.processor, thinker_config
         )
         if input_features is not None:
-            audio_res = model.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_res = thinker.get_audio_features(input_features, feature_attention_mask)
             if hasattr(audio_res, "last_hidden_state"):
                 audio_embeds = audio_res.last_hidden_state
             else:
@@ -1838,6 +1942,7 @@ register_template(
         template_cls=Ovis2_5Template,
         default_system=None,
         is_thinking=True,
+        default_enable_thinking=True,
     )
 )
 

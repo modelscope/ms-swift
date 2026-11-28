@@ -180,7 +180,8 @@ def test_replace_derives_without_touching_the_original(template):
 #: family dev onboarded that legacy never shipped.
 DEV_ONLY_TEMPLATES = {
     'qwen3_vl_thinking': 'the Thinking checkpoints ship a different jinja, so dev splits the family by name',
-    'h2o': 'H2O-4B decision template ported dev-only (#10588); legacy has no h2o family',
+    'hy_v4_flash': 'HY-4B-Flash text template ported dev-only; legacy has no hy_v4_flash family',
+    'hy_v4_flash_vl': 'HY-4B-Flash VL template ported dev-only; legacy has no hy_v4_flash_vl family',
 }
 
 #: Legacy families dev has not onboarded. Onboarding one is a decision, so it is registered here
@@ -191,21 +192,15 @@ LEGACY_ONLY_TEMPLATES = {
     'flint',
     'glm5_3',
     'glm5_next',
-    'ling3',
     'llava_onevision2',
-    'mimo_v2',
     'minicpm5_2b',
     'minicpm_ocr',
     'minicpmv4_7',
     'monkeyocrv2',
     'moss_vl',
     'muse_glimmer',
-    'nemo_speechlm',
-    'nemotron_h',
-    'nemotron_h_omni',
     'olmo3',
     'qwen3_5_emb',
-    'qwen3_8',
     'spark2_5',
     'wemm_embedding',
     'xing4_0',

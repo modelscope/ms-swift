@@ -71,10 +71,10 @@ GRPO 的 ratio 是"训练策略在该 token 上的 logprob"与"采样时的 logp
 
 MoE 模型在训练前向里重新计算路由，与采样引擎（vLLM / SGLang）在 bf16 下的数值差异足以让个别 token 落到不同专家，训练计算的 logprob 就不是产生该 token 的路由所对应的 logprob。路由回放让训练前向直接使用采样时的专家选择，按路由来源分两种模式：
 
-- **R3：重放 sampler 导出的路由**。vLLM 引擎在生成时记录每个 token 每层选中的 top-k 专家，随 `SampledSequence.routed_experts` 带出，记录 `merge` 时与 `replay_mask`（`labels != -100 & completion_mask`，只回放可训练 token）一起写进轨迹。GRPO 与 PPO 共用的 `prepare_routing_replay` 在训练前逐条校验 `routed_experts` 存在，缺失即报错而不降级；训练 forward 以 REPLAY 消费，backward 自动切到对应的回放模式。没有额外前向。
+- **R3：重放 sampler 导出的路由**。vLLM 引擎在生成时记录每个 token 每层选中的 top-k 专家，随 `SampledSequence.routed_experts` 带出，记录 `merge` 时与 `replay_mask`（`labels != -100 & completion_mask`，只回放可训练 token）一起写进轨迹。策略 recipe（`recipe/policy/run_policy.py`，GRPO 与 PPO 共用一条训练路径）的 `_prepare_routing_replay` 在训练前逐条校验 `routed_experts` 存在，缺失即报错而不降级；训练 forward 以 REPLAY 消费，backward 自动切到对应的回放模式。没有额外前向。
 - **R2：重放训练模型自己捕获的路由**。用于采样器不导出路由的场景：权重同步后，对整批轨迹做一次 `forward_only(router_replay_mode='R2')`，记录训练模型在该权重下的路由写回各轨迹的 `routed_experts`，再做训练。代价是多一次全序列前向；Megatron 在 PP > 1 或 VPP 下 R2 的记录重建直接报错。
 
-共同约束：`--router_replay_mode` 在 GRPO 与 PPO 两个 recipe 可用，两者的策略损失都比较训练 logprob 与采样 logprob（GRPO 的 clipped ratio，PPO 的 clipped surrogate），路由回放在 advantage 之后、参数更新之前一次性建立（`prepare_routing_replay`），每个 optimizer step 的策略前向按轨迹携带的路由回放；value / reference / teacher 前向不传该参数。其他算法的 loss 不比较训练与采样 logprob（RFT 是 SFT loss，GKD/OPSD/MOPD 是 KL 类蒸馏），配置校验显式拒绝而不是静默失效。与 `--chord_sft_dataset` 互斥；模型需以 `enable_router_replay=True` 构建（Megatron 侧翻译为 mcore 的 `moe_enable_routing_replay`，remote 部署时写在服务端的模型应用参数里）；路由张量覆盖全部 transformer 层（含 dense 层），形状 `[bs, seq, layers, topk]`，各后端按本 rank 的 PP / CP / SP 切片取用。
+共同约束：`--router_replay_mode` 在 GRPO 与 PPO 可用（两者走同一条策略 recipe，校验按 `POLICY_RL_TYPES` 放行），两者的策略损失都比较训练 logprob 与采样 logprob（GRPO 的 clipped ratio，PPO 的 clipped surrogate），路由回放在 advantage 之后、参数更新之前一次性建立（`_prepare_routing_replay`），每个 optimizer step 的策略前向按轨迹携带的路由回放；value / reference / teacher 前向不传该参数。其他算法的 loss 不比较训练与采样 logprob（RFT 是 SFT loss，GKD/OPSD/MOPD 是 KL 类蒸馏），配置校验显式拒绝而不是静默失效。与 `--chord_sft_dataset` 互斥；模型需以 `enable_router_replay=True` 构建（Megatron 侧翻译为 mcore 的 `moe_enable_routing_replay`，remote 部署时写在服务端的模型应用参数里）；路由张量覆盖全部 transformer 层（含 dense 层），形状 `[bs, seq, layers, topk]`，各后端按本 rank 的 PP / CP / SP 切片取用。
 
 ### Ray 与 remote 下的支持
 

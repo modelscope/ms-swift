@@ -157,6 +157,8 @@ register_template(
     MinimaxM2TemplateMeta(
         LLMTemplateType.minimax_m2,
         default_system="You are MiniMax-M2, a helpful AI assistant built by MiniMax. Knowledge cutoff: 2025-06.",
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 
@@ -164,6 +166,8 @@ register_template(
     MinimaxM2TemplateMeta(
         LLMTemplateType.minimax_m2_1,
         default_system="You are a helpful assistant. Your name is MiniMax-M2.1 and is built by MiniMax.",
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 
@@ -171,6 +175,8 @@ register_template(
     MinimaxM2TemplateMeta(
         LLMTemplateType.minimax_m2_5,
         default_system="You are a helpful assistant. Your name is MiniMax-M2.5 and is built by MiniMax.",
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 
@@ -178,6 +184,8 @@ register_template(
     MinimaxM2TemplateMeta(
         LLMTemplateType.minimax_m2_7,
         default_system="You are a helpful assistant. Your name is MiniMax-M2.7 and is built by MiniMax.",
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 
@@ -218,6 +226,12 @@ def _build_m3_system_block(thinking_mode: str = "adaptive") -> str:
 
 
 class MinimaxM3VLTemplate(Template):
+    def _get_preserve_thinking(self, inputs=None):
+        explicit = self._get_chat_template_arg("preserve_thinking", inputs)
+        if explicit is not None:
+            return explicit
+        return True if self.preserve_thinking is None else self.preserve_thinking
+
     image_token = "]<]image[>["
     video_token = "]<]video[>["
     placeholder_tokens = ["]<]image[>[", "]<]video[>["]
@@ -333,4 +347,8 @@ class MinimaxM3VLTemplateMeta(TemplateMeta):
     history_thinking_prefix: str = "</mm:think>"
 
 
-register_template(MinimaxM3VLTemplateMeta(MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate))
+register_template(
+    MinimaxM3VLTemplateMeta(
+        MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate, default_enable_thinking=False
+    )
+)
