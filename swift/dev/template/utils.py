@@ -271,7 +271,7 @@ def messages_to_history(messages: "Messages") -> Dict[str, Any]:
 
 
 # Per-message fields that stay with an assistant turn when it is split into content + calls.
-_TURN_FIELDS = ("loss", "loss_scale", "_swift_turn_index")
+_TURN_FIELDS = ("loss", "loss_scale")
 
 
 def normalize_messages(messages: "Messages") -> "Messages":

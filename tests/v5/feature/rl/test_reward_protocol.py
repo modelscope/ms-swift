@@ -122,10 +122,10 @@ def test_is_registered_reward_string_states(spec, expected):
 
 
 def test_is_registered_reward_class_and_callable_states():
-    from swift.dev.reward.orm import MathAccuracy
-    from swift.dev.reward.reward import ORM, is_registered_reward
+    from swift.dev.reward.rules import MathAccuracy
+    from swift.dev.reward.reward import RewardRule, is_registered_reward
 
-    assert is_registered_reward(ORM) is True  # a Reward subclass is a rule
+    assert is_registered_reward(RewardRule) is True  # a Reward subclass is a rule
     assert is_registered_reward(MathAccuracy) is True
     assert is_registered_reward(lambda completions, **kw: [0.0]) is True  # any callable is a rule
     assert is_registered_reward(object) is True  # every class is callable -> a rule

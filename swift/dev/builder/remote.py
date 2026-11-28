@@ -281,16 +281,16 @@ def configure_remote_loss(model: Any, train_config: 'TrainConfig',
     cannot cross HTTP).
 
     causal_lm keeps the supervised main line (cross entropy, channel-grouped, DFT-weighted,
-    liger fused). The task heads route by the same swift loss names the local
-    ``configure_*_loss`` family resolves -- embedding (infonce & friends), reranker /
-    generative_reranker (pointwise / listwise), seq_cls (problem_type x num_labels), decision
-    (scoring / distill_rps / smooth_brier / ce_rps) -- and the resolved CLASS name is what
-    crosses the wire; a dev-registered loss class is exported into ``twinkle.loss`` by
+    liger fused, or a ``register_loss`` class named by ``--loss``). The task heads route by the
+    same swift loss names the local ``configure_*_loss`` family resolves -- embedding (infonce &
+    friends), reranker / generative_reranker (pointwise / listwise), seq_cls (problem_type x
+    num_labels), decision (scoring / distill_rps / smooth_brier / ce_rps) -- and the resolved CLASS
+    name is what crosses the wire; a dev-registered loss class is exported into ``twinkle.loss`` by
     ``register_loss``, so the server resolves it the same way this process does. A server
     without the class (e.g. liger not installed there) fails at set_loss time, loudly.
     """
     from swift.dev.loss.configure import DECISION_LOSS_TYPES, EMBEDDING_LOSS_TYPES, PROBLEM_TYPES, RERANKER_LOSS_TYPES
-    from swift.dev.utils.naming import resolve_loss
+    from swift.dev.loss.configure import resolve_supervised_loss
 
     if _liger_fused_ce_enabled(train_config) and (train_config.enable_channel_loss
                                                   or train_config.enable_dft_loss):
@@ -302,26 +302,23 @@ def configure_remote_loss(model: Any, train_config: 'TrainConfig',
 
     task_type = task_type or 'causal_lm'
     kwargs: Dict[str, Any] = {}
+    builtin = ('cross_entropy', )
     if task_type == 'causal_lm':
-        name = 'cross_entropy'
+        name = train_config.loss or 'cross_entropy'
         if _liger_fused_ce_enabled(train_config):
             name = 'liger_fused_linear_cross_entropy'
         elif train_config.enable_channel_loss:
             name = 'channel'
+        if name != train_config.loss:
+            builtin = (name, )
         kwargs = {'reduction': 'sum', 'dft': bool(train_config.enable_dft_loss),
                   'label_smoothing': train_config.label_smoothing_factor or 0.0}
     elif task_type == 'embedding':
-        name = train_config.loss or 'infonce'
-        if name not in EMBEDDING_LOSS_TYPES:
-            raise NotImplementedError(f'configure_embedding_loss supports {list(EMBEDDING_LOSS_TYPES)}, '
-                                      f'got {name!r}.')
+        name, builtin = train_config.loss or 'infonce', EMBEDDING_LOSS_TYPES
         if train_config.mrl_dims is not None:
             kwargs['mrl_dims'] = train_config.mrl_dims
     elif task_type in ('reranker', 'generative_reranker'):
-        name = train_config.loss or 'pointwise_reranker'
-        if name not in RERANKER_LOSS_TYPES:
-            raise NotImplementedError(f'configure_reranker_loss supports {list(RERANKER_LOSS_TYPES)}, '
-                                      f'got {name!r}.')
+        name, builtin = train_config.loss or 'pointwise_reranker', RERANKER_LOSS_TYPES
     elif task_type == 'seq_cls':
         problem_type = getattr(model_config, 'problem_type', None) if model_config is not None else None
         num_labels = getattr(model_config, 'num_labels', None) if model_config is not None else None
@@ -330,16 +327,13 @@ def configure_remote_loss(model: Any, train_config: 'TrainConfig',
                              'It is required (not inferred) so the training objective is explicit.')
         if num_labels is None:
             raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
-        name = 'seq_cls'
+        name, builtin = 'seq_cls', ('seq_cls', )
         kwargs = {'problem_type': problem_type, 'num_labels': num_labels}
     elif task_type == 'decision':
-        name = train_config.loss or 'scoring'
-        if name not in DECISION_LOSS_TYPES:
-            raise ValueError(f'configure_decision_loss supports {list(DECISION_LOSS_TYPES)}, got {name!r}.')
+        name, builtin = train_config.loss or 'scoring', DECISION_LOSS_TYPES
     else:
         raise ValueError(f'--mode remote has no loss configuration for task_type={task_type!r}.')
-    loss_cls = resolve_loss(name)
-    model.set_loss(loss_cls.__name__, **kwargs)
+    model.set_loss(resolve_supervised_loss(name, builtin).__name__, **kwargs)
 
 
 class RemoteWeightSync:

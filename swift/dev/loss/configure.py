@@ -1,6 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 if TYPE_CHECKING:
     from swift.dev.config import RLConfig, TrainConfig
@@ -29,6 +29,25 @@ def liger_fused_ce_enabled(train_config: TrainConfig) -> bool:
                 and (train_config.liger_kernel_config or {}).get('fused_linear_cross_entropy'))
 
 
+def resolve_supervised_loss(loss_type: str, builtin: Tuple[str, ...]) -> Type:
+    """Resolve a supervised task's ``--loss`` name to a Loss *type*.
+
+    Accepts the task's builtin names and any class registered under that name with
+    ``register_loss`` (a user's ``--external_plugins`` file), so a custom loss reaches the CLI the
+    same way a builtin does. Other names -- including the RL objectives, whose constructor
+    contracts differ -- are rejected here with the builtin list.
+    """
+    from swift.dev.utils.naming import _DEV_LOSS_MAPPING, resolve_loss
+
+    if loss_type in builtin:
+        return resolve_loss(loss_type)
+    cls = _DEV_LOSS_MAPPING.get(loss_type.lower())
+    if cls is not None:
+        return cls
+    raise NotImplementedError(f'--loss {loss_type!r} is neither a builtin ({list(builtin)}) nor a class '
+                              'registered under that name with register_loss.')
+
+
 def configure_loss(model: TrainableModel,
                    *,
                    loss_type: str = 'cross_entropy',
@@ -39,14 +58,14 @@ def configure_loss(model: TrainableModel,
                    **kwargs) -> None:
     """Set the SFT loss on ``model`` with an explicit reduction (default 'sum').
 
-    ``loss_type`` stays 'cross_entropy' (RL objectives belong to :func:`configure_rl_loss`);
-    ``reduction='sum'`` is GA-correct (aligns legacy). ``enable_channel_loss``/``dft`` add the
-    channel-grouped / DFT-weighted aggregations. ``fused_linear_cross_entropy`` selects Liger's fused
-    lm_head+CE loss (see :func:`liger_fused_ce_enabled`) and requires forward under task='fused_lm_ce'.
+    ``loss_type`` is ``'cross_entropy'`` or a class registered via ``register_loss`` (RL objectives
+    belong to :func:`configure_rl_loss`); the loss is constructed with ``reduction``/``dft``/``**kwargs``
+    and must accept them. ``reduction='sum'`` is GA-correct (aligns legacy). ``enable_channel_loss``/
+    ``dft`` add the channel-grouped / DFT-weighted aggregations. ``fused_linear_cross_entropy`` selects
+    Liger's fused lm_head+CE loss (see :func:`liger_fused_ce_enabled`) and requires forward under
+    task='fused_lm_ce'.
     """
     from swift.dev.utils.naming import resolve_loss
-    if loss_type != 'cross_entropy':
-        raise NotImplementedError(f"SFT configure_loss only supports 'cross_entropy', got {loss_type!r}")
     if fused_linear_cross_entropy:
         # The fused kernel computes CE itself, so the channel-grouped and DFT-weighted aggregations
         # do not apply -- refuse rather than silently drop them.
@@ -56,7 +75,7 @@ def configure_loss(model: TrainableModel,
         loss_cls = resolve_loss('liger_fused_linear_cross_entropy')
         model.set_loss(loss_cls(reduction=reduction, **kwargs))
         return
-    loss_cls = resolve_loss('channel' if enable_channel_loss else loss_type)
+    loss_cls = resolve_loss('channel') if enable_channel_loss else resolve_supervised_loss(loss_type, ('cross_entropy', ))
     model.set_loss(loss_cls(reduction=reduction, dft=dft, **kwargs))
 
 
@@ -72,13 +91,7 @@ def configure_embedding_loss(model: TrainableModel,
     ``[n_seqs, hidden]`` and calls ``loss_instance`` explicitly. ``mrl_dims`` is the Matryoshka
     ``{dim: weight}`` (None = full width); **kwargs forward to the loss constructor.
     """
-    from swift.dev.utils.naming import resolve_loss
-
-    if loss_type not in EMBEDDING_LOSS_TYPES:
-        raise NotImplementedError(f'configure_embedding_loss supports {list(EMBEDDING_LOSS_TYPES)}, '
-                                  f'got {loss_type!r}. Reranker losses score query-document pairs '
-                                  'from logits and belong to a reranker recipe.')
-    loss_cls = resolve_loss(loss_type)
+    loss_cls = resolve_supervised_loss(loss_type, EMBEDDING_LOSS_TYPES)
     if mrl_dims is not None:
         kwargs['mrl_dims'] = mrl_dims
     model.set_loss(loss_cls(**kwargs))
@@ -92,12 +105,7 @@ def configure_reranker_loss(model: TrainableModel, *, loss_type: str = 'pointwis
     Megatron maps reranker to the bridge's seq_cls head. ``loss_type`` is one of
     :data:`RERANKER_LOSS_TYPES`; **kwargs forward to the loss constructor.
     """
-    from swift.dev.utils.naming import resolve_loss
-
-    if loss_type not in RERANKER_LOSS_TYPES:
-        raise NotImplementedError(f'configure_reranker_loss supports {list(RERANKER_LOSS_TYPES)}, '
-                                  f'got {loss_type!r}.')
-    loss_cls = resolve_loss(loss_type)
+    loss_cls = resolve_supervised_loss(loss_type, RERANKER_LOSS_TYPES)
     model.set_loss(loss_cls(**kwargs))
 
 
@@ -121,12 +129,8 @@ def configure_seq_cls_loss(model: TrainableModel, *, problem_type: str, num_labe
 DECISION_LOSS_TYPES = ("scoring", "distill_rps", "smooth_brier", "ce_rps")
 
 
-def configure_decision_loss(model: TrainableModel, *, loss_type: str = "scoring", **kwargs) -> None:
-    from swift.dev.utils.naming import resolve_loss
-
-    if loss_type not in DECISION_LOSS_TYPES:
-        raise ValueError(f"configure_decision_loss supports {list(DECISION_LOSS_TYPES)}, got {loss_type!r}.")
-    loss_cls = resolve_loss(loss_type)
+def configure_decision_loss(model: TrainableModel, *, loss_type: str = 'scoring', **kwargs) -> None:
+    loss_cls = resolve_supervised_loss(loss_type, DECISION_LOSS_TYPES)
     model.set_loss(loss_cls(**kwargs))
 
 

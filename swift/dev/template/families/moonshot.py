@@ -144,7 +144,7 @@ class KimiK25Template(Template):
     def _preprocess_tool_call(self, inputs: StdTemplateInputs) -> None:
         # Re-attach the captured caller ids to the normalized tool_call messages (in order:
         # normalize_messages emits one tool_call message per raw call, preserving order). The
-        # base merge keeps only loss/loss_scale/_swift_turn_index, so the id never leaks past
+        # base merge keeps only loss/loss_scale, so the id never leaks past
         # the agent's ``_format_tool_calls``, which reads it to echo ``<|tool_call_begin|>{id}``.
         ids = getattr(self, "_kimi_raw_call_ids", None)
         if ids:

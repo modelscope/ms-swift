@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Reward-rule resolution: the ORM plugin base (twinkle's Reward protocol) and name resolution."""
+"""The reward-rule plugin base (twinkle's ``Reward`` protocol) and rule-name resolution."""
 from __future__ import annotations
 
 import asyncio
@@ -16,10 +16,10 @@ from twinkle.reward.base import Reward
 # A reward rule: (trajectories, **kwargs) -> one score per trajectory.
 RewardFunc = Callable[..., List[float]]
 
-__all__ = ['ORM', 'RewardFunc', 'get_reward_funcs', 'is_registered_reward']
+__all__ = ['RewardRule', 'RewardFunc', 'get_reward_funcs', 'is_registered_reward']
 
 
-class ORM(SwiftPlugin, Reward):
+class RewardRule(SwiftPlugin, Reward):
     """A swift reward rule over trajectory rows: ``__call__(trajectories, **kwargs)``.
 
     A row IS a trajectory dict -- ``messages`` plus the sample's flat extras and
@@ -48,7 +48,7 @@ def is_registered_reward(spec: Any) -> bool:
     already-callable reward is a rule scored on completions; anything else is a reward-model id.
     Registered-name-first, so an id that happens to equal a rule name is taken as the rule.
     """
-    from .orm import REWARD  # imported lazily (orm imports this module for the ORM base)
+    from .rules import REWARD  # imported lazily (rules imports this module for the rule base)
 
     if isinstance(spec, str):
         return spec in PluginRegistry.kind(REWARD).entries
@@ -86,7 +86,7 @@ def get_reward_funcs(reward_funcs: Sequence[Any],
     """
     funcs: List[RewardFunc] = []
     names: List[str] = []
-    from .orm import REWARD
+    from .rules import REWARD
 
     for spec in reward_funcs:
         func = PluginRegistry.resolve(REWARD, spec, config=config)

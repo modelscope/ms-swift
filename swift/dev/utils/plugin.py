@@ -4,10 +4,10 @@
 An extension point is a *product* concern, so swift declares it -- twinkle's roster is not a
 substitute, and the two are not the same thing:
 
-  - The signatures differ because the semantics differ. A swift reward plugin scores strings against
-    dataset columns (``(completions, **columns) -> List[float]``, which is also what every legacy
-    ``ORM`` and every user plugin file already implements); twinkle's ``Reward`` scores ``Trajectory``
-    objects. twinkle's own base is not consumed anywhere inside twinkle -- it exists for its cookbook.
+  - A swift reward rule (``RewardRule``) scores trajectory rows, ``(trajectories, **kwargs) ->
+    List[float]``; it rides twinkle's ``Reward`` protocol for the row shape but has a name registry
+    and a plugin construction contract twinkle's own base lacks -- twinkle's base is not consumed
+    anywhere inside twinkle, it exists for its cookbook.
   - twinkle's string-to-class path (``construct_class`` -> ``Plugin.load_plugin`` -> ``load_module``)
     resolves a name in a kernel namespace, a class, or a source to import. Its loader now accepts a
     local ``.py`` file, a local folder, or a ``hf://`` / ``ms://`` id under one unique-module-name
@@ -19,13 +19,13 @@ handed constructed objects.
 Two levels, so the mechanism itself is extensible -- a third party adds a whole new *kind* of plugin
 without editing swift:
 
-    kind  = PluginRegistry.register_kind('reward', RewardPlugin, config_field='orm')
+    kind  = PluginRegistry.register_kind('reward', RewardRule, config_field='orm')
     @PluginRegistry.register('reward', 'my_reward')
-    class MyReward(RewardPlugin): ...
+    class MyReward(RewardRule): ...
 
 A kind may adopt an *existing* dict as its ``entries``, which is how "one registry per kind" is kept
-literal: ``orms`` stays the very dict it has always been, so the legacy idiom
-``orms['my'] = MyReward`` and the decorator above write to the same place, and no caller has to learn
+literal: ``reward_rules`` stays the very dict it has always been, so the idiom
+``reward_rules['my'] = MyReward`` and the decorator above write to the same place, and no caller has to learn
 which one a plugin came from.
 
 Deliberately NOT a swift extension point: the optimizer *class* -- ``TrainConfig.optim`` is a name that
@@ -48,7 +48,7 @@ from swift.dev.utils import get_logger
 
 logger = get_logger()
 
-__all__ = ['SwiftPlugin', 'RewardPlugin', 'ToolPlugin', 'PluginKind', 'PluginRegistry']
+__all__ = ['SwiftPlugin', 'ToolPlugin', 'PluginKind', 'PluginRegistry']
 
 #: Env var carrying the JSON list of external plugin sources for Ray workers to re-import at startup, and
 #: the ``module:attr`` reload hook twinkle's generic ``worker_process_setup_hook`` resolves. Local paths are
@@ -90,26 +90,6 @@ class SwiftPlugin:
 
     def __init__(self, args: Optional[Any] = None, **kwargs):
         self.args = args
-
-
-class RewardPlugin(SwiftPlugin):
-    """Score model completions against dataset columns.
-
-    ``__call__`` may be written ``async def`` when its scoring does I/O (an API call, a database
-    query): the resolved callable the scoring loop invokes runs the returned coroutine to
-    completion, so the reward's internal round trips overlap instead of running one after
-    another. There is no separate async base to choose -- the same class covers
-    both, and a run may mix sync and async rewards freely.
-
-    Example::
-
-        class MyReward(RewardPlugin):
-            def __call__(self, completions, **kwargs) -> List[float]:
-                return [1.0 if len(c) > 100 else 0.0 for c in completions]
-    """
-
-    def __call__(self, **kwargs) -> List[float]:
-        raise NotImplementedError
 
 
 class ToolPlugin(SwiftPlugin):
@@ -157,12 +137,12 @@ class PluginKind:
 
 #: Modules whose import declares swift's built-in plugin kinds (each runs ``register_kind`` at module
 #: top level). A user's ``--external_plugins`` file may ``@register`` against any built-in kind -- the
-#: ``tool`` kind (``swift.dev.builder.sandbox``), the ``reward`` kind (``swift.dev.reward.orm``) or
+#: ``tool`` kind (``swift.dev.builder.sandbox``), the ``reward`` kind (``swift.dev.reward.rules``) or
 #: the ``callback`` kind (``swift.dev.callback``) --
 #: so the loader must guarantee those kinds are declared BEFORE it imports the user file. Nothing in the
 #: CLI's config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before
 #: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
-_BUILTIN_KIND_MODULES = ('swift.dev.reward.orm', 'swift.dev.reward.prm',
+_BUILTIN_KIND_MODULES = ('swift.dev.reward.rules', 'swift.dev.reward.prm',
                          'swift.dev.builder.sandbox',
                          'swift.dev.callback', 'swift.dev.builder.optimizer_plugins',
                          'swift.dev.harness')
@@ -247,7 +227,7 @@ class PluginRegistry:
         """Register an implementation. Usable as ``@register('reward', 'my_reward')`` or bare.
 
         Unlike a plain dict assignment this checks the shape at *registration* time: a reward that
-        does not subclass ``RewardPlugin`` is rejected here rather than halfway through a rollout.
+        does not subclass the kind's base is rejected here rather than halfway through a rollout.
         """
 
         def _register(cls: type) -> type:

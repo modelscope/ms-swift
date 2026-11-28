@@ -138,7 +138,7 @@ CHANNEL_SCHEMAS: dict[str, ChannelSchema] = {
         _profile('raw', '原始或预测行；业务列原样保留。', RAW_FIELDS, layout='list[dict] 或 Dataset slice'),
         _profile('batch', 'Iterator 分配身份的当前批次。', RAW_FIELDS, layout='list[dict]'),
         _profile('scores', '与轨迹逐行对齐的原生评分事实。',
-                 (ChannelField('rewards', '具名 ORM、baseline 与环境评分', 'dict'),
+                 (ChannelField('rewards', '具名奖励规则、baseline 与环境评分', 'dict'),
                   ChannelField('prm_segments', 'PRM 分段事实', 'dict', required=False)),
                  layout='list[dict]；保持轨迹顺序，不包含模型输入或前向 tensor'),
     )),

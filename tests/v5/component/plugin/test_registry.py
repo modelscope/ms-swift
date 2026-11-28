@@ -2,14 +2,14 @@
 """The plugin mechanism itself: registration, resolution, and loading a user's own ``.py``.
 
 These are the behaviors an extension author depends on, so they are asserted rather than described:
-a name resolves, a wrong shape is refused at registration, the legacy ``orms[...] = cls`` idiom and
+a name resolves, a wrong shape is refused at registration, the ``reward_rules[...] = cls`` idiom and
 the decorator write to the same registry, and two plugin files never shadow each other.
 """
 import textwrap
 
 import pytest
 
-from swift.dev.utils.plugin import PluginKind, PluginRegistry, RewardPlugin, SwiftPlugin
+from swift.dev.utils.plugin import PluginKind, PluginRegistry, SwiftPlugin, SwiftPlugin
 
 
 @pytest.fixture
@@ -17,39 +17,38 @@ def kind():
     """A throwaway kind, so a test never registers into (or pollutes) a real extension point."""
     name = 'test_kind'
     PluginRegistry.KINDS.pop(name, None)
-    yield PluginRegistry.register_kind(name, RewardPlugin, config_field='test_funcs')
+    yield PluginRegistry.register_kind(name, SwiftPlugin, config_field='test_funcs')
     PluginRegistry.KINDS.pop(name, None)
 
 
 def test_the_legacy_dict_is_the_registry():
-    """``orms`` must be the reward kind's own ``entries``, not a copy of it.
+    """``reward_rules`` must be the reward kind's own ``entries``, not a copy of it.
 
     The whole point of adopting an existing dict: a plugin file written the legacy way
-    (``orms['my'] = MyORM``) and one written with the decorator end up in the same place, so a
+    (``reward_rules['my'] = MyReward``) and one written with the decorator end up in the same place, so a
     consumer never has to ask which mechanism a reward came from. A copy would silently split them --
     exactly the legacy/dev split that made user rewards unresolvable on dev.
     """
-    from swift.dev.reward import REWARD, orms
+    from swift.dev.reward import REWARD, reward_rules
 
-    assert REWARD.entries is orms
-    assert set(orms) >= {'accuracy', 'format', 'cosine', 'repetition', 'soft_overlong'}
+    assert REWARD.entries is reward_rules
+    assert set(reward_rules) >= {'accuracy', 'format', 'cosine', 'repetition', 'soft_overlong'}
 
 
-def test_orm_is_the_reward_kind_base():
-    """dev2 flipped the reward kind's base: ``ORM`` (SwiftPlugin + twinkle's ``Reward`` protocol,
-    one trajectory-row shape for rule / scalar-RM / judge alike) is what ``register_kind('reward')``
-    binds, not the completions-scoring ``RewardPlugin``."""
-    from swift.dev.reward import ORM, REWARD
+def test_reward_rule_is_the_reward_kind_base():
+    """The reward kind's base is ``RewardRule`` (SwiftPlugin + twinkle's ``Reward`` protocol, one
+    trajectory-row shape for rule / scalar-RM / judge alike) -- what ``register_kind('reward')`` binds."""
+    from swift.dev.reward import REWARD, RewardRule
     from twinkle.reward.base import Reward
 
-    assert REWARD.base is ORM
-    assert issubclass(ORM, Reward) and ORM is not RewardPlugin
+    assert REWARD.base is RewardRule
+    assert issubclass(RewardRule, Reward)
 
 
 def test_register_then_get(kind):
 
     @PluginRegistry.register(kind, 'mine')
-    class Mine(RewardPlugin):
+    class Mine(SwiftPlugin):
 
         def __call__(self, completions, **kwargs):
             return [1.0] * len(completions)
@@ -61,7 +60,7 @@ def test_register_then_get(kind):
 def test_register_reads_the_class_attribute_name(kind):
 
     @PluginRegistry.register(kind)
-    class Mine(RewardPlugin):
+    class Mine(SwiftPlugin):
         name = 'from_attr'
 
     assert PluginRegistry.get(kind, 'from_attr') is Mine
@@ -69,7 +68,7 @@ def test_register_reads_the_class_attribute_name(kind):
 
 def test_register_refuses_the_wrong_shape(kind):
     """A shape error surfaces at registration, not halfway through a rollout."""
-    with pytest.raises(TypeError, match='must subclass RewardPlugin'):
+    with pytest.raises(TypeError, match='must subclass SwiftPlugin'):
 
         @PluginRegistry.register(kind, 'not_a_plugin')
         class NotAPlugin:
@@ -79,13 +78,13 @@ def test_register_refuses_the_wrong_shape(kind):
 def test_register_refuses_a_silent_overwrite(kind):
 
     @PluginRegistry.register(kind, 'dup')
-    class First(RewardPlugin):
+    class First(SwiftPlugin):
         pass
 
     with pytest.raises(ValueError, match='already registered'):
 
         @PluginRegistry.register(kind, 'dup')
-        class Second(RewardPlugin):
+        class Second(SwiftPlugin):
             pass
 
     assert PluginRegistry.get(kind, 'dup') is First
@@ -94,23 +93,23 @@ def test_register_refuses_a_silent_overwrite(kind):
 def test_one_base_covers_sync_and_async_rewards(kind):
     """Sync and async rewards are ONE extension point on ONE base.
 
-    An ``async def __call__`` is just a ``RewardPlugin`` whose scoring does I/O; the scoring loop
-    (:func:`swift.dev.reward.reward.compute_rewards_per_func`) resolves the returned coroutines with one
+    An ``async def __call__`` is just a ``RewardRule`` whose scoring does I/O; the scoring loop
+    (``_AwaitableToSync``) resolves the returned coroutines with one
     ``asyncio.gather``. There is no separate async base to choose, so the ``reward`` kind's base is a
     single class, and both a sync and an async reward register against it.
     """
-    from swift.dev.reward import ORM, REWARD
+    from swift.dev.reward import REWARD, RewardRule
 
-    assert REWARD.base is ORM and not isinstance(REWARD.base, tuple)
+    assert REWARD.base is RewardRule and not isinstance(REWARD.base, tuple)
 
     @PluginRegistry.register(kind, 'sync_reward')
-    class Sync(RewardPlugin):
+    class Sync(SwiftPlugin):
 
         def __call__(self, completions, **kwargs):
             return [1.0] * len(completions)
 
     @PluginRegistry.register(kind, 'async_reward')
-    class Async(RewardPlugin):
+    class Async(SwiftPlugin):
 
         async def __call__(self, completions, **kwargs):
             return [2.0] * len(completions)
@@ -131,7 +130,7 @@ def test_resolve_accepts_a_name_a_class_an_instance_and_a_callable(kind):
     """The four things a user can put in a Config field, and what each becomes."""
 
     @PluginRegistry.register(kind, 'named')
-    class Named(RewardPlugin):
+    class Named(SwiftPlugin):
 
         def __call__(self, completions, **kwargs):
             return [0.5] * len(completions)
@@ -154,7 +153,7 @@ def test_resolve_accepts_a_name_a_class_an_instance_and_a_callable(kind):
 def test_display_name_labels_both_classes_and_functions(kind):
 
     @PluginRegistry.register(kind, 'labelled')
-    class Labelled(RewardPlugin):
+    class Labelled(SwiftPlugin):
         pass
 
     assert PluginRegistry.display_name(Labelled()) == 'Labelled'
@@ -166,10 +165,10 @@ def test_display_name_labels_both_classes_and_functions(kind):
 
 
 _PLUGIN_FILE = textwrap.dedent("""
-    from swift.dev.utils.plugin import PluginRegistry, RewardPlugin
+    from swift.dev.utils.plugin import PluginRegistry, SwiftPlugin
 
     @PluginRegistry.register('test_kind', {name!r})
-    class {cls}(RewardPlugin):
+    class {cls}(SwiftPlugin):
         def __call__(self, completions, **kwargs):
             return [{score}] * len(completions)
 """)
@@ -267,8 +266,8 @@ def test_declaring_the_same_kind_twice_is_refused():
     """Two owners for one extension point is a mistake, not a merge."""
     PluginRegistry.KINDS.pop('twice', None)
     try:
-        PluginRegistry.register_kind('twice', RewardPlugin)
+        PluginRegistry.register_kind('twice', SwiftPlugin)
         with pytest.raises(ValueError, match='already registered'):
-            PluginRegistry.register_kind('twice', RewardPlugin)
+            PluginRegistry.register_kind('twice', SwiftPlugin)
     finally:
         PluginRegistry.KINDS.pop('twice', None)
