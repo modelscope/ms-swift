@@ -3,7 +3,7 @@
 import asyncio
 import json
 from abc import ABC
-from copy import deepcopy
+from copy import copy, deepcopy
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
@@ -464,11 +464,22 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 )
 
             # Prepare next turn
+            response_request = copy(current_request)
+            response_request.chat_template_kwargs = deepcopy(current_request.chat_template_kwargs)
             response_ids, response_mask = self.get_response_token_data(
-                current_request, response_choice, is_continuation=is_continuation)
+                response_request, response_choice, is_continuation=is_continuation)
             ret = self.step(current_request, response_choice, current_turn)
-            ret.setdefault('response_token_ids', response_ids)
-            ret.setdefault('response_loss_mask', response_mask)
+            if 'response_token_ids' in ret or 'response_loss_mask' in ret:
+                # Normalize step overrides with the prefix used for this response,
+                # even if step changes the next turn's settings.
+                response_ids, response_mask = self.get_response_token_data(
+                    response_request,
+                    response_choice,
+                    is_continuation=is_continuation,
+                    response_token_ids=ret.get('response_token_ids'),
+                    response_loss_mask=ret.get('response_loss_mask'))
+            ret['response_token_ids'] = response_ids
+            ret['response_loss_mask'] = response_mask
             current_request: 'RolloutInferRequest' = ret['infer_request']
 
             # Track response tokens and masks
