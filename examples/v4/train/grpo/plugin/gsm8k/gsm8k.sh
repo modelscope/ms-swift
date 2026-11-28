@@ -6,7 +6,7 @@ NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-2B \
-    --external_plugins examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/gsm8k/gsm8k_plugin.py \
     --reward_funcs gsm8k_accuracy gsm8k_format \
     --columns '{"answer": "solution"}' \
     --enable_thinking false \

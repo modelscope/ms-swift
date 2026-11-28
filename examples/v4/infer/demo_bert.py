@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # demo_seq_cls: https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_5_omni/infer.py
 import os

@@ -126,7 +126,7 @@ SWIFT多卡训练底层依赖torchrun。`deepspeed` 和 `device_map`不兼容，
 ### Q13: 训练过程中loss相关问题
 - 自定义损失函数的.py文件在使用时通过`--external_plugins`参数导入：
 ```shell
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --external_plugins /path/to/plugin.py \
     --loss_type my_loss \
     # ...

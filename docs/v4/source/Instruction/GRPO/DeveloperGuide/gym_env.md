@@ -60,10 +60,10 @@ class Env(ABC):
 **Colocate 模式**:
 
 ```bash
-megatron rlhf \
+USE_SWIFT_V5=0 megatron rlhf \
     --rlhf_type grpo \
     --vllm_mode colocate \
-    --external_plugins examples/megatron/grpo/multi_turn/frozen_lake_plugin.py \
+    --external_plugins examples/v4/megatron/grpo/multi_turn/frozen_lake_plugin.py \
     --multi_turn_scheduler gym_scheduler \
     --gym_env frozen_lake \
     --use_gym_env true \
@@ -77,16 +77,16 @@ megatron rlhf \
 **Server 模式**
 
 ```bash
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --model xxx \
     --use_gym_env true \
-    --external_plugins examples/megatron/grpo/multi_turn/frozen_lake_plugin.py \
+    --external_plugins examples/v4/megatron/grpo/multi_turn/frozen_lake_plugin.py \
     --multi_turn_scheduler gym_scheduler \
     --gym_env frozen_lake \
     --max_turns 10
 
 # trainer 侧需要加 --vllm_server_pass_dataset true，把 env_config 等额外列透传给 rollout 端
-megatron rlhf --vllm_mode server --vllm_server_pass_dataset true ...
+USE_SWIFT_V5=0 megatron rlhf --vllm_mode server --vllm_server_pass_dataset true ...
 # or swift rlhf --vllm_mode server --vllm_server_pass_dataset true ...
 ```
 
@@ -169,7 +169,7 @@ class GYMScheduler(MultiTurnScheduler):
 将 env 类挂到 swift 的 `envs` 注册表里。`--external_plugins` 在训练启动时会 import 该文件，注册随之生效：
 
 ```python
-# examples/megatron/grpo/multi_turn/frozen_lake_plugin.py
+# examples/v4/megatron/grpo/multi_turn/frozen_lake_plugin.py
 from swift.rollout.gym_env import Env, envs
 
 class FrozenLakeEnv(Env):
@@ -194,7 +194,7 @@ envs['frozen_lake'] = FrozenLakeEnv
 设置 `--use_gym_env true` 后，env 给出的 `total_reward` 会自动作为一路奖励参与训练，无需再写 reward 函数。如果想在此之外再叠加自定义信号（如格式/长度等），通过 `--reward_funcs` 传入即可，gym 奖励会作为额外一列与 reward_funcs 拼在一起，由 `--reward_weights` 统一加权。例如同时启用一个格式校验 reward：
 
 ```bash
-megatron rlhf ... --use_gym_env true --reward_funcs format --reward_weights 0.2 1.0
+USE_SWIFT_V5=0 megatron rlhf ... --use_gym_env true --reward_funcs format --reward_weights 0.2 1.0
 # reward_weights 末位对应 gym 的 total_reward
 ```
 
@@ -245,7 +245,7 @@ pip install git+https://huggingface.co/spaces/openenv/sudoku
 使用提供的启动脚本启动本地服务器（默认端口 8000）。`MAX_CONCURRENT_ENVS` 需 ≥ 训练时的 `num_generations`：
 
 ```bash
-TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/train/grpo/plugin/openenv/start_sudoku_server.py
+TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/v4/train/grpo/plugin/openenv/start_sudoku_server.py
 ```
 
 数据集中将 `base_url` 指向本地服务器地址：
@@ -327,11 +327,11 @@ multi_turns['sudoku_scheduler'] = SudokuScheduler
 **6. 启动训练**
 
 ```bash
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-4B \
-    --dataset examples/train/grpo/plugin/openenv/sudoku.jsonl \
-    --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
+    --dataset examples/v4/train/grpo/plugin/openenv/sudoku.jsonl \
+    --external_plugins examples/v4/train/grpo/plugin/openenv/sudoku_scheduler.py \
     --enable_thinking false \
     --max_completion_length 256 \
     --use_gym_env true \

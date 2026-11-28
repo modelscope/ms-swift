@@ -62,7 +62,7 @@ pip install -e . --no-deps
 脚本默认使用单机 8 卡 FSDP2，在 ms-swift 仓库根目录执行：
 
 ```bash
-bash examples/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh
+bash examples/v4/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh
 ```
 
 默认使用设备 `0–7`。如需选择其他设备，可通过 `ASCEND_RT_VISIBLE_DEVICES` 指定，设备数量需与 `fsdp2.json` 中的 `num_processes=8` 保持一致。
@@ -71,7 +71,7 @@ bash examples/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh
 
 ```bash
 MODEL=/path/to/Ling-3.0-tiny \
-bash examples/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh
+bash examples/v4/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh
 ```
 
 脚本默认从 `/usr/local/Ascend/ascend-toolkit` 加载 CANN 环境。如果安装路径不同，可通过 `CANN_PATH` 指定。
@@ -96,7 +96,7 @@ bash examples/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh
 脚本支持在启动命令后追加 ms-swift 参数。首次运行可以先执行少量训练步，确认训练流程正常：
 
 ```bash
-bash examples/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh \
+bash examples/v4/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh \
     --max_steps 3 \
     --output_dir output/ling3-smoke
 ```
@@ -110,7 +110,7 @@ bash examples/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh \
 关闭 Packing 后，可使用普通右 Padding：
 
 ```bash
-bash examples/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh \
+bash examples/v4/ascend/train/ling3/ling3_tiny_lora_fsdp2.sh \
     --packing false \
     --padding_free false \
     --padding_side right

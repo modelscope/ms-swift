@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 """
 Patches for ms-swift training (HY4 Flash).
 

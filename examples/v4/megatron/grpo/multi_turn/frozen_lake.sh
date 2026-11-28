@@ -17,14 +17,14 @@ megatron rlhf \
     --context_parallel_size 1 \
     --tensor_model_parallel_size 1 \
     --pipeline_model_parallel_size 1 \
-    --dataset 'examples/megatron/grpo/multi_turn/frozen_lake.jsonl#1024' \
+    --dataset 'examples/v4/megatron/grpo/multi_turn/frozen_lake.jsonl#1024' \
     --load_from_cache_file false \
     --train_iters 120 \
     --global_batch_size 64 \
     --micro_batch_size 1 \
     --steps_per_generation 4 \
     --num_generations 8 \
-    --external_plugins examples/megatron/grpo/multi_turn/frozen_lake_plugin.py \
+    --external_plugins examples/v4/megatron/grpo/multi_turn/frozen_lake_plugin.py \
     --use_vllm true \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.5 \

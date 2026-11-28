@@ -9,7 +9,7 @@ Thinking mode:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-8B \
     --infer_backend vllm \
     --stream true \
@@ -39,7 +39,7 @@ Non-thinking mode:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-8B \
     --infer_backend vllm \
     --stream true \
@@ -119,7 +119,7 @@ You can use the following command to obtain a distilled reasoning dataset. Durin
 # 4 * 80GiB
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-32B \
     --infer_backend vllm \
     --val_dataset 'AI-ModelScope/alpaca-gpt4-data-en#5000' 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
@@ -144,7 +144,7 @@ For explanations of the parameters used in the training script, please refer to 
 ```bash
 # GPU Memory Usage: 22GB
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3-8B \
     --tuner_type lora \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
@@ -175,7 +175,7 @@ After fine-tuning, you can test the results using the following script. Note tha
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --temperature 0 \
@@ -195,7 +195,7 @@ By default, ms-swift uses the ModelScope community to download models and datase
 
 Merge LoRA weights:
 ```shell
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/checkpoint-xxx \
     --merge_lora true
 ```
@@ -205,7 +205,7 @@ Push the model to ModelScope/HuggingFace:
 ```shell
 # If pushing full weights, change `--adapters` to `--model`.
 # You can find your ModelScope hub_token here: https://modelscope.cn/my/myaccesstoken
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<hub-model-id>' \
@@ -222,7 +222,7 @@ If you want to perform training on multiple GPUs, the following example provides
 
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3-8B \
     --tuner_type full \
     --dataset '<your-dataset>' \
@@ -293,7 +293,7 @@ During training, we utilize vLLM to accelerate the sampling process.
 # 70G*8
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-8B \
     --tuner_type full \
@@ -343,7 +343,7 @@ We will use Alibaba Cloud DLC to launch training. The training environment consi
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Base \
     --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \

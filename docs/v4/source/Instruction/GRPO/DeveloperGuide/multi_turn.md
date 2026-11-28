@@ -148,7 +148,7 @@ ChatCompletionResponseChoice(
 在 swift rollout 命令中，设置 multi_turn_scheduler 参数指定规划器
 
 ```bash
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --model Qwen/Qwen3-1.7B \
     --vllm_use_async_engine true \
     --multi_turn_scheduler thinking_tips_scheduler \

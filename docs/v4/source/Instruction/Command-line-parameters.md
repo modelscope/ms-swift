@@ -188,8 +188,8 @@
 - yaml/json文件会在训练/推理后，存储在`output_dir`中。
 
 ```shell
-swift sft xxx.yaml
-swift sft xxx.json
+USE_SWIFT_V5=0 swift sft xxx.yaml
+USE_SWIFT_V5=0 swift sft xxx.json
 ```
 
 xxx.yaml/xxx.json的内容为具体命令行配置：
@@ -209,7 +209,7 @@ dataset: "swift/self-cognition#500"
 你也可以混合使用yaml和命令行方式。例如yaml为不经常修改的参数，命令行传入常修改参数。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer examples/yaml/deepspeed/infer.yaml \
+USE_SWIFT_V5=0 swift infer examples/v4/yaml/deepspeed/infer.yaml \
     --adapters output/vx-xxx/checkpoint-xxx
 ```
 

@@ -26,7 +26,7 @@ megatron rlhf \
     --micro_batch_size 4 \
     --steps_per_generation 4 \
     --num_generations 8 \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode colocate \
@@ -58,7 +58,7 @@ megatron rlhf \
     --no_save_rng \
     --attention_backend flash \
     --temperature 1.0 \
-    --system examples/train/grpo/prompt.txt \
+    --system examples/v4/train/grpo/prompt.txt \
     --padding_free true \
     --log_completions true \
     --report_to wandb \

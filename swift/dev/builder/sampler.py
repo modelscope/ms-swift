@@ -120,23 +120,23 @@ def build_engine_args(backend: str, infer_config: "InferConfig", rollout_config:
             if backend == "sglang":
                 key = sglang_rename.get(key, key)
             result[key] = value
-    # Config-mapped defaults (e.g. enable_ep_moe=False, retired in sglang 0.5.x) must be
-    # filtered BEFORE the user's engine_kwargs override: SGLangSampler validates engine_args
-    # fail-loud, and a retired boolean default forwarded by the loop above would raise there
-    # before SGLangEngine's warn-and-drop lane runs. User-set engine_kwargs are NOT filtered
-    # here, so a purpose-set retired knob still raises at the sampler (design intent preserved).
+    # Only a knob still at its Config default may be dropped here (e.g. enable_ep_moe=False, retired
+    # in sglang 0.5.x): SGLangSampler validates engine_args fail-loud, and such a default forwarded
+    # by the loop above would raise there before SGLangEngine's warn-and-drop lane runs. A value the
+    # user changed is left in on purpose -- dropping it would silence a knob they asked for, so it
+    # raises at the sampler instead. Judged against twinkle's public probe; the ImportError case
+    # (sglang not installed, e.g. a client-only process) leaves the args untouched.
     if backend == "sglang":
-        try:
-            from twinkle.sampler.sglang_sampler.sglang_engine import _sglang_engine_arg_names
+        from twinkle.sampler.sglang_sampler import sglang_engine_arg_names
 
-            accepted = _sglang_engine_arg_names()
-        except Exception:
-            accepted = None
+        accepted = sglang_engine_arg_names()
         if accepted is not None:
             own_params = {"tensor_parallel_size", "data_parallel_size", "enable_memory_saver"}
-            retired = sorted(k for k in result if k not in accepted and k not in own_params)
+            defaults = {name[len("sglang_") :]: field.default for name, field in type(rollout_config).__dataclass_fields__.items()
+                        if name.startswith("sglang_")}
+            retired = sorted(k for k in result if k not in accepted and k not in own_params and result[k] == defaults.get(k))
             if retired:
-                logger.warning(f"sglang config: dropping retired/unknown engine knobs {retired}")
+                logger.warning(f"sglang config: dropping retired/unknown engine knobs at default {retired}")
                 for k in retired:
                     del result[k]
     result.update(getattr(rollout_config, f"{prefix}engine_kwargs", None) or {})
@@ -274,17 +274,19 @@ def build_sampler(
         if adapters:
             _enable_lora(kwargs, engine, adapters)
 
-        # The loader is the authority on trust_remote_code for every built-in engine: it knows
-        # whether the family's checkpoints ship remote code (auto_map) that must execute, while the
-        # twinkle engine defaults do not (TransformersEngine defaults False, VLLMEngine True).
+        # A family whose loader declares trust_remote_code needs it on EVERY built-in engine: its
+        # checkpoints ship remote code (auto_map) that must execute, while the twinkle engine
+        # defaults do not (TransformersEngine defaults False, VLLMEngine True). A loader that does
+        # not declare it says nothing here, so each engine keeps its own default instead of being
+        # fed the loader's class default False. setdefault keeps an explicit engine_args override.
         # Without this, a remote-code family (e.g. PaddleOCR-VL-1.5, whose bundled modeling is the
         # only working implementation) loads the broken in-tree class on the transformers engine.
-        # setdefault keeps an explicit engine_args override.
         from swift.dev.builder.model import _resolve_model_loader
 
         loader = _resolve_model_loader(model_config)
         if loader is not None:
-            kwargs.setdefault("trust_remote_code", loader.trust_remote_code)
+            if loader.trust_remote_code:
+                kwargs.setdefault("trust_remote_code", True)
             if engine == 'transformers' and 'model_cls' not in kwargs:
                 # A class name survives Ray/JSON and replays the full family construction lifecycle.
                 cls = type(loader)

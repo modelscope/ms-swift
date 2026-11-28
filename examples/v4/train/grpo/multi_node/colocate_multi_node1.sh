@@ -40,6 +40,6 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 8 \
     --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true

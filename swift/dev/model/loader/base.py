@@ -580,6 +580,30 @@ def _import_cls(spec: str) -> type:
     return getattr(module, attr)
 
 
+ClassSpec = Union[str, Sequence[str]]
+
+
+def _import_candidates(specs: ClassSpec, owner: type, attr: str) -> type:
+    """Resolve a declared class: one ``'module:ClassName'``, or the first of an ordered list that
+    imports AND exposes the name on this process.
+
+    An ordered list is how a family declares "this class, else that one" (a newer transformers'
+    own class, else the previous one it was parsed by; an external package's class, else the
+    in-tree one) without a ``build_*`` override probing the environment itself. A candidate that
+    fails to import is a candidate fact, not a family bug; when NONE resolves the error names
+    every candidate with its reason.
+    """
+    specs = specs if isinstance(specs, (tuple, list)) else (specs, )
+    refused = []
+    for spec in specs:
+        try:
+            return _import_cls(spec)
+        except (ImportError, AttributeError) as error:
+            refused.append(f"{spec} ({type(error).__name__}: {error})")
+    raise ImportError(f"{owner.__name__}.{attr}: none of the declared candidates can be resolved on this "
+                      "process: " + "; ".join(refused))
+
+
 # Sub-modules the legacy template hooks read off the TOP-LEVEL model (Qwen-VL / GLM4V ``_post_encode``
 # take ``model.visual``, Kimi-VL ``model.vision_tower``, InternVL ``model.language_model``, ...).
 # transformers 5 moved them one level down, under ``model.model``.
@@ -654,12 +678,21 @@ class ModelLoader:
     # ``is_<framework>`` boolean per framework, so adding a framework is a new value here plus a branch in
     # ``builders/model.py``'s dispatch (``_resolve_model_framework``), never a new field on this base.
     model_framework: Optional[str] = None
+    # Attention implementation / compute dtype pairs this family is known NOT to train correctly with
+    # on the transformers backend, as ``(attn_impl, torch_dtype)`` strings. Read by config validation
+    # before anything loads: a matching run is refused with the fix in the message rather than left to
+    # produce NaNs mid-training (the pair was found to, e.g. Qwen3.5's SDPA path on bf16). ``attn_impl
+    # = None`` in the pair also matches an unset ``ModelConfig.attn_impl``, whose transformers default
+    # resolves to that implementation. Megatron has its own attention stack and ignores this.
+    unsupported_attn_dtypes: Sequence[Tuple[Optional[str], str]] = ()
 
     # Declared per family; resolved lazily so an absent transformers class costs nothing. Leave
     # `config_cls` / `processor_cls` unset to fall back to Auto*; `model_cls` has no safe default.
-    config_cls: Optional[str] = None
-    processor_cls: Optional[str] = None
-    model_cls: Optional[str] = None
+    # Each may be an ordered sequence of specs instead of one: the first that resolves on the
+    # process wins (see `_import_candidates`).
+    config_cls: Optional[ClassSpec] = None
+    processor_cls: Optional[ClassSpec] = None
+    model_cls: Optional[ClassSpec] = None
     # Set True for a remote-code checkpoint (a custom `modeling_*.py` loaded through HF's
     # dynamic-module path). It makes `build_config` / `build_processor` / `build_model` pass
     # `trust_remote_code=True`, so an `AutoConfig` / `AutoProcessor` / `AutoModel*` resolves the
@@ -713,7 +746,7 @@ class ModelLoader:
 
         self._apply_trust_remote_code(kwargs)
         if self.config_cls:
-            config = _import_cls(self.config_cls).from_pretrained(model_dir, **kwargs)
+            config = _import_candidates(self.config_cls, type(self), "config_cls").from_pretrained(model_dir, **kwargs)
         else:
             from swift.dev.utils import HfConfigFactory
 
@@ -730,7 +763,7 @@ class ModelLoader:
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
         self._apply_trust_remote_code(kwargs)
         if self.processor_cls:
-            processor_cls = _import_cls(self.processor_cls)
+            processor_cls = _import_candidates(self.processor_cls, type(self), "processor_cls")
         elif os.path.exists(os.path.join(model_dir, "preprocessor_config.json")) or os.path.exists(
             os.path.join(model_dir, "processor_config.json")
         ):
@@ -752,14 +785,140 @@ class ModelLoader:
         (e.g. JEV's multimodal vs text-only Qwen3.5) resolve the layout-correct class -- the
         weightless dummy build needs exactly that; class-level callers without a config keep the
         declared default.
+
+        Resolution is lazy and happens on whichever process builds the model: a family whose class
+        lives in an optional package is legitimately unloadable on a driver that only needs its
+        config (the vLLM sampler reads the checkpoint itself), so there is no registry-import-time
+        check -- the build raises ``ImportError`` naming the declared candidates instead.
         """
         assert cls.model_cls is not None, f"{cls.__name__} must declare `model_cls`."
-        return _import_cls(cls.model_cls)
+        return _import_candidates(cls.model_cls, cls, "model_cls")
 
     @classmethod
     def from_model_dir(cls, model_dir: str):
         """Rebuild a family loader from its class name inside a sampler worker."""
         return cls(LoaderModelInfo(model_type=cls.model_type, model_dir=model_dir))
+
+    def prepare(
+        self,
+        model_dir: str,
+        *,
+        trust_remote_code: Optional[bool] = None,
+        revision: Optional[str] = None,
+        torch_dtype: Optional[torch.dtype] = None,
+        attn_implementation: Optional[str] = None,
+    ) -> Tuple[PretrainedConfig, Any]:
+        """Build the config and then the processor of ``model_dir``: the sequence every consumer replays.
+
+        The training builder (``builders/model.py``) and the transformers sampler worker (twinkle's
+        ``TransformersEngine``) both come through here, so the steps that used to live in only one
+        of them hold on both: the serialized remote-code module cache around the two ``from_pretrained``
+        calls, and the dtype / attention-implementation write into the (vision sub-)config. The
+        family's ``build_config`` / ``process_config`` / ``build_processor`` / ``process_tokenizer``
+        hooks run in that order.
+
+        ``trust_remote_code=None`` lets the family's own declaration decide (a remote-code family
+        turns it on with its once-per-family warning; the rest pass nothing, so transformers'
+        default applies); an explicit bool is the caller's and wins. ``torch_dtype`` /
+        ``attn_implementation`` are the caller's resolved choices -- ``None`` leaves what the
+        checkpoint declares.
+        """
+        from swift.dev.patch.transformers_dynamic_module import TransformersDynamicModulePatch
+        from twinkle.patch import apply_context
+
+        kwargs = {} if trust_remote_code is None else {"trust_remote_code": trust_remote_code}
+        with apply_context(None, TransformersDynamicModulePatch()):
+            config = self.process_config(self.build_config(model_dir, revision=revision, **kwargs))
+            self.postprocess_load_config(config, torch_dtype=torch_dtype, attn_impl=attn_implementation)
+            processor = self.process_tokenizer(
+                self.build_processor(model_dir, config, revision=revision, **kwargs))
+        return config, processor
+
+    @staticmethod
+    def resolve_hf_attn_impl(attn_impl: Optional[str]) -> Optional[str]:
+        """Map dev's ``attn_impl`` alias to the spelling transformers' ``from_pretrained`` accepts.
+
+        ``flash_attn`` is dev's alias (and legacy v4's spelling) for transformers' ``flash_attention_2``;
+        the versioned ``flash_attention_3/4`` and the non-flash values (``eager``/``sdpa``/``flex_attention``)
+        are already valid transformers spellings and pass through unchanged. Both the config write
+        (:meth:`postprocess_load_config`) and the explicit ``attn_implementation`` load kwarg must
+        resolve it: the kwarg overrides the config inside ``from_pretrained``, so leaving it raw makes
+        transformers reject the very alias ``_SP_PADDING_FREE_ATTN_IMPLS`` documents as valid.
+        """
+        if attn_impl in {"flash_attn", "flash_attention_2"}:
+            return "flash_attention_2"
+        return attn_impl
+
+    @staticmethod
+    def postprocess_load_config(config, *, torch_dtype=None, attn_impl=None) -> None:
+        """The raw-load half of legacy ``ModelLoader._postprocess_config`` that the family's
+        ``process_config`` does not cover: inference-ignore keys, the resolved dtype (vision
+        sub-configs included, so a tower built from the config picks it up), the AWQ loading compat
+        and the attention-implementation write."""
+        from swift.dev.utils import HfConfigFactory
+        from twinkle.patch.awq import apply_awq_compat
+
+        apply_awq_compat(config)
+        if not hasattr(config, "keys_to_ignore_at_inference"):
+            config.keys_to_ignore_at_inference = []
+        if "past_key_values" not in config.keys_to_ignore_at_inference:
+            config.keys_to_ignore_at_inference.append("past_key_values")
+        if torch_dtype is not None:
+            HfConfigFactory.set_config_attr(config, "torch_dtype", torch_dtype, include_vit=True)
+        HfConfigFactory.compat_zero3(config)
+        if attn_impl:
+            use_flash_attn = attn_impl in {"flash_attn", "flash_attention_2"}
+            resolved = ModelLoader.resolve_hf_attn_impl(attn_impl)
+            for key in ("_attn_implementation", "attn_implementation", "llm_attn_implementation"):
+                HfConfigFactory.set_config_attr(config, key, resolved, include_vit=True, ensure_set=False)
+            for key in ("_flash_attn_2_enabled", "use_flash_attn", "_use_flash_attention_2"):
+                HfConfigFactory.set_config_attr(config, key, use_flash_attn, include_vit=True, ensure_set=False)
+
+    @staticmethod
+    def init_generation_config(model, model_dir: str) -> None:
+        """Load ``generation_config.json`` when the model has none; fix the do_sample/temperature clash."""
+        from transformers import GenerationConfig
+
+        path = os.path.join(model_dir, "generation_config.json")
+        if getattr(model, "generation_config", None) is None:
+            model.generation_config = GenerationConfig.from_pretrained(model_dir) if os.path.isfile(path) else None
+        generation_config = getattr(model, "generation_config", None)
+        if generation_config is not None and hasattr(generation_config, "do_sample"):
+            # A zero temperature with do_sample=True is contradictory; align the trio the way legacy's
+            # fix_do_sample_warning did so greedy decoding does not warn on every generate call.
+            if generation_config.temperature == 0:
+                generation_config.do_sample = False
+            if generation_config.do_sample is False:
+                generation_config.temperature = 1.0
+                generation_config.top_p = 1.0
+                generation_config.top_k = 50
+
+    @staticmethod
+    def compat_check_model_inputs():
+        """Let ``check_model_inputs`` accept the transformers 4.x ``@deco()`` spelling.
+
+        transformers 4.57 exposed a decorator *factory*; 5.x exposes a plain decorator. Third-party
+        model code written for 4.57 therefore fails at import. Wrapping the symbol so it dispatches on
+        "was I handed the function or not" keeps both spellings working. Idempotent.
+
+        Patching ``transformers.utils.generic`` alone is sufficient: on 5.5 that is the only module
+        holding the symbol (neither the package root nor ``modeling_utils`` re-exports it), and it
+        must run before the third-party package is imported, so its
+        ``from ... import check_model_inputs`` binds the wrapper.
+        """
+        import transformers.utils.generic as generic
+
+        origin = getattr(generic, "check_model_inputs", None)
+        if origin is None or getattr(origin, "_swift_compat", False):
+            return
+
+        def check_model_inputs(*args, **kwargs):
+            if len(args) == 1 and not kwargs and callable(args[0]):
+                return origin(args[0])  # bare @check_model_inputs
+            return lambda func: origin(func)  # @check_model_inputs(...)
+
+        check_model_inputs._swift_compat = True
+        generic.check_model_inputs = check_model_inputs
 
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
         from twinkle.patch.awq import apply_awq_compat

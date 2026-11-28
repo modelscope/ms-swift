@@ -90,7 +90,7 @@ class RMPlugin(DefaultRMPlugin):
 ```bash
 # 注意部署的设备不要与训练设备重叠
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen2.5-72B-Instruct \
     --vllm_tensor_parallel_size 4
 

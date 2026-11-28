@@ -34,7 +34,7 @@ MODEL=/path/to/deepseek-v41-checkpoint \
 ENGRAM_TOKENIZER_MAP=/path/to/engram_tokenizer_map.json \
 DATASET=/path/to/train.jsonl \
 OUTPUT_DIR=megatron_output/deepseek-v41-npu-lora \
-bash examples/ascend/train/deepseek_v41/megatron_lora.sh
+bash examples/v4/ascend/train/deepseek_v41/megatron_lora.sh
 ```
 
 `MODEL` 为必填的本地 checkpoint 目录；未指定 `ENGRAM_TOKENIZER_MAP` 时，读取该目录下的 `engram_tokenizer_map.json`。此文件必须与 checkpoint 的 tokenizer、原始层号和词表匹配，可使用配套 MCore 的 `tools/engram/generate_tokenizer_map.py` 生成。`DATASET` 支持本地数据，也可省略以使用脚本中的示例数据集。可通过 `TRAIN_ITERS`、`SAVE_STEPS`、`MAX_LENGTH`、`GLOBAL_BATCH_SIZE` 调整训练规模。设备可见性及通信网卡应按机器环境设置，脚本不写死网卡或 NUMA 布局。
@@ -56,7 +56,7 @@ MODEL=/path/to/full-deepseek-v41-checkpoint \
 ENGRAM_TOKENIZER_MAP=/path/to/engram_tokenizer_map.json \
 DATASET=/path/to/train.jsonl \
 OUTPUT_DIR=/path/to/shared-output \
-bash examples/ascend/train/deepseek_v41/megatron_lora_multinode.sh
+bash examples/v4/ascend/train/deepseek_v41/megatron_lora_multinode.sh
 
 # 节点 1：MASTER_ADDR、MASTER_PORT、OUTPUT_DIR 与节点 0 相同
 NODE_RANK=1 MASTER_ADDR="192.0.2.10" \
@@ -64,7 +64,7 @@ MODEL=/path/to/full-deepseek-v41-checkpoint \
 ENGRAM_TOKENIZER_MAP=/path/to/engram_tokenizer_map.json \
 DATASET=/path/to/train.jsonl \
 OUTPUT_DIR=/path/to/shared-output \
-bash examples/ascend/train/deepseek_v41/megatron_lora_multinode.sh
+bash examples/v4/ascend/train/deepseek_v41/megatron_lora_multinode.sh
 ```
 
 将示例 IP `192.0.2.10` 替换为两台机器均可访问的实际地址，并按各自机器设置 `HCCL_SOCKET_IFNAME` 和 `GLOO_SOCKET_IFNAME`。`OUTPUT_DIR` 使用两台机器均可访问的共享目录；脚本关闭自动版本后缀，确保两个节点写入同一次训练的 checkpoint。此前成功运行还使用了按本机 NPU/CPU 拓扑绑定的 NUMA Python launcher，可通过 `PYTHON_EXEC` 指定这类 launcher；需要按实际拓扑配置，不能直接照搬其他机器的 NUMA 编号。CPU 内存需要容纳本机 Engram 分片和加载临时数据。

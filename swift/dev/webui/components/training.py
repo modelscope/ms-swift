@@ -223,8 +223,10 @@ class TrainStepStage(StageComponent):
         # (the streaming driver); the positional batch is the loader shape,
         # whose port value is the resident DataLoader object itself. A LIST
         # port value wins -- including a stash-delivered list of per-row
-        # handles, which deref resolves member by member HERE (the training
-        # loop encodes the rows under the node's own tokenizer); anything
+        # handles, which deref resolves member by member HERE: the batch is
+        # materialised once in the session process (a blocking get per row),
+        # and the training loop encodes the rows under the node's own
+        # tokenizer -- anything
         # else falls back to the positional batch -- the same port-first
         # convention score and advantage apply.
         port_batch = inputs.get('batch')

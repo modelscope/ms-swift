@@ -108,7 +108,7 @@ NODE_RANK=$RANK \
 NPROC_PER_NODE=8 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model /path/to/new_vl_model \
     --model_type qwen2_5_vl \
     --tuner_type full \
@@ -146,7 +146,7 @@ NODE_RANK=$RANK \
 NPROC_PER_NODE=8 \
 MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model /path/to/stage1_checkpoint \
     --model_type qwen2_5_vl \
     --tuner_type full \
@@ -179,7 +179,7 @@ swift sft \
 ### Inference
 Perform inference using `swift infer`:
 ```bash
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model /path/to/stage2_checkpoint
 ```
 
@@ -190,7 +190,7 @@ CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model /path/to/stage2_checkpoint \
     --infer_backend vllm \
     --vllm_gpu_memory_utilization 0.9 \

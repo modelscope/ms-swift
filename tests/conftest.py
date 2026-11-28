@@ -8,6 +8,9 @@ a time, with a warm model cache -- not to be collected together on every PR.
 Marking the tree rather than each file keeps the rule stateless: a test earns its way into the PR
 tier by moving to ``tests/v5``, where it declares what hardware it needs with
 ``@pytest.mark.accel(n)`` instead of pinning devices at import time.
+
+``testpaths`` keeps ``tests`` in the default collection, so the scheduled CI's bare ``pytest`` still
+runs this tree; PR CI passes ``-m "not slow"`` and collects only ``tests/v5``.
 """
 from pathlib import Path
 

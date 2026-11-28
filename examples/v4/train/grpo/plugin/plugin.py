@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 import asyncio
 import json
 import os

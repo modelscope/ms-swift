@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 from typing import List
 
 from swift.infer_engine import InferClient, InferRequest

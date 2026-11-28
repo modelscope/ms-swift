@@ -72,7 +72,7 @@ Supports four methods of evaluation: pure text evaluation, multimodal evaluation
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift eval \
+USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
     --infer_backend transformers \
@@ -90,7 +90,7 @@ Where:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift eval \
+USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
     --infer_backend transformers \
@@ -111,7 +111,7 @@ SWIFT supports using EvalScope to evaluate the current model during the training
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
   --model "Qwen/Qwen2.5-0.5B-Instruct" \
   --tuner_type "lora" \
   --dataset "AI-ModelScope/alpaca-gpt4-data-zh#100" \
@@ -186,7 +186,7 @@ Run the following command:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift eval \
+USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
     --infer_backend transformers \
@@ -236,7 +236,7 @@ Run the following command:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift eval \
+USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
     --infer_backend transformers \

@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """
 Here is another way to register the model, by customizing the get_function.

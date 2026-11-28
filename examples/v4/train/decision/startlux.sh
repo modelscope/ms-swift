@@ -18,12 +18,12 @@ export USE_SWIFT_V5=0
 # truncated (the read-out sits at the last token), so keep --max_length generous. Packing /
 # padding_free is not supported (records would attend to each other).
 #
-# sh examples/train/decision/startlux.sh
+# sh examples/v4/train/decision/startlux.sh
 MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink \
     --model_type startlux \
     --task_type decision \

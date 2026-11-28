@@ -192,7 +192,7 @@ We train the mini version of the model using only the self-cognition dataset, tr
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model /root/.cache/modelscope/models/MiniMax/MiniMax-M2.7 \
     --save_safetensors true \
     --dataset 'swift/self-cognition#500' \
@@ -229,7 +229,7 @@ megatron sft \
 Run inference to check the training results:
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/v3-20260430-143926/checkpoint-310 \
     --max_new_tokens 64 \
     --enable_thinking false \

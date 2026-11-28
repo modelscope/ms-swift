@@ -107,7 +107,7 @@ First, we need to convert the weights from HF (Hugging Face) format to Megatron 
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
@@ -121,7 +121,7 @@ Next, use the following script to start training. The required GPU memory resour
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --mcore_model Qwen2.5-7B-Instruct-mcore \
     --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -158,7 +158,7 @@ Finally, convert the Megatron format weights back to HF format:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
@@ -170,7 +170,7 @@ We then perform inference on the generated HF format weights:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --stream true \
     --temperature 0 \
@@ -197,7 +197,7 @@ Training script:
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -232,7 +232,7 @@ We perform inference on the generated safetensors format weights:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --stream true \
     --temperature 0 \

@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from swift.infer_engine import InferClient, InferRequest
 

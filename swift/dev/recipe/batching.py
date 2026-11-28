@@ -2,11 +2,35 @@
 """Controller-side DP balancing for post-rollout training batches."""
 
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from swift.dev.utils.logger import get_logger
 
+if TYPE_CHECKING:
+    from swift.dev.config import TrainConfig
+
 logger = get_logger()
+
+
+def micro_batch_config_from(train_config: "TrainConfig") -> Dict[str, Any]:
+    """The model's micro-batching options, derived from ``train_config`` in one place.
+
+    A config field the recipe leaves out of these kwargs is a knob nobody reads, so the recipe does
+    not pick a subset by hand: ``micro_batch_order`` applies to planned micro-batches whether or not
+    ``dynamic_batching`` is on, and the dynamic fields ride along only when it is (validate confines
+    them to the GRPO recipe on the HF backend, like the order itself).
+    """
+    options: Dict[str, Any] = {
+        "micro_batch_size": train_config.per_device_train_batch_size,
+        "micro_batch_order": train_config.micro_batch_order,
+    }
+    if train_config.dynamic_batching:
+        options.update(
+            dynamic_batching=True,
+            max_tokens_per_micro_batch=train_config.max_tokens_per_micro_batch,
+            packing_algorithm=train_config.packing_algorithm,
+        )
+    return options
 
 
 def balance_update(state: Any, update: List[Any], lengths: Optional[List[int]],
@@ -33,23 +57,27 @@ def balance_update(state: Any, update: List[Any], lengths: Optional[List[int]],
     return [update[index] for index in plan.order], dict(plan.metrics)
 
 
-def _episodes_span_multiple_rows(episode_ids: List[Any]) -> bool:
-    """Whether any episode is delivered as several rows (collected segments).
+def _group_rows(episode_ids: List[Any], group_size: int) -> Optional[List[int]]:
+    """The row count of every prompt group, or ``None`` when every episode is one row.
 
-    The DP planner moves ``group_size`` consecutive ROWS as one block, which stays group-aligned only
-    when each episode is one row (a prompt group is ``group_size`` episodes). An episode's collected
-    segments are delivered consecutively, so counting runs of equal ``episode_id`` gives the episode
-    count; more rows than episodes means some episode spans several rows and a prompt group covers
-    more than ``group_size`` rows -- the fixed stride would cut it mid-group (defect76). Reads the
-    light per-row ``episode_ids`` facts, never the trajectory rows (references under ray).
+    An episode's collected segments are delivered consecutively, so a run of equal ``episode_id`` is one
+    episode and ``group_size`` consecutive episodes are one prompt group. One row per episode means the
+    planner's fixed ``group_size`` stride already matches the groups. Otherwise a group covers a variable
+    number of rows (segment_policy='collect', defect76) and the planner needs the groups' row counts to
+    keep each whole group on one rank. Reads the light per-row ``episode_ids`` facts, never the
+    trajectory rows (references under ray).
     """
-    if not episode_ids:
-        return False
-    runs = 1
-    for index in range(1, len(episode_ids)):
-        if episode_ids[index] != episode_ids[index - 1]:
-            runs += 1
-    return len(episode_ids) != runs
+    episodes: List[int] = []
+    for index, episode_id in enumerate(episode_ids):
+        if index and episode_id == episode_ids[index - 1]:
+            episodes[-1] += 1
+        else:
+            episodes.append(1)
+    if len(episodes) % group_size:
+        raise ValueError(f'{len(episodes)} episodes cannot form whole prompt groups of {group_size}')
+    if all(count == 1 for count in episodes):
+        return None
+    return [sum(episodes[start:start + group_size]) for start in range(0, len(episodes), group_size)]
 
 
 def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
@@ -60,27 +88,20 @@ def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
 
     Returns ``(permuted, order, restore)``: feed the lanes ``permuted``, permute every row-aligned
     argument their consumer reads alongside them (the batch's score rows) with ``order``, and
-    row-align its returned rows back to the caller's order with ``restore``. Whole groups of
-    ``group_size`` consecutive rows move as blocks, so positional group math stays correct.
-    ``(trajs, None, None)`` keeps the caller's order when balancing is off, when the batch has no
-    row lengths, or when the shape cannot keep groups whole on equal ranks (warned, not raised).
+    row-align its returned rows back to the caller's order with ``restore``. Whole prompt groups of
+    ``group_size`` episodes move as blocks, so positional group math stays correct.
+    ``(trajs, None, None)`` keeps the caller's order when balancing is off or when the batch has no
+    row lengths; a shape that cannot keep groups whole on equal ranks keeps the caller's order too
+    (fixed-size groups: warned; collected groups of a variable row count: the planner's identity plan).
     """
     if not getattr(state, 'dp_balance', False) or not lengths:
         return trajs, None, None
     if len(lengths) != len(trajs):
         raise ValueError(f'lane balancing needs one row length per trajectory ({len(lengths)} for {len(trajs)}).')
+    rows = None
     if group_size > 1:
         ids = episode_ids if episode_ids is not None else [t.get('episode_id') for t in trajs]
-        if _episodes_span_multiple_rows(ids):
-            # The planner moves group_size consecutive ROWS as one block, but a prompt group is
-            # num_generations EPISODES. With segment_policy='collect' an episode spans several rows, so a
-            # group covers a variable row count and the fixed-stride blocks cut it mid-group, permuting the
-            # pieces apart and breaking the contiguous-whole-group contract advantage._check_groups enforces
-            # (defect76). Keep the caller's contiguous delivery order for such a batch instead.
-            logger.warning('DP lane balancing skipped: collected segments make prompt groups span a variable '
-                           'number of rows (not group_size=%d); keeping the contiguous delivery order so whole '
-                           'groups stay together (defect76).', group_size)
-            return trajs, None, None
+        rows = _group_rows(ids, group_size)
     from twinkle.model import MicroBatchConfig
     from twinkle.model.dp_balance import plan_dp_balance_for_lengths
 
@@ -88,7 +109,7 @@ def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
         plan = plan_dp_balance_for_lengths(
             lengths, state.model.device_mesh.data_world_size, padding_free=state.padding_free,
             micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})),
-            group_size=group_size)
+            group_size=group_size, group_rows=rows)
     except ValueError as exc:
         logger.warning('DP lane balancing skipped for this batch (%s); the forwards keep the caller order.', exc)
         return trajs, None, None

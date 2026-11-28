@@ -38,6 +38,23 @@ from swift.dev.patch.torch_conv3d import TorchConv3dPatch  # noqa: E402
 apply_patch(None, TorchConv3dPatch())
 
 
+def derive_model_config(model_config: ModelConfig, *, model: Optional[str] = None) -> ModelConfig:
+    """An isolated ``ModelConfig`` for an auxiliary model (reward / judge / value) built from the
+    policy's, optionally repointed at another checkpoint ``model``.
+
+    Family matching and the loader resolution prefer the config's portable id (``_model_id_or_path``,
+    the id the user typed) over ``.model`` -- see :func:`load_model_processor`. A copy that repointed
+    ``.model`` alone therefore kept resolving the POLICY: its family loader, its tokenizer (a
+    smaller-vocab judge engine rejects those token ids outright). Repointing both fields is this
+    function's whole job; the task / revision overrides stay with the caller, on the returned copy.
+    """
+    derived = copy.deepcopy(model_config)
+    if model is not None:
+        derived.model = model
+        derived._model_id_or_path = model
+    return derived
+
+
 def load_model_processor(model_config: ModelConfig, *, load_model: bool = False, **overrides):
     """Load a plain HF model and its processor with every relevant ``ModelConfig`` option.
 
@@ -96,31 +113,41 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
 
     from twinkle.patch import apply_context
 
+    from swift.dev.model.loader.base import ModelLoader
     from swift.dev.patch.transformers_dynamic_module import TransformersDynamicModulePatch
 
     with apply_context(None, TransformersDynamicModulePatch()):
-        # A copy of ModelConfig pointed at the resolved local directory keeps _build_hf_config's
-        # reads off the (possibly remote) original id.
+        # A copy of ModelConfig pointed at the resolved local directory keeps the config reads off
+        # the (possibly remote) original id.
         load_config = copy.copy(model_config)
         load_config.model = model_dir
-        config = _build_hf_config(load_config, loader)
-        _postprocess_load_config(config, info, model_config.attn_impl)
-        info.config = config
-
         if loader is not None:
-            processor = loader.process_tokenizer(loader.build_processor(model_dir, config))
-        elif os.path.exists(os.path.join(model_dir, "preprocessor_config.json")) or os.path.exists(
-            os.path.join(model_dir, "processor_config.json")
-        ):
-            # A multimodal checkpoint ships a (pre)processor config; a plain LLM ships only a
-            # tokenizer. The generic path trusts remote code, as legacy's default loader did.
-            from transformers import AutoProcessor
-
-            processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+            # The loader owns the config -> processor sequence; dtype and attention implementation
+            # go in through the same seam the sampler worker (TransformersEngine) uses.
+            config, processor = loader.prepare(
+                model_dir,
+                revision=model_config.model_revision,
+                torch_dtype=info.torch_dtype,
+                attn_implementation=model_config.attn_impl,
+            )
+            _apply_rope_scaling(config, load_config)
         else:
-            from transformers import AutoTokenizer
+            config = _build_hf_config(load_config)
+            ModelLoader.postprocess_load_config(
+                config, torch_dtype=info.torch_dtype, attn_impl=model_config.attn_impl)
+            if os.path.exists(os.path.join(model_dir, "preprocessor_config.json")) or os.path.exists(
+                os.path.join(model_dir, "processor_config.json")
+            ):
+                # A multimodal checkpoint ships a (pre)processor config; a plain LLM ships only a
+                # tokenizer. The generic path trusts remote code, as legacy's default loader did.
+                from transformers import AutoProcessor
 
-            processor = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+                processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+            else:
+                from transformers import AutoTokenizer
+
+                processor = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+        info.config = config
         pad_token_id = _normalize_pad_eos(processor)
         # The encoding side must know the new tokens: the training constructors grow the model's
         # own tokenizer on the worker, but the template/dataset tokenizer comes from HERE --
@@ -189,6 +216,7 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
                 model_cls = AutoModelForCausalLM
             if hasattr(model_cls, "_tp_plan"):  # a None tp_plan breaks from_pretrained (legacy fix)
                 model_cls._tp_plan = model_cls._tp_plan or {}
+            built_by_loader = False
             if return_dummy_model:
                 # cls(config) without reading the checkpoint; the caller's init_empty_weights
                 # context (merge's streaming path) lands every parameter on meta. The default-dtype
@@ -207,6 +235,7 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
                 # multimodal attribute re-exposure all live in the loader's build_model.
                 with _patch_tp_plan():
                     model = loader.build_model(model_dir, config, processor, **load_kwargs)
+                built_by_loader = True  # its build_model already initialized generation_config
             else:
                 with _patch_tp_plan():
                     trust = {} if auto_model_cls is not None else {"trust_remote_code": True}
@@ -218,48 +247,10 @@ def load_model_processor(model_config: ModelConfig, *, load_model: bool = False,
             model.model_info = info
             model.model_meta = info
             model.model_dir = model_dir
-            _init_generation_config(model, model_dir)
+            if not built_by_loader:
+                ModelLoader.init_generation_config(model, model_dir)
             HfConfigFactory.set_config_attr(model.config, "pad_token_id", pad_token_id)
         return model, processor
-
-
-def _resolve_hf_attn_impl(attn_impl: Optional[str]) -> Optional[str]:
-    """Map dev's ``attn_impl`` alias to the spelling transformers' ``from_pretrained`` accepts.
-
-    ``flash_attn`` is dev's alias (and legacy v4's spelling) for transformers' ``flash_attention_2``;
-    the versioned ``flash_attention_3/4`` and the non-flash values (``eager``/``sdpa``/``flex_attention``)
-    are already valid transformers spellings and pass through unchanged. Both the config write
-    (``_postprocess_load_config``) and the explicit ``attn_implementation`` load kwarg must resolve it:
-    the kwarg overrides the config inside ``from_pretrained``, so leaving it raw makes transformers
-    reject the very alias ``_SP_PADDING_FREE_ATTN_IMPLS`` documents as valid.
-    """
-    if attn_impl in {"flash_attn", "flash_attention_2"}:
-        return "flash_attention_2"
-    return attn_impl
-
-
-def _postprocess_load_config(config, info, attn_impl) -> None:
-    """The raw-load half of legacy ``ModelLoader._postprocess_config`` that ``_build_hf_config``
-    does not already cover: inference-ignore keys, the resolved dtype (vision sub-configs
-    included, so a tower built from the config picks it up), ZeRO-3 compat and the attention
-    implementation write."""
-    from swift.dev.utils import HfConfigFactory
-    from twinkle.patch.awq import apply_awq_compat
-
-    apply_awq_compat(config)
-    if not hasattr(config, "keys_to_ignore_at_inference"):
-        config.keys_to_ignore_at_inference = []
-    if "past_key_values" not in config.keys_to_ignore_at_inference:
-        config.keys_to_ignore_at_inference.append("past_key_values")
-    HfConfigFactory.set_config_attr(config, "torch_dtype", info.torch_dtype, include_vit=True)
-    HfConfigFactory.compat_zero3(config)
-    if attn_impl:
-        use_flash_attn = attn_impl in {"flash_attn", "flash_attention_2"}
-        resolved = _resolve_hf_attn_impl(attn_impl)
-        for key in ("_attn_implementation", "attn_implementation", "llm_attn_implementation"):
-            HfConfigFactory.set_config_attr(config, key, resolved, include_vit=True, ensure_set=False)
-        for key in ("_flash_attn_2_enabled", "use_flash_attn", "_use_flash_attention_2"):
-            HfConfigFactory.set_config_attr(config, key, use_flash_attn, include_vit=True, ensure_set=False)
 
 
 def _normalize_pad_eos(processor) -> int:
@@ -425,25 +416,6 @@ def _apply_raw_init_strategy(model, init_strategy: str) -> None:
             std = param.std()
             if not torch.isfinite(mean_abs) or not torch.isfinite(std) or mean_abs > 1e7 or std > 1e7:
                 initialize(param)
-
-
-def _init_generation_config(model, model_dir: str) -> None:
-    """Load generation_config.json when the model has none; fix the do_sample/temperature clash."""
-    from transformers import GenerationConfig
-
-    path = os.path.join(model_dir, "generation_config.json")
-    if getattr(model, "generation_config", None) is None:
-        model.generation_config = GenerationConfig.from_pretrained(model_dir) if os.path.isfile(path) else None
-    generation_config = getattr(model, "generation_config", None)
-    if generation_config is not None and hasattr(generation_config, "do_sample"):
-        # A zero temperature with do_sample=True is contradictory; align the trio the way legacy's
-        # fix_do_sample_warning did so greedy decoding does not warn on every generate call.
-        if generation_config.temperature == 0:
-            generation_config.do_sample = False
-        if generation_config.do_sample is False:
-            generation_config.temperature = 1.0
-            generation_config.top_p = 1.0
-            generation_config.top_k = 50
 
 
 def build_dp_mesh(distributed_config: DistributedConfig, sequence_parallel_size: int = 1) -> Optional["DeviceMesh"]:
@@ -924,8 +896,8 @@ def _resolve_model_loader(model_config: ModelConfig):
 def _build_hf_config(model_config: ModelConfig, model_loader=None):
     """Build the one HF config shared by Transformers and Megatron model construction.
 
-    rope_scaling mirrors legacy ``_init_rope_scaling``: names map to {'type': name}; a factor-less
-    rope derives it from max_model_len / origin, and the budget (origin * factor) is served length.
+    The family loader's ``build_config`` / ``process_config`` (else the plain ``AutoConfig``), then
+    :func:`_apply_rope_scaling` on the result.
     """
     from swift.dev.utils import HfConfigFactory
 
@@ -941,6 +913,19 @@ def _build_hf_config(model_config: ModelConfig, model_loader=None):
             config = AutoConfig.from_pretrained(
                 model_config.model, revision=model_config.model_revision, trust_remote_code=True
             )
+    _apply_rope_scaling(config, model_config)
+    return config
+
+
+def _apply_rope_scaling(config, model_config: ModelConfig):
+    """Write the requested rope_scaling / max_model_len into ``config`` (in place).
+
+    rope_scaling mirrors legacy ``_init_rope_scaling``: names map to {'type': name}; a factor-less
+    rope derives it from max_model_len / origin, and the budget (origin * factor) is served length.
+    Split out of :func:`_build_hf_config` so the training builder can apply it to a config that came
+    from ``ModelLoader.prepare`` -- the two must agree on what a requested rope means.
+    """
+    from swift.dev.utils import HfConfigFactory
 
     rope_scaling = model_config.rope_scaling
     if isinstance(rope_scaling, str):
@@ -1001,7 +986,6 @@ def _build_hf_config(model_config: ModelConfig, model_loader=None):
 
     if model_config.max_model_len is not None:
         HfConfigFactory.set_max_model_len(config, model_config.max_model_len)
-    return config
 
 
 def _set_load_kwarg(kwargs: dict, name: str, value) -> None:
@@ -1082,7 +1066,9 @@ def _build_transformers_model(
     # torch_dtype is a Literal, so getattr always resolves; forward to from_pretrained.
     if model_config.torch_dtype:
         _set_load_kwarg(kwargs, "dtype", getattr(torch, model_config.torch_dtype))
-    _set_load_kwarg(kwargs, "attn_implementation", _resolve_hf_attn_impl(model_config.attn_impl))
+    from swift.dev.model.loader.base import ModelLoader
+
+    _set_load_kwarg(kwargs, "attn_implementation", ModelLoader.resolve_hf_attn_impl(model_config.attn_impl))
     _set_load_kwarg(kwargs, "experts_implementation", model_config.experts_impl)
     _set_load_kwarg(kwargs, "revision", model_config.model_revision)
     _set_load_kwarg(kwargs, "max_memory", model_config.max_memory)

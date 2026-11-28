@@ -2,7 +2,7 @@
 export USE_SWIFT_V5=0
 # Atlas 800T A3 Ascend NPU. FSDP2 + LoRA SFT.
 # Run from ms-swift repo root:
-#   bash examples/ascend/train/qwen3_8/qwen3_8_27b_lora_fsdp2.sh
+#   bash examples/v4/ascend/train/qwen3_8/qwen3_8_27b_lora_fsdp2.sh
 # Override model path: MODEL=Qwen/Qwen3.8-27B bash ...
 
 set -euo pipefail
@@ -20,7 +20,7 @@ mkdir -p "${TRITON_CACHE_DIR}"
 MODEL="${MODEL:-Qwen/Qwen3.8-27B}"
 
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 \
-accelerate launch --config_file "./examples/ascend/train/qwen3_8/qwen3_8_27b_fsdp2.json" \
+accelerate launch --config_file "./examples/v4/ascend/train/qwen3_8/qwen3_8_27b_fsdp2.json" \
     swift/cli/sft.py \
     --model "${MODEL}" \
     --model_type qwen3_5 \

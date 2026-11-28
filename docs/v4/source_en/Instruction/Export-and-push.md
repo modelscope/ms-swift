@@ -48,7 +48,7 @@ GPTQ backends may save symmetric weights in GPTQ v1 format even when GPTQ v2 is 
 SWIFT supports re-pushing trained/quantized models to ModelScope/Hugging Face. By default, it pushes to ModelScope, but you can specify `--use_hf true` to push to Hugging Face.
 
 ```shell
-swift export \
+USE_SWIFT_V5=0 swift export \
     --model output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<model-id>' \

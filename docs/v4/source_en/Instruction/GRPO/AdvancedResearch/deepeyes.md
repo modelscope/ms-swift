@@ -53,7 +53,7 @@ Assuming you use the Qwen2.5-VL-72B-Instruct model for evaluation, refer to the 
 ```bash
 # 4*80G
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen2.5-VL-72B-Instruct \
     --infer_backend vllm \
     --vllm_tensor_parallel_size 4 \

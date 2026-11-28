@@ -9,7 +9,7 @@ Qwen文档: [https://qwen.readthedocs.io/en/latest/training/ms_swift.html](https
 思考模式：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-8B \
     --infer_backend vllm \
     --stream true \
@@ -37,7 +37,7 @@ I am Qwen, a large language model developed by Alibaba Cloud. I can assist with 
 - 其中`--response_prefix`代表模型的输出会在其前缀后继续生成。等价于enable_thinking设置为False。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-8B \
     --infer_backend vllm \
     --stream true \
@@ -115,7 +115,7 @@ pip install flash-attn --no-build-isolation  # packing需要
 # 4 * 80GiB
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-32B \
     --infer_backend vllm \
     --val_dataset 'AI-ModelScope/alpaca-gpt4-data-en#5000' 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
@@ -140,7 +140,7 @@ swift infer \
 ```bash
 # 显存占用：22GB
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3-8B \
     --tuner_type lora \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
@@ -171,7 +171,7 @@ swift sft \
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --temperature 0 \
@@ -192,7 +192,7 @@ Hello! I am swift-robot, an artificial intelligence assistant developed by swift
 合并 LoRA 权重：
 
 ```shell
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/checkpoint-xxx \
     --merge_lora true
 ```
@@ -202,7 +202,7 @@ swift export \
 ```bash
 # 如果是推送完整的权重，需要修改`--adapters`为`--model`.
 # Modelscope的hub_token可以在这里找到: https://modelscope.cn/my/myaccesstoken
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<hub-model-id>' \
@@ -219,7 +219,7 @@ swift export \
 
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3-8B \
     --tuner_type full \
     --dataset '<your-dataset>' \
@@ -289,7 +289,7 @@ pip install vllm
 # 70G*8
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-8B \
     --tuner_type full \
@@ -339,7 +339,7 @@ ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO/GRPO。
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Base \
     --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \

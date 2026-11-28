@@ -17,7 +17,7 @@ swift rlhf \
   --vllm_tensor_parallel_size 4 \
   --dataset lmms-lab/multimodal-open-r1-8k-verified#1000 \
   --load_from_cache_file true \
-  --external_plugins examples/train/grpo/plugin/plugin.py \
+  --external_plugins examples/v4/train/grpo/plugin/plugin.py \
   --reward_funcs external_r1v_acc format \
   --reward_weights 1 0.1 \
   --torch_dtype bfloat16 \
@@ -46,4 +46,4 @@ swift rlhf \
   --move_model_batches 40 \
   --sleep_level 1 \
   --report_to wandb \
-  --system examples/train/grpo/prompt.txt
+  --system examples/v4/train/grpo/prompt.txt

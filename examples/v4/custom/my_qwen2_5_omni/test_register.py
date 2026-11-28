@@ -1,6 +1,4 @@
 import os
-os.environ['USE_SWIFT_V5'] = '0'
-import os
 import requests
 import sys
 from modelscope import snapshot_download
@@ -9,7 +7,7 @@ from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcess
 
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
 
-sys.path.append('examples/custom/my_qwen2_5_omni')
+sys.path.append('examples/v4/custom/my_qwen2_5_omni')
 
 
 def infer_hf():

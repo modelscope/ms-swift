@@ -14,7 +14,7 @@ export USE_SWIFT_V5=0
 # swift rollout \
 #     --model Qwen/Qwen2.5-VL-7B-Instruct \
 #     --vllm_use_async_engine true \
-#     --external_plugins examples/train/grpo/plugin/deepeyes/deepeyes_plugin.py  \
+#     --external_plugins examples/v4/train/grpo/plugin/deepeyes/deepeyes_plugin.py  \
 #     --multi_turn_scheduler deepeyes_scheduler \
 #     --vllm_max_model_len 8192 \
 #     --vllm_gpu_memory_utilization 0.8 \
@@ -38,7 +38,7 @@ swift rlhf \
     --offload_optimizer true \
     --offload_model true \
     --sleep_level 1 \
-    --external_plugins examples/train/grpo/plugin/deepeyes/deepeyes_plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/deepeyes/deepeyes_plugin.py \
     --reward_funcs deepeyes_reward \
     --tuner_type full \
     --torch_dtype bfloat16 \

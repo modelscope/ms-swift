@@ -225,95 +225,112 @@ def main() -> None:
     micro_batch_size = max(1, train_batch_size // dp_size)
     batching = {'micro_batch_size': micro_batch_size}
     sync_every = rollout_config.parameter_sync_step
-    # INITIAL PUBLICATION: the sampler must start from the policy's weights (a resumed/LoRA-init
-    # policy differs from what the engine loaded); under colocate this also hands the GPUs over.
-    cluster.engine.sync_weights()
+    lent = False
+
+    def sync() -> None:
+        # WEIGHT PUBLICATION: push the policy weights to the sampler. Under colocate the sync wakes the
+        # sampler and takes the GPUs: the sync itself leaves the trainer offloaded.
+        nonlocal lent
+        cluster.engine.sync_weights()
+        lent = cluster.colocate
+
+    def reclaim() -> None:
+        # COLOCATE HANDOVER: sleep the sampler (offload its weights/KV), reload the trainer.
+        nonlocal lent
+        if lent:
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
+            cluster.model.reload_to_gpu()
+            lent = False
+
     batches = 0
     state.handler.on_train_begin()
     try:
-        for trajs, batch_facts in driver:
-            if cluster.colocate:
-                # COLOCATE HANDOVER: sleep the sampler (offload its weights/KV), reload the trainer.
-                sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-                cluster.model.reload_to_gpu()
-            record_batch_rewards(batch_facts)
+        try:
+            sync()  # INITIAL PUBLICATION: the sampler must start from the policy's weights (a
+            # resumed/LoRA-init policy differs from what the engine loaded).
+            for trajs, batch_facts in driver:
+                reclaim()
+                record_batch_rewards(batch_facts)
 
-            # DP LANE BALANCING: split the batch into per-rank lanes of equal token load, keeping
-            # whole GRPO groups together (the advantage's positional group math needs complete
-            # blocks); lane_restore puts results back into the caller's order afterwards.
-            lane_lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
-                                                 batch_facts.get('response_lengths') or ())]
-            lane_trajs, lane_order, lane_restore = balance_lanes(
-                state, trajs, lane_lengths, group_size=rl_config.num_generations,
-                micro_batch_kwargs=batching, episode_ids=batch_facts.get('episode_ids'))
-            lane_scores = batch_facts['scores'] if lane_order is None else [
-                batch_facts['scores'][index] for index in lane_order]
-            # DP PADDING: forward lanes need equal per-rank row counts; pad with inert dummy rows
-            # (advantage 0, stripped before training) up to a multiple of the data-parallel size.
-            pad_count = (-len(lane_trajs)) % dp_size
-            if pad_count:
-                dummies = cluster.traj_update.pad_rows(lane_trajs[0], pad_count=pad_count)
-                lane_trajs = list(lane_trajs) + dummies
-                lane_scores = list(lane_scores) + [{} for _ in dummies]
+                # DP LANE BALANCING: split the batch into per-rank lanes of equal token load, keeping
+                # whole GRPO groups together (the advantage's positional group math needs complete
+                # blocks); lane_restore puts results back into the caller's order afterwards.
+                lane_lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
+                                                     batch_facts.get('response_lengths') or ())]
+                lane_trajs, lane_order, lane_restore = balance_lanes(
+                    state, trajs, lane_lengths, group_size=rl_config.num_generations,
+                    micro_batch_kwargs=batching, episode_ids=batch_facts.get('episode_ids'))
+                lane_scores = batch_facts['scores'] if lane_order is None else [
+                    batch_facts['scores'][index] for index in lane_order]
+                # DP PADDING: forward lanes need equal per-rank row counts; pad with inert dummy rows
+                # (advantage 0, stripped before training) up to a multiple of the data-parallel size.
+                pad_count = (-len(lane_trajs)) % dp_size
+                if pad_count:
+                    dummies = cluster.traj_update.pad_rows(lane_trajs[0], pad_count=pad_count)
+                    lane_trajs = list(lane_trajs) + dummies
+                    lane_scores = list(lane_scores) + [{} for _ in dummies]
 
-            # REFERENCE LOGPS: one whole-batch response-framed forward on the frozen reference.
-            # temperature divides the logits so these logps match the sampler's T-scaled ones --
-            # skipping it skews every importance ratio/KL term. LoRA reference IS the policy object:
-            # disable_lora=True reads the base weights instead of the adapter's.
-            ref_out = None
-            if cluster.reference is not None:
-                ref_out = cluster.reference.forward_only(
-                    inputs=lane_trajs, output_frame='response', output_fields=('logps',),
-                    temperature=temperature, **batching,
-                    **({'disable_lora': True} if cluster.reference is cluster.model else {}))
+                # REFERENCE LOGPS: one whole-batch response-framed forward on the frozen reference.
+                # temperature divides the logits so these logps match the sampler's T-scaled ones --
+                # skipping it skews every importance ratio/KL term. LoRA reference IS the policy object:
+                # disable_lora=True reads the base weights instead of the adapter's.
+                ref_out = None
+                if cluster.reference is not None:
+                    ref_out = cluster.reference.forward_only(
+                        inputs=lane_trajs, output_frame='response', output_fields=('logps',),
+                        temperature=temperature, **batching,
+                        **({'disable_lora': True} if cluster.reference is cluster.model else {}))
 
-            # THE ADVANTAGE CALL: group-relative normalization of the ORM scores (+ KL-in-reward
-            # against ref_logps when beta>0), attaching the training-target columns to the rows.
-            # Swap advantage_estimator in RLConfig to change the math (reinforce++/rloo/...).
-            trajs, _adv_summary = cluster.advantage(
-                lane_trajs, ref_out=ref_out, global_step=state.global_step, scores=lane_scores)
-            if pad_count:
-                trajs = trajs[:len(trajs) - pad_count]
-            if lane_restore is not None:
-                trajs = [trajs[position] for position in lane_restore]
+                # THE ADVANTAGE CALL: group-relative normalization of the ORM scores (+ KL-in-reward
+                # against ref_logps when beta>0), attaching the training-target columns to the rows.
+                # Swap advantage_estimator in RLConfig to change the math (reinforce++/rloo/...).
+                trajs, _adv_summary = cluster.advantage(
+                    lane_trajs, ref_out=ref_out, global_step=state.global_step, scores=lane_scores)
+                if pad_count:
+                    trajs = trajs[:len(trajs) - pad_count]
+                if lane_restore is not None:
+                    trajs = [trajs[position] for position in lane_restore]
 
-            # TRAIN MINI-BATCHES: slice the batch into full optimizer updates (train_batch_size x ga
-            # rows each; num_iterations replays the batch), balance each update across ranks, then
-            # forward_backward + clip_grad_and_step. Every training signal (advantages/old_logps/
-            # ref_logps) rides the trajectory rows themselves -- the kwargs only carry batching.
-            total_samples = len(trajs) * max(1, rl_config.num_iterations)
-            for lo, hi in optimizer_batch_slices(total_samples, train_batch_size, ga):
+                # TRAIN MINI-BATCHES: slice the batch into full optimizer updates (train_batch_size x ga
+                # rows each; num_iterations replays the batch), balance each update across ranks, then
+                # forward_backward + clip_grad_and_step. Every training signal (advantages/old_logps/
+                # ref_logps) rides the trajectory rows themselves -- the kwargs only carry batching.
+                total_samples = len(trajs) * max(1, rl_config.num_iterations)
+                for lo, hi in optimizer_batch_slices(total_samples, train_batch_size, ga):
+                    if state.reached_max() or state.should_stop():
+                        break
+                    indices = [index % len(trajs) for index in range(lo, hi)]
+                    update, balance_metrics = balance_update(
+                        state, [trajs[index] for index in indices], [lane_lengths[index] for index in indices],
+                        micro_batch_kwargs=batching)
+                    state.handler.on_step_begin()
+                    model_kwargs = {'inputs': copy_inputs(update), 'gradient_accumulation_steps': 1,
+                                    'micro_batch_size': micro_batch_size, 'temperature': temperature}
+                    cluster.model.forward_backward(**model_kwargs)
+                    state.handler.on_pre_optimizer_step()
+                    cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
+                                                     gradient_accumulation_steps=1)
+                    state.handler.on_optimizer_step()
+                    state.micro_step += (hi - lo) // train_batch_size
+                    state.record(extra_metrics=balance_metrics)
+                    state.step_tail(save=save)
+
+                # WEIGHT PUBLICATION: every sync_every batches, push the updated policy weights to the
+                # sampler so the next rollouts are generated by the new policy (on-policy freshness).
+                batches += 1
+                if batches % sync_every == 0 and not (state.reached_max() or state.should_stop()):
+                    sync()
                 if state.reached_max() or state.should_stop():
                     break
-                indices = [index % len(trajs) for index in range(lo, hi)]
-                update, balance_metrics = balance_update(
-                    state, [trajs[index] for index in indices], [lane_lengths[index] for index in indices],
-                    micro_batch_kwargs=batching)
-                state.handler.on_step_begin()
-                model_kwargs = {'inputs': copy_inputs(update), 'gradient_accumulation_steps': 1,
-                                'micro_batch_size': micro_batch_size, 'temperature': temperature}
-                cluster.model.forward_backward(**model_kwargs)
-                state.handler.on_pre_optimizer_step()
-                cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
-                                                 gradient_accumulation_steps=1)
-                state.handler.on_optimizer_step()
-                state.micro_step += (hi - lo) // train_batch_size
-                state.record(extra_metrics=balance_metrics)
-                state.step_tail(save=save)
-
-            # WEIGHT PUBLICATION: every sync_every batches, push the updated policy weights to the
-            # sampler so the next rollouts are generated by the new policy (on-policy freshness).
-            batches += 1
-            if batches % sync_every == 0 and not (state.reached_max() or state.should_stop()):
-                cluster.engine.sync_weights()
-            if state.reached_max() or state.should_stop():
-                break
+        finally:
+            # TEARDOWN in fixed order: close the driver first, then return the lent devices so the
+            # final save below finds the model resident; a cleanup error must not mask an in-flight
+            # training exception.
+            state.stream_stats = close_driver_preserving_error(driver)
+            reclaim()
         state.handler.on_train_end()
         save_final_checkpoint(cluster.model, save, enabled=True)
     finally:
-        # TEARDOWN in fixed order: close the driver (its terminal stats feed the summary), then
-        # release every actor; a cleanup error must not mask an in-flight training exception.
-        state.stream_stats = close_driver_preserving_error(driver)
         finalize_rl_resources(
             state, cluster, remote_run=False, driver=driver, recipe='GRPO-example',
             finish=lambda: state.finish_rollout_metrics(stream_stats=state.stream_stats,

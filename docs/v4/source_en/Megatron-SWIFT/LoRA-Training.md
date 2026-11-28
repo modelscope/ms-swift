@@ -18,7 +18,7 @@ Below, we introduce weight conversion using the `swift export` and `megatron exp
 # megatron export
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --tensor_model_parallel_size 2 \
     --to_mcore true \
@@ -46,7 +46,7 @@ Training Script:
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --mcore_model Qwen2.5-7B-Instruct-mcore \
     --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -88,7 +88,7 @@ megatron sft \
 # megatron export
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -115,7 +115,7 @@ megatron export \
 ```shell
 # If using full weights, replace `--adapters` with `--model`
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --stream true
 ```
@@ -129,7 +129,7 @@ If you only want to merge the LoRA weights without converting them to Hugging Fa
 # megatron export
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --tensor_model_parallel_size 2 \
     --to_mcore true \
@@ -159,7 +159,7 @@ megatron export \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --save_safetensors true \
     --merge_lora false \
@@ -201,7 +201,7 @@ megatron sft \
 ```shell
 # If using full weights, replace `--adapters` with `--model`
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --stream true
 ```
@@ -216,7 +216,7 @@ Since `--merge_lora false` was set during training, if you want to merge the LoR
 # megatron export
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --tensor_model_parallel_size 2 \
     --to_hf true \

@@ -5,7 +5,7 @@ export USE_SWIFT_V5=0
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \
-accelerate launch --config_file "./examples/train/multi-gpu/fsdp_qlora/fsdp_offload.json" \
+accelerate launch --config_file "./examples/v4/train/multi-gpu/fsdp_qlora/fsdp_offload.json" \
     swift/cli/sft.py \
     --model Qwen/Qwen2.5-72B-Instruct \
     --tuner_type lora \

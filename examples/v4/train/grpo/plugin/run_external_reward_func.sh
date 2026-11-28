@@ -8,7 +8,7 @@ MAX_PIXELS=602112 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode colocate \
@@ -38,7 +38,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --num_generations 8 \
     --temperature 1.0 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero1 \
     --log_completions true \
     --report_to tensorboard swanlab \

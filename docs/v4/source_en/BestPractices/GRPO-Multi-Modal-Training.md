@@ -56,7 +56,7 @@ The purpose of redefining the dataset preprocessor here is to modify the query. 
 
 ## **Reward Function Definition**
 
-This task uses two reward functions: one is the format reward function mentioned in `Deepseek-R1`, and the other is the accuracy reward function for ClevrCount. The former is built into SWIFT and can be used directly with `--reward_funcs format`. The latter needs to be custom-defined. Here, we use the `external_plugin` method to define the accuracy reward function by placing the code in `swift/examples/train/grpo/plugin/plugin.py`.
+This task uses two reward functions: one is the format reward function mentioned in `Deepseek-R1`, and the other is the accuracy reward function for ClevrCount. The former is built into SWIFT and can be used directly with `--reward_funcs format`. The latter needs to be custom-defined. Here, we use the `external_plugin` method to define the accuracy reward function by placing the code in `swift/examples/v4/train/grpo/plugin/plugin.py`.
 
 The reward function's input includes `completions` and `solution` fields, representing the model-generated text and ground truth, respectively. Each is a list, allowing the computation of multiple completions simultaneously. Note that the `solution` field is passed through directly from the dataset definition. If there are task changes, corresponding modifications can be made to the dataset and reward function.
 
@@ -119,7 +119,7 @@ Since the task is simple, we set `max_completion_length` to 1024 and selected `e
 launch external vLLM server using following script
 ```bash
 CUDA_VISIBLE_DEVICES=6,7 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --vllm_data_parallel_size 2
 ```
@@ -128,10 +128,10 @@ swift rollout \
 WANDB_API_KEY=your_wandb_api_key \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 NPROC_PER_NODE=6 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode server \
@@ -158,7 +158,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --num_generations 24 \
     --temperature 1.0 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --report_to wandb \
@@ -207,10 +207,10 @@ WANDB_API_KEY=your_wandb_api_key \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 MAX_PIXELS=401408 \
 NPROC_PER_NODE=6 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode server \
@@ -238,7 +238,7 @@ swift rlhf \
     --num_generations 8 \
     --temperature 1.0 \
     --repetition_penalty 1.1 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --report_to wandb \
@@ -297,10 +297,10 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 MAX_PIXELS=262144 \
 MASTER_PORT=29600 \
 NPROC_PER_NODE=6 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode server \
@@ -328,7 +328,7 @@ swift rlhf \
     --num_generations 8 \
     --temperature 1.0 \
     --repetition_penalty 1.1 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --report_to wandb \

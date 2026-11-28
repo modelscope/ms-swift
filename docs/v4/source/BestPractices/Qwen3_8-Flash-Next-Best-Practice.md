@@ -43,7 +43,7 @@ N-gram 嵌入表占了 51B 参数、bf16 下约 **95GiB**，而且只能沿 TP �
 设置`PLE_CPU_OFFLOAD`环境变量卸载PLE权重
 
 ```shell
-PLE_CPU_OFFLOAD=1 megatron sft ...
+PLE_CPU_OFFLOAD=1 USE_SWIFT_V5=0 megatron sft ...
 ```
 
 注意，开启后
@@ -57,7 +57,7 @@ PLE_CPU_OFFLOAD=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3.8-Flash-Next \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
     --num_train_epochs 1 \
@@ -120,7 +120,7 @@ PLE_CPU_OFFLOAD=1 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-megatron rlhf \
+USE_SWIFT_V5=0 megatron rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.8-Flash-Next \
     --dataset open-r1/DAPO-Math-17k-Processed \

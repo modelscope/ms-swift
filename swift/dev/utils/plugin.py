@@ -93,7 +93,11 @@ class SwiftPlugin:
 
 
 class RewardPlugin(SwiftPlugin):
-    """Score model completions against dataset columns.
+    """A reward rule: ``__call__(trajectories, **kwargs)`` returns one score per trajectory row.
+
+    The ``'reward'`` kind registers against ``swift.dev.reward.reward.ORM`` (a subclass of this
+    class that adds ``completion(t)`` / ``column(t, key)``), so a registered reward subclasses
+    ``ORM``; this name stays for the construction contract only.
 
     ``__call__`` may be written ``async def`` when its scoring does I/O (an API call, a database
     query): the resolved callable the scoring loop invokes runs the returned coroutine to
@@ -103,9 +107,9 @@ class RewardPlugin(SwiftPlugin):
 
     Example::
 
-        class MyReward(RewardPlugin):
-            def __call__(self, completions, **kwargs) -> List[float]:
-                return [1.0 if len(c) > 100 else 0.0 for c in completions]
+        class MyReward(ORM):
+            def __call__(self, trajectories, **kwargs) -> List[float]:
+                return [1.0 if len(self.completion(t)) > 100 else 0.0 for t in trajectories]
     """
 
     def __call__(self, **kwargs) -> List[float]:

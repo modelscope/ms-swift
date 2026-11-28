@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 # This file is used to generate `audio_codes` in the dataset.
 from modelscope import snapshot_download
 from qwen_tts import Qwen3TTSTokenizer

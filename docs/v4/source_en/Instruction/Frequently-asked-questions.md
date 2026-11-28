@@ -125,7 +125,7 @@ All checkpoints are saved by default. For details, see save_total_limit in the [
 ### Q13: Loss related issues during training process
 - The .py file of the custom loss function is imported through the `--external_plugins` parameter when used:
 ```shell
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --external_plugins /path/to/plugin.py \
     --loss_type my_loss \
     # ...

@@ -95,7 +95,7 @@ export NPROC_PER_NODE=16
 在仓库根目录执行：
 
 ```bash
-bash examples/ascend/train/olmo3/sft_lora.sh
+bash examples/v4/ascend/train/olmo3/sft_lora.sh
 ```
 
 脚本使用 `MASTER_ADDR=127.0.0.1`、`MASTER_PORT=29500` 和 `HCCL_CONNECT_TIMEOUT=600`，适用于单机运行；端口被占用时需修改脚本中的端口。示例未配置多机启动。

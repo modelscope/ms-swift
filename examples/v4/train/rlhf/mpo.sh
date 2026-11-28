@@ -1,6 +1,6 @@
 export USE_SWIFT_V5=0
 # https://arxiv.org/abs/2411.10442
-# modified from swift/examples/train/multimodal/rlhf/dpo/full.sh
+# modified from swift/examples/v4/train/multimodal/rlhf/dpo/full.sh
 nproc_per_node=4
 
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \

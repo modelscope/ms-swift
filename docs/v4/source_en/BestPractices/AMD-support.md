@@ -181,7 +181,7 @@ VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 SKIP_MULTIMODAL_MTP_VALIDATION=1 \
 USE_MCORE_GDN=1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3.5-35B-A3B \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \
     --save_safetensors true \
@@ -259,7 +259,7 @@ SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by ste
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-megatron rlhf \
+USE_SWIFT_V5=0 megatron rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-35B-A3B \
     --save_safetensors true \

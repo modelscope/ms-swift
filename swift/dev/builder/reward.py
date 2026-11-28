@@ -11,76 +11,6 @@ if TYPE_CHECKING:
 JUDGE_MAX_NEW_TOKENS = 512
 
 
-def _attached_head_checkpoint(adapter: Optional[str]) -> bool:
-    """True when a client-visible adapter dir carries a separate attached readout head.
-
-    A remotely-trained seq_cls/reranker RM saves its trained head as ``task_head.safetensors`` (the
-    host's attached-head slot), NOT as peft ``modules_to_save`` inside ``adapter_model.safetensors``.
-    The legacy local frozen-adapter path (PeftModel.from_pretrained into an in-model head) never reads
-    that file, so it scores with a random head. Detect the format so the local path can reproduce the
-    host forward through the same attached-head channel the remote branch uses.
-    """
-    import os
-    return bool(adapter) and not adapter.startswith('twinkle://') and os.path.isfile(
-        os.path.join(adapter, 'task_head.safetensors'))
-
-
-def _trained_lora_target_modules(adapter: str) -> list:
-    """The module suffixes the adapter actually trained, read from its own keys.
-
-    ``adapter_config.json`` stores the INPUT ``target_modules`` (often the bare string ``all-linear``);
-    re-expanding that on a local model whose architecture differs from the training host wraps extra
-    modules the adapter never trained (e.g. hybrid ``linear_attn`` projections), desynchronizing the
-    hidden states. Reading the trained suffixes from ``adapter_model.safetensors`` makes the reload
-    wrap exactly the trained modules, independent of the local architecture's all-linear expansion.
-    """
-    import os
-    import re
-    from safetensors import safe_open
-    modules = set()
-    with safe_open(os.path.join(adapter, 'adapter_model.safetensors'), framework='pt') as f:
-        for key in f.keys():
-            match = re.search(r'\.([A-Za-z_]+)\.lora_[AB]\.', key)
-            if match:
-                modules.add(match.group(1))
-    return sorted(modules)
-
-
-def _build_local_attached_head_reward_model(spec: 'RewardSpec', reward_model_config: 'ModelConfig',
-                                            model_dir: str) -> Any:
-    """Reproduce the serving host's frozen RM forward locally for an attached-head checkpoint.
-
-    Builds the base through twinkle's own ``TransformersModel`` (the host backend, resolving
-    ``architectures[0]`` exactly as the server does) rather than the dev family loader, attaches the
-    readout head through the adapter channel and ``load``s the trained ``task_head.safetensors`` -- the
-    SAME mechanism the remote branch uses -- so a remote-trained RM reused as a local ``--orm`` scores
-    identically (bf16) instead of through a random in-model head. ``model_dir`` is the resolved local
-    snapshot dir (the host loads from a local dir, not the hub id, so the architecture must match).
-
-    Like the remote branch, this deliberately does NOT ``set_processor(InputProcessor)``/``set_template``:
-    the dev InputProcessor injects explicit ``position_ids`` (arange, or the template's mRoPE positions),
-    and Qwen3_5's hybrid linear-attention forward routes explicit positions differently from the
-    ``position_ids=None`` model default the serving host uses -- scoring [1.232] vs the host's [1.968]
-    on the same checkpoint/encoding (defect94). Leaving twinkle's default processor keeps position_ids
-    unset so the local forward reproduces the host bit-for-bit (bf16). The reward template is still
-    returned to the caller for encoding; only the model-side processor injection is dropped.
-    """
-    import torch
-    from peft import PeftConfig
-    from twinkle.model import TransformersModel
-
-    dtype = getattr(reward_model_config, 'torch_dtype', None) or 'bfloat16'
-    if isinstance(dtype, str):
-        dtype = getattr(torch, dtype)
-    model = TransformersModel(model_id=model_dir, torch_dtype=dtype)
-    adapter_config = PeftConfig.from_pretrained(spec.adapter)
-    adapter_config.target_modules = _trained_lora_target_modules(spec.adapter)
-    model.add_adapter_to_model('reward', adapter_config, is_trainable=False,
-                               task=spec.task_type, num_labels=spec.num_labels)
-    model.load(spec.adapter, load_optimizer=False)
-    return model
-
-
 def build_reward_model(spec: 'RewardSpec', *, model_config: 'ModelConfig',
                        template_config: 'TemplateConfig', distributed_config: 'DistributedConfig',
                        rollout_config: Any, backend: str = 'vllm', sampler: Any = None,
@@ -153,7 +83,7 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
     """
     from swift.dev.builder import build_model, build_template, load_model_processor
     from swift.dev.builder.adapter import configure_frozen_adapter
-    from swift.dev.builder.model import frozen_auxiliary_distributed_config
+    from swift.dev.builder.model import derive_model_config, frozen_auxiliary_distributed_config
     from swift.dev.config import DistributedConfig
     from swift.dev.model.loader import resolve_model_info
 
@@ -163,13 +93,7 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
     model_info = resolve_model_info(
         spec.model_id, model_type=spec.model_type, revision=spec.revision,
         task_type=spec.task_type, num_labels=spec.num_labels)
-    reward_model_config = copy.copy(model_config)
-    reward_model_config.model = spec.model_id
-    # The run's config carries the POLICY's portable id in _model_id_or_path (process.py), and
-    # load_model_processor prefers it over .model for family matching. Repointing .model alone
-    # left the reward model resolved against the policy -- its tokenizer encoded reward inputs
-    # into foreign token ids (a smaller-vocab judge engine rejects them outright).
-    reward_model_config._model_id_or_path = spec.model_id
+    reward_model_config = derive_model_config(model_config, model=spec.model_id)
     reward_model_config.model_type = spec.model_type or model_info.model_type
     reward_model_config.model_revision = spec.revision
     reward_model_config.task_type = model_info.task_type
@@ -214,18 +138,17 @@ def _build_frozen_reward_model(spec: 'RewardSpec', model_config: 'ModelConfig',
         return reward_model, reward_template
     if spec.parallel_spec:
         dist = frozen_auxiliary_distributed_config(dist, device_mesh.world_size, parallel_spec=spec.parallel_spec)
-    from swift.dev.reward.scorer import SCALAR_TASK_TYPES
-    if (dist.mode == 'local' and not spec.parallel_spec and spec.task_type in SCALAR_TASK_TYPES
-            and _attached_head_checkpoint(spec.adapter)):
-        # A remote-trained attached-head RM reused locally: reproduce the host forward (defect94),
-        # not the legacy in-model-head PeftModel path that leaves the head random.
-        reward_model = _build_local_attached_head_reward_model(
-            spec, reward_model_config, model_info.model_dir)
-    else:
-        reward_model = build_model(
-            reward_model_config, dist, device_mesh=device_mesh, remote_group=remote_group)
-        reward_model = configure_frozen_adapter(
-            reward_model, reward_template, [spec.adapter] if spec.adapter else [], role='reward')
+    # One path for every mode: an attached-head checkpoint (remote-trained seq_cls/reranker RM)
+    # gets its head through configure_frozen_adapter's adapter channel, whatever dist.mode is.
+    reward_model = build_model(reward_model_config, dist, device_mesh=device_mesh, remote_group=remote_group)
+    reward_model = configure_frozen_adapter(
+        reward_model,
+        reward_template,
+        [spec.adapter] if spec.adapter else [],
+        role='reward',
+        task=reward_model_config.task_type,
+        num_labels=reward_model_config.num_labels,
+    )
     if getattr(reward_template, 'use_model', False):
         reward_template.model = getattr(reward_model, 'model', reward_model)
     return reward_model, reward_template
@@ -244,13 +167,10 @@ def _build_judge_sampler(spec: 'RewardSpec', model_config: 'ModelConfig', templa
     and a DP-only mesh. Under ray it lands in its channel's own reward DeviceGroup.
     """
     from swift.dev.builder import build_parallel_mesh, build_sampler, build_template, load_model_processor
+    from swift.dev.builder.model import derive_model_config
 
     judge_backend = backend if backend in {'vllm', 'sglang', 'transformers'} else 'vllm'
-    judge_model_config = copy.copy(model_config)
-    judge_model_config.model = spec.model_id
-    # Same stale-id contract as the scalar path: load_model_processor prefers _model_id_or_path,
-    # so the copy must repoint it too or the judge resolves to the POLICY's tokenizer.
-    judge_model_config._model_id_or_path = spec.model_id
+    judge_model_config = derive_model_config(model_config, model=spec.model_id)
     judge_model_config.task_type = spec.task_type or 'causal_lm'
     _, processor = load_model_processor(judge_model_config)
     judge_template = build_template(template_config, processor)

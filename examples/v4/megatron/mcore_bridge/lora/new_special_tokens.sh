@@ -9,7 +9,7 @@ megatron sft \
     --merge_lora false \
     --dataset 'swift/new_special_tokens' \
     --load_from_cache_file true \
-    --new_special_tokens 'examples/train/new_special_tokens/tokens.txt' \
+    --new_special_tokens 'examples/v4/train/new_special_tokens/tokens.txt' \
     --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \

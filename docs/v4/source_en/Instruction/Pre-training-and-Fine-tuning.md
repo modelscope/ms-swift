@@ -123,7 +123,7 @@ To perform inference on a LoRA-trained checkpoint using the CLI:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --stream true \
@@ -140,7 +140,7 @@ For batch inference on the validation set of the dataset:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --temperature 0 \
@@ -156,7 +156,7 @@ If you want to perform inference on an additional test set instead of using the 
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --temperature 0 \
@@ -268,7 +268,7 @@ Use the following command to start the deployment server. If the weights are tra
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --adapters output/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --temperature 0 \
@@ -286,7 +286,7 @@ We pre-trained two base models with different self-awareness LoRA incremental we
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --adapters lora1=swift/test_lora lora2=swift/test_lora2 \
     --infer_backend vllm \
     --temperature 0 \

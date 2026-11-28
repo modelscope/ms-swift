@@ -112,29 +112,16 @@ def test_judge_query_strips_trailing_assistant_and_formats():
 
 # --- defect123: process-RM (token-level) score reduction -----------------------------------------
 # PLAN (case | input | expected | failure it kills):
-#  T1 token-level [B,L,C>1], right-padded rows | last-valid-token softmax positive class per row
-#     | reshape(-1) leaking B*L*C floats / reading the first prompt token's logit as the score.
-#  T2 token-level [B,L,1] | last-valid-token scalar (no softmax) | dropping the last-token readout
-#     for a single-class process head.
-#  T3 token-level, no attention_mask | falls back to the final position | IndexError / wrong row.
-#  T4 pooled [B,1] (sequence RM) | unchanged flatten | regressing the existing scalar-RM path.
-#  T5 twinkle-pooled [B,C>1] (seq_cls postprocess already gathered the last valid token) | per-row
-#     softmax positive class | the real-ray failure: reshape(-1) leaking C class logits per row
-#     ("FunctionWorker returned 2 scores for 1 trajectories", prm_test attempt1/2).
+#  T1 token-level [B,L,C>1], right-padded rows, through twinkle's REAL seq_cls pooler | per-row
+#     last-valid-token softmax positive class | reshape(-1) leaking B*L*C floats / reading the
+#     first prompt token's logit as the score.
+#  T2 token-level [B,L,C>1] handed to score WITHOUT the pooler | RuntimeError naming the shape |
+#     a scorer-side last-valid-token branch (07-F-1) silently duplicating twinkle's pooling rule.
+#  T3 pooled [B,1] (sequence RM) | unchanged flatten | regressing the existing scalar-RM path.
+#  T4 twinkle-pooled [B,C>1] | per-row softmax positive class | the real-ray failure: reshape(-1)
+#     leaking C class logits per row ("FunctionWorker returned 2 scores for 1 trajectories").
 # Independent oracle: manual per-row last-valid-token extraction computed in the test, not the
 # scorer's own index math. Stubs stand in for model/template (no GPU); the real ray PRM run signs E2E.
-class _StubTokenTemplate:
-
-    def __init__(self, masks):
-        self._masks = masks
-        self.i = 0
-
-    def encode(self, row):
-        m = self._masks[self.i]
-        self.i += 1
-        return {'attention_mask': m}
-
-
 class _StubTokenModel:
 
     def __init__(self, logits):
@@ -145,49 +132,47 @@ class _StubTokenModel:
         return {'logits': self._logits}
 
 
+class _RowsTemplate:
+
+    def encode(self, row):
+        return {'input_ids': [1, 2, 3]}
+
+
 def _prm_rows(n):
     return [{'messages': [{'role': 'user', 'content': f'q{i}'}]} for i in range(n)]
 
 
-def test_defect123_token_level_multiclass_last_token_softmax():
+def _twinkle_pool(logits, masks):
+    """Run the per-token head through twinkle's own seq_cls postprocess, as the model does."""
+    import torch
+    from twinkle.processor.base import InputProcessor
+
+    processor = InputProcessor.__new__(InputProcessor)  # the pooling methods read no instance state
+    _, outputs = processor._postprocess_seq_cls({'attention_mask': torch.tensor(masks)}, {'logits': logits})
+    return outputs['logits']
+
+
+def test_defect123_token_level_multiclass_pooled_by_twinkle_then_reduced():
     import torch
     from swift.dev.reward.scorer import RewardModel
 
     torch.manual_seed(0)
     logits = torch.randn(3, 7, 2)
     masks = [[1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 0, 0, 0], [1, 1, 1, 1, 1, 0, 0]]
-    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate(masks))
+    rm = RewardModel(_StubTokenModel(_twinkle_pool(logits, masks)), _RowsTemplate())
     scores = rm.score(_prm_rows(3))
     oracle = [torch.softmax(logits[i, sum(masks[i]) - 1].float(), dim=-1)[-1].item() for i in range(3)]
     assert len(scores) == 3  # one score per row, NOT B*L*C
     assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))
 
 
-def test_defect123_token_level_single_class_last_token():
+def test_unpooled_token_level_logits_are_refused():
     import torch
     from swift.dev.reward.scorer import RewardModel
 
-    logits = torch.randn(2, 5, 1)
-    masks = [[1, 1, 1, 0, 0], [1, 1, 1, 1, 1]]
-    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate(masks))
-    scores = rm.score(_prm_rows(2))
-    assert scores == [logits[0, 2, 0].item(), logits[1, 4, 0].item()]
-
-
-def test_defect123_token_level_no_mask_falls_back_to_final_position():
-    import torch
-    from swift.dev.reward.scorer import RewardModel
-
-    logits = torch.randn(2, 4, 2)
-
-    class _NoMaskTemplate:
-        def encode(self, row):
-            return {'input_ids': [1, 2, 3, 4]}
-
-    rm = RewardModel(_StubTokenModel(logits), _NoMaskTemplate())
-    scores = rm.score(_prm_rows(2))
-    oracle = [torch.softmax(logits[i, 3].float(), dim=-1)[-1].item() for i in range(2)]
-    assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))
+    rm = RewardModel(_StubTokenModel(torch.randn(2, 5, 2)), _RowsTemplate())
+    with pytest.raises(RuntimeError, match=r'must be pooled \[B, C\].*\(2, 5, 2\)'):
+        rm.score(_prm_rows(2))
 
 
 def test_defect123_pooled_sequence_rm_path_unchanged():
@@ -195,7 +180,7 @@ def test_defect123_pooled_sequence_rm_path_unchanged():
     from swift.dev.reward.scorer import RewardModel
 
     logits = torch.tensor([[0.25], [0.75], [1.5]])
-    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate([[1], [1], [1]]))
+    rm = RewardModel(_StubTokenModel(logits), _RowsTemplate())
     assert rm.score(_prm_rows(3)) == [0.25, 0.75, 1.5]
 
 
@@ -207,8 +192,134 @@ def test_defect123_twinkle_pooled_multiclass_reduces_to_positive_class():
 
     torch.manual_seed(1)
     logits = torch.randn(3, 2)  # the exact shape the real PRM run delivered for 1-row batches
-    rm = RewardModel(_StubTokenModel(logits), _StubTokenTemplate([[1], [1], [1]]))
+    rm = RewardModel(_StubTokenModel(logits), _RowsTemplate())
     scores = rm.score(_prm_rows(3))
     oracle = torch.softmax(logits.float(), dim=-1)[..., -1].tolist()
     assert len(scores) == 3  # one per row, NOT 3*2 class logits
     assert all(abs(a - b) < 1e-6 for a, b in zip(scores, oracle))
+
+
+# --- 15-F-2: an attached-head RM checkpoint loads its trained head in EVERY mode -------------------
+# PLAN (case | input | expected | failure it kills):
+#  F1 adapter dir WITH task_head.safetensors, task given | add_adapter_to_model(task, num_labels) with
+#     the trained target_modules read off the weights, then load(adapter_name), set_template; NO
+#     set_processor | the ray path scoring through a random in-model head (15-F-2) / all-linear
+#     re-expansion wrapping untrained modules / explicit position_ids changing the host forward.
+#  F2 same dir, task=None | ValueError naming the head file | a silent random head.
+#  F3 plain LoRA dir (no task_head.safetensors) | legacy path unchanged: dir passed through,
+#     set_processor + set_template bound | regressing every non-attached frozen adapter.
+#  F4 twinkle TransformersModel, adapter dir with a head + task='seq_cls' | the head restored at
+#     add time (a second load is not required) | add_adapter_to_model(dir) leaving the head random.
+class _FrozenModel:
+
+    def __init__(self):
+        self.calls = []
+
+    def add_adapter_to_model(self, name, config_or_dir, **kwargs):
+        self.calls.append(('add', name, config_or_dir, kwargs))
+
+    def load(self, path, **kwargs):
+        self.calls.append(('load', path, kwargs))
+
+    def set_template(self, template, **kwargs):
+        self.calls.append(('template', kwargs))
+
+    def set_processor(self, processor_cls, **kwargs):
+        self.calls.append(('processor', kwargs))
+
+
+def _write_adapter(tmp_path, *, with_head):
+    import json
+
+    from safetensors.torch import save_file
+
+    adapter = tmp_path / 'adapter'
+    adapter.mkdir()
+    (adapter / 'adapter_config.json').write_text(json.dumps({
+        'peft_type': 'LORA', 'task_type': 'CAUSAL_LM', 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0.0,
+        'target_modules': 'all-linear', 'base_model_name_or_path': 'base'}))
+    # one trained suffix only: the config's 'all-linear' would wrap far more on another architecture
+    save_file({'base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight': torch.zeros(8, 4)},
+              str(adapter / 'adapter_model.safetensors'))
+    if with_head:
+        save_file({'task_head.weight': torch.arange(6, dtype=torch.float32).view(2, 3)},
+                  str(adapter / 'task_head.safetensors'))
+    return str(adapter)
+
+
+def test_attached_head_adapter_goes_through_the_adapter_channel_with_its_trained_modules(tmp_path):
+    from swift.dev.builder.adapter import configure_frozen_adapter
+
+    adapter = _write_adapter(tmp_path, with_head=True)
+    template = object()
+    model = _FrozenModel()
+    configure_frozen_adapter(model, template, [adapter], role='reward', task='seq_cls', num_labels=3)
+    kind, name, config, kwargs = model.calls[0]
+    assert kind == 'add' and name == 'reward_adapter'
+    assert kwargs == {'is_trainable': False, 'task': 'seq_cls', 'num_labels': 3}
+    assert config.target_modules == ['q_proj']  # read off the weights, not re-expanded all-linear
+    assert model.calls[1][0] == 'load' and model.calls[1][2] == {'adapter_name': 'reward_adapter', 'load_optimizer': False}
+    assert model.calls[2] == ('template', {'adapter_name': 'reward_adapter'})
+    assert not any(call[0] == 'processor' for call in model.calls)  # host forward: no explicit position_ids
+
+
+def test_attached_head_adapter_without_a_declared_task_is_refused(tmp_path):
+    from swift.dev.builder.adapter import configure_frozen_adapter
+
+    adapter = _write_adapter(tmp_path, with_head=True)
+    with pytest.raises(ValueError, match='task_head.safetensors.*no readout task'):
+        configure_frozen_adapter(_FrozenModel(), None, [adapter], role='reward')
+
+
+def test_plain_frozen_adapter_keeps_the_legacy_path(tmp_path):
+    from swift.dev.builder.adapter import configure_frozen_adapter
+
+    adapter = _write_adapter(tmp_path, with_head=False)
+    model = _FrozenModel()
+    configure_frozen_adapter(model, None, [adapter], role='judge', task='seq_cls', num_labels=2)
+    assert model.calls[0] == ('add', 'judge_adapter', adapter, {'is_trainable': False})
+    assert model.calls[1] == ('processor', {'adapter_name': 'judge_adapter'})
+    assert model.calls[2] == ('template', {'adapter_name': 'judge_adapter'})
+
+
+def test_transformers_model_restores_the_head_when_added_from_a_directory(tmp_path):
+    pytest.importorskip('peft')
+    import transformers
+    from peft import LoraConfig, get_peft_model
+    from safetensors.torch import save_file
+    from tokenizers import Tokenizer, models
+    from twinkle.model import TransformersModel
+
+    from swift.dev.builder.model import _resolve_model_loader
+    from swift.dev.config import ModelConfig
+
+    # A tiny hermetic base (same shape family as tests/v5/component/model/test_model_loading_e2e.py).
+    base, adapter = tmp_path / 'base', tmp_path / 'adapter'
+    base.mkdir()
+    config = transformers.Qwen2Config(
+        vocab_size=64, hidden_size=16, intermediate_size=32, num_hidden_layers=2, num_attention_heads=4,
+        num_key_value_heads=2, max_position_embeddings=64, tie_word_embeddings=True)
+    transformers.Qwen2ForCausalLM(config).save_pretrained(base)
+    transformers.PreTrainedTokenizerFast(
+        tokenizer_object=Tokenizer(models.WordLevel({f'w{i}': i for i in range(64)}, unk_token='w0')),
+        unk_token='w0',
+        pad_token='w0',
+        bos_token_id=1,
+        eos_token_id=2).save_pretrained(base)
+    # The LoRA is built by peft on this checkpoint: from_pretrained resolves the config's target
+    # modules against the real model, so a hand-written adapter file would not load.
+    get_peft_model(
+        transformers.Qwen2ForCausalLM(config),
+        LoraConfig(task_type='CAUSAL_LM', r=4, lora_alpha=8, target_modules=['q_proj'])).save_pretrained(adapter)
+    # The trained head saved beside the LoRA weights, in the key form twinkle's head state uses.
+    head_weight = torch.arange(32, dtype=torch.float32).view(2, 16)
+    save_file({'task_head.classifier.weight': head_weight}, str(adapter / 'task_head.safetensors'))
+
+    loader = _resolve_model_loader(ModelConfig(model=str(base), model_type='qwen2_5'))
+    model = TransformersModel(model_id=str(base), model_loader=loader, mixed_precision='no')
+    model.add_adapter_to_model('reward_adapter', str(adapter), is_trainable=False, task='seq_cls', num_labels=2)
+
+    head = model._attached_head('reward_adapter')
+    assert head is not None and head.classifier.weight.shape == (2, 16)
+    # The values read back from disk, not the random init a freshly built Linear carries.
+    assert torch.equal(head.classifier.weight.detach().cpu(), head_weight)

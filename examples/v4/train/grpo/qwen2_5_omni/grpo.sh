@@ -18,7 +18,7 @@ swift rlhf \
     --torch_dtype bfloat16 \
     --dataset lmms-lab/multimodal-open-r1-8k-verified#1000 \
     --load_from_cache_file true \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --max_completion_length 2048 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
@@ -38,6 +38,6 @@ swift rlhf \
     --temperature 1. \
     --top_p 0.99 \
     --top_k 50 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true

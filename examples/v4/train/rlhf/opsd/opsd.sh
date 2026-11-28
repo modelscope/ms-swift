@@ -45,7 +45,7 @@ swift rlhf \
     --vllm_gpu_memory_utilization 0.7 \
     --vllm_max_model_len 10240 \
     --sleep_level 1 \
-    --external_plugins examples/train/rlhf/opsd/opsd_plugin.py \
+    --external_plugins examples/v4/train/rlhf/opsd/opsd_plugin.py \
     --dataset 'open-r1/OpenThoughts-114k-math' \
     --lmbda 1.0 \
     --beta 0.5 \

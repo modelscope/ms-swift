@@ -43,7 +43,7 @@ dependencies = [
     "oss2",
     "packaging",
     "pandas",
-    "peft>=0.11,<0.20",
+    "peft>=0.11,<0.23",
     "pillow",
     "PyYAML>=5.4",
     "pydantic>=2,<3",
@@ -63,7 +63,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # megatron is CUDA-bound and therefore not part of all; transformer-engine stays opt-in (install_all.sh).
-megatron = ["mcore-bridge>=1.6.5", "megatron-core>=0.18,<0.21", "peft>=0.15"]
+megatron = ["mcore-bridge>=1.6.5", "megatron-core>=0.18,<0.21", "peft>=0.15,<0.23"]
 eval = ["evalscope>=1.0.0", "evalscope[opencompass]", "evalscope[vlmeval]"]
 # Installing an extra always brings the base dependencies, so all only adds eval.
 all = ["evalscope>=1.0.0", "evalscope[opencompass]", "evalscope[vlmeval]"]
@@ -104,7 +104,10 @@ exclude = ["tests", "tests.*"]
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/v5"]
+# The whole ``tests`` tree is collected: ``tests/conftest.py`` marks everything outside ``tests/v5``
+# ``slow``, so PR runs (``-m "not slow"``) keep only the maintained suites while the scheduled bare
+# ``pytest`` still runs the legacy end-to-end scripts.
+testpaths = ["tests"]
 addopts = "--strict-markers -ra"
 markers = [
   "accel(n): needs n accelerators (CUDA or NPU); defaults to 1",

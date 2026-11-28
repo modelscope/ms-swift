@@ -2,7 +2,7 @@ rlhf_type: grpo
 
 model: Qwen/Qwen2.5-VL-3B-Instruct
 dataset: AI-ModelScope/clevr_cogen_a_train#2000
-external_plugins: examples/train/grpo/plugin/plugin.py
+external_plugins: examples/v4/train/grpo/plugin/plugin.py
 reward_funcs: [external_r1v_acc, format]
 overlong_filter: false
 dataset_num_proc: 4
@@ -32,7 +32,7 @@ loss_type: grpo
 advantage_estimator: grpo
 importance_sampling_level: token
 log_rollout_offpolicy_metrics: true
-system: examples/train/grpo/prompt.txt
+system: examples/v4/train/grpo/prompt.txt
 
 use_vllm: true
 

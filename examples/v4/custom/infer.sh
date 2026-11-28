@@ -1,5 +1,5 @@
 export USE_SWIFT_V5=0
-# sh examples/custom/infer.sh
+# sh examples/v4/custom/infer.sh
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \

@@ -15,7 +15,7 @@ megatron rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3-4B \
     --teacher_model Qwen/Qwen3-4B \
-    --external_plugins examples/train/rlhf/opsd/opsd_plugin.py \
+    --external_plugins examples/v4/train/rlhf/opsd/opsd_plugin.py \
     --dataset 'open-r1/OpenThoughts-114k-math' \
     --use_vllm true \
     --vllm_mode colocate \

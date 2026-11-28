@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 import soundfile as sf
 import torch
 from qwen_tts import Qwen3TTSModel

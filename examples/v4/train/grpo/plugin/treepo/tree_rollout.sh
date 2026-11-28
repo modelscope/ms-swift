@@ -12,7 +12,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift rollout \
     --model Qwen/Qwen2.5-0.5B \
     --vllm_use_async_engine true \
-    --external_plugins examples/train/grpo/plugin/treepo/tree_rollout_plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/treepo/tree_rollout_plugin.py \
     --multi_turn_scheduler tree_rollout_scheduler \
     --max_turns 6
 
@@ -29,7 +29,7 @@ swift rlhf \
     --vllm_server_port 8000 \
     --tuner_type full \
     --torch_dtype bfloat16 \
-    --external_plugins examples/train/grpo/plugin/treepo/tree_rollout_plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/treepo/tree_rollout_plugin.py \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --split_dataset_ratio 0 \
     --max_completion_length 2048 \

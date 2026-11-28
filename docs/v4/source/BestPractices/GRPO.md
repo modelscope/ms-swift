@@ -30,7 +30,7 @@ register_dataset(
 通过 template， 使用 numbers 和 target 完成任务定义，并给到 query 字段供模型采样使用。同时，我们需要保留 nums 和 target 两个字段，用于后续的奖励函数计算。
 
 ## 奖励函数定义：
-本任务使用的奖励函数有两个，一个是 Deepseek-R1 中提到的格式奖励函数，另一是 Coundown Game 的准确性奖励函数。前者已经在swift中内置，通过 `--reward_funcs format` 可以直接使用，而后者需要我们自己定义，在这里我们使用 external_plugin 的方式定义准确性奖励函数，将代码放在`swift/examples/train/grpo/plugin/plugin.py`中。
+本任务使用的奖励函数有两个，一个是 Deepseek-R1 中提到的格式奖励函数，另一是 Coundown Game 的准确性奖励函数。前者已经在swift中内置，通过 `--reward_funcs format` 可以直接使用，而后者需要我们自己定义，在这里我们使用 external_plugin 的方式定义准确性奖励函数，将代码放在`swift/examples/v4/train/grpo/plugin/plugin.py`中。
 
 在这里，奖励函数的输入包括 completions、target 和 nums 三个字段，分别表示模型生成的文本、目标答案和可用的数字。每个都是list，支持多个 completion 同时计算。注意，在这里，除了 completions 之外的参数都是数据集中定义的字段透传而来，如果有任务上的变动，可以分别对数据集和奖励函数做对应的改变即可。
 ```python
@@ -114,7 +114,7 @@ num_processes * per_device_train_batch_size * gradient_accumulation_steps = 2 * 
 其他参数的设置，没有做太多探讨，所以这里不进行详细说明。
 ```bash
 CUDA_VISIBLE_DEVICES=2 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --model Qwen/Qwen2.5-3B-Instruct
 ```
 
@@ -122,10 +122,10 @@ swift rollout \
 CUDA_VISIBLE_DEVICES=0,1 \
 WANDB_API_KEY=your_wandb_key \
 NPROC_PER_NODE=2 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_countdown format \
     --use_vllm true \
     --vllm_mode server \

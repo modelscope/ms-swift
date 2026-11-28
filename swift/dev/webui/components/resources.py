@@ -151,15 +151,6 @@ def build_template_from(tokenizer_id: str, template_kv: Optional[dict], node_id:
     return build_template(template_config, processor)
 
 
-def _is_remote_handle(item: Any) -> bool:
-    """Whether a batch item is an infra reference rather than a row value.
-
-    A stashed channel yields raw ObjectRefs; a lazy-collected result yields a handle exposing
-    ``result``. Both dereference at the remote consumer, never in the calling process.
-    """
-    return hasattr(item, 'result') or type(item).__name__ == 'ObjectRef'
-
-
 def encode_rows(template: Any, data: Any) -> list:
     """One batch of rows / trajectories -> native encoded features.
 
@@ -187,11 +178,9 @@ def encode_rows(template: Any, data: Any) -> list:
         raise ComponentError(
             'cannot encode: a dict batch must expose a row list under "rows" '
             f'(got keys {sorted(data.keys())[:8]})')
-    if items and all(_is_remote_handle(item) for item in items):
-        # Stashed trajectory rows: their encoding was built at the rollout worker and rides
-        # as infra references; the remote forward resolves each row worker-side, so they pass
-        # through verbatim -- never re-encoded or materialised in this process.
-        return list(items)
+    # Every row is materialised by this point: both callers deref a handle-carrying batch in the
+    # session process before the call, so a non-dict item here is a stage that handed off a
+    # reference without resolving it -- not a lane this function forwards.
     if items and not all(isinstance(item, dict) for item in items):
         kinds = sorted({type(item).__name__ for item in items if not isinstance(item, dict)})
         raise ComponentError(

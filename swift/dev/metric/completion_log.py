@@ -18,7 +18,8 @@ class CompletionLog:
     and its reasoning, the full messages, the completion length and the trajectory's ``truncated``
     flag and reward accounting -- the named ``rewards.orm`` column (the score rows ``scores``,
     row-aligned, as the driver hands them out beside the trajectories, when given; the trajectory's
-    own column otherwise) plus the rollout-owned ``rewards.env`` when the trajectory carries it.
+    own column otherwise) plus every rollout-owned reward key the trajectory carries
+    (``rewards.env``, ``rewards.check``, ...).
     """
 
     @remote_function(dispatch='all', collect='first', lazy_collect=False)
@@ -37,15 +38,15 @@ class CompletionLog:
             if path is not None:
                 assistant = next((m for m in reversed(messages) if m.get('role') == 'assistant'), {})
                 source = scores[index] if scores is not None else traj
-                # The rollout owns rewards.env (the sandbox's own reward, stamped at episode
-                # finish); the scorer owns the orm names. The audit line must account BOTH --
-                # writing only the orm column silently dropped the env channel, so env/training
-                # reward accounting could not be verified from the run artifacts. The flat orm
-                # schema is unchanged; 'env' joins it only when the trajectory carries it.
+                # The scorer owns the orm names; the rollout owns every other reward key that
+                # rides the trajectory (rewards.env, rewards.check, whatever a later rollout
+                # adds), stamped at episode finish. The audit line accounts both, so training
+                # reward accounting can be verified from the run artifacts: a hardcoded key
+                # list dropped each new rollout channel as it appeared. ``baseline`` is the
+                # reference baseline, not a reward, and stays out.
                 traj_rewards = traj.get('rewards') or {}
                 rewards = dict((source.get('rewards') or {}).get('orm') or {})
-                if 'env' in traj_rewards:
-                    rewards['env'] = traj_rewards['env']
+                rewards.update({key: value for key, value in traj_rewards.items() if key not in ('orm', 'baseline')})
                 lines.append(json.dumps({
                     'step': step,
                     'prompt': messages[:first],

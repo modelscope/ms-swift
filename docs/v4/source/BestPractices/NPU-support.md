@@ -251,7 +251,7 @@ pip install vllm-ascend==0.23.0 \
 训练前，在仓库根目录使用训练所用的 Python 环境运行：
 
 ```shell
-python examples/ascend/check_env.py
+python examples/v4/ascend/check_env.py
 ```
 
 脚本按基础环境、软件组件、Ascend 安装信息和 NPU 状态四组输出表格。软件组件包括 PyTorch、torch-npu、ms-swift、Megatron Core、MindSpeed、mcore-bridge 和 triton-ascend，未检测到的组件会逐项提示。Note 列显示组件安装位置、Python 解释器路径或驱动/CANN 版本文件所在目录，长路径自动换行。取得设备信息时附上 `npu-smi` 自带的状态表格。
@@ -447,7 +447,7 @@ export WORK_DIR=output/npu-modelscope-qwen3-0_6b-lora
 
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model $MODEL_ID \
     --dataset $DATASET_ID#1000 \
     --split_dataset_ratio 0.01 \
@@ -475,7 +475,7 @@ swift sft \
 export CKPT_DIR=$(ls -dt $WORK_DIR/*/checkpoint-* | head -n 1)
 
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters $CKPT_DIR \
     --merge_lora true
 
@@ -487,7 +487,7 @@ export MERGED_DIR=${CKPT_DIR}-merged
 ```shell
 # 直接加载 LoRA checkpoint
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters $CKPT_DIR \
     --stream true \
     --temperature 0 \
@@ -495,7 +495,7 @@ swift infer \
 
 # 加载 Merge 后的完整权重
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model $MERGED_DIR \
     --stream true \
     --temperature 0 \
@@ -506,7 +506,7 @@ swift infer \
 
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model $MERGED_DIR \
     --host 0.0.0.0 \
     --port 8000 \
@@ -553,7 +553,7 @@ curl http://localhost:8000/v1/chat/completions \
 # 显存需求: 28 GB
 # 运行时长: 8小时
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
@@ -578,7 +578,7 @@ swift sft \
 # 运行时长: 2小时
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
@@ -599,7 +599,7 @@ ZeRO2:
 # 运行时长: 3.5小时
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
@@ -618,7 +618,7 @@ ZeRO3:
 # 运行时长: 8.5小时
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
@@ -637,7 +637,7 @@ swift sft \
 # 实验环境: 4 * 昇腾910B3
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.5-4B \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#2000 \
     --split_dataset_ratio 0.01 \
@@ -675,7 +675,7 @@ swift sft \
 ms-swift 在 NPU 环境下默认会启用模型层 patch，以适配部分 Transformers 模型在昇腾 NPU 上的算子和兼容性需求。通常不需要关闭；如果怀疑某个模型的 loss 异常、forward 报错与 NPU 模型 patch 有关，需要临时切回 Transformers 原生实现做对比，可以设置：
 
 ```shell
-swift sft ... --enable_npu_model_patch false
+USE_SWIFT_V5=0 swift sft ... --enable_npu_model_patch false
 ```
 
 ## 模型保存、Merge LoRA 和断点续训
@@ -693,7 +693,7 @@ output/Qwen3.5-4B-NPU/vx-xxx/
 
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/Qwen3.5-4B-NPU/vx-xxx/checkpoint-xxx \
     --merge_lora true
 ```
@@ -705,7 +705,7 @@ swift export \
 ```shell
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.5-4B \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#2000 \
     --tuner_type lora \
@@ -721,7 +721,7 @@ swift sft \
 原始模型:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen2-7B-Instruct \
     --stream true --max_new_tokens 2048
 ```
@@ -729,7 +729,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 LoRA微调后:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --adapters xxx/checkpoint-xxx --load_data_args true \
     --stream true --max_new_tokens 2048
 ```
@@ -737,7 +737,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 全参数训练或 Merge LoRA 后的模型，可以通过 `--model` 指向对应的完整权重目录：
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --model xxx/checkpoint-xxx-merged \
     --stream true --max_new_tokens 2048
 ```
@@ -750,17 +750,17 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 原始模型:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model Qwen/Qwen2-7B-Instruct --max_new_tokens 2048
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen2-7B-Instruct --max_new_tokens 2048
 ```
 
 LoRA微调后:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --adapters xxx/checkpoint-xxx --max_new_tokens 2048
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy --adapters xxx/checkpoint-xxx --max_new_tokens 2048
 
 # Merge LoRA 后部署完整权重
-ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max_new_tokens 2048
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy --model xxx/checkpoint-xxx-merged --max_new_tokens 2048
 ```
 
 ### 使用vLLM-ascend进行部署
@@ -774,7 +774,7 @@ pip install vllm-ascend==0.23.0 \
 ```
 原始模型：
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
     --infer_backend vllm \
     --max_new_tokens 2048
@@ -783,17 +783,17 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 LoRA微调后:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --adapters xxx/checkpoint-xxx \
     --infer_backend vllm \
     --max_new_tokens 2048
 
 # Merge LoRA 后部署完整权重
-ASCEND_RT_VISIBLE_DEVICES=0 swift export \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift export \
     --adapters xx/checkpoint-xxx \
     --merge_lora true
 
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --model xxx/checkpoint-xxx-merged \
     --infer_backend vllm \
     --max_new_tokens 2048

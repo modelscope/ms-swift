@@ -169,12 +169,79 @@ def apply_tuner(
     )
 
 
-def configure_frozen_adapter(model: Any, template: Any, adapters: List[str], *, role: str) -> Any:
-    """Load one frozen adapter onto an auxiliary model and bind its processor/template group."""
+def attached_head_checkpoint(adapter: Optional[str]) -> bool:
+    """True when a client-visible adapter dir carries a separate attached readout head.
+
+    A remotely-trained seq_cls/reranker model saves its trained head as ``task_head.safetensors``
+    (the host's attached-head slot), NOT as peft ``modules_to_save`` inside
+    ``adapter_model.safetensors``. Loading such a checkpoint through the plain frozen-adapter path
+    (PeftModel.from_pretrained into the model's own head) never reads that file, so it scores with
+    a random head. Every mode selects on this one predicate (15-F-2: the local-only gate left the
+    ray path on the random head).
+    """
+    import os
+    return bool(adapter) and not adapter.startswith('twinkle://') and os.path.isfile(
+        os.path.join(adapter, 'task_head.safetensors'))
+
+
+def _trained_lora_target_modules(adapter: str) -> list:
+    """The module suffixes the adapter actually trained, read from its own keys.
+
+    ``adapter_config.json`` stores the INPUT ``target_modules`` (often the bare string ``all-linear``);
+    re-expanding that on a model whose architecture differs from the training host wraps extra
+    modules the adapter never trained (e.g. hybrid ``linear_attn`` projections), desynchronizing the
+    hidden states. Reading the trained suffixes from ``adapter_model.safetensors`` makes the reload
+    wrap exactly the trained modules, independent of the local architecture's all-linear expansion.
+    """
+    import os
+    import re
+    from safetensors import safe_open
+    modules = set()
+    with safe_open(os.path.join(adapter, 'adapter_model.safetensors'), framework='pt') as f:
+        for key in f.keys():
+            match = re.search(r'\.([A-Za-z_]+)\.lora_[AB]\.', key)
+            if match:
+                modules.add(match.group(1))
+    return sorted(modules)
+
+
+def configure_frozen_adapter(model: Any,
+                             template: Any,
+                             adapters: List[str],
+                             *,
+                             role: str,
+                             task: Optional[str] = None,
+                             num_labels: Optional[int] = None) -> Any:
+    """Load one frozen adapter onto an auxiliary model and bind its processor/template group.
+
+    ``task`` / ``num_labels`` name the readout head the adapter's checkpoint may carry
+    (``attached_head_checkpoint``). Such a checkpoint goes through the attached-head channel in
+    EVERY mode: the head is built by ``add_adapter_to_model(task=...)`` and restored from
+    ``task_head.safetensors`` by the following ``load`` -- the same mechanism the serving host
+    used to train it. Its model-side processor is deliberately NOT replaced: the dev
+    InputProcessor injects explicit ``position_ids``, which a hybrid-attention forward routes
+    differently from the ``position_ids=None`` default the host scores with (defect94); the
+    template is still returned for encoding. A head checkpoint without a declared task is refused
+    rather than loaded onto a random head.
+    """
     from swift.dev.processor import InputProcessor, processor_kwargs
 
     if len(adapters) > 1:
         raise ValueError(f"{role}_adapters currently supports exactly one adapter per auxiliary model.")
+    if adapters and attached_head_checkpoint(adapters[0]):
+        if task is None:
+            raise ValueError(
+                f"{role} adapter {adapters[0]!r} carries a trained task_head.safetensors but no readout "
+                "task was declared for it; pass task=<seq_cls|reranker> so the head is attached.")
+        from peft import PeftConfig
+
+        adapter_name = f"{role}_adapter"
+        adapter_config = PeftConfig.from_pretrained(adapters[0])
+        adapter_config.target_modules = _trained_lora_target_modules(adapters[0])
+        model.add_adapter_to_model(adapter_name, adapter_config, is_trainable=False, task=task, num_labels=num_labels)
+        model.load(adapters[0], adapter_name=adapter_name, load_optimizer=False)
+        model.set_template(template, adapter_name=adapter_name)
+        return model
     if adapters:
         adapter_name = f"{role}_adapter"
         model.add_adapter_to_model(adapter_name, adapters[0], is_trainable=False)

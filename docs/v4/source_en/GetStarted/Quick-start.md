@@ -36,7 +36,7 @@ For the installation of ms-swift, please refer to the [installation documentatio
 ```shell
 # 13GB
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3-4B-Instruct-2507 \
     --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -77,7 +77,7 @@ After training is complete, use the following command to infer with the trained 
 ```shell
 # Using an interactive command line for inference.
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --temperature 0 \
@@ -85,7 +85,7 @@ swift infer \
 
 # merge-lora and use vLLM for inference acceleration
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --merge_lora true \
@@ -99,7 +99,7 @@ Finally, use the following command to push the model to ModelScope:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<your-model-id>' \

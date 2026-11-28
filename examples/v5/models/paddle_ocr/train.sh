@@ -2,9 +2,10 @@
 #
 # model_type = `paddleocr_vl` (swift/dev/model/loader/baidu.py, PaddleOCR1_5Loader; template
 # `paddle_ocr_1_5`). swift resolves it from --model, so no explicit --model_type/--template is needed.
-# The 1.5/1.6 checkpoints are transformers-NATIVE (transformers>=5.0, loaded via
-# AutoModelForImageTextToText); the original PaddleOCR-VL is remote-code pinned to transformers<5.0 and
-# is deliberately NOT covered by this loader. This recipe fine-tunes the LLM with LoRA on a handwriting
+# The 1.5/1.6 checkpoints SHIP remote code: the loader sets trust_remote_code=True and loads them via
+# AutoModelForCausalLM (transformers>=5.0), because the transformers-native paddleocr_vl class does not
+# match these checkpoints. The original PaddleOCR-VL is remote-code pinned to transformers<5.0 and is
+# deliberately NOT covered by this loader. This recipe fine-tunes the LLM with LoRA on a handwriting
 # LaTeX OCR corpus while --freeze_vit/--freeze_aligner keep the vision tower and projector frozen.
 #
 # --padding_free true packs the batch without pad tokens (flash_attention_2 varlen path), which is why

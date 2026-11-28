@@ -175,10 +175,10 @@ Multi-Teacher 允许同时连接多个外部教师 API，按 tag 将每条样本
 
 ```bash
 # 部署两个教师服务（GKD 需 max_logprobs >= gkd_logits_topk）
-CUDA_VISIBLE_DEVICES=1 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 64
-CUDA_VISIBLE_DEVICES=2 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 64
+CUDA_VISIBLE_DEVICES=1 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 64
+CUDA_VISIBLE_DEVICES=2 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 64
 
-CUDA_VISIBLE_DEVICES=0 swift rlhf \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3.5-0.6B \
     --teacher_model_server '[{"url":"http://localhost:8000","tags":["data/math.jsonl"]},{"url":"http://localhost:8001","tags":["data/code.jsonl"]}]' \
@@ -190,10 +190,10 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
 **示例：OPD-RL + 多 teacher**
 
 ```bash
-CUDA_VISIBLE_DEVICES=1 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 1
-CUDA_VISIBLE_DEVICES=2 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 1
+CUDA_VISIBLE_DEVICES=1 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 1
+CUDA_VISIBLE_DEVICES=2 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 1
 
-CUDA_VISIBLE_DEVICES=0 swift rlhf \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-0.6B \
     --teacher_model_server '[{"url":"http://localhost:8000","tags":["data/math.jsonl"]},{"url":"http://localhost:8001","tags":["data/code.jsonl"]}]' \
@@ -254,7 +254,7 @@ loss = D(P_teacher(·|x, y), P_student(·|x, y))
 
 ```bash
 # 步骤 1：部署教师模型（max_logprobs 需 >= gkd_logits_topk）
-CUDA_VISIBLE_DEVICES=0 swift deploy \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen3.5-9B \
     --infer_backend vllm \
     --port 8000 \
@@ -263,7 +263,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 # 步骤 2：启动 GKD 训练
 CUDA_VISIBLE_DEVICES=1,2,3,4 \
 NPROC_PER_NODE=4 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3.5-2B \
     --teacher_model_server http://localhost:8000 \

@@ -199,10 +199,15 @@ class ComponentDescriptor:
     execution: str = 'driver'
     #: 展示归属面（算法/资源/运行/产物）：前端分类与投影的唯一来源。
     surface: str = SURFACE_ALGORITHM
+    #: 组宽参数名：该参数是组件的分组事实（一个提示展开的生成条数）。同 frame 内声明了组宽
+    #: 的成员必须同值；Graph 只按这条元信息校验，不认识具体组件类型。
+    group_width: str = ''
 
     def __post_init__(self) -> None:
         if self.lifecycle not in LIFECYCLES:
             raise ValueError(f'{self.type}: 非法生命周期 {self.lifecycle!r}')
+        if self.group_width and self.group_width not in {param.name for param in self.params}:
+            raise ValueError(f'{self.type}: group_width 指向未声明参数 {self.group_width!r}')
         if self.execution not in ('driver', 'remote'):
             raise ValueError(f'{self.type}: 非法执行位 {self.execution!r}')
         if self.surface not in SURFACES:
@@ -249,4 +254,5 @@ class ComponentDescriptor:
                 'client_factory': self.client_factory, 'effects': list(self.effects),
                 'exclusive_inputs': [list(group) for group in self.exclusive_inputs],
                 'required_when': [[key, value, list(ports)] for key, value, ports in self.required_when],
-                'owner_kind': self.owner_kind, 'execution': self.execution, 'surface': self.surface}
+                'owner_kind': self.owner_kind, 'execution': self.execution, 'surface': self.surface,
+                'group_width': self.group_width}

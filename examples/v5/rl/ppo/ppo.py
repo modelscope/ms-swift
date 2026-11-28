@@ -205,108 +205,113 @@ def main() -> None:
     lent = False
 
     def sync() -> None:
-        # COLOCATE PUBLICATION: offload the critic first (it shares the trainer cards), then push
-        # the policy weights -- the sync wakes the sampler and takes the GPUs.
+        # WEIGHT PUBLICATION: push the policy weights to the sampler. Under colocate the sync wakes the
+        # sampler and takes the GPUs (the critic shares the trainer cards, so it is offloaded first; the sync
+        # itself leaves the policy offloaded).
         nonlocal lent
         if cluster.colocate:
             cluster.value_model.offload_to_cpu(**offload_kwargs(rollout_config))
-            lent = True
         cluster.engine.sync_weights()
+        lent = cluster.colocate
 
     def reclaim() -> None:
+        # COLOCATE HANDOVER: sleep the sampler (offload its weights/KV), reload the trainer.
         nonlocal lent
-        sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-        cluster.model.reload_to_gpu()
-        cluster.value_model.reload_to_gpu()
-        lent = False
+        if lent:
+            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
+            cluster.model.reload_to_gpu()
+            cluster.value_model.reload_to_gpu()
+            lent = False
 
     batches = 0
     state.handler.on_train_begin()
     try:
-        sync()  # initial publication: the sampler must start from the policy's weights
-        for trajs, batch_facts in driver:
-            if cluster.colocate:
+        try:
+            sync()  # initial publication: the sampler must start from the policy's weights
+            for trajs, batch_facts in driver:
                 reclaim()
-            # NONEMPTY-RESPONSE RULE (in the worker, on the real rows): drop rows with no response
-            # tokens; the kept indices slice the row-aligned score column to what actually trains.
-            trajs, kept_facts = cluster.traj_filter.select(
-                trajs, where=lambda traj: bool(traj.get('response_token_ids')))
-            if not trajs:
-                raise RuntimeError('the pulled batch has no response tokens to train on.')
-            scores = [batch_facts['scores'][index] for index in kept_facts['indices']]
-            lengths = [p + r for p, r in zip(kept_facts.get('prompt_lengths') or (),
-                                             kept_facts.get('response_lengths') or ())]
-            # DP LANE BALANCING: GAE is per-sample (no group contract), so whole rows may move
-            # freely across ranks; lane_restore puts results back into the caller's order (the
-            # critic's rank-local token mean is order-sensitive and trains the original order).
-            lane_trajs, lane_order, lane_restore = balance_lanes(
-                state, trajs, lengths, group_size=1, micro_batch_kwargs=batching)
-            lane_scores = scores if lane_order is None else [scores[index] for index in lane_order]
-            # CRITIC VALUES + REFERENCE LOGPS: two whole-batch response-framed forwards. The
-            # reference logps are taken at the SAMPLING temperature (the ratio math compares
-            # T-scaled logps; a T=1 forward would skew every KL term).
-            values_out = cluster.value_model.forward_only(
-                inputs=lane_trajs, output_frame='response', output_fields=('values',),
-                task='value', **batching)
-            ref_out = cluster.reference.forward_only(
-                inputs=lane_trajs, output_frame='response', output_fields=('logps',),
-                temperature=temperature, **batching,
-                **({'disable_lora': True} if ref_shared else {}))
-            # THE GAE CALL (the heart of PPO): token rewards = ORM score on the last token minus
-            # kl_coef * KL; GAE over the pre-update critic values (gamma/lam); the rows come back
-            # carrying advantages / returns / old_logps / old_values -- every anchor the clipped
-            # losses read. Swap gamma/lam/kl_coef in RLConfig to change the estimator's behavior.
-            trajs, gae_summary = cluster.advantage(
-                lane_trajs, ref_out=ref_out, value_out=values_out, scores=lane_scores)
-            if lane_restore is not None:
-                trajs = [trajs[position] for position in lane_restore]
-            reward_metric.reset()
-            reward_metric.accumulate(
-                rewards={'total': list(gae_summary.get('reward_totals') or ())},
-                completion_lengths=list(kept_facts.get('response_lengths') or ()))
-            # TRAIN BOTH MODELS: num_ppo_epochs replays of the batch; each update steps the policy
-            # (clipped surrogate over advantages/old_logps) THEN the critic (clipped value loss over
-            # returns/old_values, task='value') within the SAME optimizer step. The anchors stay
-            # fixed across replays -- that is PPO's batch re-use.
-            total_samples = len(trajs) * max(1, rl_config.num_ppo_epochs)
-            for lo, hi in optimizer_batch_slices(total_samples, train_batch_size, ga):
+                # NONEMPTY-RESPONSE RULE (in the worker, on the real rows): drop rows with no response
+                # tokens; the kept indices slice the row-aligned score column to what actually trains.
+                trajs, kept_facts = cluster.traj_filter.select(
+                    trajs, where=lambda traj: bool(traj.get('response_token_ids')))
+                if not trajs:
+                    raise RuntimeError('the pulled batch has no response tokens to train on.')
+                scores = [batch_facts['scores'][index] for index in kept_facts['indices']]
+                lengths = [p + r for p, r in zip(kept_facts.get('prompt_lengths') or (),
+                                                 kept_facts.get('response_lengths') or ())]
+                # DP LANE BALANCING: GAE is per-sample (no group contract), so whole rows may move
+                # freely across ranks; lane_restore puts results back into the caller's order (the
+                # critic's rank-local token mean is order-sensitive and trains the original order).
+                lane_trajs, lane_order, lane_restore = balance_lanes(
+                    state, trajs, lengths, group_size=1, micro_batch_kwargs=batching)
+                lane_scores = scores if lane_order is None else [scores[index] for index in lane_order]
+                # CRITIC VALUES + REFERENCE LOGPS: two whole-batch response-framed forwards. The
+                # reference logps are taken at the SAMPLING temperature (the ratio math compares
+                # T-scaled logps; a T=1 forward would skew every KL term).
+                values_out = cluster.value_model.forward_only(
+                    inputs=lane_trajs, output_frame='response', output_fields=('values',),
+                    task='value', **batching)
+                ref_out = cluster.reference.forward_only(
+                    inputs=lane_trajs, output_frame='response', output_fields=('logps',),
+                    temperature=temperature, **batching,
+                    **({'disable_lora': True} if ref_shared else {}))
+                # THE GAE CALL (the heart of PPO): token rewards = ORM score on the last token minus
+                # kl_coef * KL; GAE over the pre-update critic values (gamma/lam); the rows come back
+                # carrying advantages / returns / old_logps / old_values -- every anchor the clipped
+                # losses read. Swap gamma/lam/kl_coef in RLConfig to change the estimator's behavior.
+                trajs, gae_summary = cluster.advantage(
+                    lane_trajs, ref_out=ref_out, value_out=values_out, scores=lane_scores)
+                if lane_restore is not None:
+                    trajs = [trajs[position] for position in lane_restore]
+                reward_metric.reset()
+                reward_metric.accumulate(
+                    rewards={'total': list(gae_summary.get('reward_totals') or ())},
+                    completion_lengths=list(kept_facts.get('response_lengths') or ()))
+                # TRAIN BOTH MODELS: num_ppo_epochs replays of the batch; each update steps the policy
+                # (clipped surrogate over advantages/old_logps) THEN the critic (clipped value loss over
+                # returns/old_values, task='value') within the SAME optimizer step. The anchors stay
+                # fixed across replays -- that is PPO's batch re-use.
+                total_samples = len(trajs) * max(1, rl_config.num_ppo_epochs)
+                for lo, hi in optimizer_batch_slices(total_samples, train_batch_size, ga):
+                    if state.reached_max() or state.should_stop():
+                        break
+                    indices = [index % len(trajs) for index in range(lo, hi)]
+                    update, balance_metrics = balance_update(
+                        state, [trajs[index] for index in indices], [lengths[index] for index in indices],
+                        micro_batch_kwargs=batching)
+                    state.micro_step += (hi - lo) // train_batch_size
+                    state.handler.on_step_begin()
+                    cluster.model.forward_backward(
+                        inputs=update, gradient_accumulation_steps=1, temperature=temperature, **batching)
+                    state.handler.on_pre_optimizer_step()
+                    cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
+                                                     gradient_accumulation_steps=1)
+                    # The critic trains the ORIGINAL order (its rank-local token mean is not
+                    # permutation-invariant, unlike the policy's seq-mean-token-mean loss).
+                    cluster.value_model.forward_backward(
+                        inputs=[trajs[index] for index in indices], gradient_accumulation_steps=1,
+                        task='value', **batching)
+                    cluster.value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
+                                                           gradient_accumulation_steps=1)
+                    state.handler.on_optimizer_step()
+                    state.record(extra_metrics=balance_metrics)
+                    state.step_tail(save=save)
+                # WEIGHT PUBLICATION every sync_every batches (the critic never enters a publish --
+                # the sampler only ever generates with the policy).
+                batches += 1
+                if batches % sync_every == 0 and not (state.reached_max() or state.should_stop()):
+                    sync()
                 if state.reached_max() or state.should_stop():
                     break
-                indices = [index % len(trajs) for index in range(lo, hi)]
-                update, balance_metrics = balance_update(
-                    state, [trajs[index] for index in indices], [lengths[index] for index in indices],
-                    micro_batch_kwargs=batching)
-                state.micro_step += (hi - lo) // train_batch_size
-                state.handler.on_step_begin()
-                cluster.model.forward_backward(
-                    inputs=update, gradient_accumulation_steps=1, temperature=temperature, **batching)
-                state.handler.on_pre_optimizer_step()
-                cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
-                                                 gradient_accumulation_steps=1)
-                # The critic trains the ORIGINAL order (its rank-local token mean is not
-                # permutation-invariant, unlike the policy's seq-mean-token-mean loss).
-                cluster.value_model.forward_backward(
-                    inputs=[trajs[index] for index in indices], gradient_accumulation_steps=1,
-                    task='value', **batching)
-                cluster.value_model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
-                                                       gradient_accumulation_steps=1)
-                state.handler.on_optimizer_step()
-                state.record(extra_metrics=balance_metrics)
-                state.step_tail(save=save)
-            # WEIGHT PUBLICATION every sync_every batches (the critic never enters a publish --
-            # the sampler only ever generates with the policy).
-            batches += 1
-            if batches % sync_every == 0 and not (state.reached_max() or state.should_stop()):
-                sync()
-            if state.reached_max() or state.should_stop():
-                break
+        finally:
+            # TEARDOWN in fixed order: close the driver first, then return the lent devices so the
+            # final save below finds the model resident; a cleanup error must not mask an in-flight
+            # training exception.
+            state.stream_stats = close_driver_preserving_error(driver)
+            reclaim()
         state.handler.on_train_end()
         save_final_checkpoint(cluster.model, save, enabled=True)
     finally:
-        # TEARDOWN: close the driver, return lent devices, then release every actor.
-        state.stream_stats = close_driver_preserving_error(driver)
-        if lent:
-            reclaim()
         finalize_rl_resources(
             state, cluster, remote_run=False, driver=driver, recipe='PPO-example',
             finish=lambda: state.finish_rollout_metrics(stream_stats=state.stream_stats,

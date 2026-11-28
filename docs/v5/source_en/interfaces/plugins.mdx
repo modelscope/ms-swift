@@ -11,7 +11,7 @@ The CLI imports `external_plugins`, registration executes, Config selects names,
 
 | Kind | Contract | Selection parameter | Purpose |
 |---|---|---|---|
-| `reward` | `RewardPlugin` | `orm` | Per-completion rewards using dataset columns |
+| `reward` | `ORM` | `orm` | Per-trajectory rewards reading the completion and dataset columns |
 | `prm_scorer` | `PRMSegmentScorer` | `prm_scorer` | Segment boundaries for process rewards |
 | `callback` | `TrainCallback` | `callbacks` | Training, logging, saving and evaluation events |
 | `param_groups` | `ParamGroupsPlugin` | `param_groups_plugins` | Declarative optimizer parameter-group rules |
@@ -27,13 +27,14 @@ Loss, metric and optimizer classes belong to twinkle kernel namespaces, selected
 Save as `my_plugin.py`:
 
 ```python
-from swift.dev.utils.plugin import PluginRegistry, RewardPlugin
+from swift.dev.reward.reward import ORM
+from swift.dev.utils.plugin import PluginRegistry
 
 
 @PluginRegistry.register('reward', 'length_bonus')
-class LengthBonus(RewardPlugin):
-    def __call__(self, completions, **columns):
-        return [1.0 if len(text) > 100 else 0.0 for text in completions]
+class LengthBonus(ORM):
+    def __call__(self, trajectories, **kwargs):
+        return [1.0 if len(self.completion(t)) > 100 else 0.0 for t in trajectories]
 ```
 
 Use the math dataset from [Quick Start](../get-started/quick-start.mdx) (`messages` holds only the prompt; `solution` is available to rewards), and install the sampler:
@@ -60,7 +61,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift rl \
     --output_dir output/reward-plugin
 ```
 
-Return one reward per completion, in the original order. `columns` contains reference answers and other sample fields. Do not depend on arbitrary batch ordering. Length reward only illustrates the interface: real rewards should also constrain correctness, format and invalid outputs to prevent reward hacking by verbosity.
+Return one reward per trajectory, in the original order. `self.completion(t)` is the response text; `self.column(t, 'solution')` reads the reference answer or any other dataset column of that row. Do not depend on arbitrary batch ordering. Length reward only illustrates the interface: real rewards should also constrain correctness, format and invalid outputs to prevent reward hacking by verbosity.
 
 I/O-bound rewards can implement `async def __call__` without a separate async base. Configure timeouts and failure handling for external scoring APIs; never embed credentials in code or logs.
 

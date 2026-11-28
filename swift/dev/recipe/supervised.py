@@ -23,6 +23,7 @@ from swift.dev.recipe.utils import (
     write_ckpt_args_json,
 )
 from swift.dev.utils.logger import get_logger
+from twinkle.processor.tasks import TASKS
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -160,11 +161,14 @@ def _dump_train_tensors(global_step: int, samples: list) -> None:
             handle.write(json.dumps(record, default=str) + '\n')
 
 
-#: Forward tasks whose eval must submit each dataloader batch as ONE whole forward: their
-#: labels live per record (decision) or one record expands into several sequences (embedding
-#: anchor+positives, reranker query+candidates), so the forward-only micro-batcher's
-#: sample-level split desynchronizes labels from logits.
-_WHOLE_BATCH_EVAL_TASKS = frozenset({'decision', 'embedding', 'reranker', 'generative_reranker'})
+#: Forward tasks whose eval must submit each dataloader batch as ONE whole forward. Every task
+#: that cannot be micro-batched in training (``TaskSpec.micro_batchable``: labels per record, or
+#: inputs encoded inside forward) is whole-batch in eval too; the rerankers are eval-only here --
+#: one record expands into several sequences (query+candidates), so the forward-only micro-batcher's
+#: sample-level split desynchronizes labels from logits, while their training collate already
+#: yields per-sample input_ids and keeps micro-batching.
+_WHOLE_BATCH_EVAL_TASKS = frozenset(
+    {task for task, spec in TASKS.items() if not spec.micro_batchable} | {'reranker', 'generative_reranker'})
 
 
 class _Evaluation:
@@ -199,7 +203,9 @@ class _Evaluation:
         # processor unpacks into N per-sequence outputs, so any sample-level micro-plan
         # desynchronizes from the merged logps' axis. All of these must run each batch whole --
         # micro_batch_size=None disables micro-batching while per_device_eval_batch_size still
-        # governs the DataLoader.
+        # governs the DataLoader. The first two come from the tasks' own declaration in twinkle's
+        # registry (micro_batchable); the rerankers are eval-whole only (their training collate
+        # already yields per-sample input_ids), so they are added here.
         if cluster.forward_task in _WHOLE_BATCH_EVAL_TASKS or packed_eval:
             self.micro_batch_size = None
         else:
@@ -484,7 +490,15 @@ def run_supervised(
         # final save, so a failed run keeps its loaded/factory temperatures and no success
         # checkpoint is written.
         handler.state.training_failed = pending_error is not None or cleanup_error is not None
-        cleanup(handler.on_train_end)
+        # A post-training callback's own failure (the temperature fit diverging, a head that does
+        # not acknowledge the write) must not fail a run whose training completed: the run keeps
+        # its loaded/factory temperatures and its final checkpoint, and the error is logged here
+        # instead of being re-raised as if the loop had failed. The fan-out stops at the first
+        # raising callback, so later ones (none today) would be skipped.
+        try:
+            handler.on_train_end()
+        except Exception:
+            logger.exception('Post-training callbacks failed; the run still counts as completed.')
         if generative is not None:
             cleanup(lambda: getattr(generative.sampler, 'shutdown', lambda: None)())
         cleanup(lambda: finish_manual_gc(gc_was_enabled))

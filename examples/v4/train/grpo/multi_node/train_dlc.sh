@@ -15,7 +15,7 @@ torchrun \
     --dataset AI-MO/NuminaMath-TIR#10000 \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
-    --system examples/train/grpo/prompt.txt \
+    --system examples/v4/train/grpo/prompt.txt \
     --num_train_epochs 1 \
     --max_length 2048 \
     --use_vllm true \

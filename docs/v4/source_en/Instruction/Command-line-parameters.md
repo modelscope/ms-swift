@@ -191,8 +191,8 @@ Here we use `swift sft` as an example. The YAML/JSON launch method also supports
 - The YAML/JSON file will be stored in `output_dir` after training/inference.
 
 ```shell
-swift sft xxx.yaml
-swift sft xxx.json
+USE_SWIFT_V5=0 swift sft xxx.yaml
+USE_SWIFT_V5=0 swift sft xxx.json
 ```
 
 The content of xxx.yaml/xxx.json contains specific command-line configurations:
@@ -213,7 +213,7 @@ You can also use a combination of YAML and command-line arguments. For example, 
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer examples/yaml/deepspeed/infer.yaml \
+USE_SWIFT_V5=0 swift infer examples/v4/yaml/deepspeed/infer.yaml \
     --adapters output/vx-xxx/checkpoint-xxx
 ```
 

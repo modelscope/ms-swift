@@ -85,7 +85,7 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3.5-4B \
     --enable_thinking false \
     --stream true
@@ -124,7 +124,7 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.5-4B \
     --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -167,7 +167,7 @@ CUDA_VISIBLE_DEVICES=0 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/Qwen3.5-4B/vx-xxx/checkpoint-xxx \
     --stream true \
     --enable_thinking false \
@@ -246,7 +246,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3.5-35B-A3B \
     --save_safetensors true \
     --merge_lora true \
@@ -305,7 +305,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx-merged \
     --stream true \
     --enable_thinking false \
@@ -337,10 +337,10 @@ SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by ste
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-2B \
-    --external_plugins examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/gsm8k/gsm8k_plugin.py \
     --reward_funcs gsm8k_accuracy gsm8k_format \
     --columns '{"answer": "solution"}' \
     --enable_thinking false \
@@ -381,7 +381,7 @@ swift rlhf \
 Evaluate the checkpoints:
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift eval \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift eval \
     --model output/Qwen3.5-2B/vxx-xxx-xxx/checkpoint-xx \
     --enable_thinking false \
     --eval_dataset gsm8k \
@@ -410,7 +410,7 @@ SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by ste
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-megatron rlhf \
+USE_SWIFT_V5=0 megatron rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-35B-A3B \
     --save_safetensors true \
@@ -472,7 +472,7 @@ megatron rlhf \
 Evaluate on AIME-2025 and MATH-500:
 
 ```shell
-CUDA_VISIBLE_DEVICES=0,1 swift eval \
+CUDA_VISIBLE_DEVICES=0,1 USE_SWIFT_V5=0 swift eval \
     --model <checkpoint-merged-path> \
     --enable_thinking false \
     --eval_dataset aime25 math_500 \
@@ -498,7 +498,7 @@ LoRA training with GKD (General Knowledge Distillation), using Qwen3.5-9B as the
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen3.5-9B \
     --infer_backend vllm \
     --port 8000 \
@@ -513,7 +513,7 @@ Then start GKD training on the remaining GPUs:
 ```shell
 NPROC_PER_NODE=3 \
 CUDA_VISIBLE_DEVICES=1,2,3 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3.5-2B \
     --teacher_model_server http://localhost:8000 \
@@ -548,7 +548,7 @@ swift rlhf \
 Evaluate the checkpoints:
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift eval \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen3.5-2B \
     --adapters output/Qwen3.5-2B/vxx-xxx-xxx/checkpoint-xx \
     --merge_lora true \

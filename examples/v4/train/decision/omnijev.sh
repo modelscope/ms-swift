@@ -10,7 +10,7 @@ export MSO_BRANCH_CKPT=1
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model Qwen/Qwen3.5-4B \
     --model_type omnijev \
     --task_type decision \

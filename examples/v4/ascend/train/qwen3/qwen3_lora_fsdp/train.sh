@@ -7,7 +7,7 @@ export TASK_QUEUE_ENABLE=2
 export CPU_AFFINITY_CONF=2
 PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-accelerate launch --config_file "./examples/ascend/train/qwen3/qwen3_lora_fsdp/fsdp.json" \
+accelerate launch --config_file "./examples/v4/ascend/train/qwen3/qwen3_lora_fsdp/fsdp.json" \
     swift/cli/sft.py \
     --model 'Qwen/Qwen3-32B' \
     --tuner_type lora \

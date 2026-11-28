@@ -11,7 +11,7 @@ swift rlhf \
     --advantage_estimator reinforce_plus_plus \
     --scale_rewards batch \
     --kl_in_reward true \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --dataset 'AI-ModelScope/clevr_cogen_a_train' \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
@@ -40,7 +40,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --num_generations 16 \
     --temperature 1.0 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero1 \
     --log_completions true \
     --report_to tensorboard swanlab \

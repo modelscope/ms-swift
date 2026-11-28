@@ -111,7 +111,7 @@ Attached GPUs                                     : 8
 ```bash
 # We assume that the ms-swift code is under /workspace
 cd /workspace/ms-swift/
-bash examples/train/full/train.sh
+bash examples/v4/train/full/train.sh
 
 ```
 运行输出示例（节选）：
@@ -150,7 +150,7 @@ Train: 100%|██████████████████████�
 ```bash
 export MEGATRON_LM_PATH=/workspace/Megatron-LM-0.15.0
 cd /workspace/ms-swift
-bash examples/megatron/pretrain.sh
+bash examples/v4/megatron/pretrain.sh
 ```
 
 ### 3.3. 使用其他版本的 ms-swift
@@ -187,7 +187,7 @@ Metax 在大部分接口上与 NVIDIA 对齐，但在某些软件行为和环境
 # 运行其他脚本...
 export MACA_MPS_MODE=1
 cd /workspace/ms-swift/
-bash examples/train/full/train.sh
+bash examples/v4/train/full/train.sh
 ```
 #### 3.4.2. MCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME & MCCL_IB_HCA
 在多节点训练时，建议设置以下环境变量以确保节点间通信正常：
@@ -266,7 +266,7 @@ export MCCL_SOCKET_IFNAME=ens20f0np0
 export GLOO_SOCKET_IFNAME=ens20f0np0
 export MCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3
 cd /workspace/ms-swift/
-bash examples/train/multi-node/torchrun/train_node1.sh
+bash examples/v4/train/multi-node/torchrun/train_node1.sh
 ```
 
 ```bash
@@ -276,5 +276,5 @@ export MCCL_SOCKET_IFNAME=ens20f0np0
 export GLOO_SOCKET_IFNAME=ens20f0np0
 export MCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3
 cd /workspace/ms-swift/
-bash examples/train/multi-node/torchrun/train_node2.sh
+bash examples/v4/train/multi-node/torchrun/train_node2.sh
 ```

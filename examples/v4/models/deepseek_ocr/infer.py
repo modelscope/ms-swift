@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 # pip install "transformers==4.46.3" easydict
 import os
 

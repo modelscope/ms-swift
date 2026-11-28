@@ -50,7 +50,7 @@ register_dataset(
 
 
 ## 奖励函数定义：
-本任务使用的奖励函数有两个，一个是 Deepseek-R1 中提到的格式奖励函数，另一是 ClevrCount 的准确性奖励函数。前者已经在swift中内置，通过 `--reward_funcs format` 可以直接使用，而后者需要我们自己定义，在这里我们使用 external_plugin 的方式定义准确性奖励函数，将代码放在`swift/examples/train/grpo/plugin/plugin.py`中。
+本任务使用的奖励函数有两个，一个是 Deepseek-R1 中提到的格式奖励函数，另一是 ClevrCount 的准确性奖励函数。前者已经在swift中内置，通过 `--reward_funcs format` 可以直接使用，而后者需要我们自己定义，在这里我们使用 external_plugin 的方式定义准确性奖励函数，将代码放在`swift/examples/v4/train/grpo/plugin/plugin.py`中。
 
 在这里，奖励函数的输入包括completions和solution两个字段，分别表示模型生成的文本和真值。每个都是list，支持多个completion同时计算。注意，在这里，solution字段是数据集中定义的字段透传而来，如果有任务上的变动，可以分别对数据集和奖励函数做对应的改变即可。
 ```python
@@ -108,7 +108,7 @@ orms['external_r1v_acc'] = MultiModalAccuracyORM
 首先拉起 external vLLM server
 ```bash
 CUDA_VISIBLE_DEVICES=6,7 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --vllm_data_parallel_size 2
 ```
@@ -117,10 +117,10 @@ swift rollout \
 WANDB_API_KEY=your_wandb_api_key \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 NPROC_PER_NODE=6 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode server \
@@ -147,7 +147,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --num_generations 24 \
     --temperature 1.0 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --report_to wandb \
@@ -192,10 +192,10 @@ WANDB_API_KEY=your_wandb_api_key \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 MAX_PIXELS=401408 \
 NPROC_PER_NODE=6 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode server \
@@ -223,7 +223,7 @@ swift rlhf \
     --num_generations 8 \
     --temperature 1.0 \
     --repetition_penalty 1.1 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --report_to wandb \
@@ -260,10 +260,10 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 MAX_PIXELS=262144 \
 MASTER_PORT=29600 \
 NPROC_PER_NODE=6 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --vllm_mode server \
@@ -291,7 +291,7 @@ swift rlhf \
     --num_generations 8 \
     --temperature 1.0 \
     --repetition_penalty 1.1 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --report_to wandb \

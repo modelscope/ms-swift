@@ -7,7 +7,7 @@ Sampling is one of the newly supported key capabilities of SWIFT. This feature c
 The sampling capability of SWIFT can be demonstrated with the following example:
 
 ```shell
-swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine transformers --num_return_sequences 5 --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
+USE_SWIFT_V5=0 swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine transformers --num_return_sequences 5 --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```
 
 A `jsonl` file with a timestamp as the filename will be generated in the `sample_output` directory of the current folder. This file should contain 25 lines, each representing a complete `messages` format data.
@@ -33,7 +33,7 @@ pip install -e '.[llm]'
 An important capability of sampling is supervising the process and results, which can be supported by setting additional parameters.
 
 ```shell
-swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine lmdeploy --num_return_sequences 5 --n_best_to_keep 2 --dataset tastelikefeet/competition_math#5 --prm_model AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft --orm_model math
+USE_SWIFT_V5=0 swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine lmdeploy --num_return_sequences 5 --n_best_to_keep 2 --dataset tastelikefeet/competition_math#5 --prm_model AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft --orm_model math
 ```
 
 A `jsonl` file with a timestamp as the filename will be generated in the `sample_output` directory of the current folder. This file **will contain at most** 10 lines, each representing a complete `messages` format data.
@@ -82,7 +82,7 @@ SWIFT's sample supports using the OpenAI API to distill data with large models. 
 
 ```shell
 OPENAI_API_KEY="your_api_key" \
-swift sample \
+USE_SWIFT_V5=0 swift sample \
     --sampler_type distill \
     --sampler_engine client \
     --model deepseek-r1 \

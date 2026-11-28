@@ -69,7 +69,8 @@ class ModelForwardStage(StageComponent):
             raise ComponentError(f'{self.node_id}: model exposes no forward_only()')
         # Port-first: the wired traj lane is the data THIS forward scores; the positional
         # batch is the frame SOURCE's batch. Encoding the positional one silently scores
-        # the wrong rows with no shape alarm.
+        # the wrong rows with no shape alarm. A handle-carrying lane is dereferenced HERE:
+        # the batch is materialised once in the session process before it is encoded.
         data = inputs.get('traj')
         data = deref(data) if data is not None else batch
         features = self._features(data)

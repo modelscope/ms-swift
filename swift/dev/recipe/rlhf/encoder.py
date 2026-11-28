@@ -159,12 +159,11 @@ class PreferenceBatchEncoder:
         import torch
 
         from twinkle.processor.trajectory import response_positions
-        from twinkle.infra._ray.ray_helper import LazyCollect
+        from swift.dev.utils.scoring import collect
         # forward_only hands back a LazyCollect Future; materialise it before tensor conversion.
         # torch.as_tensor treats an un-materialised Future as a nested sequence and recurses into
         # its 0-d scalar leaves, where len() raises (the KTO z_KL crash).
-        if isinstance(logps, LazyCollect):
-            logps = logps.result()
+        logps = collect(logps)
         values = torch.as_tensor(logps).detach().float()
         if values.dim() == 1:
             values = values.unsqueeze(0)

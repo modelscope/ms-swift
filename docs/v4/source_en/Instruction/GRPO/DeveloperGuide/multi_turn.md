@@ -152,7 +152,7 @@ You can override `run` to implement a completely custom workflow.
 Specify the scheduler via `multi_turn_scheduler` in the `swift rollout` command:
 
 ```bash
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --model Qwen/Qwen3-1.7B \
     --vllm_use_async_engine true \
     --multi_turn_scheduler thinking_tips_scheduler \

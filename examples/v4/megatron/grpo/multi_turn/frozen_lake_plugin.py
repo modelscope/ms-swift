@@ -13,8 +13,6 @@ Register via ``--external_plugins`` and select with ``--gym_env frozen_lake``.
 
 from __future__ import annotations
 
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 import random
 import re
 from typing import Any, Dict, List, Optional, Tuple

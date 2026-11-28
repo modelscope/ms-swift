@@ -11,7 +11,7 @@ description: 注册奖励、回调、参数分组、工具和 harness，复用 t
 
 | 扩展点 | 基类或契约 | 选择参数 | 用途 |
 |---|---|---|---|
-| `reward` | `RewardPlugin` | `orm` | 对 completions 和数据列返回逐样本奖励 |
+| `reward` | `ORM` | `orm` | 读取 completion 和数据列，对每条轨迹返回奖励 |
 | `prm_scorer` | `PRMSegmentScorer` | `prm_scorer` | 为过程奖励确定轨迹分段边界 |
 | `callback` | `TrainCallback` | `callbacks` | 训练、日志、保存和评估事件 |
 | `param_groups` | `ParamGroupsPlugin` | `param_groups_plugins` | 返回 optimizer 参数分组规则 |
@@ -27,13 +27,14 @@ loss、metric 和 optimizer 类属于 twinkle 内核组件命名空间。`--loss
 保存为 `my_plugin.py`：
 
 ```python
-from swift.dev.utils.plugin import PluginRegistry, RewardPlugin
+from swift.dev.reward.reward import ORM
+from swift.dev.utils.plugin import PluginRegistry
 
 
 @PluginRegistry.register('reward', 'length_bonus')
-class LengthBonus(RewardPlugin):
-    def __call__(self, completions, **columns):
-        return [1.0 if len(text) > 100 else 0.0 for text in completions]
+class LengthBonus(ORM):
+    def __call__(self, trajectories, **kwargs):
+        return [1.0 if len(self.completion(t)) > 100 else 0.0 for t in trajectories]
 ```
 
 数据沿用 [快速启动](../get-started/quick-start.mdx) 的数学数据集（`messages` 只含 prompt，`solution` 供奖励读取），并安装采样引擎：
@@ -60,7 +61,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift rl \
     --output_dir output/reward-plugin
 ```
 
-返回值长度须等于 completions 长度，并保持相同顺序。`columns` 提供当前样本的参考答案等字段；奖励不要依赖任意 batch 顺序。长度奖励只用于演示接口，实际任务应同时约束正确性、格式和无效输出，避免模型仅通过延长回答提高分数。
+返回值长度须等于 trajectories 长度，并保持相同顺序。`self.completion(t)` 是模型的回答文本，`self.column(t, 'solution')` 读取参考答案或该样本的其他数据列；奖励不要依赖任意 batch 顺序。长度奖励只用于演示接口，实际任务应同时约束正确性、格式和无效输出，避免模型仅通过延长回答提高分数。
 
 涉及外部 API 的奖励可以实现 `async def __call__`，无需另一个 async 基类。设置 API 超时与失败处理，避免一个未返回的评分请求阻塞训练；不要把凭据写进插件或日志。
 

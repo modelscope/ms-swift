@@ -257,24 +257,20 @@ class DeepseekV32Loader(DeepseekV3Loader):
     are not in transformers 5.5; the checkpoint ships its own modeling code, so it loads through the
     g7 ``trust_remote_code`` path (``AutoModelForCausalLM`` resolves the checkpoint's own class).
 
-    ``build_config`` keeps legacy's fallback: V3.2 only adds a sparse-attention (indexer) block on top
-    of V3's config, so when neither an in-tree ``deepseek_v32`` module nor checkpoint code is present,
-    a plain ``DeepseekV3Config`` still parses the file -- enough for Megatron conversion / vLLM-SGLang
-    inference. Shares V3's ``deepseek_v3_1`` template.
+    ``config_cls`` keeps legacy's fallback as an ordered pair: V3.2 only adds a sparse-attention
+    (indexer) block on top of V3's config, so when neither an in-tree ``deepseek_v32`` module nor
+    checkpoint code is present, a plain ``DeepseekV3Config`` still parses the file -- enough for
+    Megatron conversion / vLLM-SGLang inference. Shares V3's ``deepseek_v3_1`` template.
     """
 
     model_type = "deepseek_v32"
     architectures = ["DeepseekV32ForCausalLM"]
     template = "deepseek_v3_1"
     trust_remote_code = True
-
-    def build_config(self, model_dir: str, **kwargs):
-        try:
-            from transformers.models.deepseek_v32 import DeepseekV32Config
-        except ImportError:
-            from transformers.models.deepseek_v3 import DeepseekV3Config as DeepseekV32Config
-        kwargs.setdefault("trust_remote_code", True)
-        return DeepseekV32Config.from_pretrained(model_dir, **kwargs)
+    config_cls = (
+        "transformers.models.deepseek_v32:DeepseekV32Config",
+        "transformers.models.deepseek_v3:DeepseekV3Config",
+    )
 
     models = [
         ("deepseek-ai/DeepSeek-V3.2", "deepseek-ai/DeepSeek-V3.2"),

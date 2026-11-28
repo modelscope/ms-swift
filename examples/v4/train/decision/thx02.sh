@@ -13,12 +13,12 @@ export USE_SWIFT_V5=0
 # adapter. THX-02 ships a merged backbone, so a fresh `--tuner_type lora --target_modules all-linear` is
 # correct. Packing / padding_free is not supported (records would attend to each other).
 #
-# sh examples/train/decision/thx02.sh
+# sh examples/v4/train/decision/thx02.sh
 MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model HAL-X/THX-02 \
     --model_type thx02 \
     --task_type decision \

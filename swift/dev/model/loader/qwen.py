@@ -304,6 +304,10 @@ class Qwen3_5Loader(Qwen3VLLoader):
     architectures = ["Qwen3_5ForConditionalGeneration"]
     template = "qwen3_5"
     requires = ["transformers>=5.0.0.dev", "qwen_vl_utils>=0.0.14", "decord"]
+    # The default SDPA path resolves to a cuDNN kernel whose bf16 backward NaNs on this family
+    # (5b698580f); the examples pin flash_attention_2. Declared here so the MoE / 3.8 subclasses,
+    # which share the attention stack, inherit it.
+    unsupported_attn_dtypes = (("sdpa", "bfloat16"), ("sdpa", None))
     models = [
         "Qwen/Qwen3.5-0.8B",
         "Qwen/Qwen3.5-2B",
@@ -1255,17 +1259,20 @@ class Qwen3OmniMoeLoader(_QwenOmniLoader):
 
 @register_model
 class Qwen3ASRLoader(ModelLoader):
-    """Qwen3-ASR. HF loading uses the ``qwen-asr`` package's thinker-layout class explicitly.
-    ``build_config`` imports the package on transformers versions without native registration;
-    native config/processor resolution is available for sampler setup, not native HF model loading.
+    """Qwen3-ASR. The checkpoint is in the ``qwen-asr`` package's thinker layout, so config, processor
+    and model class all come from that package: ``build_config`` tries to import it first, and only a
+    process where it is not installed falls back to whatever transformers registered natively --
+    enough for the vLLM sampler, which reads the checkpoint itself, never for HF model loading
+    (the native class has a different sub-module layout; loading this checkpoint through it leaves
+    every weight unused, so ``resolve_model_cls`` raises ``ImportError`` instead).
 
     **The ``transformers==4.57.6`` pin is relaxed here via a narrow shim.** Root cause of the pin:
     ``modeling_qwen3_asr.py`` decorates with ``@check_model_inputs()`` (called, then applied), but
     transformers 5.x turned ``check_model_inputs`` into a bare decorator, so merely importing the
     package raises ``TypeError: check_model_inputs() missing 1 required positional argument: 'func'``.
-    ``compat_check_model_inputs`` makes the symbol accept both spellings, after which the package
-    imports cleanly and ``Qwen3ASRForConditionalGeneration`` / ``Config`` / ``Processor`` are all
-    reachable (verified on transformers 5.5.0).
+    ``ModelLoader.compat_check_model_inputs`` makes the symbol accept both spellings, after which
+    the package imports cleanly and ``Qwen3ASRForConditionalGeneration`` / ``Config`` / ``Processor``
+    are all reachable (verified on transformers 5.5.0).
 
     Caveat worth knowing before trusting a training run: the shim only restores the *calling
     convention*. In transformers 5.x ``check_model_inputs`` is what collects ``output_attentions`` /
@@ -1277,8 +1284,8 @@ class Qwen3ASRLoader(ModelLoader):
     """
 
     model_type = "qwen3_asr"
-    # Pin the declared HF layout for sampler workers too; AutoModel can resolve an incompatible
-    # native class without going through this loader's build_model layout check.
+    # Declared, not probed: the only class that can load this checkpoint's weights. Resolving it
+    # on a process without the package raises ImportError before any weight is read.
     model_cls = "qwen_asr.core.transformers_backend.modeling_qwen3_asr:Qwen3ASRForConditionalGeneration"
     architectures = ["Qwen3ASRForConditionalGeneration"]
     template = "qwen3_asr"
@@ -1295,57 +1302,17 @@ class Qwen3ASRLoader(ModelLoader):
             vision_tower=["thinker.audio_tower"],
         )
 
-    @staticmethod
-    def compat_check_model_inputs():
-        """Let ``check_model_inputs`` accept the transformers 4.x ``@deco()`` spelling.
-
-        transformers 4.57 exposed a decorator *factory*; 5.x exposes a plain decorator. Third-party
-        model code written for 4.57 therefore fails at import. Wrapping the symbol so it dispatches on
-        "was I handed the function or not" keeps both spellings working. Idempotent.
-
-        Patching ``transformers.utils.generic`` alone is sufficient: on 5.5 that is the only module
-        holding the symbol (neither the package root nor ``modeling_utils`` re-exports it), and this runs
-        before ``qwen_asr`` is imported, so its ``from ... import check_model_inputs`` binds the wrapper.
-        """
-        import transformers.utils.generic as generic
-
-        origin = getattr(generic, "check_model_inputs", None)
-        if origin is None or getattr(origin, "_swift_compat", False):
-            return
-
-        def check_model_inputs(*args, **kwargs):
-            if len(args) == 1 and not kwargs and callable(args[0]):
-                return origin(args[0])  # bare @check_model_inputs
-            return lambda func: origin(func)  # @check_model_inputs(...)
-
-        check_model_inputs._swift_compat = True
-        generic.check_model_inputs = check_model_inputs
-
     def build_config(self, model_dir: str, **kwargs):
-        from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
-
-        # Native config/processor resolution is sufficient for the vLLM sampler. Avoid importing
-        # a package that re-registers the same model_type against transformers' native mapping.
-        if self.model_type not in CONFIG_MAPPING_NAMES:
-            self.compat_check_model_inputs()
+        # Ordered source for config / processor / model: the package first, so its class is the one
+        # transformers resolves -- and the one ``model_cls`` names. Only a process without the
+        # package keeps the native registration (sampler setup); an HF build there fails loudly in
+        # ``resolve_model_cls`` rather than loading through the mismatched native layout.
+        try:
+            ModelLoader.compat_check_model_inputs()
             import qwen_asr  # noqa: F401
+        except ImportError:
+            pass
         return super().build_config(model_dir, **kwargs)
-
-    @staticmethod
-    def _check_hf_layout(config):
-        if type(config).__module__.startswith('transformers.'):
-            raise ValueError('Qwen3-ASR native transformers config is available for sampler setup, '
-                             'but this HF loader requires the qwen-asr thinker layout. Use a '
-                             'compatible qwen-asr/transformers environment for HF loading; native '
-                             'model loading needs separate configuration and weight conversion.')
-
-    def build_model(self, model_dir: str, config, processor, **kwargs):
-        self._check_hf_layout(config)
-        return super().build_model(model_dir, config, processor, **kwargs)
-
-    def build_model_from_config(self, config, processor, **kwargs):
-        self._check_hf_layout(config)
-        return super().build_model_from_config(config, processor, **kwargs)
 
     def process_model(self, model):
         self.delegate_to_submodel(model, "thinker")
@@ -1374,8 +1341,8 @@ class Qwen3TTSLoader(ModelLoader):
     ``@check_model_inputs()`` (the transformers 4.x factory spelling), but transformers 5.x turned
     ``check_model_inputs`` into a bare decorator, so merely importing ``qwen_tts`` (whose ``__init__``
     pulls in the tokenizer) raises ``TypeError: check_model_inputs() missing 1 required positional
-    argument: 'func'``. ``compat_check_model_inputs`` (mirrored from ``Qwen3ASRLoader``) makes the symbol
-    accept both spellings; it is applied before the ``qwen_tts`` imports in ``build_config`` /
+    argument: 'func'``. ``ModelLoader.compat_check_model_inputs`` makes the symbol accept both
+    spellings; it is applied before the ``qwen_tts`` imports in ``build_config`` /
     ``build_processor`` so the package imports cleanly under transformers 5.x (verified on 5.16.1).
 
     A second 4.x/5.x gap is bridged by ``compat_rope_init_functions``: transformers 5.x removed the
@@ -1411,30 +1378,6 @@ class Qwen3TTSLoader(ModelLoader):
     @property
     def model_arch(self) -> ModelArch:
         return ModelArch(language_model=["talker"], generator=["speaker_encoder"])
-
-    @staticmethod
-    def compat_check_model_inputs():
-        """Let ``check_model_inputs`` accept the transformers 4.x ``@deco()`` spelling.
-
-        Mirrors ``Qwen3ASRLoader.compat_check_model_inputs``: transformers 4.57 exposed a decorator
-        *factory*; 5.x exposes a plain decorator. ``qwen_tts``'s tokenizer module is written for 4.57
-        and fails at import under 5.x. Wrapping the symbol so it dispatches on "was I handed the
-        function or not" keeps both spellings working. Idempotent. Applied before ``qwen_tts`` is
-        imported so its ``from transformers.utils.generic import check_model_inputs`` binds the wrapper.
-        """
-        import transformers.utils.generic as generic
-
-        origin = getattr(generic, "check_model_inputs", None)
-        if origin is None or getattr(origin, "_swift_compat", False):
-            return
-
-        def check_model_inputs(*args, **kwargs):
-            if len(args) == 1 and not kwargs and callable(args[0]):
-                return origin(args[0])  # bare @check_model_inputs
-            return lambda func: origin(func)  # @check_model_inputs(...)
-
-        check_model_inputs._swift_compat = True
-        generic.check_model_inputs = check_model_inputs
 
     @staticmethod
     def compat_rope_init_functions():
@@ -1557,7 +1500,7 @@ class Qwen3TTSLoader(ModelLoader):
                 cls.__init__ = __init__
 
     def build_config(self, model_dir: str, **kwargs):
-        self.compat_check_model_inputs()
+        ModelLoader.compat_check_model_inputs()
         self.compat_rope_init_functions()
         self.compat_rope_buffer_init()
         self.compat_config_special_tokens()
@@ -1570,7 +1513,7 @@ class Qwen3TTSLoader(ModelLoader):
         return super().build_config(model_dir, **kwargs)
 
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
-        self.compat_check_model_inputs()
+        ModelLoader.compat_check_model_inputs()
         self.compat_rope_init_functions()
         self.compat_rope_buffer_init()
         self.compat_config_special_tokens()

@@ -9,7 +9,6 @@ from swift.dev.recipe.utils import (
     REF_GROUP,
     auxiliary_mesh,
     build_rl_sampler,
-    effective_colocate,
     resolve_reward_scorers,
 )
 from swift.dev.utils.logger import get_logger
@@ -45,7 +44,7 @@ def ppo_group_requests(
     Mirrors the builds in :func:`initialize_ppo_cluster`: PPO ALWAYS anchors the KL -- a
     full-parameter run keeps a frozen ref copy (under sync_ref_model it inherits the policy's
     sharding); only a LoRA run reuses the policy actor and plans NO group. Each orm MODEL gets
-    its ``reward_<i>`` group; a PRM MODEL gets ``prm_0``; the critic shares the policy's 'model'
+    its ``reward_<i>`` group, each PRM MODEL its ``prm_<i>`` group; the critic shares the policy's 'model'
     group, so it plans none.
     """
     from swift.dev.reward.scorer import split_channel
@@ -60,8 +59,8 @@ def ppo_group_requests(
         requests.append((REF_GROUP, spec))
     for index in range(len(split_channel(list(reward_config.orm))[1])):
         requests.append((f"reward_{index}", reward_config.orm_parallel_spec))
-    if split_channel(list(reward_config.prm))[1]:
-        requests.append(("prm_0", reward_config.prm_parallel_spec))
+    for index in range(len(split_channel(list(reward_config.prm))[1])):
+        requests.append((f"prm_{index}", reward_config.prm_parallel_spec))
     return requests
 
 
@@ -131,6 +130,7 @@ def initialize_ppo_cluster(
     from swift.dev.builder.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
+        effective_colocate,
         build_cluster_adapter,
         build_rollout,
         inflight_rows,
@@ -217,13 +217,15 @@ def initialize_ppo_cluster(
     # reward MODEL (TRL's choice) or the policy base; full-param, so no tuner_config reaches it.
     # Remotely it is ANOTHER served-model handle: the seq_cls value head rides the server's
     # adapter channel, so the critic is a LoRA on its served base there.
-    value_config = copy.deepcopy(model_config)
-    value_config.task_type = "seq_cls"
-    value_config.num_labels = 1
+    from swift.dev.builder.model import derive_model_config
     from swift.dev.reward.scorer import split_channel
 
     orm_models = split_channel(list(reward_config.orm))[1] if reward_config is not None else []
-    value_config.model = orm_models[0] if orm_models else model_config.model
+    # The critic keeps the policy's checkpoint when no ORM model seeds it: the copy then keeps the
+    # policy's portable id too (repointing it at the resolved snapshot dir would match no family).
+    value_config = derive_model_config(model_config, model=orm_models[0] if orm_models else None)
+    value_config.task_type = "seq_cls"
+    value_config.num_labels = 1
     if remote_run:
         from swift.dev.builder.remote import build_remote_model, configure_remote_processor
 
@@ -287,7 +289,7 @@ def initialize_ppo_cluster(
 
         engine = RemoteWeightSync(model, sampler)
     else:
-        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, colocate=colocate)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         # Only the flex ranks: the trainer's ranks also hold the critic, which lending would leave

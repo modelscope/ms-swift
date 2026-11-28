@@ -205,67 +205,79 @@ def main() -> None:
     micro_batch_size = max(1, train_batch_size // dp_size)
     update_batch_size = train_batch_size * ga
     sync_every = rollout_config.parameter_sync_step
-    # INITIAL PUBLICATION: the sampler must start from the student's weights (a LoRA-init policy
-    # differs from what the engine loaded); under colocate this also hands the GPUs over.
-    cluster.engine.sync_weights()
-    lent = cluster.colocate
-    batches = 0
-    state.handler.on_train_begin()
-    try:
-        for trajs, batch_facts in driver:
-            if cluster.colocate:
-                # COLOCATE HANDOVER: sleep the sampler (offload its weights/KV), reload the trainer.
-                sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-                cluster.model.reload_to_gpu()
-                lent = False
-            lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
-                                             batch_facts.get('response_lengths') or ())]
-            # TAIL DROP: only whole optimizer batches train; a remainder cannot fill
-            # train_batch_size x ga rows and is dropped (the recipe logs the same warning).
-            dropped = len(trajs) % update_batch_size
-            if dropped:
-                print(f'[mopd] dropping {dropped} rows that cannot fill an optimizer batch')
-            # TRAIN MINI-BATCHES: slice into full updates, balance each across DP ranks by token
-            # load, then ask the worker for the teacher signal and take the optimizer step.
-            for lo, hi in optimizer_batch_slices(len(trajs), train_batch_size, ga):
-                if state.reached_max() or state.should_stop():
-                    break
-                update = trajs[lo:hi]
-                state.micro_step += (hi - lo) // train_batch_size
-                update, balance_metrics = balance_update(
-                    state, update, lengths[lo:hi],
-                    micro_batch_kwargs={'micro_batch_size': micro_batch_size})
-                # THE TEACHER SIGNAL (the heart of distillation): the worker runs the frozen
-                # teacher over the SAME response tokens under the privileged teacher_prompt view and returns the signal as
-                # light kwargs (refs, not tensors). use_student=True marks an on-policy update.
-                signal = dict(cluster.worker.forward_kwargs(update, True))
-                state.handler.on_step_begin()
-                cluster.model.forward_backward(
-                    inputs=copy_inputs(update), gradient_accumulation_steps=1,
-                    micro_batch_size=micro_batch_size, **signal)
-                state.handler.on_pre_optimizer_step()
-                cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
-                                                 gradient_accumulation_steps=1)
-                state.handler.on_optimizer_step()
-                state.record(extra_metrics=balance_metrics)
-                state.step_tail(save=save)
-            # WEIGHT PUBLICATION: every sync_every batches, push the updated student weights to the
-            # sampler so the next rollouts come from the new policy (on-policy freshness).
-            batches += 1
-            if batches % sync_every == 0 and not (state.reached_max() or state.should_stop()):
-                cluster.engine.sync_weights()
-                lent = cluster.colocate
-            if state.reached_max() or state.should_stop():
-                break
-        state.handler.on_train_end()
-        save_final_checkpoint(cluster.model, save, enabled=True)
-    finally:
-        # TEARDOWN in fixed order: close the driver first, then release every actor. If the loop
-        # ended with the GPUs lent to the sampler, hand them back so the final save finds the model.
-        close_driver_preserving_error(driver)
+    lent = False
+
+    def sync() -> None:
+        # WEIGHT PUBLICATION: push the student weights to the sampler. Under colocate the sync wakes the
+        # sampler and takes the GPUs: the sync itself leaves the trainer offloaded.
+        nonlocal lent
+        cluster.engine.sync_weights()
+        lent = cluster.colocate
+
+    def reclaim() -> None:
+        # COLOCATE HANDOVER: sleep the sampler (offload its weights/KV), reload the trainer.
+        nonlocal lent
         if lent:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
+            lent = False
+
+    batches = 0
+    state.handler.on_train_begin()
+    try:
+        try:
+            sync()  # INITIAL PUBLICATION: the sampler must start from the student's weights (a
+            # resumed/LoRA-init policy differs from what the engine loaded).
+            for trajs, batch_facts in driver:
+                reclaim()
+                lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
+                                                 batch_facts.get('response_lengths') or ())]
+                # TAIL DROP: only whole optimizer batches train; a remainder cannot fill
+                # train_batch_size x ga rows and is dropped (the recipe logs the same warning).
+                dropped = len(trajs) % update_batch_size
+                if dropped:
+                    print(f'[mopd] dropping {dropped} rows that cannot fill an optimizer batch')
+                # TRAIN MINI-BATCHES: slice into full updates, balance each across DP ranks by token
+                # load, then ask the worker for the teacher signal and take the optimizer step.
+                for lo, hi in optimizer_batch_slices(len(trajs), train_batch_size, ga):
+                    if state.reached_max() or state.should_stop():
+                        break
+                    update = trajs[lo:hi]
+                    state.micro_step += (hi - lo) // train_batch_size
+                    update, balance_metrics = balance_update(
+                        state, update, lengths[lo:hi],
+                        micro_batch_kwargs={'micro_batch_size': micro_batch_size})
+                    # THE TEACHER SIGNAL (the heart of distillation): the worker runs the frozen
+                    # teacher over the SAME response tokens under the privileged teacher_prompt view and
+                    # returns the signal as light kwargs (refs, not tensors). use_student=True marks an
+                    # on-policy update.
+                    signal = dict(cluster.worker.forward_kwargs(update, True))
+                    state.handler.on_step_begin()
+                    cluster.model.forward_backward(
+                        inputs=copy_inputs(update), gradient_accumulation_steps=1,
+                        micro_batch_size=micro_batch_size, **signal)
+                    state.handler.on_pre_optimizer_step()
+                    cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
+                                                     gradient_accumulation_steps=1)
+                    state.handler.on_optimizer_step()
+                    state.record(extra_metrics=balance_metrics)
+                    state.step_tail(save=save)
+                # WEIGHT PUBLICATION: every sync_every batches, push the updated student weights to the
+                # sampler so the next rollouts come from the new policy (on-policy freshness).
+                batches += 1
+                if batches % sync_every == 0 and not (state.reached_max() or state.should_stop()):
+                    sync()
+                if state.reached_max() or state.should_stop():
+                    break
+        finally:
+            # TEARDOWN in fixed order: close the driver first, then return the lent devices so the
+            # final save below finds the model resident; a cleanup error must not mask an in-flight
+            # training exception.
+            close_driver_preserving_error(driver)
+            reclaim()
+        state.handler.on_train_end()
+        save_final_checkpoint(cluster.model, save, enabled=True)
+    finally:
         finalize_rl_resources(
             state, cluster, remote_run=False, driver=driver, recipe='MOPD-example',
             finish=lambda: state.finish_metrics(status='loop_completed'))

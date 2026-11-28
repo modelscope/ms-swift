@@ -62,6 +62,7 @@ def validate_configs(
     _check_train_mixing(dataset_config)
     _check_backend_specific(model_config, dataset_config, train_config, distributed_config, is_megatron, tuner_config)
     _check_dynamic_batching(train_config, rl_config, is_megatron)
+    _check_micro_batch_order(train_config, rl_config, is_megatron)
     _check_galore(train_config, tuner_config)
     _check_param_groups(tuner_config)
     _check_trainable_tokens_head(tuner_config, model_config)
@@ -78,6 +79,7 @@ def validate_configs(
     _check_eval_iters(train_config)
     _check_megatron_attn_backend(model_config, template_config, is_megatron)
     _check_attn_impl_availability(model_config)
+    _check_attn_dtype_support(model_config, is_megatron)
     _check_padding_free_attn(model_config, template_config, dataset_config, is_megatron)
     _check_mtp(model_config, is_megatron, tuner_config)
     _check_quantization(model_config, distributed_config, is_megatron)
@@ -129,8 +131,23 @@ def _check_dynamic_batching(train_config: "TrainConfig", rl_config: Optional["RL
         raise ValueError("max_tokens_per_micro_batch must be positive when dynamic_batching=True.")
     if train_config.packing_algorithm not in ("ffd", "kk"):
         raise ValueError("packing_algorithm must be ffd or kk.")
+
+
+def _check_micro_batch_order(train_config: "TrainConfig", rl_config: Optional["RLConfig"], is_megatron: bool) -> None:
+    """``micro_batch_order`` is validated whatever ``dynamic_batching`` is, and a non-default value is
+    refused unless the run really forwards it to the model: only the GRPO loop's planned micro-batches
+    carry it, and only on the HF/Unsloth backend (Megatron splits fixed-stride micro-batches and never
+    reads the order). Elsewhere the value was validated and then silently dropped."""
     if train_config.micro_batch_order not in ("none", "descending", "ends_small"):
         raise ValueError("micro_batch_order must be none, descending or ends_small.")
+    if train_config.micro_batch_order == "none":
+        return
+    if rl_config is None or rl_config.rl_type != "grpo":
+        raise ValueError("micro_batch_order is applied only by the GRPO recipe (it orders that recipe's planned "
+                         "micro-batches); this recipe would ignore it. Leave it at 'none'.")
+    if is_megatron:
+        raise ValueError("micro_batch_order is not supported on the Megatron backend, which runs fixed-stride "
+                         "micro-batches in input order and would ignore it. Leave it at 'none'.")
 
 
 def _changed_fields(config) -> list:
@@ -408,6 +425,15 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
             f'env_reward_weight must be non-negative (1.0 folds the env-family rewards -- the env '
             "session reward plus the terminal checks column -- into the reward fold; 0.0 keeps them "
             f'recorded but out of training), got {reward_config.env_reward_weight}.')
+    # The env-family rewards exist only with the sandbox env (they are that session's reward and the
+    # dataset's terminal checks run inside it). Refused here rather than by the estimator mid-training,
+    # where it used to fail the whole batch.
+    if reward_config is not None and reward_config.env_reward_weight != 1.0 and not env_channel:
+        raise ValueError(
+            f'env_reward_weight={reward_config.env_reward_weight} is read only with the sandbox env '
+            '(--tools sandbox: the env session reward and the terminal checks column are what it '
+            'weights); this run wires none, so nothing would read it. Wire the sandbox env or drop '
+            'the knob.')
     _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
     _check_ppo_controls(cfg)
@@ -528,7 +554,7 @@ def _check_weight_sync_deepspeed(distributed_config: 'DistributedConfig',
     Non-offload ZeRO-3 used to fail here too -- ``merge_adapter`` read an empty local LoRA shard
     because nothing had gathered the partitioned parameters -- so the refusal was removed once the
     sync started gathering them first (``TransformersModel._get_weight_generator`` ->
-    ``strategy.gather_params_for_read``). Its end-to-end fidelity is verified separately.
+    ``strategy.params_for_read``). Its end-to-end fidelity is verified separately.
     """
     from swift.dev.utils.utils import deepspeed_cpu_offload
     rl_type = None if rl_config is None else rl_config.rl_type
@@ -828,6 +854,17 @@ def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
         raise ValueError(
             f"sandbox_kind='{kind}' ignores sandbox_template={rollout_config.sandbox_template!r}: the "
             'OpenEnv families are driven by sandbox_env_name, not a microVM template.')
+    # Dead knobs: builders/sandbox.py reads these two only for the in-process OpenEnv family.
+    if 'sandbox' in rollout_config.tools and kind != 'openenv':
+        unread = sorted(
+            name for name, value in (('sandbox_env_name', rollout_config.sandbox_env_name),
+                                     ('sandbox_env_kwargs', rollout_config.sandbox_env_kwargs))
+            if value is not None and not (name == 'sandbox_env_name' and kind == 'openenv_client'))
+        if unread:
+            raise ValueError(
+                f"sandbox_kind='{kind}' does not read {unread}: only sandbox_kind='openenv' builds the "
+                'OpenEnv environment in-process from them (openenv_client reads the name only). Remove '
+                "them or switch sandbox_kind to 'openenv'.")
 
 
 def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
@@ -1916,6 +1953,43 @@ def _check_attn_impl_availability(model_config: 'ModelConfig') -> None:
             f'not installed in this environment. Install it first: pip install {package!r} '
             '(on a GPU the package ships prebuilt wheels; fa3/fa4 support Hopper/Blackwell). '
             'Or switch to an installed implementation, e.g. --attn_impl flash_attention_2.')
+
+
+def _check_attn_dtype_support(model_config: 'ModelConfig', is_megatron: bool) -> None:
+    """Refuse an ``attn_impl`` / ``torch_dtype`` pair the model family declares broken.
+
+    The family loader is the one place that knows which attention path trains correctly on its
+    architecture (``ModelLoader.unsupported_attn_dtypes``); validation reads it before anything
+    loads, so the run fails at start-up with the fix in the message instead of NaNs mid-training.
+    Only the transformers backend: Megatron has its own attention stack.
+    """
+    if is_megatron or not model_config.model:
+        return
+    from swift.dev.model.loader import MODEL_MAPPING, match_model_type
+
+    if model_config.model_type:
+        # An explicit type outside the registry is a plugin source or a typo: both are resolved (and
+        # reported) where the model loads, not here.
+        loader_cls = MODEL_MAPPING.get(model_config.model_type)
+    else:
+        loader_cls = match_model_type(model_config.model)
+        loader_cls = MODEL_MAPPING.get(loader_cls) if loader_cls else None
+    unsupported = getattr(loader_cls, 'unsupported_attn_dtypes', None)
+    if not unsupported:
+        return
+    attn_impl = model_config.attn_impl
+    dtype = model_config.torch_dtype
+    for family_attn, family_dtype in unsupported:
+        attn_hit = attn_impl == family_attn or (family_attn is None and attn_impl is None)
+        # An unset dtype resolves to bf16 on any bf16-capable accelerator (loader._default_torch_dtype),
+        # so a family's ``None`` dtype counts it; a declared dtype matches itself only.
+        dtype_hit = dtype == family_dtype or (family_dtype is None and dtype is None)
+        if attn_hit and dtype_hit:
+            raise ValueError(
+                f'model family {loader_cls.model_type!r} does not train correctly with attn_impl='
+                f'{attn_impl!r} and torch_dtype={dtype or "bf16 (default)"!r}: the family declares this '
+                'pair broken (backward produces NaN). Pass --attn_impl flash_attention_2 (or another '
+                'supported implementation), or change torch_dtype.')
 
 
 def _check_padding_free_attn(model_config: 'ModelConfig', template_config: 'TemplateConfig',

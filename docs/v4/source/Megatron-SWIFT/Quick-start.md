@@ -107,7 +107,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
     --to_mcore true \
     --torch_dtype bfloat16 \
@@ -121,7 +121,7 @@ swift export \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --mcore_model Qwen2.5-7B-Instruct-mcore \
     --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -157,7 +157,7 @@ megatron sft \
 - 若出现OOM，将`CUDA_VISIBLE_DEVICES=0`删除。若出现内存不足，请将`--test_convert_precision true`删除。
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --torch_dtype bfloat16 \
@@ -168,7 +168,7 @@ swift export \
 我们对生成的HF格式权重进行推理：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --stream true \
     --temperature 0 \
@@ -192,7 +192,7 @@ Mcore-Bridge去除模型转换的繁琐过程。具体参考[Mcore-Bridge文档]
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -226,7 +226,7 @@ megatron sft \
 我们对生成的safetensors格式权重进行推理：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --stream true \
     --temperature 0 \

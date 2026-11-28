@@ -72,7 +72,7 @@ pip install -e '.[eval]'
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift eval \
+USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
     --infer_backend transformers \
@@ -90,7 +90,7 @@ swift eval \
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift eval \
+USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
     --infer_backend transformers \
@@ -111,7 +111,7 @@ SWIFT支持在训练过程中使用EvalScope对当前的模型进行评测，以
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
   --model "Qwen/Qwen2.5-0.5B-Instruct" \
   --tuner_type "lora" \
   --dataset "AI-ModelScope/alpaca-gpt4-data-zh#100" \
@@ -186,7 +186,7 @@ id,question,A,B,C,D,answer
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift eval \
+USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
     --infer_backend transformers \
@@ -235,7 +235,7 @@ qa/
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift eval \
+USE_SWIFT_V5=0 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
     --infer_backend transformers \

@@ -252,7 +252,7 @@ pip install vllm-ascend==0.23.0 \
 Before training, run from the repository root with the Python environment used for training:
 
 ```shell
-python examples/ascend/check_env.py
+python examples/v4/ascend/check_env.py
 ```
 
 The report contains four table sections: basic environment, software components, Ascend installation information, and NPU status. Software components include PyTorch, torch-npu, ms-swift, Megatron Core, MindSpeed, mcore-bridge, and triton-ascend, with missing components reported individually. Note shows the distribution location, Python executable, or driver/CANN version-file directory. Long paths wrap automatically. The native `npu-smi` table follows when device information is available.
@@ -447,7 +447,7 @@ Train and save a LoRA checkpoint:
 
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model $MODEL_ID \
     --dataset $DATASET_ID#1000 \
     --split_dataset_ratio 0.01 \
@@ -475,7 +475,7 @@ After training finishes, checkpoints are saved under `$WORK_DIR/*/checkpoint-*`.
 export CKPT_DIR=$(ls -dt $WORK_DIR/*/checkpoint-* | head -n 1)
 
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters $CKPT_DIR \
     --merge_lora true
 
@@ -487,7 +487,7 @@ You can verify inference either with the LoRA checkpoint directly or with the me
 ```shell
 # Load the LoRA checkpoint directly
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters $CKPT_DIR \
     --stream true \
     --temperature 0 \
@@ -495,7 +495,7 @@ swift infer \
 
 # Load the merged full model
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model $MERGED_DIR \
     --stream true \
     --temperature 0 \
@@ -506,7 +506,7 @@ To start an OpenAI-compatible deployment service, use the merged full model:
 
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model $MERGED_DIR \
     --host 0.0.0.0 \
     --port 8000 \
@@ -552,7 +552,7 @@ Start single-card fine-tuning with the following command:
 # Memory requirement: 28 GB
 # Runtime: 8 hours
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
@@ -576,7 +576,7 @@ The following example uses 4 NPUs for DDP training.
 # Runtime: 2 hours
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
@@ -596,7 +596,7 @@ ZeRO2:
 # Runtime: 3.5 hours
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
@@ -615,7 +615,7 @@ ZeRO3:
 # Runtime: 8.5 hours
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
@@ -634,7 +634,7 @@ The following is an NPU LoRA example for a newer model. It uses Qwen3.5-4B for d
 # Experiment environment: 4 * Ascend 910B3
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.5-4B \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#2000 \
     --split_dataset_ratio 0.01 \
@@ -672,7 +672,7 @@ For more parameter details, see [Command-line Parameters](../Instruction/Command
 ms-swift enables model-level patches by default in NPU environments to adapt some Transformers models to Ascend NPU operators and compatibility requirements. You usually do not need to disable them. If you suspect abnormal loss or forward errors are related to the NPU model patch and want to compare against native Transformers behavior, set:
 
 ```shell
-swift sft ... --enable_npu_model_patch false
+USE_SWIFT_V5=0 swift sft ... --enable_npu_model_patch false
 ```
 
 ## Model Saving, Merge LoRA, and Resume Training
@@ -690,7 +690,7 @@ If you only need inference or want to continue LoRA training, use the checkpoint
 
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/Qwen3.5-4B-NPU/vx-xxx/checkpoint-xxx \
     --merge_lora true
 ```
@@ -702,7 +702,7 @@ If training is interrupted and you need to resume from a checkpoint, keep the or
 ```shell
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.5-4B \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#2000 \
     --tuner_type lora \
@@ -718,7 +718,7 @@ swift sft \
 Original model:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen2-7B-Instruct \
     --stream true --max_new_tokens 2048
 ```
@@ -726,7 +726,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 After LoRA fine-tuning:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --adapters xxx/checkpoint-xxx --load_data_args true \
     --stream true --max_new_tokens 2048
 ```
@@ -734,7 +734,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 For full-parameter training or a merged LoRA model, point `--model` to the full-weight directory:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --model xxx/checkpoint-xxx-merged \
     --stream true --max_new_tokens 2048
 ```
@@ -746,17 +746,17 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 Original model:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model Qwen/Qwen2-7B-Instruct --max_new_tokens 2048
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen2-7B-Instruct --max_new_tokens 2048
 ```
 
 After LoRA fine-tuning:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --adapters xxx/checkpoint-xxx --max_new_tokens 2048
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy --adapters xxx/checkpoint-xxx --max_new_tokens 2048
 
 # Deploy the full weights after Merge LoRA
-ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max_new_tokens 2048
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy --model xxx/checkpoint-xxx-merged --max_new_tokens 2048
 ```
 
 ### Deployment with vLLM-Ascend
@@ -774,7 +774,7 @@ pip install vllm-ascend==0.23.0 \
 Original model:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
     --infer_backend vllm \
     --max_new_tokens 2048
@@ -783,17 +783,17 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 After LoRA fine-tuning:
 
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --adapters xxx/checkpoint-xxx \
     --infer_backend vllm \
     --max_new_tokens 2048
 
 # Deploy the full weights after Merge LoRA
-ASCEND_RT_VISIBLE_DEVICES=0 swift export \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift export \
     --adapters xx/checkpoint-xxx \
     --merge_lora true
 
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+ASCEND_RT_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --model xxx/checkpoint-xxx-merged \
     --infer_backend vllm \
     --max_new_tokens 2048

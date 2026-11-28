@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 """Sudoku scheduler for OpenEnv TextArena Sudoku environment.
 
 Reference: TRL openenv_sudoku_grpo.ipynb

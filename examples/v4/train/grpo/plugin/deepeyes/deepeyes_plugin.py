@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 # some code borrowed from https://github.com/Visual-Agent/DeepEyes/blob/main
 
 import base64

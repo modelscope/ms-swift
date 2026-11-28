@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Sequenc
 
 from swift.dev.config.adapter_config import has_adapter
 from swift.dev.recipe.distill.worker import DistillWorker
-from swift.dev.recipe.utils import TEACHER_GROUP, auxiliary_mesh, build_rl_sampler, effective_colocate, teacher_group
+from swift.dev.recipe.utils import TEACHER_GROUP, auxiliary_mesh, build_rl_sampler, teacher_group
 from swift.dev.template.conventions import PROMPT_INPUT_KEYS
 from swift.dev.utils.logger import get_logger
 
@@ -161,6 +161,7 @@ def initialize_distill_cluster(
     from swift.dev.builder.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
+        effective_colocate,
         build_cluster_adapter,
         build_rollout,
         inflight_rows,
@@ -247,7 +248,7 @@ def initialize_distill_cluster(
 
         engine = RemoteWeightSync(model, sampler)
     else:
-        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, colocate=colocate)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         adapter = build_cluster_adapter(

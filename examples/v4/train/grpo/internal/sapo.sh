@@ -9,7 +9,7 @@ swift rlhf \
     --tau_pos 1 \
     --tau_neg 1.05 \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_r1v_acc format \
     --learning_rate 1e-6 \
     --use_vllm true \
@@ -36,7 +36,7 @@ swift rlhf \
     --logging_steps 1 \
     --dataloader_num_workers 4 \
     --temperature 1.0 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero1 \
     --log_completions true \
     --report_to tensorboard swanlab \

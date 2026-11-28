@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 # For full-parameter training, please refer to:
 # https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_reranker.py
 

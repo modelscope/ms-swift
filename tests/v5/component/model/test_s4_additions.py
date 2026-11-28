@@ -101,6 +101,26 @@ def test_remote_code_families_declare_trust_remote_code(model_type):
     assert get_model_loader('qwen2').trust_remote_code is False
 
 
+@pytest.mark.parametrize(('model_type', 'expected'), [('qwen2', None), ('deepseek', True)])
+def test_sampler_trust_remote_code_follows_only_a_declaring_loader(monkeypatch, model_type, expected):
+    """20-F-2: a loader that declares trust_remote_code pins it True on every engine; a loader that
+    does not leaves the key out, so each engine keeps its own default (VLLM True, transformers
+    False) instead of being fed the loader's class default False."""
+    from swift.dev.builder.sampler import build_sampler
+    from swift.dev.config import ModelConfig
+
+    captured = {}
+
+    class Sampler:
+
+        def __init__(self, model, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr('twinkle.sampler.TransformersSampler', Sampler)
+    build_sampler(ModelConfig(model='m', model_type=model_type), backend='transformers')
+    assert captured['engine_args'].get('trust_remote_code') is expected
+
+
 # --- S4-07: telechat copies special-token ids onto the processor ------------------------------
 
 

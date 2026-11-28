@@ -74,7 +74,7 @@ The paper recommends default values of $\tau_{\mathrm{pos}} = 1.0$ and $\tau_{\m
 | `--tau_neg` | `float` | `1.05` | Temperature parameter for negative advantages, controls gate slope |
 
 ```bash
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --loss_type sapo \
     --tau_pos 1.0 \

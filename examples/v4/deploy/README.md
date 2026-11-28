@@ -3,7 +3,7 @@ Please refer to the examples in [examples/infer](../infer/) and change `swift in
 e.g.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
     --infer_backend vllm
 ```

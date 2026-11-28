@@ -1,11 +1,9 @@
 import os
-os.environ['USE_SWIFT_V5'] = '0'
-import os
 import sys
 
 from swift import SftArguments, sft_main
 
-sys.path.append('examples/custom/my_qwen2_5_omni')
+sys.path.append('examples/v4/custom/my_qwen2_5_omni')
 
 if __name__ == '__main__':
     import my_register

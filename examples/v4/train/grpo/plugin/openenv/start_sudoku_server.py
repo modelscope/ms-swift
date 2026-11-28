@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 """Start the TextArena Sudoku server with configurable concurrent sessions.
 
 The default OpenEnv server only allows 1 concurrent session because

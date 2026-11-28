@@ -48,7 +48,9 @@ from swift.dev.recipe.utils import (
     snapshot_initial_adapter,
     write_ckpt_args_json,
 )
-# MEASURED: not run — FAIL: TypeError len() of 0-d tensor in _project_collected (2026-11-24)
+# MEASURED (2026-11-24, sibling kto.sh, same knobs): PASS, 4 steps, after the Future-materialisation
+# fixes (twinkle 5b67b46b / ms-swift d44ba48bf) removed the len()-of-0-d-tensor failure in
+# _project_collected; VRAM not measured.
 
 
 def build_configs() -> dict:

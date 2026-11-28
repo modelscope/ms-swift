@@ -3,7 +3,7 @@ export TASK_QUEUE_ENABLE=2
 export CPU_AFFINITY_CONF=2
 
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-accelerate launch --config_file "./examples/ascend/train/qwen3_5/fsdp2.json" \
+accelerate launch --config_file "./examples/v4/ascend/train/qwen3_5/fsdp2.json" \
     swift/cli/sft.py \
     --model Qwen/Qwen3.5-35B-A3B \
     --tuner_type lora \

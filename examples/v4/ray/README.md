@@ -7,10 +7,10 @@ trained with Megatron, generates completions with vLLM, and — for GKD — is d
 
 ```bash
 # via the helper scripts
-CUDA_VISIBLE_DEVICES=0,1,2,3 bash examples/ray/gkd/run.sh
+CUDA_VISIBLE_DEVICES=0,1,2,3 bash examples/v4/ray/gkd/run.sh
 
 # or directly
-megatron rlhf --use_ray true --config examples/ray/gkd/rollout_colocate_teacher_colocate.yaml
+USE_SWIFT_V5=0 megatron rlhf --use_ray true --config examples/v4/ray/gkd/rollout_colocate_teacher_colocate.yaml
 ```
 
 The YAML is split into a top-level section (shared args) and per-role groups
@@ -107,7 +107,7 @@ reference solution. A dataset preprocessor (loaded via `external_plugins`) emits
 per-row `teacher_prompt`; the loss aligns the shared response tokens by mask.
 
 ```yaml
-external_plugins: examples/train/rlhf/opsd/opsd_plugin.py   # registers teacher_prompt
+external_plugins: examples/v4/train/rlhf/opsd/opsd_plugin.py   # registers teacher_prompt
 teacher_model: Qwen/Qwen3.5-4B
 gkd_logits_topk: 64
 ```

@@ -134,6 +134,43 @@ def test_media_fingerprint_distinguishes_columns_and_order():
     assert _prompt_key(MESSAGES, {"objects": [{"bbox": [1, 2, 3, 4]}]}) != _prompt_key(MESSAGES)
 
 
+def test_ndarray_and_rewritten_file_are_content_keyed(tmp_path):
+    # PLAN (R-18):
+    # | case | input | expected | failure it kills |
+    # | two arrays equal under str() | 2000 float32 zeros vs the same with element 1000 = 1 | different keys | json.dumps(default=str) folds both to `[0. 0. 0. ...]`: one key, sidecars overwrite |
+    # | same values, other shape | (4,) vs (2, 2) | different keys | buffer-only digest collides across reshapes |
+    # | same values, other dtype | float32 vs float64 zeros | different keys | buffer-only digest is not what differs; dtype must be in the digest |
+    # | file rewritten, same size | 64 x 0x01, then 64 x 0x02 at one path | different keys | a path-keyed or stale memo keeps the first content's key |
+    # | repeated reads | same path twice per content | stable key | memo keyed on something other than the content |
+    # Reverse control: drop the ndarray branch (arrays fall to default=str) -> case 1 goes red; drop the
+    # stat triple from the memo key -> case 4 goes red.
+    import numpy as np
+
+    flat = np.zeros(2000, dtype=np.float32)
+    folded = flat.copy()
+    folded[1000] = 1.0
+    assert str(flat) == str(folded)  # the fold the default=str path would have relied on
+    assert _prompt_key(MESSAGES, {"audios": [flat]}) != _prompt_key(MESSAGES, {"audios": [folded]})
+    assert _prompt_key(MESSAGES, {"audios": [np.zeros(4, np.float32)]}) != _prompt_key(
+        MESSAGES, {"audios": [np.zeros((2, 2), np.float32)]})
+    assert _prompt_key(MESSAGES, {"audios": [np.zeros(4, np.float32)]}) != _prompt_key(
+        MESSAGES, {"audios": [np.zeros(4, np.float64)]})
+
+    path = tmp_path / "a.wav"
+    keys = []
+    for content in (b"\x01" * 64, b"\x02" * 64):
+        path.write_bytes(content)
+        # The memo is keyed on (path, mtime_ns, size): a same-size rewrite inside the filesystem's
+        # mtime granularity is the one case it cannot see, so move the stamp explicitly here.
+        stamp = path.stat()
+        os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns + 1_000_000_000))
+        keys.append((_prompt_key(MESSAGES, {"audios": [str(path)]}),
+                     _prompt_key(MESSAGES, {"audios": [str(path)]})))
+    assert keys[0][0] == keys[0][1] and keys[1][0] == keys[1][1]
+    assert keys[0][0] != keys[1][0]
+    assert keys[1][0] == _prompt_key(MESSAGES, {"audios": [b"\x02" * 64]})  # path form == raw-bytes form
+
+
 def test_reverse_control_dropping_media_term_reintroduces_collision(tmp_path, monkeypatch):
     row_a = {"messages": MESSAGES, "images": [IMG_A]}
     row_b = {"messages": MESSAGES, "images": [IMG_B]}

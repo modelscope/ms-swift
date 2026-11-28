@@ -14,7 +14,7 @@ SWIFT web-ui is a high-level wrapper for the command line. In other words, tasks
 
 ```python
 import os
-os.system('swift sft --model xxx --dataset xxx')
+os.system('USE_SWIFT_V5=0 swift sft --model xxx --dataset xxx')
 ```
 
 This provides several features for the web-ui:
@@ -31,8 +31,8 @@ If you need to use share mode, please add the `--share true` parameter. **Note:*
 Additionally, ms-swift supports interface inference mode (i.e., Space deployment):
 
 ```shell
-swift app --model '<model>' --studio_title My-Awesome-Space --stream true
+USE_SWIFT_V5=0 swift app --model '<model>' --studio_title My-Awesome-Space --stream true
 # or
-swift app --model '<model>' --adapters '<adapter>' --studio_title My-Awesome-Space --stream true
+USE_SWIFT_V5=0 swift app --model '<model>' --adapters '<adapter>' --studio_title My-Awesome-Space --stream true
 ```
 This will launch an application with only the inference page, which will deploy the model upon startup and provide it for subsequent use.

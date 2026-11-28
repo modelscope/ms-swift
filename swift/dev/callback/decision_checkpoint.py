@@ -54,19 +54,18 @@ class DecisionCheckpointCallback(TrainCallback):
         save_weights = self._save_weights
         if save_weights is None:
             save_weights = _is_adapter_model(self._model)
-        # write_dir yields the real dir locally; an oss:// / s3:// checkpoint_dir
-        # stages, uploads and drops the staging copy.
-        from swift.dev.utils.storage import write_dir
-
+        # The write lease is taken where the head lives: ``checkpoint_dir`` goes to the
+        # workers as given (an oss:// / s3:// URL included) and the worker that writes
+        # stages and uploads on its own node. A staging dir made here would be a path on
+        # the driver's machine, which a worker on another node cannot write into.
         try:
-            with write_dir(checkpoint_dir) as local:
-                # Worker-side: under Ray the bound model is a driver proxy with no _modules
-                # tree (the head lives on the workers), so head discovery + save_pretrained
-                # run on the workers via this @remote_function handle (master rank writes).
-                saved = self._model.save_scoring_head_sidecar(local, save_weights=save_weights)
-        except Exception as e:  # noqa: BLE001 -- a failed sidecar must not kill the main save
-            logger.warning(f"decision_checkpoint: failed to save scoring_head to {checkpoint_dir} ({e}).")
-            return
+            saved = self._model.save_scoring_head_sidecar(checkpoint_dir, save_weights=save_weights)
+        except Exception as e:  # noqa: BLE001 -- logged, then re-raised: the checkpoint is missing its head
+            logger.error(f"decision_checkpoint: failed to save scoring_head to {checkpoint_dir} ({e}).")
+            raise
+        # One answer per worker (a list under ray, a bool otherwise); a worker without the
+        # head answers False, and "no worker wrote it" must not be reported as saved.
+        saved = saved if isinstance(saved, bool) else any(saved)
         if not saved:
             return
         from swift.dev.model.decision_head import ScoringHead

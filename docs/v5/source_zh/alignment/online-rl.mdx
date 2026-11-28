@@ -287,6 +287,29 @@ checkpoint 由 `save_steps`、`save_total_limit` 控制，正常结束时保存 
 | 训练或生成显存不足 | 分别检查训练 micro-batch/编码长度和采样并发/生成长度/KV cache 预算。 |
 | 异步配置被拒绝 | 是否为分离式采样，GRPO 是否配置 off-policy 校正，是否启用互斥功能。 |
 
+## 路由回放
+
+MoE 路由回放（仅 GRPO、仅 MoE 策略）让训练 forward 使用生成 rollout token 时的路由，而不是在已漂移的权重下重新路由，因此重要性比是在真正生成该 token 的专家组合上计算的。`--router_replay_mode` 决定回放路由的来源：
+
+| 取值 | 回放路由的来源 |
+|---|---|
+| `disabled`（默认） | 不回放，训练 forward 重新路由。 |
+| `R2` | 训练模型自身的路由：在刚同步的权重下额外做一次 `forward_only` 记录。任何采样引擎都可用，每个窗口多一次全序列 forward。 |
+| `R3` | 采样引擎在生成时导出的路由。需要引擎能上报路由（vLLM >= 0.14.0），没有额外 forward。 |
+
+Ray 模式的 R3 通过 `--vllm_engine_kwargs '{"enable_return_routed_experts": true}'` 让 vLLM 导出路由；引擎未导出时直接报错，不会降为 R2。Transformers 与 Megatron 两种训练后端都会回放路由。完整命令见 `examples/v5/rl/grpo/router_replay/router_replay.sh`。
+
+### Remote R3
+
+v5 GRPO 支持 `--mode remote --router_replay_mode R3`。采样 server 返回原始回复 token、logprobs 和 `routed_experts`，client 使用已有模板直接追加训练 feature，不对回复重新分词；路由随训练 inputs 发送给训练 server 做回放。文本和多模态使用相同流程。
+
+client 与 server 必须使用包含该协议支持的版本，并在已有 twinkle-server 配置中分别开启：
+
+- 模型 application 的 `args.enable_router_replay: true`。
+- 采样 application 的 `args.engine_args.enable_return_routed_experts: true`（vLLM 引擎及 MoE 模型须支持导出路由）。
+
+这些是 server 部署参数，不能仅在 client 开启 R3。引擎未导出路由或 server 模型未开启回放时会明确报错，不会自动重算路由或降为 R2。remote 暂不支持 R2 的训练模型录制与路由收集流程；需要 R2 时使用 Ray 模式。
+
 ## 其他在线训练流程
 
 | `rl_type` | 用途 |

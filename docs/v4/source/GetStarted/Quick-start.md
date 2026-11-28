@@ -34,7 +34,7 @@ ms-swift的安装请参考[安装文档](./SWIFT-installation.md)。
 ```shell
 # 13GB
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3-4B-Instruct-2507 \
     --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -73,7 +73,7 @@ swift sft \
 ```shell
 # 使用交互式命令行进行推理
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --temperature 0 \
@@ -81,7 +81,7 @@ swift infer \
 
 # merge-lora并使用vLLM进行推理加速
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --merge_lora true \
@@ -94,7 +94,7 @@ swift infer \
 最后，使用以下命令将模型推送到ModelScope：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<your-model-id>' \

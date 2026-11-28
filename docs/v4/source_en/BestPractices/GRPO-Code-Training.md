@@ -45,7 +45,7 @@ Note: Currently, executing code through E2B only supports the Python language. I
 launch external vLLM server using following script
 ```bash
 CUDA_VISIBLE_DEVICES=7 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
   --model Qwen/Qwen2.5-7B-Instruct \
   --vllm_enable_lora true \
   --vllm_max_lora_rank 16
@@ -56,10 +56,10 @@ E2B_API_KEY=xxx \
 WANDB_API_KEY=xxx \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
 NPROC_PER_NODE=7 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_code_reward external_code_format \
     --reward_weights 1.0 0.1 \
     --vllm_mode server \
@@ -89,7 +89,7 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 14 \
     --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \
     --report_to wandb
@@ -107,10 +107,10 @@ JUDGE0_X_AUTH_TOKEN=xxx \
 WANDB_API_KEY=xxx \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
 NPROC_PER_NODE=7 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_code_reward_by_judge0 external_code_format \
     --reward_weights 1.0 0.1 \
     --vllm_mode server \
@@ -138,7 +138,7 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 14 \
     --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt' \
+    --system 'examples/v4/train/grpo/prompt.txt' \
     --deepspeed zero2 \
     --log_completions true \
     --report_to wandb

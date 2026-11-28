@@ -1,6 +1,6 @@
 export USE_SWIFT_V5=0
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-accelerate launch --config_file ./examples/train/multi-node/accelerate/multi_node.yaml --machine_rank 1 \
+accelerate launch --config_file ./examples/v4/train/multi-node/accelerate/multi_node.yaml --machine_rank 1 \
     swift/cli/sft.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --tuner_type lora \

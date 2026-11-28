@@ -594,11 +594,11 @@ NPROC_PER_NODE=4 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 MAX_PIXELS=1003520 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2.5-Omni-7B \
     --model_type my_qwen2_5_omni \
     --template my_qwen2_5_omni \
-    --external_plugins 'examples/custom/my_qwen2_5_omni/my_register.py' \
+    --external_plugins 'examples/v4/custom/my_qwen2_5_omni/my_register.py' \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \
@@ -640,7 +640,7 @@ CUDA_VISIBLE_DEVICES=0 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 MAX_PIXELS=1003520 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --max_new_tokens 512 \
@@ -650,7 +650,7 @@ swift infer \
 Use the following command to push training weights to Modelscope:
 
 ```shell
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<your-model-id>' \

@@ -170,19 +170,19 @@ Training and inference resources are separated, with a dedicated inference serve
 Use the `swift rollout` command to deploy the vLLM server (currently only supports vLLM backend):
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --vllm_tensor_parallel_size 2 \
   --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --vllm_tensor_parallel_size 2 \
   --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --vllm_tensor_parallel_size 2 \
   --vllm_data_parallel_size 2
@@ -209,20 +209,20 @@ Setting the following parameters optimizes weight synchronization speed for LoRA
 
 ```bash
 # rollout(server mode)
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --vllm_enable_lora true \
     --vllm_max_lora_rank xxx # match the lora_rank in the training script
     ...
 
 # grpo(colocate mode)
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --vllm_mode colocate \
     --vllm_enable_lora true \
     ...
 
 # megatron grpo(colocate mode)
-swift megatron rlhf \
+USE_SWIFT_V5=0 swift megatron rlhf \
     --rlhf_type grpo \
     --vllm_mode colocate \
     --vllm_enable_lora true \

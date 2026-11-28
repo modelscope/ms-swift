@@ -6,7 +6,7 @@
 
 SWIFT的sample能力可以使用下面的例子进行：
 ```shell
-swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine transformers --num_return_sequences 5 --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
+USE_SWIFT_V5=0 swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine transformers --num_return_sequences 5 --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```
 在当前文件夹的`sample_output`目录下，会生成以时间戳为文件名的jsonl文件，该文件应该包含25行，每一行都是一个完整`messages`格式的数据。
 
@@ -31,7 +31,7 @@ pip install -e '.[llm]'
 采样重要的能力就是对过程和结果进行监督，这可以通过设置额外参数来支持。
 
 ```shell
-swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine lmdeploy --num_return_sequences 5 --n_best_to_keep 2 --dataset tastelikefeet/competition_math#5 --prm_model AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft --orm_model math
+USE_SWIFT_V5=0 swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine lmdeploy --num_return_sequences 5 --n_best_to_keep 2 --dataset tastelikefeet/competition_math#5 --prm_model AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft --orm_model math
 ```
 
 在当前文件夹的`sample_output`目录下，会生成以时间戳为文件名的jsonl文件，该文件**至多包含**10行，每一行都是一个完整`messages`格式的数据。
@@ -78,7 +78,7 @@ prms = {'custom': CustomPRM}
 SWIFT的sample支持使用OpenAI API的方式，用大模型蒸馏数据，如下示例：
 ```shell
 OPENAI_API_KEY="your_api_key" \
-swift sample \
+USE_SWIFT_V5=0 swift sample \
     --sampler_type distill \
     --sampler_engine client \
     --model deepseek-r1 \

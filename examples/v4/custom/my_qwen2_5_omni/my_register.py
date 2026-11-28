@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 import torch
 from functools import partial
 from transformers import AutoConfig, PretrainedConfig, PreTrainedModel

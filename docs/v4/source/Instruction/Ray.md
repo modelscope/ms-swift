@@ -35,7 +35,7 @@ ray start --head                        # 主节点
 ray start --address=<head_ip>:6379      # 其他节点
 
 # 2. 提交训练
-megatron rlhf --use_ray true --config examples/ray/grpo/ray_grpo_colocate.yaml
+USE_SWIFT_V5=0 megatron rlhf --use_ray true --config examples/v4/ray/grpo/ray_grpo_colocate.yaml
 ```
 
 ### GPU 分配模式

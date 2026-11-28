@@ -125,7 +125,7 @@ The BF16 LoRA training script is shown below. The final output includes both the
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model deepseek-ai/DeepSeek-V4-Flash \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#1000' \
@@ -213,7 +213,7 @@ Inference with the trained model:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged \
     --infer_backend transformers \
     --enable_thinking false \
@@ -236,7 +236,7 @@ First perform quantization (note: this quantization will cause LoRA incremental 
 ```shell
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged \
     --output_dir megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged-FP8 \
     --to_hf true \

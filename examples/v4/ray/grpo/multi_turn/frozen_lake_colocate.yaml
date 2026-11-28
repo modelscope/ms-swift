@@ -1,10 +1,10 @@
 # Ray + Megatron GRPO on FrozenLake (multi-turn, colocate mode).
-# Parameters aligned with examples/megatron/grpo/multi_turn/frozen_lake.sh
+# Parameters aligned with examples/v4/megatron/grpo/multi_turn/frozen_lake.sh
 rlhf_type: grpo
 
 model: Qwen/Qwen3.5-2B
-dataset: 'examples/megatron/grpo/multi_turn/frozen_lake.jsonl#1024'
-external_plugins: examples/megatron/grpo/multi_turn/frozen_lake_plugin.py
+dataset: 'examples/v4/megatron/grpo/multi_turn/frozen_lake.jsonl#1024'
+external_plugins: examples/v4/megatron/grpo/multi_turn/frozen_lake_plugin.py
 load_from_cache_file: false
 split_dataset_ratio: 0
 dataset_num_proc: 4

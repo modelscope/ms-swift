@@ -37,7 +37,7 @@ pip install "entropack[cuda13]>=0.1.3"
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3.8-27B \
     --quant_method entropack \
     --entropack_target_bpp 4.0 \
@@ -57,7 +57,7 @@ swift infer \
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --model Qwen/Qwen3.8-27B \
     --quant_method entropack \
     --entropack_target_bpp 4.0 \
@@ -70,7 +70,7 @@ swift export \
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen3.8-27B-EntroPack \
     --infer_backend transformers \
     --stream true \
@@ -89,7 +89,7 @@ LoRA 训练可以直接在线量化原始模型，也可以加载已经导出的
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.8-27B \
     --quant_method entropack \
     --entropack_target_bpp 4.0 \
@@ -127,7 +127,7 @@ swift sft \
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen3.8-27B-EntroPack \
     --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -162,7 +162,7 @@ LoRA checkpoint 只保存 adapter 参数，不包含 EntroPack 基座。直接�
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/Qwen3.8-27B-EntroPack/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --stream true \
@@ -173,7 +173,7 @@ EntroPack 训练得到的 LoRA adapter 也可以加载到原始 dense 基模上�
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3.8-27B \
     --adapters output/Qwen3.8-27B-EntroPack/vx-xxx/checkpoint-xxx \
     --load_args false \
@@ -191,7 +191,7 @@ swift infer \
 ```shell
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen3.8-27B-EntroPack \
     --tuner_type lora \
     --dataset train.jsonl \
@@ -209,7 +209,7 @@ swift sft \
 ```shell
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen3.8-27B-EntroPack \
     --tuner_type lora \
     --dataset train.jsonl \

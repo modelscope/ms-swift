@@ -20,7 +20,7 @@ To view the inference of a model fine-tuned with LoRA, please refer to the [Pre-
 **Full Parameter Model:**
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift infer \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
     --infer_backend transformers \
@@ -30,7 +30,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 **LoRA Model:**
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift infer \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
@@ -56,7 +56,7 @@ CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --stream true \
     --infer_backend transformers \
@@ -84,7 +84,7 @@ A baby wearing glasses is sitting on a bed and reading a book. The baby is holdi
 **Dataset Inference:**
 
 ```
-CUDA_VISIBLE_DEVICES=0 swift infer \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
     --infer_backend transformers \
@@ -196,7 +196,7 @@ This section primarily focuses on the deployment and invocation of multimodal mo
 **Server Deployment:**
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift deploy \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
     --infer_backend vllm \
     --max_new_tokens 2048 \
@@ -224,7 +224,7 @@ CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --infer_backend vllm \
     --vllm_gpu_memory_utilization 0.9 \

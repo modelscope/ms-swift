@@ -9,6 +9,7 @@ from swift.dev.utils.logger import get_logger
 
 from swift.dev.recipe.sft.assembly import build_supervised_objects
 from swift.dev.recipe.supervised import run_supervised
+from twinkle.processor.tasks import get_task_spec
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -26,29 +27,20 @@ RERANKER_TASK_TYPES = ('reranker', 'generative_reranker')
 DECISION_TASK = "decision"
 
 
-#: Training tasks whose inputs are encoded inside forward (the embedding InputProcessor produces
-#: input_ids there, not in collate) or organized per RECORD (decision readout). The forward-only
-#: micro-batch planner reads input_ids before encoding exists, so these must submit the whole unit
-#: as one forward (micro_batch_size=None) -- the training-side counterpart of the eval loop's
-#: _WHOLE_BATCH_EVAL_TASKS. Reranker/SFT collate already yields input_ids and keep micro-batching.
-_WHOLE_BATCH_TRAIN_TASKS = ('embedding', 'decision')
-
-
 def _supervised_micro_kwargs(task: str) -> Callable[..., Dict[str, Any]]:
     """The forward-kwargs factory the training loop and the val-loss eval share.
 
     The dataloader already yields ``list[InputFeature]``, so this passes through ``inputs``
     plus the forward ``task``. ``micro_batch_size`` counts original examples or packing units;
     the backend splits the submitted inputs internally, with no accumulation across calls.
-    ``micro_batch_size=None`` submits the whole unit as one forward -- the only supported mode
-    for readout tasks (decision), whose labels/decision_meta are organized per RECORD and
-    cannot be split at sample level by the forward-only micro-batcher, and for embedding, whose
-    input_ids are produced inside forward rather than in collate.
+    ``micro_batch_size=None`` submits the whole unit as one forward: whether a task needs that
+    (decision readout, embedding) is the task's own declaration, read from twinkle's task
+    registry (``TaskSpec.micro_batchable``) rather than a list kept here.
     """
 
     def micro_step_kwargs(unit, *, micro_batch_size: Optional[int]):
         kwargs = {'inputs': unit, 'task': task, "gradient_accumulation_steps": 1}
-        if micro_batch_size is not None and task not in _WHOLE_BATCH_TRAIN_TASKS:
+        if micro_batch_size is not None and get_task_spec(task).micro_batchable:
             kwargs["micro_batch_size"] = micro_batch_size
         return kwargs
 

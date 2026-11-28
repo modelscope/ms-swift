@@ -21,7 +21,7 @@ export USE_SWIFT_V5=0
 # scoring_head.json; the next `--adapters <checkpoint>` (or `swift infer`) reloads it via the guarded
 # maybe_load_trained_scoring_head hook.
 #
-# sh examples/train/decision/jev.sh
+# sh examples/v4/train/decision/jev.sh
 # The decision LoRA lives in the model repo's `adapter_vllm/` subfolder. Resolve its local snapshot path
 # with the SAME interpreter that runs `swift` (read from the swift entry-point shebang), so this works
 # no matter which `python` happens to be first on PATH. USE_HF=0 -> modelscope.
@@ -31,7 +31,7 @@ JEV_ADAPTER="$("$SWIFT_PY" -c "import os; from modelscope import snapshot_downlo
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model autotrust/JEV-27B-VL \
     --model_type jev \
     --task_type decision \

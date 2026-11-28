@@ -9,18 +9,8 @@ import numpy as np
 import torch
 
 from twinkle.processor import PrivilegedView, encode_privileged_feature, encode_privileged_view
+from twinkle.utils import collect  # noqa: F401 -- the recipes import it from here
 from twinkle.processor.trajectory import response_positions
-
-
-def collect(result: Any) -> Any:
-    """Resolve a maybe-lazy remote result to its value.
-
-    A method declared ``lazy_collect=True`` returns a pending handle under ray (``.result()``
-    materialises it, raising the worker's exception here) and the plain value when it ran in this
-    process. Callers that consume the VALUE, or need a worker-side failure to fail THIS step, route
-    through here so they are correct under both.
-    """
-    return result.result() if hasattr(result, 'result') else result
 
 
 def copy_inputs(features: Sequence[Any]) -> List[Any]:
@@ -158,12 +148,12 @@ def response_token_scores(outputs: Any, features: List[Dict[str, Any]],
     head) may contain a batch tensor or variable-length microbatches, including their JSON form.
     Full-sequence, right-padded rows are indexed at each feature's response positions.
     """
-    outputs = outputs.result() if hasattr(outputs, 'result') else outputs
+    outputs = collect(outputs)
     values = outputs.get(output_key) if isinstance(outputs, dict) else outputs
     # The channel itself may be a stashed pending handle (e.g. the distill teacher's
     # stash=('teacher_logps',...)); materialise it before the tensor conversion below, which would
     # otherwise probe len() on the remote collected value (the LazyCollect 0-d tensor TypeError).
-    values = values.result() if hasattr(values, 'result') else values
+    values = collect(values)
     if values is None:
         raise RuntimeError(f'the forward returned no {output_key!r} channel.')
     if not (isinstance(values, (list, tuple)) and values
@@ -171,7 +161,7 @@ def response_token_scores(outputs: Any, features: List[Dict[str, Any]],
         values = [values]
     rows = []
     for batch in values:
-        batch = batch.result() if hasattr(batch, 'result') else batch
+        batch = collect(batch)
         batch = torch.as_tensor(batch).detach().float().cpu()
         rows.extend(batch.unbind(0) if batch.dim() > 1 else [batch])
     if len(rows) != len(features):

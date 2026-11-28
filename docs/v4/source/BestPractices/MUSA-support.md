@@ -103,7 +103,7 @@ MUSA_VISIBLE_DEVICES=0 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.5-4B \
     --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -148,7 +148,7 @@ MUSA_VISIBLE_DEVICES=0,1,2,3 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.5-4B \
     --tuner_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -191,7 +191,7 @@ swift sft \
 
 ```bash
 MUSA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/Qwen3.5-4B-lora/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --enable_thinking false \
@@ -203,7 +203,7 @@ swift infer \
 
 ```bash
 MUSA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model output/Qwen3.5-4B-full/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --enable_thinking false \
@@ -225,7 +225,7 @@ swift infer \
 
 ```bash
 MUSA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --adapters output/Qwen3.5-4B-lora/vx-xxx/checkpoint-xxx \
     --merge_lora true
 ```

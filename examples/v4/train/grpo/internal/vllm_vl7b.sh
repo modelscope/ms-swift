@@ -12,7 +12,7 @@ swift rlhf \
     --vllm_gpu_memory_utilization 0.5 \
     --vllm_tensor_parallel_size 4 \
     --torch_dtype bfloat16 \
-    --system examples/train/grpo/prompt.txt \
+    --system examples/v4/train/grpo/prompt.txt \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \

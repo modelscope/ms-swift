@@ -53,7 +53,7 @@ Deepeyes 的奖励函数依赖生成式奖励模型对模型生成结果与标�
 ```bash
 # 4*80G
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen2.5-VL-72B-Instruct \
     --infer_backend vllm \
     --vllm_tensor_parallel_size 4 \

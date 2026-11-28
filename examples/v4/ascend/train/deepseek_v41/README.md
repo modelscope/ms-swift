@@ -34,7 +34,7 @@ MODEL=/path/to/deepseek-v41-checkpoint \
 ENGRAM_TOKENIZER_MAP=/path/to/engram_tokenizer_map.json \
 DATASET=/path/to/train.jsonl \
 OUTPUT_DIR=megatron_output/deepseek-v41-npu-lora \
-bash examples/ascend/train/deepseek_v41/megatron_lora.sh
+bash examples/v4/ascend/train/deepseek_v41/megatron_lora.sh
 ```
 
 `MODEL` is a required local checkpoint directory. If `ENGRAM_TOKENIZER_MAP` is unset, the script reads `engram_tokenizer_map.json` from that directory. The map must match the checkpoint's tokenizer, original layer IDs and vocabulary; generate it with the matching MCore `tools/engram/generate_tokenizer_map.py`. `DATASET` accepts local data or defaults to the example dataset in the script. Adjust `TRAIN_ITERS`, `SAVE_STEPS`, `MAX_LENGTH` and `GLOBAL_BATCH_SIZE`. Configure visible devices and communication interfaces for your host; no interface or NUMA layout is hard-coded.
@@ -56,7 +56,7 @@ MODEL=/path/to/full-deepseek-v41-checkpoint \
 ENGRAM_TOKENIZER_MAP=/path/to/engram_tokenizer_map.json \
 DATASET=/path/to/train.jsonl \
 OUTPUT_DIR=/path/to/shared-output \
-bash examples/ascend/train/deepseek_v41/megatron_lora_multinode.sh
+bash examples/v4/ascend/train/deepseek_v41/megatron_lora_multinode.sh
 
 # Node 1: use the same MASTER_ADDR, MASTER_PORT and OUTPUT_DIR as node 0
 NODE_RANK=1 MASTER_ADDR="192.0.2.10" \
@@ -64,7 +64,7 @@ MODEL=/path/to/full-deepseek-v41-checkpoint \
 ENGRAM_TOKENIZER_MAP=/path/to/engram_tokenizer_map.json \
 DATASET=/path/to/train.jsonl \
 OUTPUT_DIR=/path/to/shared-output \
-bash examples/ascend/train/deepseek_v41/megatron_lora_multinode.sh
+bash examples/v4/ascend/train/deepseek_v41/megatron_lora_multinode.sh
 ```
 
 Replace the example IP `192.0.2.10` with an address reachable from both hosts. Set `HCCL_SOCKET_IFNAME` and `GLOO_SOCKET_IFNAME` for each host. Use a shared `OUTPUT_DIR` accessible from both hosts; automatic version suffixes are disabled so both nodes save the same training run. The successful run also used a NUMA Python launcher with CPU/memory binding matched to each host's NPU topology. Set `PYTHON_EXEC` to such a launcher when needed, using the actual host topology rather than another machine's NUMA IDs. Host memory must fit local Engram shards and loading temporaries.

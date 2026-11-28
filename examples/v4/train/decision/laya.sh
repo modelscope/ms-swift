@@ -5,7 +5,7 @@ LAYA_MODEL="${LAYA_MODEL:-convaiinnovations/laya}"
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model "$LAYA_MODEL" \
     --model_type laya \
     --task_type decision \

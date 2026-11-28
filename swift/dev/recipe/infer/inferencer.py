@@ -2,9 +2,11 @@
 # The infer entry point: a sampling path and a forward-pass path, split inside __call__.
 from __future__ import annotations
 import copy
+import functools
 import hashlib
 import math
 import os
+import stat
 import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
@@ -803,7 +805,6 @@ def _initialize_for_sampling(
         start += world_size
     twinkle.initialize(
         mode="ray",
-        nproc_per_node=start,
         groups=[
             DeviceGroup(
                 name=name, ranks=ranks, device_type=Platform.get_platform().__name__, gpus_per_worker=gpus_per_worker
@@ -1340,19 +1341,34 @@ def _media_content_digest(value: Any) -> bytes:
         return hashlib.md5(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).digest()
     if isinstance(value, str):
         try:
-            if os.path.isfile(value):
-                with open(value, "rb") as f:
-                    return hashlib.md5(f.read()).digest()
+            st = os.stat(value)
+            if stat.S_ISREG(st.st_mode):
+                return _file_content_digest(value, st.st_mtime_ns, st.st_size)
         except OSError:
             pass
         return hashlib.md5(value.encode("utf-8")).digest()
     if isinstance(value, (list, tuple)):
         return hashlib.md5(b"".join(_media_content_digest(item) for item in value)).digest()
+    if isinstance(value, np.ndarray):
+        # Raw buffer plus dtype/shape: ``json.dumps(default=str)`` folds arrays past numpy's print
+        # threshold to ``[0. 0. 0. ... 0.]``, so different audio/feature arrays digested alike.
+        return hashlib.md5(f"{value.dtype.str}:{value.shape}".encode("utf-8") + value.tobytes()).digest()
     tobytes = getattr(value, "tobytes", None)
     if callable(tobytes) and hasattr(value, "mode") and hasattr(value, "size"):
         # A PIL image: raw pixels plus mode/size (two modes can share pixels yet render differently).
         return hashlib.md5(f"{value.mode}:{value.size}".encode("utf-8") + tobytes()).digest()
     return hashlib.md5(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).digest()
+
+
+@functools.lru_cache(maxsize=4096)
+def _file_content_digest(path: str, mtime_ns: int, size: int) -> bytes:
+    """md5 of a file's content, memoised on ``(path, mtime_ns, size)``.
+
+    ``_prompt_key`` digests the same media paths several times per row (group key, sidecar name,
+    cache lookup); the stat triple is computed by the caller, so a rewritten file misses the cache.
+    """
+    with open(path, "rb") as f:
+        return hashlib.md5(f.read()).digest()
 
 
 def _media_fingerprint(row: Optional[Dict[str, Any]]) -> str:
@@ -1428,7 +1444,6 @@ def _initialize_for_forward(distributed_config: "DistributedConfig") -> None:
         )
     twinkle.initialize(
         mode="ray",
-        nproc_per_node=nproc,
         extra_torch_kwargs=extra_torch_kwargs,
         name=distributed_config.ray_exp_name,
         groups=[

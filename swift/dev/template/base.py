@@ -1032,6 +1032,12 @@ class Template(ProcessorMixin, TwinkleTemplate):
         engine: bool = False,
         backend: EngineBackend = "vllm",
     ) -> List[int]:
+        if messages_before and any(message.get("role") == "system" for message in appended):
+            # Same rule as twinkle's Template: the collapse moves an appended system message into
+            # the head, so the history re-renders from its first token. Refuse with the reason.
+            raise ValueError("render_delta cannot append a system message after the first turn: "
+                             "the conversation would re-render from its head. Put the instruction "
+                             "in a user message, or start a new conversation.")
         renderer = self.replace(max_length=None)
 
         def render(messages: List[Dict[str, Any]], gen_prompt: bool) -> List[int]:
@@ -1079,12 +1085,14 @@ class Template(ProcessorMixin, TwinkleTemplate):
             length = len(row.get("input_ids") or ())
             if self.max_length is not None and length > self.max_length:
                 if strategy in {"left", "right"}:
-                    input_ids, labels = self._truncate(
-                        row["input_ids"], row.get("labels"), row, truncation_strategy=strategy
+                    # An appended completion is never truncated: the banked ids are what the
+                    # sampler produced and the labels/logps align to them position by position.
+                    # Twinkle's base finalize refuses the same way, so both encoders raise
+                    # MaxLengthError (which the rollout treats as "unfit") rather than leaving a
+                    # left/right branch that the contract's equality check would reject anyway.
+                    raise MaxLengthError(
+                        f"Current length of row({length}) is larger than the max_length({self.max_length})."
                     )
-                    row["input_ids"] = input_ids
-                    if labels is not None:
-                        row["labels"] = labels
                 elif strategy == "raise":
                     raise MaxLengthError(
                         f"Current length of row({length}) is larger than the max_length({self.max_length})."

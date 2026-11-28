@@ -7,6 +7,7 @@ import sys
 from itertools import count
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from swift.dev.builder.streaming import effective_colocate
 from swift.dev.recipe.batching import balance_update
 from swift.dev.recipe.distill.assembly import (
     DISTILL_SIGNALS,
@@ -20,7 +21,6 @@ from swift.dev.recipe.utils import (
     StepState,
     build_save_knobs,
     close_driver_preserving_error,
-    effective_colocate,
     finalize_rl_resources,
     initialize_rl_devices,
     optimizer_batch_slices,

@@ -26,7 +26,7 @@ swift sft \
     --system You\ are\ a\ helpful\ assistant. \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --fsdp './examples/ascend/activation_cpu_offload/fsdp2.json'
+    --fsdp './examples/v4/ascend/activation_cpu_offload/fsdp2.json'
 
 #  --dataset AI-ModelScope/LongAlpaca-12k
 # activation_cpu_offload=false

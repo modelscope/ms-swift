@@ -37,6 +37,6 @@ Say you have two nodes, when doing this, make sure your other nodes can be login
 ```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
-# If your node number is different, edit examples/train/multi-node/deepspeed/host.txt
-sh examples/train/multi-node/deepspeed/train.sh
+# If your node number is different, edit examples/v4/train/multi-node/deepspeed/host.txt
+sh examples/v4/train/multi-node/deepspeed/train.sh
 ```

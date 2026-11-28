@@ -74,7 +74,7 @@ $$
 | `--tau_neg` | `float` | `1.05` | 负向优势的温度参数，控制门控斜率 |
 
 ```bash
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --loss_type sapo \
     --tau_pos 1.0 \

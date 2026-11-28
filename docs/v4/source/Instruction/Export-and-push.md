@@ -47,7 +47,7 @@ pip install bitsandbytes -U
 
 SWIFT支持将训练/量化的模型重新推送到ModelScope/HuggingFace。默认推送到ModelScope，你可以指定`--use_hf true`推送到HuggingFace。
 ```shell
-swift export \
+USE_SWIFT_V5=0 swift export \
     --model output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<model-id>' \

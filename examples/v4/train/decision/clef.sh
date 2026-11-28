@@ -13,11 +13,11 @@ export USE_SWIFT_V5=0
 # JEV/OmniJev, which continue-train their shipped adapter via `--adapters`. `--attn_impl eager` matches
 # tests/test_align/test_decision_clef_align.py (removes sdpa/flash kernel divergence).
 #
-# sh examples/train/decision/clef.sh
+# sh examples/v4/train/decision/clef.sh
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model Cloudflare/clef \
     --model_type clef \
     --task_type decision \

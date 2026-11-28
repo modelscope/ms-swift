@@ -37,7 +37,7 @@ Online quantization builds EntroPack weights directly from the original checkpoi
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3.8-27B \
     --quant_method entropack \
     --entropack_target_bpp 4.0 \
@@ -57,7 +57,7 @@ Online quantization reads the original model and does not create a new checkpoin
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift export \
+USE_SWIFT_V5=0 swift export \
     --model Qwen/Qwen3.8-27B \
     --quant_method entropack \
     --entropack_target_bpp 4.0 \
@@ -70,7 +70,7 @@ The exported model can be loaded directly for inference:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen3.8-27B-EntroPack \
     --infer_backend transformers \
     --stream true \
@@ -89,7 +89,7 @@ The following command loads the original Qwen3.8-27B weights, quantizes them to 
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3.8-27B \
     --quant_method entropack \
     --entropack_target_bpp 4.0 \
@@ -127,7 +127,7 @@ Point `--model` to the directory produced by `swift export`:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen3.8-27B-EntroPack \
     --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -162,7 +162,7 @@ A LoRA checkpoint contains only adapter parameters, not the EntroPack base model
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/Qwen3.8-27B-EntroPack/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --stream true \
@@ -173,7 +173,7 @@ An adapter trained with EntroPack can also be loaded on the original dense base 
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3.8-27B \
     --adapters output/Qwen3.8-27B-EntroPack/vx-xxx/checkpoint-xxx \
     --load_args false \
@@ -191,7 +191,7 @@ An exported EntroPack checkpoint can also be used for multi-GPU training. With D
 ```shell
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen3.8-27B-EntroPack \
     --tuner_type lora \
     --dataset train.jsonl \
@@ -209,7 +209,7 @@ Enable FSDP2 with `--fsdp fsdp2`:
 ```shell
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen3.8-27B-EntroPack \
     --tuner_type lora \
     --dataset train.jsonl \

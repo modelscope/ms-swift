@@ -47,7 +47,7 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 Developers can convert any CausalLM into a decision model by specifying:
 
 ```shell
-swift sft --task_type decision
+USE_SWIFT_V5=0 swift sft --task_type decision
 ```
 
 ## Loss Functions
@@ -213,7 +213,7 @@ Environment variables are process-scoped: in multi-node training, make sure they
 # Example: switch to the NLL objective and lower the sample threshold
 export SWIFT_CALIBRATION_LOSS=nll
 export SWIFT_CALIBRATION_MIN_ITEMS=5
-swift sft --task_type decision ... --split_dataset_ratio 0.1
+USE_SWIFT_V5=0 swift sft --task_type decision ... --split_dataset_ratio 0.1
 ```
 
 ## Dataset Format
@@ -250,7 +250,7 @@ Models in this family score **one question per forward**. A record with multiple
 
 - `questions`: list of question dicts. Native fields are `instr` (question text), `options` (list of option texts), and `label` (the **index** of the correct option); the unified schema's `kind`/`question`/`gold` is also accepted.
 - When `kind` is omitted it is inferred from the option set: a true/false-style pair → `noul`; all-digit options → `score`; anything else → `choice`.
-- **Adapter-only repos**: the repo ships no config.json / base weights. Pass the base via `--model`, the repo via `--adapters`, and point `KEV_HEAD` at the adapter dir's `head.pt` (see `examples/train/decision/kev.sh`).
+- **Adapter-only repos**: the repo ships no config.json / base weights. Pass the base via `--model`, the repo via `--adapters`, and point `KEV_HEAD` at the adapter dir's `head.pt` (see `examples/v4/train/decision/kev.sh`).
 
 #### The `laya` Variant
 
@@ -264,7 +264,7 @@ Models in this family score **one question per forward**. A record with multiple
 
 - `qs`: list of question dicts with native fields `t` (kind), `ins` (question text), `crit` (option definitions — `choice` renders `'id: criteria'`, `score` renders `'level i: criteria'`, `noul` uses canonical false/true texts), and `y` (gold index) or `soft` (soft distribution).
 - The unified schema (`questions` with `kind`/`question`/`options`/`gold`) is also accepted; option texts pass through unchanged.
-- The repo bundles three checkpoints (root English / `typed-decisions/` / `multilingual/`); `LAYA_CHECKPOINT` selects one. `--tuner_type full` is required — the encoder has no generation head for the LoRA/PeftModel wrap (see `examples/train/decision/laya.sh`).
+- The repo bundles three checkpoints (root English / `typed-decisions/` / `multilingual/`); `LAYA_CHECKPOINT` selects one. `--tuner_type full` is required — the encoder has no generation head for the LoRA/PeftModel wrap (see `examples/v4/train/decision/laya.sh`).
 
 #### The `startlux` Variant
 
@@ -369,7 +369,7 @@ fixed 255-row label matrix.
 
 ## Training
 
-ms-swift ships a training script per integrated model at `examples/train/decision/<model_type>.sh` (using **local mini datasets** — no download needed), loading local data via `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision`; **remote datasets** (`--dataset open_jev_<model_type>:all`, requiring online download of the Open-Jev corpus) are also supported. The two methods differ only in data source; all other parameters are identical. See the [Datasets](#datasets) section for details. Each model's complete runnable command (including `--adapters` path resolution and head-artifact env exports) is in its script.
+ms-swift ships a training script per integrated model at `examples/v4/train/decision/<model_type>.sh` (using **local mini datasets** — no download needed), loading local data via `--external_plugins examples/v4/train/decision/dataset.py --dataset <model_type>_decision`; **remote datasets** (`--dataset open_jev_<model_type>:all`, requiring online download of the Open-Jev corpus) are also supported. The two methods differ only in data source; all other parameters are identical. See the [Datasets](#datasets) section for details. Each model's complete runnable command (including `--adapters` path resolution and head-artifact env exports) is in its script.
 
 ### Command Skeleton
 
@@ -378,7 +378,7 @@ All decision models share the same command skeleton — the values of `--model` 
 ```bash
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model <model or base, see the Supported Models table> \
     --model_type <model_type> \
     --task_type decision \
@@ -417,8 +417,8 @@ and the readout is trained jointly:
 MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+USE_SWIFT_V5=0 swift sft \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model HAL-X/THX-02 \
     --model_type thx02 \
     --task_type decision \
@@ -485,7 +485,7 @@ register_dataset(
 ```bash
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --external_plugins h2o_dataset.py \
     --model h2oai/h2o-lightning-4b \
     --model_type h2o \
@@ -539,8 +539,8 @@ read-out is trained jointly:
 MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+USE_SWIFT_V5=0 swift sft \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink \
     --model_type startlux \
     --task_type decision \
@@ -584,7 +584,7 @@ Key parameters:
 After training, merge the adapter for the official decision server:
 
 ```bash
-swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
+USE_SWIFT_V5=0 swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
 ```
 
 For StartLux, the merged backbone weights exclude `scoring_head.*`, which vLLM cannot load. The export writes the
@@ -608,7 +608,7 @@ The `generic_decision` model type lets you convert **any text CausalLM** into a 
 ```bash
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --model_type generic_decision \
     --task_type decision \
@@ -642,7 +642,7 @@ Key parameters:
 The head's 24 fp32 bias scalars are jointly trained with the LoRA adapter — `ScoringTrainer.__init__` automatically re-activates the `scoring_head` parameters (sets `requires_grad=True`, converts fp16→fp32). After training, the checkpoint contains `adapter_model.safetensors` + `scoring_head.safetensors` + `scoring_head.json`, deployable with:
 
 ```bash
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --model_type generic_decision \
     --adapters output/checkpoint-xxx
@@ -707,16 +707,16 @@ Local datasets require a Python plugin file passed via `--external_plugins`. The
 
 #### Ready-Made Examples
 
-The repository ships a complete set of local mini datasets in `examples/train/decision/`: `dataset.py` is the plugin registration file, registering local dataset names per model under the **`<model_type>_decision`** rule; `data/<model_type>.jsonl` are 4-row mini examples for each schema; `<model_type>.sh` are the corresponding training scripts.
+The repository ships a complete set of local mini datasets in `examples/v4/train/decision/`: `dataset.py` is the plugin registration file, registering local dataset names per model under the **`<model_type>_decision`** rule; `data/<model_type>.jsonl` are 4-row mini examples for each schema; `<model_type>.sh` are the corresponding training scripts.
 
 
 Run a training script directly:
 
 ```bash
-sh examples/train/decision/<model_type>.sh
+sh examples/v4/train/decision/<model_type>.sh
 ```
 
-The scripts load local data via `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` — no remote download needed. The training commands in this document use remote datasets (e.g. `--dataset open_jev_jev`); the only difference is the data source — all other parameters are identical.
+The scripts load local data via `--external_plugins examples/v4/train/decision/dataset.py --dataset <model_type>_decision` — no remote download needed. The training commands in this document use remote datasets (e.g. `--dataset open_jev_jev`); the only difference is the data source — all other parameters are identical.
 
 #### Writing a Custom Plugin
 
@@ -739,7 +739,7 @@ register_dataset(
 Then use it in training:
 
 ```bash
-swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ...
+USE_SWIFT_V5=0 swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ...
 ```
 
 Choose the preprocessor based on your data schema (one-to-one with the three schema families in [Dataset Format](#dataset-format)):
@@ -768,7 +768,7 @@ Decision datasets support training-time schema augmentation via CLI parameters. 
 Example — 30% instruction dropout, option subsampling to 8, and field shuffling:
 
 ```bash
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model_type jev \
     --task_type decision \
     --loss_type distill_rps \
@@ -793,7 +793,7 @@ Decision models use the transformers backend only (vLLM is not supported for the
 All decision models share the same command skeleton — the values of `--model` / `--model_type` are listed in the [Supported Models](#supported-models) table:
 
 ```bash
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model <model or base, see the Supported Models table> \
     --model_type <model_type> \
     --adapters output/checkpoint-xxx
@@ -801,7 +801,7 @@ swift infer \
 
 - models whose head artifacts are not in the base directory (adapter-only repos) must export environment variables pointing at the head artifacts first — see [Head Artifact Env Overrides](#head-artifact-env-overrides);
 - models using the branch-cache mechanism additionally need `export MSO_BRANCH_CKPT=1` — see [the notes below](#omnijev-msol_branch_ckpt-and-gradient_checkpointing);
-- each model's training command is at `examples/train/decision/<model_type>.sh`.
+- each model's training command is at `examples/v4/train/decision/<model_type>.sh`.
 
 The model returns per-option probabilities (softmaxed within each question's option set) rather than generated text. Each record's inference output is a list with one entry per question:
 
@@ -816,7 +816,7 @@ where `index` is the model's predicted option index (argmax of `probs`), and `pr
 Pass `--metric acc` during inference to automatically compute per-question accuracy on a decision dataset:
 
 ```bash
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model <model or base, see the Supported Models table> \
     --model_type <model_type> \
     --adapters output/checkpoint-xxx \
@@ -880,7 +880,7 @@ OmniJev's hybrid Qwen3.5-4B backbone uses linear attention layers that carry rec
 ```bash
 export MSO_BRANCH_CKPT=1
 # ...
-swift sft --gradient_checkpointing false ...
+USE_SWIFT_V5=0 swift sft --gradient_checkpointing false ...
 ```
 
 The OmniJev adapter also requires four head artifacts pointed to via environment variables (they live in the adapter directory, not the base model directory):
@@ -948,13 +948,13 @@ When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirector
 | 4 | Generic Decision | 0.1667 | **0.6667** | +0.5000 | 0.5682 | 0.9363 | ✅ +300% |
 | 5 | THX-02 | 0.7143 | **1.0000** | +0.2857 | 0.8827 | **0.9154** | ✅ +40% |
 
-> Row 5 (THX-02) was measured with transformers 5.17.0 on 1× RTX 4090, `examples/train/decision/thx02.sh` for 3 epochs on `thx02_decision`.
+> Row 5 (THX-02) was measured with transformers 5.17.0 on 1× RTX 4090, `examples/v4/train/decision/thx02.sh` for 3 epochs on `thx02_decision`.
 
 ### Temperature Ablation: Same Checkpoint With/Without Temperature Post-Processing
 
 Using the **same checkpoint** (identical weights and bias), a single forward pass is run over the 80 held-out rows actually reserved during training; the metrics are computed on the same raw logits with and without temperature scaling (temperature is a monotonic scaling before softmax, so the argmax is unchanged and acc must be identical — this doubles as the validity check of the experiment).
 
-Setup: JEV-27B-VL + released adapter continued training (`open_jev_jev:all#800`, `split_dataset_ratio 0.1`, 1 epoch, checkpoint-23); script `examples/train/decision/ablation_jev_confidence.py`.
+Setup: JEV-27B-VL + released adapter continued training (`open_jev_jev:all#800`, `split_dataset_ratio 0.1`, 1 epoch, checkpoint-23); script `examples/v4/train/decision/ablation_jev_confidence.py`.
 
 | Variant | T | acc | conf | gap(conf−acc) | ECE | Brier |
 | --- | --- | --- | --- | --- | --- | --- |

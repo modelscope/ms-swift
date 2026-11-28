@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import torch
 from twinkle.perf import span as perf_span
 
+from swift.dev.builder.streaming import effective_colocate
 from swift.dev.config.adapter_config import has_adapter
-from swift.dev.recipe.batching import balance_lanes, balance_update
+from swift.dev.recipe.batching import balance_lanes, balance_update, micro_batch_config_from
 from swift.dev.recipe.grpo.assembly import build_driver, grpo_group_requests, initialize_cluster
 from swift.dev.recipe.utils import (
     RolloutStepState,
@@ -19,7 +20,6 @@ from swift.dev.recipe.utils import (
     build_save_knobs,
     close_driver_preserving_error,
     collect,
-    effective_colocate,
     finalize_rl_resources,
     initialize_rl_devices,
     optimizer_batch_slices,
@@ -433,10 +433,12 @@ def _train_loop(
                         advantage_out[name] = float(adv_summary[source])
                 # The no-signal counts ride the same channel: a scorer that silently fails on every
                 # row still yields zero advantage, so without these the run looks like a normal
-                # all-average batch instead of a broken judge.
-                for source in ('unscored_orm_rows', 'unscored_baseline_rows', 'unscored_prm_rows'):
-                    if source in adv_summary:
-                        advantage_out[source] = int(adv_summary[source])
+                # all-average batch instead of a broken judge. Matched by prefix: the estimator
+                # emits one ``unscored_<lane>_rows`` per lane (orm / prm / baseline / env ...), and a
+                # fixed list here silently dropped every lane it did not name.
+                for source, value in adv_summary.items():
+                    if source.startswith('unscored_'):
+                        advantage_out[source] = int(value)
             if correction_out is not None and adv_summary.get('rollout_correction'):
                 # The legacy-compatible off-policy diagnostics, from the training-side forward and
                 # the sampler's own log-probs BEFORE any optimizer step this batch.
@@ -709,16 +711,9 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
     # Before any training step: a base-modifying LoRA init (pissa ...) needs its initial snapshot.
     snapshot_initial_adapter(cluster.model, save_knobs.initial_adapter_dir)
 
-    # ``micro_batch_order`` rides the same kwargs the model's MicroBatchConfig pops; leaving it
-    # out would keep the validated config knob dead (it defaults to "none", a no-op).
-    batching_kwargs = {"micro_batch_size": train_config.per_device_train_batch_size,
-                      "micro_batch_order": train_config.micro_batch_order}
-    if train_config.dynamic_batching:
-        batching_kwargs.update(
-            dynamic_batching=True,
-            max_tokens_per_micro_batch=train_config.max_tokens_per_micro_batch,
-            packing_algorithm=train_config.packing_algorithm,
-        )
+    # The model's MicroBatchConfig pops these off the forward kwargs; the derivation lives in one
+    # place so no config field is validated here and then never forwarded.
+    batching_kwargs = micro_batch_config_from(train_config)
 
     def save(name: str, is_final: bool = False) -> str:
         """One training checkpoint: the twinkle-native write, the converted adapter, the hub push."""

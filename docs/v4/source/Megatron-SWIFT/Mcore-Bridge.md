@@ -26,7 +26,7 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3-VL-8B-Instruct \
     --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -65,7 +65,7 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen3-VL-8B-Instruct/vx-xxx/checkpoint-xxx \
     --load_data_args true \
     --stream true
@@ -85,7 +85,7 @@ Mcore-Bridge除了支持全参数训练，还支持LoRA训练。
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --save_safetensors true \
     --merge_lora false \
@@ -133,7 +133,7 @@ megatron sft \
 ```shell
 # 具体模型vLLM的LoRA的支持情况请参考vLLM文档。
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --infer_backend vllm \
@@ -148,7 +148,7 @@ swift infer \
 # 如果最终格式需要是mcore格式，则使用`--to_mcore true`
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
@@ -163,7 +163,7 @@ megatron export \
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --stream true
 ```
@@ -179,7 +179,7 @@ Mcore-Bridge除了支持在训练中进行safetensors的转换和保存，也支
 # safetensors -> torch_dist
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --output_dir Qwen3-30B-A3B-Instruct-2507-mcore \
     --to_mcore true \
@@ -193,7 +193,7 @@ megatron export \
 # torch_dist -> safetensors
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --mcore_model Qwen3-30B-A3B-Instruct-2507-mcore \
     --output_dir Qwen3-30B-A3B-Instruct-2507-hf \
     --to_hf true \
@@ -212,7 +212,7 @@ LoRA权重：
 # 你也可以将`--model safetensors-path`修改为`--mcore_model torch-dist-path`。这两种方式是等价的，mcore-bridge会自动处理。
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
@@ -228,7 +228,7 @@ megatron export \
 # safetensors -> torch_dist
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \

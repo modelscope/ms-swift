@@ -106,7 +106,7 @@ CUDA_VISIBLE_DEVICES=0 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-VL-4B-Instruct \
     --stream true
 ```
@@ -184,7 +184,7 @@ VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen3-VL-4B-Instruct \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -227,7 +227,7 @@ CUDA_VISIBLE_DEVICES=0 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --max_new_tokens 2048 \
@@ -263,7 +263,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3-VL-30B-A3B-Instruct \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
@@ -310,7 +310,7 @@ CUDA_VISIBLE_DEVICES=0 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen3-VL-30B-A3B-Instruct/vx-xxx/checkpoint-xxx \
     --stream true \
     --max_new_tokens 2048 \
@@ -319,7 +319,7 @@ swift infer \
 Use the following command to push the trained weights to ModelScope:
 
 ```shell
-swift export \
+USE_SWIFT_V5=0 swift export \
     --model output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<your-model-id>' \

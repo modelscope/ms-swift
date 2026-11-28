@@ -287,6 +287,29 @@ Common issues:
 | Training or generation runs out of memory | Inspect training micro-batches/encoded lengths separately from sampling concurrency/generated lengths/KV cache budget. |
 | Asynchronous configuration is rejected | Check disaggregated placement, GRPO off-policy correction, and mutually exclusive features. |
 
+## Router replay
+
+MoE routing replay (GRPO only, MoE policies only) drives the training forward with the routing that produced each rollout token instead of re-routing under the drifted weights, so the importance ratio is measured on the expert mixture that actually generated the token. `--router_replay_mode` selects where the replayed routing comes from:
+
+| Value | Source of the replayed routing |
+|---|---|
+| `disabled` (default) | No replay; the training forward re-routes. |
+| `R2` | The training model's own routing, recorded by an extra `forward_only` under the just-synced weights. Works with any sampler; costs one full-sequence forward per window. |
+| `R3` | The routing the sampler exported at generation time. Needs an engine that reports routing (vLLM >= 0.14.0); no extra forward. |
+
+Ray-mode R3 asks the vLLM engine to export routing with `--vllm_engine_kwargs '{"enable_return_routed_experts": true}'`; if the engine exports none, the run raises instead of falling back to R2. Both training backends (Transformers, Megatron) replay the routing. A complete command is in `examples/v5/rl/grpo/router_replay/router_replay.sh`.
+
+### Remote R3
+
+v5 GRPO supports `--mode remote --router_replay_mode R3`. The sampling server returns the original reply tokens, logprobs, and `routed_experts`. The client appends the tokens to its training feature using the existing template, without retokenizing the reply, and sends the routing alongside the training inputs for server-side replay. Text and multimodal prompts use the same flow.
+
+Both client and server must include this protocol support. Enable the following fields in the existing twinkle-server deployment configuration:
+
+- `args.enable_router_replay: true` on the model application.
+- `args.engine_args.enable_return_routed_experts: true` on the sampler application (the vLLM engine and MoE model must support routing export).
+
+These are server deployment settings; enabling R3 on the client alone is insufficient. Missing routing exports or a server model without replay enabled cause explicit errors, not routing recomputation or a fallback to R2. The training-model recording and routing collection workflow for R2 is not implemented in remote mode; use Ray mode for R2.
+
 ## Other online workflows
 
 | `rl_type` | Purpose |

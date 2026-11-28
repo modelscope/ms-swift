@@ -9,7 +9,7 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 
 ASCEND_RT_VISIBLE_DEVICES=${ASCEND_RT_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7} \
 accelerate launch \
-    --config_file examples/ascend/train/ling3/fsdp2.json \
+    --config_file examples/v4/ascend/train/ling3/fsdp2.json \
     swift/cli/sft.py \
     --model "${MODEL:-inclusionAI/Ling-3.0-tiny}" \
     --template ling3 \

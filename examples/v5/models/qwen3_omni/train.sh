@@ -18,7 +18,9 @@
 # 30B-A3B) is not cached on this box and was not downloaded for a smoke run.
 # Needs 2x48GiB+ for the LoRA SFT below (the legacy recipe ran on 2x48GiB); the megatron counterpart for
 # larger parallelism lives in examples/v4/megatron/multimodal/omni/.
-# MEASURED: not run — FAIL: train LoRA regex bug; infer cu_seqlens_q CUDA error (2026-11-24)
+# KNOWN BROKEN: not runnable at HEAD -- the 2026-11-24 smoke failed (train: LoRA regex bug; infer:
+# cu_seqlens_q CUDA error) and there has been no green run since. Kept as the reference recipe for
+# the family; replace this line once a run passes.
 CUDA_VISIBLE_DEVICES=0,1 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \

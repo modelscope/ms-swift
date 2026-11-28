@@ -166,7 +166,8 @@ STREAMING_DRIVER = D('streaming_driver', '流式采样', 'Iterator', '采样准�
             Q('train_batch_size', '训练批大小', 8, type='int', minimum=1),
             Q('gradient_accumulation_steps', '梯度累积', 1, type='int', minimum=1),
             Q('num_train_epochs', '训练轮数', 1.0, type='float'),
-            Q('max_steps', '总步数', 0, type='int', minimum=0)), surface='runtime')
+            Q('max_steps', '总步数', 0, type='int', minimum=0)),
+    group_width='num_generations', surface='runtime')
 CHALLENGER = D('challenger', '自动出题器', 'Iterator', '显式出题/解题来源； 一次提取同批两路训练轨迹。',
     ports_in=(P('backend', 'SAMPLER', '出题 backend'),
               P('solver_rollout', 'ROLLOUT', '解题多轮机制', optional=True),
@@ -193,7 +194,8 @@ GENERATE = D('generate', '批量生成', 'Stage', '仅生成 episode，评分与
               doc='接 engine 时必须设置；接 episode 时使用其已有编码配置'),
             Q('model_config', 'Tokenizer 模型加载配置', {}, type='dict'),
             Q('template_config', '裸采样器的编码配置', {}, type='dict')),
-    execution='remote', exclusive_inputs=(('engine', 'episode'),), surface='algorithm')
+    execution='remote', exclusive_inputs=(('engine', 'episode'),), group_width='num_generations',
+    surface='algorithm')
 SCORE = D('score', '评分', 'Stage', '对接线的具名评分器打分，具名列写回轨迹；缺失不截断也不补零。',
     ports_in=(P('traj', 'TRAJ', '待评分轨迹', ('rollout', 'scored')),
               P('scorers', 'SCORER', '具名评分器', many=True)),
@@ -239,7 +241,7 @@ ADVANTAGE = D('advantage', '优势估计', 'Stage', '轨迹与前向 lane 进、
             Q('kwargs', '估计器构造参数', {}, type='dict', phase='call',
               doc='Advantage 构造旋钮（gamma/gae_lambda/normalize/kl_coef/beta/kl_in_reward 等）；未被该估计器读取的旋钮会被拒绝')),
     required_when=(('estimator', 'gae', ('value_out',)),),
-    execution='remote', surface='algorithm')
+    execution='remote', group_width='num_generations', surface='algorithm')
 SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对齐载荷；成对与完整组不拆散，奖励随轨迹保留。',
     ports_in=(P('batch', 'TRAJ', '原始对齐数据', optional=False, accepted_kinds=('DATA', 'BATCH')),
               P('scores', 'DATA', '与原始轨迹对齐的评分事实', ('scores',), optional=True),
@@ -257,7 +259,7 @@ SELECT = D('select', '样本筛选', 'Stage', '一次选择索引应用全部对
             # Must match the upstream generate/driver num_generations.
             Q('num_generations', '分组宽度', 8, type='int', minimum=1, phase='call',
               doc='必须与上游生成/驱动节点一致')),
-    surface='algorithm')
+    group_width='num_generations', surface='algorithm')
 TRAIN_STEP = D('train_step', '训练步骤', 'Stage', '真实 forward_backward 与 optimizer step；训练目标从轨迹 lift，显式 lane 只作补充绑定。',
     ports_in=(P('model', 'MODEL', '实际更新模型；未接线时沿连线共享的作用域唯一解析', access='write', scope=True),
               P('loss', 'LOSS', '损失对象'),

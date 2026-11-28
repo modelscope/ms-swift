@@ -33,7 +33,7 @@ Through a template, numbers and the target are used to define the task, and a `q
 
 ## Reward Function Definition
 
-Two reward functions are used for this task: one is the format reward function mentioned in Deepseek-R1, and the other is the accuracy reward function for the Countdown Game. The former is already built into Swift and can be used directly with `--reward_funcs format`, while the latter requires custom definition. Here, we use the `external_plugin` method to define the accuracy reward function, placing the code in `swift/examples/train/grpo/plugin/plugin.py`.
+Two reward functions are used for this task: one is the format reward function mentioned in Deepseek-R1, and the other is the accuracy reward function for the Countdown Game. The former is already built into Swift and can be used directly with `--reward_funcs format`, while the latter requires custom definition. Here, we use the `external_plugin` method to define the accuracy reward function, placing the code in `swift/examples/v4/train/grpo/plugin/plugin.py`.
 
 The input to the reward function includes three fields: `completions`, `target`, and `nums`, representing the model-generated text, the target answer, and the available numbers, respectively. Each is a list, supporting simultaneous computation of multiple completions. Note that, except for `completions`, the other parameters are transparently passed from the fields defined in the dataset. If there are changes to the task, adjustments can be made to both the dataset and the reward function as needed.
 
@@ -128,7 +128,7 @@ Other parameter settings were not explored in detail and will not be discussed h
 
 ```bash
 CUDA_VISIBLE_DEVICES=2 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --model Qwen/Qwen2.5-3B-Instruct
 ```
 
@@ -136,10 +136,10 @@ swift rollout \
 CUDA_VISIBLE_DEVICES=0,1 \
 WANDB_API_KEY=your_wandb_key \
 NPROC_PER_NODE=2 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-3B-Instruct \
-    --external_plugins examples/train/grpo/plugin/plugin.py \
+    --external_plugins examples/v4/train/grpo/plugin/plugin.py \
     --reward_funcs external_countdown format \
     --use_vllm true \
     --vllm_mode server \

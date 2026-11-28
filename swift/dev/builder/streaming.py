@@ -132,14 +132,26 @@ def build_rollout(sampler: Any,
         **placement)
 
 
+def effective_colocate(rollout_config: Any, resource_plan: Any) -> bool:
+    """Whether trainer and sampler ACTUALLY share devices -- the placement, not the request.
+
+    ``sampler_mode='colocate'`` is a request an estimate/adaptive plan always overrides: the plan
+    places the sampler on ranks disjoint from the trainer's, so under a plan the run is never
+    colocated. The weight-sync engine (IPC is colocate-only: its endpoint is each peer's own GPU
+    UUID), the sleep/offload dance, and the stream batch shape all follow the APPLIED placement.
+    """
+    return resource_plan is None and rollout_config.sampler_mode == 'colocate'
+
+
 def build_checkpoint_manager(model: Any, sampler: Any, rollout_config: Any, *, remote: bool = False,
-                             resource_plan: Any = None) -> Any:
-    """The policy -> sampler weight sync: colocate wakes / offloads around it, standalone pauses generation."""
+                             colocate: bool = False) -> Any:
+    """The policy -> sampler weight sync: colocate wakes / offloads around it, standalone pauses generation.
+
+    ``colocate`` is :func:`effective_colocate` for the run; every recipe resolves it once and hands it
+    to each builder that follows the placement.
+    """
     from twinkle.checkpoint_engine import CheckpointEngineManager
 
-    from swift.dev.recipe.utils import effective_colocate
-
-    colocate = effective_colocate(rollout_config, resource_plan)
     return CheckpointEngineManager(
         model=model,
         sampler=sampler,
@@ -215,7 +227,7 @@ def build_cluster_adapter(resource_plan: Any, rollout_config: Any, *, model: Any
     serves; the hysteresis window and the hold are counted in weight syncs. ``lend=False`` keeps the
     trainer's ranks out (another trained model shares them and would not be offloaded).
     """
-    from twinkle_agentic.async_rl import ClusterAdapter
+    from twinkle_agentic.async_rl import ClusterAdapter, engine_memory_fraction
 
     return ClusterAdapter(
         {'sampler': sampler},
@@ -227,4 +239,5 @@ def build_cluster_adapter(resource_plan: Any, rollout_config: Any, *, model: Any
         after_reclaim={'sampler': checkpoint_manager.restore_after_lending},
         widths={'sampler': resource_plan.sampler.gpus_per_worker},
         window=rollout_config.resource_window_steps,
-        cooldown=rollout_config.resource_min_hold_steps)
+        cooldown=rollout_config.resource_min_hold_steps,
+        engine_memory_fraction=engine_memory_fraction(rollout_config))

@@ -274,18 +274,38 @@ class SentenceTransformerModel(TwinkleTransformersModel):
     def _forward_backward_single(self, *, inputs, loss_key, loss_weight, normalize_globally,
                                  sync_gradients, increment_step, **kwargs):
         self._reject_router_replay(kwargs)
-        # ST runs the InputProcessor inside forward (_prepare_forward), so the base micro-batch
-        # planner would read input_ids before encoding exists (KeyError). A whole-sentence pooling
-        # head also cannot be split at sample level (it rejects sequence parallel / padding-free
-        # packing). Force whole-batch: drop the micro-batch options so MicroBatchConfig.from_kwargs
-        # returns None and the base routes to the single whole-unit forward, which encodes internally.
-        for key in ("micro_batch_size", "dynamic_batching", "max_tokens_per_micro_batch",
-                    "packing_algorithm", "micro_batch_order"):
-            kwargs.pop(key, None)
+        self._reject_micro_batching(kwargs)
         return super()._forward_backward_single(
             inputs=inputs, loss_key=loss_key, loss_weight=loss_weight,
             normalize_globally=normalize_globally, sync_gradients=sync_gradients,
             increment_step=increment_step, **kwargs)
+
+    @staticmethod
+    def _reject_micro_batching(kwargs: Dict[str, Any]) -> None:
+        """Reject micro-batch options this pipeline cannot honor, instead of dropping them.
+
+        ST runs the InputProcessor inside forward (_prepare_forward), so the base micro-batch
+        planner would read input_ids before encoding exists (KeyError); a whole-sentence pooling
+        head also cannot be split at sample level. The embedding task declares that in twinkle's
+        registry (``micro_batchable=False``), so a supported recipe never passes these; a value
+        that still arrives means the caller asked for micro-batching on purpose -- fail loudly
+        rather than silently train a different batching than configured. Only non-default values
+        are rejected: the recipe forwards its micro-batch options verbatim, defaults included.
+        """
+        enabled = {
+            'micro_batch_size': kwargs.pop('micro_batch_size', None) is not None,
+            'dynamic_batching': bool(kwargs.pop('dynamic_batching', False)),
+            'max_tokens_per_micro_batch': kwargs.pop('max_tokens_per_micro_batch', None) is not None,
+            'packing_algorithm': kwargs.pop('packing_algorithm', None) is not None,
+            'micro_batch_order': kwargs.pop('micro_batch_order', 'none') != 'none',
+        }
+        requested = sorted(name for name, value in enabled.items() if value)
+        if requested:
+            raise ValueError(
+                f'The sentence-transformers pipeline runs each dataloader batch as one forward and '
+                f'cannot micro-batch; the following options were set: {requested}. The embedding '
+                "task declares micro_batchable=False, so a supported recipe does not pass them; "
+                'drop them at the call site.')
 
     # --- persistence ----------------------------------------------------------
 
@@ -322,23 +342,49 @@ class SentenceTransformerModel(TwinkleTransformersModel):
         A LoRA-wrapped model carries ``.base_layer``/``lora_A``/``lora_B`` keys;
         ``SentenceTransformer.save`` would persist those verbatim and a later official reload
         mismatches every LoRA-targeted parameter (loads random weights -> collapsed embeddings).
-        Merge the adapter into a *copy* so the deliverable has plain merged keys while the live
-        training model keeps its adapter for subsequent updates. PEFT may wrap the whole pipeline
+        Merge the adapter into the *saved* weights only: while saving, every LoRA layer reports
+        the state dict of its merged base layer, so the deliverable has plain merged keys while the
+        live training model keeps its adapter for subsequent updates. Nothing is merged in place
+        (a merge/subtract round trip is not exact in bf16) and the model is not copied as a whole:
+        ``save`` runs between training steps, so a whole-model copy doubles the device memory. The
+        cost is one merged base layer on CPU at a time. PEFT may wrap the whole pipeline
         (``st_model`` is a ``PeftModel``) or just the leading module's backbone.
         """
         import copy
+        from contextlib import ExitStack, contextmanager
 
+        import torch
         from peft import PeftModel
+        from peft.tuners.lora.layer import LoraLayer
 
-        if isinstance(st_model, PeftModel):
-            merged = copy.deepcopy(st_model).merge_and_unload()
-            merged.save(checkpoint_dir)
-            return
-        first_module = st_model[0] if hasattr(st_model, "__getitem__") else None
-        backbone = getattr(first_module, "auto_model", None)
-        if isinstance(backbone, PeftModel):
-            merged_pipeline = copy.deepcopy(st_model)
-            merged_pipeline[0].auto_model = merged_pipeline[0].auto_model.merge_and_unload()
-            merged_pipeline.save(checkpoint_dir)
-            return
-        st_model.save(checkpoint_dir)
+        @contextmanager
+        def merged_lora_layer(layer):
+            """Have one LoRA layer report ``<name>.weight`` as its merged base weight."""
+            merged = copy.deepcopy(layer).cpu()
+            # PEFT's own merge math (scaling, fan_in_fan_out, every LoRA variant), on the copy only.
+            merged.merge()
+            base = merged.get_base_layer()
+
+            def state_dict(*args, destination=None, prefix="", keep_vars=False):
+                return torch.nn.Module.state_dict(
+                    base, *args, destination=destination, prefix=prefix, keep_vars=keep_vars)
+
+            layer.state_dict = state_dict
+            try:
+                yield
+            finally:
+                del layer.state_dict
+
+        with ExitStack() as stack:
+            for _, layer in st_model.named_modules():
+                if isinstance(layer, LoraLayer):
+                    stack.enter_context(merged_lora_layer(layer))
+            pipeline = st_model.get_base_model() if isinstance(st_model, PeftModel) else st_model
+            first_module = pipeline[0] if hasattr(pipeline, "__getitem__") else None
+            backbone = getattr(first_module, "auto_model", None)
+            if isinstance(backbone, PeftModel):
+                # The leading module saves its backbone with ``save_pretrained``, which on a PeftModel
+                # writes the adapter only; route it to the (merged-on-save) base model meanwhile.
+                stack.callback(delattr, backbone, "save_pretrained")
+                backbone.save_pretrained = backbone.get_base_model().save_pretrained
+            pipeline.save(checkpoint_dir)

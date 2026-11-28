@@ -483,47 +483,35 @@ class Graph:
                 raise GraphValidationError(f'frame {frame.id}: consumers 遗漏副作用节点 {sorted(effects - set(frame.consumers))}')
 
     def _validate_group_width(self) -> None:
-        """同 frame 内的组宽必须一致：上游（generate/driver）与消费（advantage/
-        select）各自携带 num_generations 参数，值不一致会让组完整性检查在
-        reward/估计阶段才爆炸——组宽是算法分组的事实，前移到提交期点名拒
-        绝（历史上两次事故都是漏配后静默跑到一半）。未显式配置按注册表默
-        认值参与比较；非法值留给参数校验层，不当二道法官。"""
-        producers = ('generate', 'streaming_driver')
-        consumers = ('advantage', 'select')
+        """同 frame 内声明了组宽的成员（注册项 ``group_width``：上游 generate/driver 与消费
+        advantage/select）组宽必须一致，值不一致会让组完整性检查在 reward/估计阶段才爆
+        炸——组宽是算法分组的事实，前移到提交期点名拒绝（历史上两次事故都是漏配后静默
+        跑到一半）。Graph 只读注册项的这条元信息，新增带组宽的组件只需在注册项上声明。
+        未显式配置按注册表默认值参与比较；非法值留给参数校验层，不当二道法官。"""
 
         def width(node_id: str) -> Optional[int]:
-            declared = next((p for p in self.descriptor(node_id).params
-                             if p.name == 'num_generations'), None)
+            descriptor = self.descriptor(node_id)
+            declared = next((p for p in descriptor.params if p.name == descriptor.group_width), None)
             if declared is None:
                 return None
-            raw = self._nodes[node_id].params.get('num_generations', declared.default)
+            raw = self._nodes[node_id].params.get(declared.name, declared.default)
             try:
                 return int(raw)
             except (TypeError, ValueError):
                 return None
 
         for frame in self.frames:
-            source_width: Optional[int] = None
+            seen: Optional[Tuple[str, int]] = None
             for member in frame.members:
-                if self._nodes[member].type not in producers:
-                    continue
                 value = width(member)
                 if value is None:
                     continue
-                if source_width is not None and value != source_width:
+                if seen is not None and value != seen[1]:
                     raise GraphValidationError(
-                        f'frame {frame.id}: 多个上游组宽不一致（{source_width} vs {member} 的 {value}）')
-                source_width = value
-            if source_width is None:
-                continue
-            for member in frame.members:
-                if self._nodes[member].type not in consumers:
-                    continue
-                value = width(member)
-                if value is not None and value != source_width:
-                    raise GraphValidationError(
-                        f'frame {frame.id}: {member} 的 num_generations={value} 与上游组宽 '
-                        f'{source_width} 不一致；组宽参数必须同值（改上游时同步改它）')
+                        f'frame {frame.id}: 组宽不一致（{seen[0]} 的 {seen[1]} vs {member} 的 {value}）；'
+                        '组宽参数必须同值（改上游时同步改消费侧）')
+                if seen is None:
+                    seen = (member, value)
 
     def _validate_feedback(self) -> None:
         for edge_id in self._feedback_edge_ids:

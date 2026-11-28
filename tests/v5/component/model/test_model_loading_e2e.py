@@ -23,7 +23,9 @@ The Megatron branch shares the exact same loader config path (``_build_hf_config
 ``process_config``), so it is smoked at the config level; constructing a ``MegatronModel`` needs mcore +
 Ray + a device mesh, which is out of scope for a loading smoke.
 """
+import importlib.util
 import os
+import sys
 
 import pytest
 import torch
@@ -275,3 +277,170 @@ def test_megatron_config_path_runs_loader_build_and_process_config(tmp_path):
     rope_scaling = HfConfigFactory.get_config_attr(config, 'rope_scaling')
     assert rope_scaling['type'] == 'linear'
     assert rope_scaling['factor'] == 64.0  # ceil(4096 / 64 declared max positions)
+
+
+# ---- declared class candidates and the ``prepare`` seam (20-D-1 / B-3) --------------------------
+# PLAN (case | input | expected | failure it kills):
+#  P1 ordered candidates | (missing module, in-tree V3 config) | V3 config class | a tuple declaration
+#     aborting on the first failed import (the old try/except-at-import it replaces).
+#  P2 nothing resolves | (missing, missing) | ImportError naming BOTH specs and ``Owner.attr`` | a
+#     silent Auto* fallback hiding a class the environment lacks.
+#  P3 deepseek_v32 | build_config on a real dir | first candidate's class + trust_remote_code=True |
+#     regression of the removed override (class attr must drive the kwarg).
+#  P4 prepare | tiny qwen2_5, dtype+attn given | hooks in order, config carries dtype/attn, no
+#     trust_remote_code kwarg when None | sampler-worker path skipping dtype/attn; engine's False
+#     forced on a remote-code family.
+#  P5 ASR without qwen_asr | native transformers, build_model/build_model_from_config | ImportError
+#     from resolve_model_cls BEFORE any from_pretrained | the G47-d hole: native class loading the
+#     thinker-layout checkpoint with every weight unused.
+#  P6 ASR source order | fake ``qwen_asr`` package on sys.path, native registered | package imported
+#     before the config is built | the old CONFIG_MAPPING_NAMES probe never importing it.
+#  P7 training builder | load_model_processor with rope_scaling | rope + dtype on the prepared config |
+#     ``_apply_rope_scaling`` dropped from the prepare branch.
+
+
+def test_ordered_class_candidates_resolve_first_available_and_name_every_refusal():
+    from swift.dev.model.loader.base import ModelLoader, _import_candidates
+
+    cls = _import_candidates(
+        ('no_such_pkg:X', 'transformers.models.deepseek_v3:DeepseekV3Config'), ModelLoader, 'config_cls')
+    assert cls.__name__ == 'DeepseekV3Config'
+    with pytest.raises(ImportError) as excinfo:
+        _import_candidates(('no_such_pkg:X', 'transformers:NoSuchClass'), ModelLoader, 'config_cls')
+    message = str(excinfo.value)
+    assert 'ModelLoader.config_cls' in message
+    assert 'no_such_pkg:X' in message and 'transformers:NoSuchClass' in message
+
+
+def test_deepseek_v32_declares_its_config_fallback(tmp_path, monkeypatch):
+    from transformers.models.deepseek_v32 import DeepseekV32Config
+
+    from swift.dev.model.loader import MODEL_MAPPING
+
+    directory = _build_llama(tmp_path)
+    seen = {}
+    origin = DeepseekV32Config.from_pretrained
+
+    def spy(cls, *args, **kwargs):
+        seen.update(kwargs)
+        return origin(*args, **kwargs)
+
+    monkeypatch.setattr(DeepseekV32Config, 'from_pretrained', classmethod(spy))
+    loader = MODEL_MAPPING['deepseek_v32'].from_model_dir(directory)
+    config = loader.build_config(directory)
+    assert type(config) is DeepseekV32Config  # first candidate wins where it exists
+    assert seen['trust_remote_code'] is True  # the family declaration, not an override, supplies it
+
+
+def test_prepare_runs_the_config_then_processor_hooks_with_dtype_and_attn(tmp_path):
+    from swift.dev.model.loader import MODEL_MAPPING
+
+    directory = _build_qwen2_5(tmp_path)
+    base = MODEL_MAPPING['qwen2_5']
+    calls, config_kwargs = [], {}
+
+    class Recording(base):
+
+        def build_config(self, *args, **kwargs):
+            calls.append('build_config')
+            config_kwargs.update(kwargs)
+            return super().build_config(*args, **kwargs)
+
+        def process_config(self, *args, **kwargs):
+            calls.append('process_config')
+            return super().process_config(*args, **kwargs)
+
+        def build_processor(self, *args, **kwargs):
+            calls.append('build_processor')
+            return super().build_processor(*args, **kwargs)
+
+        def process_tokenizer(self, *args, **kwargs):
+            calls.append('process_tokenizer')
+            return super().process_tokenizer(*args, **kwargs)
+
+    config, processor = Recording.from_model_dir(directory).prepare(
+        directory, torch_dtype=torch.bfloat16, attn_implementation='flash_attn')
+    assert calls == ['build_config', 'process_config', 'build_processor', 'process_tokenizer']
+    assert 'trust_remote_code' not in config_kwargs  # None = let the family declaration decide
+    assert config.torch_dtype == torch.bfloat16
+    assert config._attn_implementation == 'flash_attention_2'  # dev's alias resolved for transformers
+    assert 'past_key_values' in config.keys_to_ignore_at_inference
+    from transformers import PreTrainedTokenizerBase
+
+    assert isinstance(processor, PreTrainedTokenizerBase)  # the family's own tokenizer class
+
+    config_kwargs.clear()
+    Recording.from_model_dir(directory).prepare(directory, trust_remote_code=True)
+    assert config_kwargs['trust_remote_code'] is True
+
+
+_ASR_DIR = '/mnt/workspace/.cache/modelscope/hub/models/Qwen--Qwen3-ASR-1.7B/snapshots/master'
+
+
+def _asr_loader_directory(tmp_path):
+    """The cached real checkpoint when present, else a config-only stand-in with the same model_type."""
+    if os.path.isdir(_ASR_DIR):
+        return _ASR_DIR
+    import json
+
+    (tmp_path / 'config.json').write_text(json.dumps({'model_type': 'qwen3_asr'}))
+    return str(tmp_path)
+
+
+def test_asr_refuses_hf_loading_before_any_weight_read_without_its_package(tmp_path, monkeypatch):
+    """Main env: transformers has a native ``qwen3_asr`` registration, ``qwen_asr`` is not installed."""
+    pytest.importorskip('transformers.models.qwen3_asr')  # the native fallback under test
+    assert importlib.util.find_spec('qwen_asr') is None
+
+    from swift.dev.model.loader import MODEL_MAPPING
+
+    directory = _asr_loader_directory(tmp_path)
+    loader = MODEL_MAPPING['qwen3_asr'].from_model_dir(directory)
+    config = loader.build_config(directory)  # sampler setup keeps working off the native registration
+    assert type(config).__module__.startswith('transformers.')
+
+    def no_weight_read(*args, **kwargs):
+        raise AssertionError('from_pretrained must not be reached: the native class cannot load this layout')
+
+    monkeypatch.setattr('transformers.PreTrainedModel.from_pretrained', no_weight_read)
+    for build in (lambda: loader.build_model(directory, config, None),
+                  lambda: loader.build_model_from_config(config, None)):
+        with pytest.raises(ImportError, match=r'Qwen3ASRLoader\.model_cls.*qwen_asr'):
+            build()
+
+
+def test_asr_build_config_tries_the_package_before_the_native_registration(tmp_path, monkeypatch):
+    """A both-present environment imports ``qwen_asr`` first, so config and model_cls share one source."""
+    pytest.importorskip('transformers.models.qwen3_asr')
+    package = tmp_path / 'qwen_asr'
+    package.mkdir()
+    marker = tmp_path / 'imported'
+    (package / '__init__.py').write_text(f'import pathlib; pathlib.Path({str(marker)!r}).touch()\n')
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, 'qwen_asr', raising=False)
+
+    from swift.dev.model.loader import MODEL_MAPPING
+
+    directory = _asr_loader_directory(tmp_path / 'ckpt')
+    loader = MODEL_MAPPING['qwen3_asr'].from_model_dir(directory)
+    config = loader.build_config(directory)
+    monkeypatch.delitem(sys.modules, 'qwen_asr', raising=False)  # the stand-in must not leak to other tests
+    assert marker.exists(), 'the package must be imported before the config is resolved'
+    assert type(config).__module__.startswith('transformers.')  # a package that registers nothing:
+    # the native class is what transformers resolves -- the point is the ORDER, not the winner.
+
+
+def test_builder_applies_rope_and_dtype_on_the_prepared_loader_config(tmp_path):
+    from swift.dev.builder.model import load_model_processor
+    from swift.dev.config import ModelConfig
+    from swift.dev.utils import HfConfigFactory
+
+    directory = _build_qwen2_5(tmp_path)
+    model_config = ModelConfig(
+        model=directory, model_type='qwen2_5', torch_dtype='bfloat16', max_model_len=128, rope_scaling='linear')
+    model, processor = load_model_processor(model_config, load_model=False)
+    assert model is None
+    config = processor.model_info.config
+    assert config.torch_dtype == torch.bfloat16
+    assert HfConfigFactory.get_config_attr(config, 'rope_scaling')['type'] == 'linear'
+    assert HfConfigFactory.get_config_attr(config, 'rope_scaling')['factor'] == 2.0  # ceil(128 / 64)

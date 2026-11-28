@@ -8,7 +8,7 @@ export USE_SWIFT_V5=0
 # swift rollout \
 #     --model Qwen/Qwen2.5-7B-Instruct \
 #     --vllm_use_async_engine true \
-#     --external_plugins examples/train/grpo/plugin/plugin.py \
+#     --external_plugins examples/v4/train/grpo/plugin/plugin.py \
 #     --multi_turn_scheduler tool_call_scheduler \
 #     --vllm_max_model_len 8192 \
 #     --vllm_gpu_memory_utilization 0.8 \

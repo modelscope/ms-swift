@@ -6,7 +6,7 @@ from copy import copy
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
 from swift.dev.config.adapter_config import has_adapter
-from swift.dev.recipe.utils import build_rl_sampler, effective_colocate, resolve_reward_scorers
+from swift.dev.recipe.utils import build_rl_sampler, resolve_reward_scorers
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -93,6 +93,7 @@ def initialize_rft_cluster(
     from swift.dev.builder.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
+        effective_colocate,
         build_rollout,
         rollout_sampling_params,
     )
@@ -184,15 +185,16 @@ def initialize_rft_cluster(
     params = rollout_sampling_params(rl_config.max_completion_length, generation_config)
     # One rollout for every generation (single-turn is the one-turn degenerate); under ray it is
     # an actor on the CPU rollout group, remotely a plain in-process object over the client
-    # sampler handle.
+    # sampler handle. Seeded from --seed like the other training recipes (ppo/grpo/distill), so
+    # rejection sampling reproduces across runs with the same seed.
     rollout = build_rollout(sampler, template, rollout_config, sampling_params=params,
-                            remote=not remote_run, inflight=inflight)
+                            remote=not remote_run, inflight=inflight, seed=train_config.seed)
     if remote_run:
         from swift.dev.builder.remote import RemoteWeightSync
 
         engine = RemoteWeightSync(model, sampler)
     else:
-        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, colocate=colocate)
     orm_scorers, orm_scorer_names = resolve_reward_scorers(
         "orm",
         reward_config=reward_config,

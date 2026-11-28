@@ -544,7 +544,9 @@ class DAGController:
                             rounds=self._frame_rounds.get(frame.id, 0),
                             optimizer_steps=receipt['committed'],
                             pending=handle.has_pending, stopped=receipt['stopped'])
-                return {'optimizer_steps': receipt['committed'], 'stopped': receipt['stopped']}
+                # The turn reports what THIS call fired; ``committed`` is the whole batch's total
+                # and earlier clicks already reported their own share of it.
+                return {'optimizer_steps': receipt['optimizer_steps'], 'stopped': receipt['stopped']}
             # Freshen only when a NEW batch is admitted (a pending batch is
             # the same consuming round -- resume must not double-turn producers).
             if not handle.has_pending and self._freshen_producers(frame, observe=observe):

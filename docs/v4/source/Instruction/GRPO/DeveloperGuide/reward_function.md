@@ -42,7 +42,7 @@ orms['dummy']= DummyLengthRewardFunction
 
 **使用自定义奖励函数**
 
-可以在`swift/examples/train/grpo/plugin/plugin.py`中加入该奖励函数，使用参数`--external_plugins examples/train/grpo/plugin/plugin.py`进行注册，并通过 reward_funcs 参数进行指定
+可以在`swift/examples/v4/train/grpo/plugin/plugin.py`中加入该奖励函数，使用参数`--external_plugins examples/v4/train/grpo/plugin/plugin.py`进行注册，并通过 reward_funcs 参数进行指定
 
 执行脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)
 

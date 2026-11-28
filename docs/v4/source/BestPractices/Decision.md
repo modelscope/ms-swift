@@ -49,7 +49,7 @@ pip install "ms-swift>=4.6.0"
 开发者可以将任意 CausalLM 转为决策模型，只需指定：
 
 ```shell
-swift sft --task_type decision
+USE_SWIFT_V5=0 swift sft --task_type decision
 ```
 
 
@@ -237,7 +237,7 @@ DDP 训练时验证集会被分片到各 rank（每个 rank 只看到约 1/world
 # 示例：切到 NLL 拟合目标，降低样本门槛
 export SWIFT_CALIBRATION_LOSS=nll
 export SWIFT_CALIBRATION_MIN_ITEMS=5
-swift sft --task_type decision ... --split_dataset_ratio 0.1
+USE_SWIFT_V5=0 swift sft --task_type decision ... --split_dataset_ratio 0.1
 ```
 
 
@@ -276,7 +276,7 @@ swift sft --task_type decision ... --split_dataset_ratio 0.1
 
 - `questions`：问题 dict 列表。原生字段为 `instr`（问题文本）、`options`（选项文本列表）、`label`（正确选项的**索引**）；统一 schema 的 `kind`/`question`/`gold` 也被接受。
 - 未提供 `kind` 时按选项集推断：true/false 风格二元 → `noul`；全数字选项 → `score`；其余 → `choice`。
-- **adapter-only 仓库**：仓库不含 config.json / 底座权重，`--model` 传底座、`--adapters` 传该仓库，并通过 `KEV_HEAD` 指向 adapter 目录下的 `head.pt`（见 `examples/train/decision/kev.sh`）。
+- **adapter-only 仓库**：仓库不含 config.json / 底座权重，`--model` 传底座、`--adapters` 传该仓库，并通过 `KEV_HEAD` 指向 adapter 目录下的 `head.pt`（见 `examples/v4/train/decision/kev.sh`）。
 
 #### `laya` 变体
 
@@ -290,7 +290,7 @@ swift sft --task_type decision ... --split_dataset_ratio 0.1
 
 - `qs`：问题列表，原生字段为 `t`（类型）、`ins`（问题文本）、`crit`（选项定义 —— `choice` 渲染为 `'id: criteria'`，`score` 渲染为 `'level i: criteria'`，`noul` 使用固定 false/true 文案）与 `y`（gold 下标）或 `soft`（软分布）。
 - 也接受统一 schema（`questions` + `kind`/`question`/`options`/`gold`），选项文案原样透传。
-- 仓库自带三个 checkpoint（根目录英文 / `typed-decisions/` / `multilingual/`），用 `LAYA_CHECKPOINT` 选择其一。训练须加 `--tuner_type full` —— 编码器无生成头，默认的 LoRA/PeftModel 因果封装不适用（见 `examples/train/decision/laya.sh`）。
+- 仓库自带三个 checkpoint（根目录英文 / `typed-decisions/` / `multilingual/`），用 `LAYA_CHECKPOINT` 选择其一。训练须加 `--tuner_type full` —— 编码器无生成头，默认的 LoRA/PeftModel 因果封装不适用（见 `examples/v4/train/decision/laya.sh`）。
 
 #### `startlux` 变体
 
@@ -384,7 +384,7 @@ H2O 使用自己的请求格式：`questions` 是**列表**，一次前向只读
 
 ## 训练
 
-ms-swift 为每个已接入模型提供训练脚本 `examples/train/decision/<model_type>.sh`（使用**本地 mini 数据集**，无需联网下载），通过 `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据；同时支持使用**远程数据集**（`--dataset open_jev_<model_type>:all`，需在线下载 Open-Jev 语料）。两种方式仅数据来源不同，其余参数完全一致，详见[数据集](#数据集)章节。各模型的完整可运行命令（含 `--adapters` 路径获取、头制品环境变量导出等）见对应脚本。
+ms-swift 为每个已接入模型提供训练脚本 `examples/v4/train/decision/<model_type>.sh`（使用**本地 mini 数据集**，无需联网下载），通过 `--external_plugins examples/v4/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据；同时支持使用**远程数据集**（`--dataset open_jev_<model_type>:all`，需在线下载 Open-Jev 语料）。两种方式仅数据来源不同，其余参数完全一致，详见[数据集](#数据集)章节。各模型的完整可运行命令（含 `--adapters` 路径获取、头制品环境变量导出等）见对应脚本。
 
 ### 命令骨架
 
@@ -393,7 +393,7 @@ ms-swift 为每个已接入模型提供训练脚本 `examples/train/decision/<mo
 ```bash
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model <模型或底座，见支持模型表格> \
     --model_type <model_type> \
     --task_type decision \
@@ -431,8 +431,8 @@ THX-02 在同一个仓库中发布已合并的底座与 readout 头，因此在�
 MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+USE_SWIFT_V5=0 swift sft \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model HAL-X/THX-02 \
     --model_type thx02 \
     --task_type decision \
@@ -488,7 +488,7 @@ register_dataset(
 ```bash
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --external_plugins h2o_dataset.py \
     --model h2oai/h2o-lightning-4b \
     --model_type h2o \
@@ -534,8 +534,8 @@ StartLux-Decision v1.1 AutoThink 自带已合并的底座，因此在其上训�
 MODELSCOPE_ENDPOINT=https://www.modelscope.ai \
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --external_plugins examples/train/decision/dataset.py \
+USE_SWIFT_V5=0 swift sft \
+    --external_plugins examples/v4/train/decision/dataset.py \
     --model StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink \
     --model_type startlux \
     --task_type decision \
@@ -576,7 +576,7 @@ swift sft \
 训练后可合并 adapter，供官方决策服务器使用：
 
 ```bash
-swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
+USE_SWIFT_V5=0 swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
 ```
 
 StartLux 合并后的底座权重不再包含 vLLM 无法加载的 `scoring_head.*`。导出会把训练后的 read-out 写入
@@ -600,7 +600,7 @@ StartLux 合并后的底座权重不再包含 vLLM 无法加载的 `scoring_head
 ```bash
 USE_HF=0 \
 CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --model_type generic_decision \
     --task_type decision \
@@ -635,7 +635,7 @@ swift sft \
 头的 24 个 fp32 bias 标量与 LoRA adapter 联合训练——`ScoringTrainer.__init__` 自动重新激活 `scoring_head` 参数（设置 `requires_grad=True`，fp16→fp32）。训练后 checkpoint 含 `adapter_model.safetensors` + `scoring_head.safetensors` + `scoring_head.json`，部署命令：
 
 ```bash
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --model_type generic_decision \
     --adapters output/checkpoint-xxx
@@ -710,16 +710,16 @@ score（`options` 被强制设为标准 `["0", "1", "2", "3", "4", "5"]`）：
 
 #### 现成示例
 
-仓库提供了一套完整可用的本地 mini 数据集，位于 `examples/train/decision/`：`dataset.py` 为插件注册文件，按 **`<model_type>_decision`** 规则为各模型注册本地数据集名；`data/<model_type>.jsonl` 为各 schema 的 mini 示例（4 行）；`<model_type>.sh` 为对应的训练脚本。
+仓库提供了一套完整可用的本地 mini 数据集，位于 `examples/v4/train/decision/`：`dataset.py` 为插件注册文件，按 **`<model_type>_decision`** 规则为各模型注册本地数据集名；`data/<model_type>.jsonl` 为各 schema 的 mini 示例（4 行）；`<model_type>.sh` 为对应的训练脚本。
 
 
 直接运行训练脚本即可：
 
 ```bash
-sh examples/train/decision/<model_type>.sh
+sh examples/v4/train/decision/<model_type>.sh
 ```
 
-脚本内部通过 `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据，无需下载远程数据集。而本文档正文训练命令用的是远程数据集（如 `--dataset open_jev_jev`），两者仅数据来源不同，其余参数完全一致。
+脚本内部通过 `--external_plugins examples/v4/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据，无需下载远程数据集。而本文档正文训练命令用的是远程数据集（如 `--dataset open_jev_jev`），两者仅数据来源不同，其余参数完全一致。
 
 #### 编写自定义插件
 
@@ -742,7 +742,7 @@ register_dataset(
 训练时使用：
 
 ```bash
-swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ...
+USE_SWIFT_V5=0 swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ...
 ```
 
 根据数据 schema 选择预处理器（与[数据集格式](#数据集格式)的三类 schema 一一对应）：
@@ -775,7 +775,7 @@ swift sft --external_plugins my_decision_dataset.py --dataset my_jev_decision ..
 示例——启用 30% 指令丢弃、选项采样至 8、字段打乱：
 
 ```bash
-swift sft \
+USE_SWIFT_V5=0 swift sft \
     --model_type jev \
     --task_type decision \
     --loss_type distill_rps \
@@ -800,7 +800,7 @@ Decision 模型仅使用 transformers 后端（`decision` task_type 不支持 vL
 所有 decision 模型共用同一条命令骨架——`--model` / `--model_type` 的取值见[支持模型](#支持模型)表格：
 
 ```bash
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model <模型或底座，见支持模型表格> \
     --model_type <model_type> \
     --adapters output/checkpoint-xxx
@@ -808,7 +808,7 @@ swift infer \
 
 - 头制品不在底座目录的模型（adapter-only 仓库）需先导出环境变量指向头制品，见[头制品环境变量覆盖](#头制品环境变量覆盖)；
 - 使用 branch 缓存机制的模型还需 `export MSO_BRANCH_CKPT=1`，见[下方说明](#omnijev-msol_branch_ckpt-与-gradient_checkpointing-互斥说明)；
-- 各模型的训练命令见 `examples/train/decision/<model_type>.sh`。
+- 各模型的训练命令见 `examples/v4/train/decision/<model_type>.sh`。
 
 模型返回 per-option 概率（在各问题自己的选项集上 softmax），而非生成文本。每条记录的推理输出是一个列表，每问题一项：
 
@@ -823,7 +823,7 @@ swift infer \
 推理时传入 `--metric acc`，swift 会自动对 decision 数据集计算 per-question accuracy：
 
 ```bash
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model <模型或底座，见支持模型表格> \
     --model_type <model_type> \
     --adapters output/checkpoint-xxx \
@@ -879,7 +879,7 @@ OmniJev 的 hybrid Qwen3.5-4B backbone 使用线性注意力层，沿序列携�
 ```bash
 export MSO_BRANCH_CKPT=1
 # ...
-swift sft --gradient_checkpointing false ...
+USE_SWIFT_V5=0 swift sft --gradient_checkpointing false ...
 ```
 
 OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter 目录而非底座目录）：
@@ -955,13 +955,13 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 | 4   | Generic Decision | 0.1667     | **0.6667** | +0.5000 | 0.5682          | 0.9363         | ✅ +300% |
 | 5   | THX-02           | 0.7143     | **1.0000** | +0.2857 | 0.8827          | **0.9154**     | ✅ +40%  |
 
-> THX-02（第 5 行）在 transformers 5.17.0、1× RTX 4090 上测得，使用 `examples/train/decision/thx02.sh` 在 `thx02_decision` 上训练 3 个 epoch。
+> THX-02（第 5 行）在 transformers 5.17.0、1× RTX 4090 上测得，使用 `examples/v4/train/decision/thx02.sh` 在 `thx02_decision` 上训练 3 个 epoch。
 
 ### 温度模块消融实验：同 checkpoint 有/无温度后处理
 
 用**同一份 checkpoint**（权重与 bias 完全一致）在训练时真正留出的 80 条 held-out 数据上单次前向，对同一份 raw logits 分别按有无温度缩放计算指标（温度是 softmax 前的单调缩放，argmax 不变，故 acc 必须恒等——这也是实验的有效性校验）。
 
-实验配置：JEV-27B-VL + 发布 adapter 续训（`open_jev_jev:all#800`，`split_dataset_ratio 0.1`，1 epoch，checkpoint-23）；脚本 `examples/train/decision/ablation_jev_confidence.py`。
+实验配置：JEV-27B-VL + 发布 adapter 续训（`open_jev_jev:all#800`，`split_dataset_ratio 0.1`，1 epoch，checkpoint-23）；脚本 `examples/v4/train/decision/ablation_jev_confidence.py`。
 
 | 变体 | T | acc | conf | gap(conf−acc) | ECE | Brier |
 | --- | --- | --- | --- | --- | --- | --- |

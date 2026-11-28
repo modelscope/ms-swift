@@ -116,7 +116,7 @@ result = sft_main(SftArguments(
 使用CLI对LoRA训练的checkpoint进行推理：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --stream true \
@@ -131,7 +131,7 @@ swift infer \
 对数据集中的验证集进行批量推理：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --temperature 0 \
@@ -146,7 +146,7 @@ swift infer \
 若想对额外的测试集进行推理，而不使用训练时的验证集，使用`--val_dataset <dataset_path>`进行推理：
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --temperature 0 \
@@ -256,7 +256,7 @@ print(f'args.default_system: {args.system}')
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --adapters output/vx-xxx/checkpoint-xxx \
     --infer_backend transformers \
     --temperature 0 \
@@ -272,7 +272,7 @@ swift deploy \
 我们预先训练了2个基模型为`Qwen/Qwen2.5-7B-Instruct`的不同自我认知LoRA增量权重（可以直接跑通），我们可以在[args.json](https://modelscope.cn/models/swift/test_lora/file/view/master)中找到相关信息。你需要在部署时修改`--adapters`指定训练好的LoRA权重本地路径即可。
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift deploy \
+USE_SWIFT_V5=0 swift deploy \
     --adapters lora1=swift/test_lora lora2=swift/test_lora2 \
     --infer_backend vllm \
     --temperature 0 \

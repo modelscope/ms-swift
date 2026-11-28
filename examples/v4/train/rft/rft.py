@@ -1,6 +1,7 @@
 import os
+# Load-bearing, unlike the no-op form in plain v4 scripts: the sampling / training steps below shell out to
+# the `swift` CLI, which inherits this environment and needs the v4 route.
 os.environ['USE_SWIFT_V5'] = '0'
-import os
 import shutil
 import subprocess
 import time

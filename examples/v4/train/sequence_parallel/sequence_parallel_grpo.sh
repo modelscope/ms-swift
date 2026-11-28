@@ -29,7 +29,7 @@ swift rlhf \
     --max_completion_length 1024 \
     --reward_funcs accuracy format \
     --num_generations 32 \
-    --system examples/train/grpo/prompt.txt \
+    --system examples/v4/train/grpo/prompt.txt \
     --deepspeed zero3 \
     --temperature 1.0 \
     --top_p 1.0 \

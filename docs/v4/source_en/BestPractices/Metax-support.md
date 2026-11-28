@@ -111,7 +111,7 @@ In most scenarios, we can run Swift's examples directly.
 ```bash
 # We assume that the ms-swift code is under /workspace
 cd /workspace/ms-swift/
-bash examples/train/full/train.sh
+bash examples/v4/train/full/train.sh
 
 ```
 
@@ -150,7 +150,7 @@ if you want to use Megatron-LM as Swift's backend, you should set MEGATRON_LM_PA
 ```bash
 export MEGATRON_LM_PATH=/workspace/Megatron-LM-0.15.0
 cd /workspace/ms-swift
-bash examples/megatron/pretrain.sh
+bash examples/v4/megatron/pretrain.sh
 ```
 
 ### 3.3. use other versions of ms-swift
@@ -183,7 +183,7 @@ By default, MACA does not allow multiple processes to run on a single GPU. There
 # run other scripts ...
 export MACA_MPS_MODE=1
 cd /workspace/ms-swift/
-bash examples/train/full/train.sh
+bash examples/v4/train/full/train.sh
 ```
 #### 3.4.2. MCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME & MCCL_IB_HCA
 When using MACA in a multi-node setup, you need to set the environment variables MCCL_SOCKET_IFNAME, GLOO_SOCKET_IFNAME, and MCCL_IB_HCA to ensure proper inter-node communication.
@@ -257,7 +257,7 @@ export MCCL_SOCKET_IFNAME=ens20f0np0
 export GLOO_SOCKET_IFNAME=ens20f0np0
 export MCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3
 cd /workspace/ms-swift/
-bash examples/train/multi-node/torchrun/train_node1.sh
+bash examples/v4/train/multi-node/torchrun/train_node1.sh
 ```
 
 ```bash
@@ -267,5 +267,5 @@ export MCCL_SOCKET_IFNAME=ens20f0np0
 export GLOO_SOCKET_IFNAME=ens20f0np0
 export MCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3
 cd /workspace/ms-swift/
-bash examples/train/multi-node/torchrun/train_node2.sh
+bash examples/v4/train/multi-node/torchrun/train_node2.sh
 ```

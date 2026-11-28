@@ -1,6 +1,4 @@
 import os
-os.environ['USE_SWIFT_V5'] = '0'
-import os
 from typing import List
 
 from swift import BaseArguments, InferRequest, TransformersEngine, get_template

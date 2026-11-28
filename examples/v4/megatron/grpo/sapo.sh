@@ -14,7 +14,7 @@ megatron rlhf \
   --pipeline_model_parallel_size 1 \
   --dataset AI-ModelScope/clevr_cogen_a_train \
   --save_safetensors true \
-  --external_plugins examples/train/grpo/plugin/plugin.py \
+  --external_plugins examples/v4/train/grpo/plugin/plugin.py \
   --reward_funcs external_r1v_acc format \
   --dynamic_sample false \
   --steps_per_generation 4 \
@@ -49,7 +49,7 @@ megatron rlhf \
   --no_save_rng \
   --attention_backend flash \
   --temperature 1.0 \
-  --system examples/train/grpo/prompt.txt \
+  --system examples/v4/train/grpo/prompt.txt \
   --beta 0.001 \
   --padding_free true \
   --report_to wandb

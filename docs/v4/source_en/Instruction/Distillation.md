@@ -172,10 +172,10 @@ Add a column in your data (e.g. `teacher_tag`) and set `--teacher_tag_key teache
 
 ```bash
 # Deploy two teacher services (GKD requires max_logprobs >= gkd_logits_topk)
-CUDA_VISIBLE_DEVICES=1 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 64
-CUDA_VISIBLE_DEVICES=2 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 64
+CUDA_VISIBLE_DEVICES=1 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 64
+CUDA_VISIBLE_DEVICES=2 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 64
 
-CUDA_VISIBLE_DEVICES=0 swift rlhf \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3.5-0.6B \
     --teacher_model_server '[{"url":"http://localhost:8000","tags":["data/math.jsonl"]},{"url":"http://localhost:8001","tags":["data/code.jsonl"]}]' \
@@ -187,10 +187,10 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
 **Example: OPD-RL + multi-teacher**
 
 ```bash
-CUDA_VISIBLE_DEVICES=1 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 1
-CUDA_VISIBLE_DEVICES=2 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 1
+CUDA_VISIBLE_DEVICES=1 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 1
+CUDA_VISIBLE_DEVICES=2 USE_SWIFT_V5=0 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 1
 
-CUDA_VISIBLE_DEVICES=0 swift rlhf \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-0.6B \
     --teacher_model_server '[{"url":"http://localhost:8000","tags":["data/math.jsonl"]},{"url":"http://localhost:8001","tags":["data/code.jsonl"]}]' \
@@ -251,7 +251,7 @@ When setting `--teacher_model_server`, also set `--gkd_logits_topk` (API returns
 
 ```bash
 # Step 1: Deploy teacher model (max_logprobs must be >= gkd_logits_topk)
-CUDA_VISIBLE_DEVICES=0 swift deploy \
+CUDA_VISIBLE_DEVICES=0 USE_SWIFT_V5=0 swift deploy \
     --model Qwen/Qwen3.5-9B \
     --infer_backend vllm \
     --port 8000 \
@@ -260,7 +260,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 # Step 2: Start GKD training
 CUDA_VISIBLE_DEVICES=1,2,3,4 \
 NPROC_PER_NODE=4 \
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3.5-2B \
     --teacher_model_server http://localhost:8000 \

@@ -257,60 +257,72 @@ def main() -> None:
         return False
 
     lent = False
-    batches = 0
-    state.handler.on_train_begin()
-    try:
-        if not train_off_policy():
-            return
-        # INITIAL PUBLICATION: the sampler must start from the student's weights.
+
+    def sync() -> None:
+        # WEIGHT PUBLICATION: push the student weights to the sampler. Under colocate the sync wakes the
+        # sampler and takes the GPUs: the sync itself leaves the trainer offloaded.
+        nonlocal lent
         cluster.engine.sync_weights()
         lent = cluster.colocate
-        for trajs, batch_facts in driver:
-            if cluster.colocate:
-                # COLOCATE HANDOVER: sleep the sampler, reload the trainer.
-                sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-                cluster.model.reload_to_gpu()
-                lent = False
-            lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
-                                             batch_facts.get('response_lengths') or ())]
-            dropped = len(trajs) % update_batch_size
-            if dropped:
-                print(f'[gkd] dropping {dropped} rows that cannot fill an optimizer batch')
-            # ON-POLICY UPDATE: the student's own rollouts, use_student=True (no extra CE term).
-            for lo, hi in optimizer_batch_slices(len(trajs), train_batch_size, ga):
-                if state.reached_max() or state.should_stop():
-                    break
-                update = trajs[lo:hi]
-                state.micro_step += (hi - lo) // train_batch_size
-                update, balance_metrics = balance_update(
-                    state, update, lengths[lo:hi],
-                    micro_batch_kwargs={'micro_batch_size': micro_batch_size})
-                # ON-policy teacher signal: the worker scores the student's own response tokens
-                # under the teacher view; the generalized JSD (beta interpolates the mixture).
-                signal = dict(cluster.worker.forward_kwargs(update, True))
-                state.handler.on_step_begin()
-                cluster.model.forward_backward(
-                    inputs=copy_inputs(update), gradient_accumulation_steps=1,
-                    micro_batch_size=micro_batch_size, **signal)
-                state.handler.on_pre_optimizer_step()
-                cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
-                                                 gradient_accumulation_steps=1)
-                state.handler.on_optimizer_step()
-                state.record(extra_metrics=balance_metrics)
-                state.step_tail(save=save)
-            batches += 1
-            if not train_off_policy():
-                break
-            if batches % sync_every == 0:
-                cluster.engine.sync_weights()
-                lent = cluster.colocate
-        state.handler.on_train_end()
-        save_final_checkpoint(cluster.model, save, enabled=True)
-    finally:
-        close_driver_preserving_error(driver)
+
+    def reclaim() -> None:
+        # COLOCATE HANDOVER: sleep the sampler (offload its weights/KV), reload the trainer.
+        nonlocal lent
         if lent:
             sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
             cluster.model.reload_to_gpu()
+            lent = False
+
+    batches = 0
+    state.handler.on_train_begin()
+    try:
+        try:
+            if not train_off_policy():
+                return
+            sync()  # INITIAL PUBLICATION: the sampler must start from the student's weights.
+            for trajs, batch_facts in driver:
+                reclaim()
+                lengths = [p + r for p, r in zip(batch_facts.get('prompt_lengths') or (),
+                                                 batch_facts.get('response_lengths') or ())]
+                dropped = len(trajs) % update_batch_size
+                if dropped:
+                    print(f'[gkd] dropping {dropped} rows that cannot fill an optimizer batch')
+                # ON-POLICY UPDATE: the student's own rollouts, use_student=True (no extra CE term).
+                for lo, hi in optimizer_batch_slices(len(trajs), train_batch_size, ga):
+                    if state.reached_max() or state.should_stop():
+                        break
+                    update = trajs[lo:hi]
+                    state.micro_step += (hi - lo) // train_batch_size
+                    update, balance_metrics = balance_update(
+                        state, update, lengths[lo:hi],
+                        micro_batch_kwargs={'micro_batch_size': micro_batch_size})
+                    # ON-policy teacher signal: the worker scores the student's own response tokens
+                    # under the teacher view; the generalized JSD (beta interpolates the mixture).
+                    signal = dict(cluster.worker.forward_kwargs(update, True))
+                    state.handler.on_step_begin()
+                    cluster.model.forward_backward(
+                        inputs=copy_inputs(update), gradient_accumulation_steps=1,
+                        micro_batch_size=micro_batch_size, **signal)
+                    state.handler.on_pre_optimizer_step()
+                    cluster.model.clip_grad_and_step(max_grad_norm=state.max_grad_norm,
+                                                     gradient_accumulation_steps=1)
+                    state.handler.on_optimizer_step()
+                    state.record(extra_metrics=balance_metrics)
+                    state.step_tail(save=save)
+                batches += 1
+                if not train_off_policy():
+                    break
+                if batches % sync_every == 0:
+                    sync()
+        finally:
+            # TEARDOWN in fixed order: close the driver first, then return the lent devices so the
+            # final save below finds the model resident; a cleanup error must not mask an in-flight
+            # training exception.
+            close_driver_preserving_error(driver)
+            reclaim()
+        state.handler.on_train_end()
+        save_final_checkpoint(cluster.model, save, enabled=True)
+    finally:
         finalize_rl_resources(
             state, cluster, remote_run=False, driver=driver, recipe='GKD-example',
             finish=lambda: state.finish_metrics(status='loop_completed'))

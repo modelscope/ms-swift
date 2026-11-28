@@ -1,5 +1,3 @@
-import os
-os.environ['USE_SWIFT_V5'] = '0'
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Print a compact Ascend environment report without importing training packages."""
 import os

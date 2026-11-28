@@ -268,29 +268,16 @@ class RewardModel:
         if logits is None:
             raise RuntimeError('reward model forward returned no logits.')
         logits = torch.as_tensor(logits)
-        if logits.dim() == 3:
-            # A process reward model (Qwen2.5-Math-PRM) emits per-token [B, L, C] logits, not a pooled
-            # [B, C] score. One score per row is the reward at the row's LAST valid token (the step-end
-            # the PRM judges); a multi-class head reduces to the positive-class softmax probability.
-            # Without this, reshape(-1) hands the driver B*L*C floats and it silently reads the first
-            # prompt token's logit as the segment score (defect123).
-            def _mask(f):
-                return f.get('attention_mask') if isinstance(f, dict) else getattr(f, 'attention_mask', None)
-
-            masks = [_mask(f) for f in features]
-            if all(m is not None for m in masks):
-                last = torch.tensor([int(torch.as_tensor(m).nonzero()[-1]) for m in masks], dtype=torch.long)
-            else:
-                last = torch.full((logits.shape[0],), logits.shape[1] - 1, dtype=torch.long)
-            logits = logits[torch.arange(logits.shape[0]), last]
-            if logits.shape[-1] > 1:
-                logits = torch.softmax(logits.float(), dim=-1)[..., -1]
-        elif logits.dim() == 2 and logits.shape[-1] > 1:
-            # twinkle's seq_cls postprocess (_postprocess_seq_cls) already pooled the per-token
-            # [B, T, C] to [B, C] at the last valid token, so the dim==3 branch above never fires
-            # on that path. A multi-class head still carries C logits per row; without this reduce,
-            # reshape(-1) leaks C scores per row and the FunctionWorker rejects the batch
-            # ("returned 2 scores for 1 trajectories", the real PRM ray run).
+        if logits.dim() != 2:
+            # twinkle's seq_cls postprocess (_postprocess_seq_cls) pools the per-token [B, T, C]
+            # head at the last valid token before this runs, so a 3-d tensor here means that
+            # pooling never happened (a model that bypasses the processor). Pooling it again here
+            # would be a second owner of the last-valid-token rule; refuse instead.
+            raise RuntimeError(f'reward model logits must be pooled [B, C], got shape {tuple(logits.shape)}')
+        if logits.shape[-1] > 1:
+            # A multi-class head carries C logits per row; without this reduce, reshape(-1) leaks
+            # C scores per row and the FunctionWorker rejects the batch ("returned 2 scores for 1
+            # trajectories", the real PRM ray run). The positive-class probability is the score.
             logits = torch.softmax(logits.float(), dim=-1)[..., -1]
         return logits.reshape(-1).tolist()
 

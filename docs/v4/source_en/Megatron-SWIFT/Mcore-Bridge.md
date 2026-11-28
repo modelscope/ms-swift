@@ -29,7 +29,7 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3-VL-8B-Instruct \
     --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -69,7 +69,7 @@ IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen3-VL-8B-Instruct/vx-xxx/checkpoint-xxx \
     --load_data_args true \
     --stream true
@@ -90,7 +90,7 @@ Below is an example of self-cognition training using LoRA for the text-only mode
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-megatron sft \
+USE_SWIFT_V5=0 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --save_safetensors true \
     --merge_lora false \
@@ -138,7 +138,7 @@ Perform inference on the exported LoRA weights using the vLLM inference engine:
 ```shell
 # For specific model LoRA support in vLLM, please refer to the vLLM documentation.
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --infer_backend vllm \
@@ -153,7 +153,7 @@ If you need to manually **Merge-LoRA**, you can use the `megatron export` comman
 # If the final format needs to be in mcore format, use `--to_mcore true`
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
@@ -168,7 +168,7 @@ Perform inference on the merged full weights using the transformers inference en
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+USE_SWIFT_V5=0 swift infer \
     --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --stream true
 ```
@@ -184,7 +184,7 @@ Full parameter weights:
 # safetensors -> torch_dist
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --output_dir Qwen3-30B-A3B-Instruct-2507-mcore \
     --to_mcore true \
@@ -198,7 +198,7 @@ megatron export \
 # torch_dist -> safetensors
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --mcore_model Qwen3-30B-A3B-Instruct-2507-mcore \
     --output_dir Qwen3-30B-A3B-Instruct-2507-hf \
     --to_hf true \
@@ -216,7 +216,7 @@ LoRA weights:
 # You can also change `--model safetensors-path` to `--mcore_model torch-dist-path`. These two methods are equivalent, and mcore-bridge will handle it automatically.
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
@@ -232,7 +232,7 @@ megatron export \
 # safetensors -> torch_dist
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
-megatron export \
+USE_SWIFT_V5=0 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \

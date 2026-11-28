@@ -170,19 +170,19 @@ GRPO 训练框架支持集成高性能推理引擎（如 vLLM）来加速采样�
 使用`swift rollout`命令部署vLLM 服务器, 现仅支持vLLM backend
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --vllm_tensor_parallel_size 2 \
   --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --vllm_tensor_parallel_size 2 \
   --vllm_data_parallel_size 1
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
   --model Qwen/Qwen2.5-VL-7B-Instruct \
   --vllm_tensor_parallel_size 2 \
   --vllm_data_parallel_size 2
@@ -209,20 +209,20 @@ swift rollout \
 
 ```bash
 # rollout(server mode)
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --vllm_enable_lora true \
     --vllm_max_lora_rank xxx # 与训练脚本lora_rank一致
     ...
 
 # grpo(colocate mode)
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --vllm_mode colocate \
     --vllm_enable_lora true \
     ...
 
 # megatron grpo(colocate mode)
-swift megatron rlhf \
+USE_SWIFT_V5=0 swift megatron rlhf \
     --rlhf_type grpo \
     --vllm_mode colocate \
     --vllm_enable_lora true \

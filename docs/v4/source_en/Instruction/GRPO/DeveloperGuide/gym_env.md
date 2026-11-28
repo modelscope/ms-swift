@@ -91,10 +91,10 @@ class GYMScheduler(MultiTurnScheduler):
 **Colocate mode**:
 
 ```bash
-megatron rlhf \
+USE_SWIFT_V5=0 megatron rlhf \
     --rlhf_type grpo \
     --vllm_mode colocate \
-    --external_plugins examples/megatron/grpo/multi_turn/frozen_lake_plugin.py \
+    --external_plugins examples/v4/megatron/grpo/multi_turn/frozen_lake_plugin.py \
     --multi_turn_scheduler gym_scheduler \
     --gym_env frozen_lake \
     --use_gym_env true \
@@ -108,16 +108,16 @@ megatron rlhf \
 **Server mode**
 
 ```bash
-swift rollout \
+USE_SWIFT_V5=0 swift rollout \
     --model xxx \
     --use_gym_env true \
-    --external_plugins examples/megatron/grpo/multi_turn/frozen_lake_plugin.py \
+    --external_plugins examples/v4/megatron/grpo/multi_turn/frozen_lake_plugin.py \
     --multi_turn_scheduler gym_scheduler \
     --gym_env frozen_lake \
     --max_turns 10
 
 # On the trainer side, add --vllm_server_pass_dataset true so the env_config column reaches the rollout server.
-megatron rlhf --vllm_mode server --vllm_server_pass_dataset true ...
+USE_SWIFT_V5=0 megatron rlhf --vllm_mode server --vllm_server_pass_dataset true ...
 # or swift rlhf --vllm_mode server --vllm_server_pass_dataset true ...
 ```
 
@@ -164,7 +164,7 @@ class FrozenLakeEnv(Env):
 Hook the env class into swift's `envs` registry. `--external_plugins` imports the file at startup, so the registration takes effect automatically:
 
 ```python
-# examples/megatron/grpo/multi_turn/frozen_lake_plugin.py
+# examples/v4/megatron/grpo/multi_turn/frozen_lake_plugin.py
 from swift.rollout.gym_env import Env, envs
 
 class FrozenLakeEnv(Env):
@@ -189,7 +189,7 @@ The dataset is just a placeholder here — the actual data is constructed by the
 With `--use_gym_env true`, the env-provided `total_reward` is automatically added as one reward column — no reward function is required. To mix in additional signals (e.g. format/length checks), just pass them via `--reward_funcs`; the gym reward is appended as an extra column and blended with the reward_funcs through `--reward_weights`. For example, also enabling a format reward:
 
 ```bash
-megatron rlhf ... --use_gym_env true --reward_funcs format --reward_weights 0.2 1.0
+USE_SWIFT_V5=0 megatron rlhf ... --use_gym_env true --reward_funcs format --reward_weights 0.2 1.0
 # the last entry of reward_weights corresponds to the gym total_reward
 ```
 
@@ -248,7 +248,7 @@ pip install git+https://huggingface.co/spaces/openenv/sudoku
 Use the provided startup script to start the local server (default port 8000). `MAX_CONCURRENT_ENVS` must be ≥ `num_generations` used in training:
 
 ```bash
-TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/train/grpo/plugin/openenv/start_sudoku_server.py
+TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/v4/train/grpo/plugin/openenv/start_sudoku_server.py
 ```
 
 > The default `python -m textarena_env.server.app` only supports 1 concurrent session, which is insufficient for GRPO's parallel multi-generation sampling. `start_sudoku_server.py` lifts this restriction by setting `SUPPORTS_CONCURRENT_SESSIONS`.
@@ -334,11 +334,11 @@ multi_turns['sudoku_scheduler'] = SudokuScheduler
 **6. Start Training**
 
 ```bash
-swift rlhf \
+USE_SWIFT_V5=0 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-4B \
-    --dataset examples/train/grpo/plugin/openenv/sudoku.jsonl \
-    --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
+    --dataset examples/v4/train/grpo/plugin/openenv/sudoku.jsonl \
+    --external_plugins examples/v4/train/grpo/plugin/openenv/sudoku_scheduler.py \
     --enable_thinking false \
     --max_completion_length 256 \
     --use_gym_env true \

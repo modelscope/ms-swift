@@ -1,9 +1,9 @@
 export USE_SWIFT_V5=0
-# sh examples/custom/sft.sh
+# sh examples/v4/custom/sft.sh
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --external_plugins examples/custom/dataset.py \
-                       examples/custom/model.py \
+    --external_plugins examples/v4/custom/dataset.py \
+                       examples/v4/custom/model.py \
     --model AI-ModelScope/Nemotron-Mini-4B-Instruct \
     --tuner_type lora \
     --dataset swift/stsb \

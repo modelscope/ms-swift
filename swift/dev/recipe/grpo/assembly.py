@@ -11,7 +11,6 @@ from swift.dev.recipe.utils import (
     TEACHER_GROUP,
     auxiliary_mesh,
     build_rl_sampler,
-    effective_colocate,
     resolve_reward_scorers,
 )
 from swift.dev.utils.logger import get_logger
@@ -99,8 +98,8 @@ def grpo_group_requests(
         requests.append((TEACHER_GROUP, rl_config.teacher_parallel_spec))
     for index in range(len(split_channel(list(reward_config.orm))[1])):
         requests.append((f"reward_{index}", reward_config.orm_parallel_spec))
-    if split_channel(list(reward_config.prm))[1]:
-        requests.append(("prm_0", reward_config.prm_parallel_spec))
+    for index in range(len(split_channel(list(reward_config.prm))[1])):
+        requests.append((f"prm_{index}", reward_config.prm_parallel_spec))
     return requests
 
 
@@ -226,6 +225,7 @@ def initialize_cluster(
     from swift.dev.builder.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
+        effective_colocate,
         build_cluster_adapter,
         build_rollout,
         inflight_rows,
@@ -334,7 +334,7 @@ def initialize_cluster(
 
         engine = RemoteWeightSync(model, sampler)
     else:
-        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, resource_plan=resource_plan)
+        engine = build_checkpoint_manager(model, sampler, rollout_config, remote=True, colocate=colocate)
     adapter = None
     if resource_plan is not None and rollout_config.resource_mode == "adaptive":
         adapter = build_cluster_adapter(

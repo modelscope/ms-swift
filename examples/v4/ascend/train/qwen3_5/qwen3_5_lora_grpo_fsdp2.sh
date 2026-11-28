@@ -3,7 +3,7 @@ export VLLM_ASCEND_ENABLE_NZ=0
 export TASK_QUEUE_ENABLE=0
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
-accelerate launch --config_file "./examples/ascend/train/qwen3_5/fsdp2.json" \
+accelerate launch --config_file "./examples/v4/ascend/train/qwen3_5/fsdp2.json" \
     swift/cli/rlhf.py \
         --rlhf_type grpo \
         --model Qwen/Qwen3.5-35B-A3B \

@@ -219,33 +219,14 @@ def _resume_round(checkpoint_config: 'CheckpointConfig', rft_state: RFTState) ->
 
 def _reown_kept_payloads(payloads):
     """Materialise the kept trajectories in this (driver) process and re-put them so THIS process
-    owns the training payloads.
+    owns the training payloads (``RayHelper.reown`` carries the rationale, defect129/G35 item7).
 
-    defect129/G35 item7: the rollout actor owns the row objects (its ``stash`` ray.put) and the
-    StreamingDriver actor is only a borrower that forwards the refs to main. Closing the driver
-    ``ray.kill``s that borrowing actor; Ray's distributed reference counting can then erase the
-    rollout owner's entry before the trainer's borrow propagates back to it (the borrower-info race
-    documented in ray PR #63560 / #63557), so ``forward_backward``'s ``ray.get`` hits
-    ``ReferenceCountingAssertionError`` even though main still holds the refs. Anchoring the refs in
-    main does not close the race: the anchor's completion-token task releases its argument refs on
-    completion, and main's local borrow is exactly what the owner fails to learn about in time.
-    Re-owning the kept subset in the surviving consumer process removes the cross-actor borrow chain
-    entirely -- the trainer fetches objects whose owner (this process) outlives training. Only the
-    kept subset is materialised (bounded by rejection sampling), never the full rollout. Outside ray
-    (local mode) the payloads are already plain values and pass through untouched.
+    Only the KEPT subset is materialised (bounded by rejection sampling), never the full rollout.
+    Outside ray (local mode) the payloads are already plain values and pass through untouched.
     """
     from twinkle.infra._ray.ray_helper import RayHelper
-    if not RayHelper.ray_inited() or RayHelper.is_worker():
-        return payloads
-    import ray
-    owned = []
-    for payload in payloads:
-        if isinstance(payload, ray.ObjectRef):
-            payload = ray.get(payload)
-        elif hasattr(payload, 'result'):
-            payload = payload.result()
-        owned.append(ray.put(payload))
-    return owned
+
+    return RayHelper.reown(payloads)
 
 
 def _sample_and_select(cluster, rollout_config, reward_config, selector, dataloader, num_samples, window):

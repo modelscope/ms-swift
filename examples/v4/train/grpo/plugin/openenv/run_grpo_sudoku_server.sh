@@ -5,13 +5,13 @@ export USE_SWIFT_V5=0
 #  Prerequisites:
 #    1. Start Sudoku server (separate terminal):
 #       TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 \
-#         python examples/train/grpo/plugin/openenv/start_sudoku_server.py
+#         python examples/v4/train/grpo/plugin/openenv/start_sudoku_server.py
 #
 #    2. Start vLLM rollout server (separate terminal):
 #       CUDA_VISIBLE_DEVICES=0 \
 #       swift rollout \
 #           --model Qwen/Qwen3.5-4B \
-#           --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
+#           --external_plugins examples/v4/train/grpo/plugin/openenv/sudoku_scheduler.py \
 #           --enable_thinking false \
 #           --max_length 8192 \
 #           --vllm_max_model_len 12288 \
@@ -39,8 +39,8 @@ NPROC_PER_NODE=3 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-4B \
-    --dataset examples/train/grpo/plugin/openenv/sudoku.jsonl \
-    --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
+    --dataset examples/v4/train/grpo/plugin/openenv/sudoku.jsonl \
+    --external_plugins examples/v4/train/grpo/plugin/openenv/sudoku_scheduler.py \
     --enable_thinking false \
     --torch_dtype bfloat16 \
     --max_completion_length 256 \
