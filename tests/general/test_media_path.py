@@ -138,6 +138,35 @@ class TestRequestMediaPath(unittest.TestCase):
         request = self._request(self.inside)
         self.assertTrue(request.messages[0]['content'][0]['image_url']['url'].startswith('data:'))
 
+    def test_a_long_local_image_path_is_inlined(self):
+        long_path = os.path.join(self.allowed_dir, 'p' * 200 + '.png')
+        self.assertGreater(len(long_path), 200)
+        with open(long_path, 'wb') as f:
+            f.write(b'inside')
+        request = self._request(long_path)
+        url = request.messages[0]['content'][0]['image_url']['url']
+        self.assertTrue(url.startswith('data:image/png;base64,'))
+
+    def test_a_long_embedded_string_is_left_unchanged(self):
+        blob = 'A' * 220
+        request = self._request(blob)
+        self.assertEqual(request.messages[0]['content'][0]['image_url']['url'], blob)
+
+    def test_a_long_missing_image_path_is_refused_like_one_that_exists(self):
+        existing = os.path.join(self.tmp_dir, 'q' * 200 + '.png')
+        missing = os.path.join(self.tmp_dir, 'r' * 200 + '.png')
+        self.assertGreater(len(existing), 200)
+        with open(existing, 'wb') as f:
+            f.write(b'outside')
+        with self.assertRaises(ValueError) as existing_ctx:
+            self._request(existing)
+        with self.assertRaises(ValueError) as missing_ctx:
+            self._request(missing)
+        self.assertEqual(
+            str(existing_ctx.exception).replace(existing, ''),
+            str(missing_ctx.exception).replace(missing, ''),
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
