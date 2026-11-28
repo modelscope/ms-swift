@@ -1,4 +1,4 @@
-"""S18a/b — template_contract encoding + output kernel ground truth (L1).
+"""S18a/b — twinkle.template.contract encoding + output kernel ground truth (L1).
 
 The encoding kernels' literal contracts (SHIFTED_FIELDS mapping, shift/unshift round-trip identity,
 refresh's derived fields, TOKEN_FILL) and the output kernels' boundaries (strip_special_tokens,
@@ -7,8 +7,8 @@ Template surface; these tests pin the kernels directly.
 
 Maps to ut_plan S18-01/06/09/14/15.
 """
-from swift.dev.template_contract import encoding as E
-from swift.dev.template_contract import output as O
+from twinkle.template.contract import encoding as E
+from twinkle.template.contract import output as O
 
 OPEN, CLOSE = chr(60) + 'think' + chr(62), chr(60) + '/think' + chr(62)
 

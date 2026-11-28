@@ -687,7 +687,7 @@ def _apply_meta_training(model, model_config, arch, tuner_config, train_config, 
     from peft import get_peft_model
     from twinkle.model.transformers.target_modules import expand_modules_to_save, expand_multimodal_lora_target
 
-    from swift.dev.builders.adapter import _build_adapter_config
+    from swift.dev.builder.adapter import _build_adapter_config
 
     adapter_config = _build_adapter_config(tuner_config, task_type=model_config.task_type)
     expand_multimodal_lora_target(
@@ -708,7 +708,7 @@ def _meta_structure(model_config, *, expand: Optional[str] = None, training: boo
                     frozen: bool, base: Optional[dict] = None) -> dict:
     # Training-stack imports stay here: config mode must neither pay nor require them.
     import torch
-    from swift.dev.builders.model import load_model_processor
+    from swift.dev.builder.model import load_model_processor
     from swift.dev.model.loader import ModelArch, resolve_loader_cls
 
     if base is None:

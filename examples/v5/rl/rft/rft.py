@@ -32,8 +32,8 @@ import math
 
 import torch
 
-from swift.dev.builders import build_prompt_dataloader, resolve_rl_dp_size
-from swift.dev.builders.optimizer import resolve_max_grad_norm
+from swift.dev.builder import build_prompt_dataloader, resolve_rl_dp_size
+from swift.dev.builder.optimizer import resolve_max_grad_norm
 from swift.dev.config import (
     CheckpointConfig,
     DatasetConfig,

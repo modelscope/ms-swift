@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-from swift.dev.components.infer.component import _CandidateCache
+from swift.dev.recipe.infer.inferencer import _CandidateCache
 from swift.dev.dataset.storage.writers import (StoreWriter, _CheckpointPaths, store_output_complete,
                                                store_writer_kind)
 from tests.v5.infer.conftest import write_cache_file

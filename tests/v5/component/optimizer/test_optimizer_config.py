@@ -41,7 +41,7 @@ def _recording_megatron_model():
 def _configure(**cfg_kwargs):
     """Run configure_optimizer against a recording Megatron model; return the recorded calls."""
     from swift.dev.config import DistributedConfig, TrainConfig
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.optimizer import configure_optimizer
 
     cfg = TrainConfig(**cfg_kwargs)
     model = _recording_megatron_model()
@@ -163,7 +163,7 @@ def test_grad_clipping_threshold_is_one_knob_on_both_backends():
         TrainConfig,
         validate_configs,
     )
-    from swift.dev.builders.optimizer import resolve_max_grad_norm
+    from swift.dev.builder.optimizer import resolve_max_grad_norm
 
     # Neither name is backend-restricted any more.
     _validate(max_grad_norm=0.5)
@@ -375,7 +375,7 @@ def _recording_hf_model():
 def _hf_warmup_steps(warmup_ratio, num_training_steps):
     """The warmup step count dev actually hands to the HF scheduler."""
     from swift.dev.config import TrainConfig
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.optimizer import configure_optimizer
 
     model = _recording_hf_model()
     configure_optimizer(

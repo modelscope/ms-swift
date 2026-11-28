@@ -18,10 +18,10 @@ import re
 from pathlib import Path
 
 import swift.dev
-import swift.dev.callbacks  # noqa: F401 -- registers the `callback` kind, whose config_field is TrainConfig.callbacks
+import swift.dev.callback  # noqa: F401 -- registers the `callback` kind, whose config_field is TrainConfig.callbacks
 import swift.dev.config as configs
-import swift.dev.builders.optimizer_plugins  # noqa: F401 -- registers the `param_groups` kind (TrainConfig.param_groups_plugins)
-import swift.dev.rewards  # noqa: F401 -- importing the declaring module is what registers its kind
+import swift.dev.builder.optimizer_plugins  # noqa: F401 -- registers the `param_groups` kind (TrainConfig.param_groups_plugins)
+import swift.dev.reward  # noqa: F401 -- importing the declaring module is what registers its kind
 from swift.dev.utils.plugin import PluginRegistry
 
 DEV = Path(swift.dev.__file__).parent
@@ -169,7 +169,7 @@ _CLIENT_NAME_SETTERS = {
         'Under --mode remote, sampler is twinkle_client.sampler.vLLMSampler; its set_template is '
         'declared (template_cls: str) and posts the name to the server, which rebuilds the dev '
         "Template from the serialized TemplateSpec beside it. 6d82dd8ac switched the posted name "
-        "to the server-registered 'SwiftTemplate' (processor/server_plugin.py::register sets "
+        "to the server-registered 'SwiftTemplate' (builders/server_plugin.py::register sets "
         'twinkle.template.SwiftTemplate = Template at worker startup).',
 }
 

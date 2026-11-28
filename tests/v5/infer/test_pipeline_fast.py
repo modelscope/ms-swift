@@ -311,8 +311,8 @@ def test_merge_adapters_folds_delta_into_weights_and_clears_the_list():
 
 def test_run_infer_entry_orders_plugin_load_merge_then_component(monkeypatch, patch_prompt_rows):
     """S9-59: the entry's orchestration order -- plugin load -> adapter resolution -> optional merge
-    -> ONE InferComponent call. A merge without adapters skips the merge step entirely."""
-    import swift.dev.components.infer as component_pkg
+    -> ONE Inferencer call. A merge without adapters skips the merge step entirely."""
+    import swift.dev.recipe.infer.inferencer as inferencer_mod
     # the infer package's __init__ re-exports the run_infer FUNCTION, shadowing the submodule name,
     # so reach the module itself through sys.modules
     import swift.dev.recipe.infer.run_infer  # noqa: F401 -- registers the submodule
@@ -331,8 +331,8 @@ def test_run_infer_entry_orders_plugin_load_merge_then_component(monkeypatch, pa
             events.append('component-call')
             return [{'response': 'ok'}]
 
-    # run_infer imports InferComponent lazily inside the function, so patch the package it imports from
-    monkeypatch.setattr(component_pkg, 'InferComponent', _RecordingComponent)
+    # run_infer imports Inferencer lazily inside the function, so patch the module it imports from
+    monkeypatch.setattr(inferencer_mod, 'Inferencer', _RecordingComponent)
 
     def fake_merge(model_config, template_config, adapters):
         events.append(f'merge:{adapters}')

@@ -25,7 +25,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.accel(1)]
 
 def _engine_and_template(model_path):
     import torch
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
     from twinkle.sampler.transformers_sampler.transformers_engine import TransformersEngine

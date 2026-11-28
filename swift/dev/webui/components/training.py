@@ -176,7 +176,7 @@ class TrainStepStage(StageComponent):
         horizon (per-click budgets never reconfigure the scheduler)."""
         if getattr(self, '_optimizer_built', False):
             return
-        from swift.dev.builders.optimizer import configure_optimizer
+        from swift.dev.builder.optimizer import configure_optimizer
         kv = {
             'optim': self.params.get('optim', 'adamw'),
             'learning_rate': self.params.get('lr', 1e-5),
@@ -260,7 +260,7 @@ class TrainStepStage(StageComponent):
             set_loss = getattr(model, 'set_loss', None)
             if not callable(set_loss):
                 raise ComponentError(f'{self.node_id}: model exposes no set_loss()')
-            from swift.dev.builders.remote import RemoteLossSpec, RemoteModel
+            from swift.dev.builder.remote import RemoteLossSpec, RemoteModel
             if isinstance(model, RemoteModel):
                 # A served model installs the loss by NAME + scalar kwargs (a remote loss node's
                 # resident IS that spec); the keyed registration rides the kwargs the
@@ -417,7 +417,7 @@ class WeightSyncStage(StageComponent):
             managers = self._managers = {}
         manager = managers.get((id(model), id(target)))
         if manager is None:
-            from swift.dev.builders.remote import RemoteModel, RemoteWeightSync
+            from swift.dev.builder.remote import RemoteModel, RemoteWeightSync
 
             if isinstance(model, RemoteModel):
                 manager = RemoteWeightSync(model, target)
@@ -444,7 +444,7 @@ class WeightAverageStage(StageComponent):
         target = inputs.get('target')
         if source is None or target is None:
             raise ComponentError(f'{self.node_id}: weight_average needs source and target')
-        from swift.dev.builders.remote import RemoteModel
+        from swift.dev.builder.remote import RemoteModel
 
         if isinstance(source, RemoteModel) or isinstance(target, RemoteModel):
             # The copy/EMA transfers read in-process state dicts and rank-local channels; a
@@ -504,9 +504,35 @@ class CheckpointStage(StageComponent):
         if not callable(save):
             raise ComponentError(f'{self.node_id}: model exposes no save surface')
         name = str(self.params.get('name') or 'checkpoint')
+        # profile='training' means the checkpoint must be resumable: carry the
+        # optimizer state. Default 'model' keeps the weights-only save (small,
+        # deploy-oriented) that profiles without training semantics expect.
+        save_optimizer = str(self.params.get('profile') or 'model') == 'training'
+        from swift.dev.builders.remote import RemoteModel
+        if isinstance(model, RemoteModel):
+            # mode='remote': the server owns the checkpoint store, so the save
+            # carries only the name (plus the optimizer flag above) -- the
+            # SaveRequest schema has no output_dir
+            # (a client-side dir would have to already exist on the server, the
+            # same refusal apply_remote_tuner's save_dir note makes). The
+            # response's twinkle:// URI and server-side dir ARE the artifact:
+            # os.path.exists cannot reach across HTTP, so the response itself
+            # is the only truth a remote save can report.
+            response = save(name, save_optimizer=save_optimizer)
+            twinkle_path = str(getattr(response, 'twinkle_path', '') or '')
+            checkpoint_dir = str(getattr(response, 'checkpoint_dir', '') or '')
+            if not twinkle_path and not checkpoint_dir:
+                raise ComponentError(
+                    f'{self.node_id}: the served model reported no checkpoint from save()')
+            artifact: Dict[str, Any] = {'path': twinkle_path or checkpoint_dir, 'format': 'native'}
+            if checkpoint_dir:
+                artifact['checkpoint_dir'] = checkpoint_dir
+            logger.info(f'{self.node_id}: remote checkpoint saved as {twinkle_path} '
+                        f'(server dir {checkpoint_dir})')
+            return {'artifact': artifact}
         output_dir = str(self.params.get('output_dir') or os.path.join('output', 'checkpoints'))
         os.makedirs(output_dir, exist_ok=True)
-        path = save(name, output_dir=output_dir)
+        path = save(name, output_dir=output_dir, save_optimizer=save_optimizer)
         path = str(path or os.path.join(output_dir, name))
         if not os.path.exists(path):
             raise ComponentError(f'{self.node_id}: save reported no artifact at {path}')

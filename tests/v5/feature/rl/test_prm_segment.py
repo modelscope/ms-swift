@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """C2-G39 (QUEUE1005): the PRM delimiter segmentation predicate, guard and selection.
 
-``swift/dev/rewards/prm.py`` decides WHERE a PRM segment closes. The delimiter plugin's
+``swift/dev/reward/prm.py`` decides WHERE a PRM segment closes. The delimiter plugin's
 predicate is ``delimiter in last_assistant_text(traj)``: a step closes the running segment
 only when its newest assistant text carries the marker, turns without one accumulate.
 ``build_prm_segment`` selects the plugin by config and rejects a delimiter knob paired with
@@ -36,7 +36,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from swift.dev.rewards.prm import DelimiterPRMScorer, PRMSegmentWorker, build_prm_segment
+from swift.dev.reward.prm import DelimiterPRMScorer, PRMSegmentWorker, build_prm_segment
 
 
 def _traj(*assistant_texts):

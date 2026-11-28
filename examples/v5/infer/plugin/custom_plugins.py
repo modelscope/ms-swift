@@ -42,7 +42,7 @@ from datasets import Dataset as HfDataset
 
 from swift.dev.dataset.loader import DatasetLoader, register_dataset
 from swift.dev.model.loader import ModelLoader, register_model
-from swift.dev.rewards.reward import ORM
+from swift.dev.reward.reward import ORM
 from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
 # The v5 dev stack resolves --template against swift.dev.template's registry, not legacy
 # swift.template's; registering into the legacy table would leave the name unresolvable.

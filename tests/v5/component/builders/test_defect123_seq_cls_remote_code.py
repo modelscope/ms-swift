@@ -42,7 +42,7 @@ def _mc():
 
 
 def _apply(auto_map, loader):
-    from swift.dev.builders.model import _apply_seq_cls_head
+    from swift.dev.builder.model import _apply_seq_cls_head
 
     kwargs = {}
     _apply_seq_cls_head(kwargs, _mc(), _cfg(auto_map), loader)

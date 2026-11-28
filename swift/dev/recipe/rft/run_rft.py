@@ -391,7 +391,7 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     # the rft_iterations rounds generates the whole prompt set and SFTs the kept completions, so the
     # budget sizes those rounds with the per-prompt kept count as the effective num_generations and
     # no replay (num_iterations=1); an explicit --max_steps still overrides.
-    from swift.dev.builders import resolve_rl_dp_size
+    from swift.dev.builder import resolve_rl_dp_size
 
     remote_run = distributed_config.mode == 'remote'
     dp_size = resolve_rl_dp_size(distributed_config, template_config.sequence_parallel_size)
@@ -427,8 +427,8 @@ def run_rft(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         generation_config=generation_config, resource_plan=resource_plan,
         inflight=generation_batch_size * num_samples)
     # segment 4: the prompt loader + the dissolved step cadence + the save closure (round-atomic).
-    from swift.dev.builders import build_prompt_dataloader
-    from swift.dev.builders.optimizer import resolve_max_grad_norm
+    from swift.dev.builder import build_prompt_dataloader
+    from swift.dev.builder.optimizer import resolve_max_grad_norm
 
     # Every round reads the whole prompt set once, in order; generation_batch_size prompts run at once.
     dataloader = build_prompt_dataloader(

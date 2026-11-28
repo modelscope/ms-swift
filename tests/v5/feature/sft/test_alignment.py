@@ -304,7 +304,7 @@ def test_configure_optimizer_applies_extra_and_optim_args():
     from unittest.mock import MagicMock
 
     from swift.dev.config import TrainConfig
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.optimizer import configure_optimizer
 
     def _kwargs(**cfg_kw):
         m = MagicMock()
@@ -329,7 +329,7 @@ def test_configure_optimizer_does_not_pass_params():
     from unittest.mock import MagicMock
 
     from swift.dev.config import TrainConfig
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.optimizer import configure_optimizer
 
     m = MagicMock()
     configure_optimizer(m, TrainConfig(learning_rate=1e-4), num_training_steps=10)
@@ -454,12 +454,12 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
     from datasets import Dataset as HfDataset
     from twinkle.dataloader import DataLoader as TwinkleDataLoader
 
-    from swift.dev.builders.dataset import _encode, _identity_collate
+    from swift.dev.builder.dataset import _encode, _identity_collate
 
     # Self-contained: drive the offline loop's contract directly on an in-memory dataset so the
     # test doesn't depend on a registered dataset id.
     from swift.dev.loss import configure_loss
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor
     from swift.dev.recipe.utils import num_optimizer_steps
     from swift.model import get_model_processor
@@ -617,11 +617,11 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
     from datasets import Dataset as HfDataset
     from twinkle.dataloader import DataLoader as TwinkleDataLoader
 
-    from swift.dev.builders.adapter import apply_tuner
-    from swift.dev.builders.dataset import _encode, _identity_collate
+    from swift.dev.builder.adapter import apply_tuner
+    from swift.dev.builder.dataset import _encode, _identity_collate
     from swift.dev.loss import configure_loss
     from swift.dev.model import TransformersModel
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor
     from swift.dev.recipe.utils import num_optimizer_steps
     from swift.model import get_model_processor
@@ -796,6 +796,6 @@ def test_grpo_ga_equivalence_equal_seq_strong_signal():
 
 def _dev_template(proc, *, max_length=512):
     """The dev template for the same family, built exactly as the builders build it in production."""
-    from swift.dev.builders.template import build_template
+    from swift.dev.builder.template import build_template
     from swift.dev.config import TemplateConfig
     return build_template(TemplateConfig(template='qwen2_5', max_length=max_length), proc)

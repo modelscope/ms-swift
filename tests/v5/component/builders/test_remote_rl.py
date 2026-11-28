@@ -14,9 +14,9 @@ from typing import Any, List, Optional, Tuple
 
 import pytest
 
-from swift.dev.builders.model import build_ref_model
-from swift.dev.builders.remote import RemoteWeightSync
-from swift.dev.builders.reward import _build_frozen_reward_model
+from swift.dev.builder.model import build_ref_model
+from swift.dev.builder.remote import RemoteWeightSync
+from swift.dev.builder.reward import _build_frozen_reward_model
 from swift.dev.config import DistributedConfig, ModelConfig, RLConfig, RolloutConfig, TemplateConfig
 from swift.dev.loss.configure import (
     configure_ppo_value_loss,
@@ -25,7 +25,7 @@ from swift.dev.loss.configure import (
     configure_rl_metrics,
 )
 from swift.dev.recipe.utils import build_rl_sampler
-from swift.dev.rewards.scorer import RewardSpec
+from swift.dev.reward.scorer import RewardSpec
 
 
 class _RecordingModel:
@@ -313,8 +313,8 @@ def test_frozen_reward_model_remote_loads_a_pretrained_lora_head(monkeypatch):
     import types
 
     import peft
-    import swift.dev.builders as builders
-    import swift.dev.builders.remote as remote_mod
+    import swift.dev.builder as builders
+    import swift.dev.builder.remote as remote_mod
     import swift.dev.model.loader as model_loader
 
     monkeypatch.setattr(
@@ -348,8 +348,8 @@ def test_frozen_reward_model_remote_loads_from_the_server_store(monkeypatch):
     import types
 
     import peft
-    import swift.dev.builders as builders
-    import swift.dev.builders.remote as remote_mod
+    import swift.dev.builder as builders
+    import swift.dev.builder.remote as remote_mod
     import swift.dev.model.loader as model_loader
 
     monkeypatch.setattr(
@@ -381,8 +381,8 @@ def test_frozen_reward_model_remote_refuses_an_unreadable_adapter(monkeypatch):
     import types
 
     import peft
-    import swift.dev.builders as builders
-    import swift.dev.builders.remote as remote_mod
+    import swift.dev.builder as builders
+    import swift.dev.builder.remote as remote_mod
     import swift.dev.model.loader as model_loader
 
     monkeypatch.setattr(

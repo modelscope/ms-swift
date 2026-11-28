@@ -96,7 +96,7 @@ def test_the_transformers_fsdp_knob_is_untouched_by_this_check():
 
 
 def _fsdp_kwargs(**distributed_overrides):
-    from swift.dev.builders.model import _apply_fsdp_kwargs
+    from swift.dev.builder.model import _apply_fsdp_kwargs
     from swift.dev.config import DistributedConfig
     kwargs: dict = {}
     _apply_fsdp_kwargs(kwargs, DistributedConfig(backend='megatron', nproc_per_node=1, **distributed_overrides))
@@ -110,7 +110,7 @@ def test_fsdp_is_forwarded_as_a_ddp_config_key():
     into the builder now; the guard means an off/default run adds no key at all.)"""
     import ast
     import inspect
-    from swift.dev.builders import model as builders_model
+    from swift.dev.builder import model as builders_model
 
     tree = ast.parse(inspect.getsource(builders_model))
     fn = next(node for node in ast.walk(tree)

@@ -9,7 +9,7 @@ import torch
 
 class PrecisionAndShuffleTests(unittest.TestCase):
     def test_fp32_storage_preserves_configured_compute_precision(self):
-        from swift.dev.builders import model as builder
+        from swift.dev.builder import model as builder
         from swift.dev.config import DistributedConfig, ModelConfig
         from twinkle.model.transformers.strategy.native_fsdp import _build_mp_policy
 
@@ -38,7 +38,7 @@ class PrecisionAndShuffleTests(unittest.TestCase):
                     self.assertEqual(config.torch_dtype, dtype)
 
     def test_prompt_order_and_tail_batch(self):
-        from swift.dev.builders.dataset import build_prompt_dataloader
+        from swift.dev.builder.dataset import build_prompt_dataloader
         from twinkle.data_format import user_data_get
 
         prompts = [[{'role': 'user', 'content': str(i)}] for i in range(17)]
@@ -74,7 +74,7 @@ class PrecisionAndShuffleTests(unittest.TestCase):
 
 
     def test_prompt_shuffle_seed_controls_order(self):
-        from swift.dev.builders.dataset import build_prompt_dataloader
+        from swift.dev.builder.dataset import build_prompt_dataloader
         from twinkle.data_format import user_data_get
 
         prompts = [[{'role': 'user', 'content': str(i)}] for i in range(17)]

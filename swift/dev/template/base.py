@@ -1281,9 +1281,9 @@ class Template(ProcessorMixin, TwinkleTemplate):
     @classmethod
     def from_spec(cls, spec, processor=None):
         if isinstance(spec, dict):
-            from swift.dev.template_contract import TemplateSpec
+            from swift.dev.template.spec import TemplateSpec
             spec = TemplateSpec.from_dict(spec)
-        module = importlib.import_module("swift.dev.builders.template")
+        module = importlib.import_module("swift.dev.builder.template")
         return module.build_template_from_spec(spec, processor)
 
     def __getstate__(self):

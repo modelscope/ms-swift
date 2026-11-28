@@ -43,7 +43,7 @@ def _official_encoding(model_dir):
 
 
 def _dev(enable_thinking):
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
 

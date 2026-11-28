@@ -118,7 +118,7 @@ def template():
     """The REAL dev template: ``Shifted<Family>`` = ``type(DevMixin, legacy)`` over the cached
     tokenizer. ``load_model=False`` fetches no weights, so this is CPU-only; a fresh box without the
     tokenizer cached skips rather than fails (mirrors ``test_chat_template_parity``)."""
-    from swift.dev.builders.template import build_template
+    from swift.dev.builder.template import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
     try:

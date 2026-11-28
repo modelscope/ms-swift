@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 class MergeTask(TaskComponent):
-    """merge: fold adapters into base weights through the real MergeComponent."""
+    """merge: fold adapters into base weights through the real Merger."""
 
     type = 'merge'
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        from swift.dev.components.weight_transform.merge import MergeComponent
+        from swift.dev.recipe.export.merge_lora import Merger
         artifact = inputs.get('artifact') or {}
         base_path = artifact.get('path') if isinstance(artifact, dict) else None
         if not base_path:
@@ -38,7 +38,7 @@ class MergeTask(TaskComponent):
         model_config = ModelConfig(model=str(base_path))
         tuner_config = TunerConfig(adapters=[str(path) for path in adapters])
         output_dir = str(self.params.get('output_dir') or '') or None
-        component = MergeComponent(model_config, tuner_config, output_dir=output_dir, **merge_cfg)
+        component = Merger(model_config, tuner_config, output_dir=output_dir, **merge_cfg)
         path = component.run(component.default_output_dir() if output_dir is None else output_dir)
         if not os.path.exists(path):
             raise ComponentError(f'{self.node_id}: merge reported no artifact at {path}')
@@ -46,7 +46,7 @@ class MergeTask(TaskComponent):
 
 
 class QuantizeTask(TaskComponent):
-    """quantize: pack weights through the real QuantizeComponent.
+    """quantize: pack weights through the real ModelQuantizer.
 
     The calibration dataset (optional) is the wired DATASET resource's own
     dataset id; every other knob rides the typed ``quantize_config`` dict
@@ -55,7 +55,7 @@ class QuantizeTask(TaskComponent):
     type = 'quantize'
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        from swift.dev.components.weight_transform.quantize import QuantizeComponent
+        from swift.dev.recipe.export.quantize import ModelQuantizer
         artifact = inputs.get('artifact') or {}
         base_path = artifact.get('path') if isinstance(artifact, dict) else None
         if not base_path:
@@ -73,7 +73,7 @@ class QuantizeTask(TaskComponent):
         quantize_config = QuantizeConfig(quant_method=str(quant_method), **quant_cfg)
         dataset_config = DatasetConfig(dataset=dataset_id) if dataset_id else None
         output_dir = str(self.params.get('output_dir') or '') or None
-        component = QuantizeComponent(
+        component = ModelQuantizer(
             ModelConfig(model=str(base_path)), template_config, quantize_config,
             dataset_config, output_dir=output_dir)
         path = component.run(component.default_output_dir() if output_dir is None else output_dir)
@@ -134,7 +134,7 @@ class EvalTask(TaskComponent):
 
 
 class InferTask(TaskComponent):
-    """infer: rebuild the sampling engine over a weight source, through the real InferComponent.
+    """infer: rebuild the sampling engine over a weight source, through the real Inferencer.
 
     The weight source is a model ARTIFACT (its path) or the session's MODEL
     (read back to the origin it loaded); the dataset is the wired DATASET's
@@ -145,7 +145,7 @@ class InferTask(TaskComponent):
     type = 'infer'
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        from swift.dev.components.infer.component import InferComponent
+        from swift.dev.recipe.infer.inferencer import Inferencer
         artifact = inputs.get('artifact') or {}
         path = artifact.get('path') if isinstance(artifact, dict) else None
         if path is None:
@@ -175,7 +175,7 @@ class InferTask(TaskComponent):
             infer_config = InferConfig(**cfg)
         except TypeError as exc:
             raise ComponentError(f'{self.node_id}: infer_config: {exc}') from None
-        rows = InferComponent(
+        rows = Inferencer(
             ModelConfig(model=str(path)), template_config, dataset['config'], infer_config,
             generation_config, backend=backend, engine_args=None, adapters=adapters,
             quantize_config=None, max_rows=max_rows, split_dataset_ratio=0.0,

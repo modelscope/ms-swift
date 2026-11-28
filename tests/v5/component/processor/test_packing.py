@@ -271,7 +271,7 @@ class _StubTemplate:
 )
 def test_encode_mode_resolution(is_multimodal, kwargs, expected):
     """_encode_mode resolves lazy_tokenize=None (auto) like legacy _init_lazy_tokenize."""
-    from swift.dev.builders.dataset import _encode_mode
+    from swift.dev.builder.dataset import _encode_mode
     from swift.dev.config import DatasetConfig
 
     dataset_config = DatasetConfig(dataset=["d"], **kwargs)

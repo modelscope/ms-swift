@@ -126,7 +126,7 @@ class _RecordingModel:
 
 
 def _apply(**cfg_kwargs):
-    from swift.dev.builders import apply_full_param_freeze
+    from swift.dev.builder import apply_full_param_freeze
     from swift.dev.config import TrainConfig
 
     model = _RecordingModel()
@@ -140,7 +140,7 @@ def test_apply_is_a_noop_when_no_knob_set():
 
 
 def test_apply_is_a_noop_for_none_train_config():
-    from swift.dev.builders import apply_full_param_freeze
+    from swift.dev.builder import apply_full_param_freeze
 
     model = _RecordingModel()
     apply_full_param_freeze(model, None)

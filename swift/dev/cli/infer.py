@@ -107,7 +107,7 @@ def _interactive_dp_width(distributed_config: Any) -> int:
     runs this recipe on every rank, so the width is the torchrun world size.
     """
     if distributed_config is not None and distributed_config.mode == 'ray':
-        from swift.dev.builders import build_parallel_mesh
+        from swift.dev.builder import build_parallel_mesh
         mesh = build_parallel_mesh(distributed_config, none_if_single_rank=True)
         return int(getattr(mesh, 'data_world_size', 1)) if mesh is not None else 1
     return max(1, int(os.getenv('WORLD_SIZE') or 1))
@@ -116,7 +116,7 @@ def _interactive_dp_width(distributed_config: Any) -> int:
 def _guard_interactive(distributed_config: Any, task_type: Optional[str]) -> None:
     """Reject interactive REPL runs it cannot drive: a non-generative task_type only scores a forward
     pass, and dp>1 would open competing REPLs (torchrun) or shard the batch (DP>1 sampler)."""
-    from swift.dev.builders import is_pooling_task
+    from swift.dev.builder import is_pooling_task
     task_type = task_type or 'causal_lm'
     if is_pooling_task(task_type) or task_type in ("generative_reranker", "decision"):
         raise ValueError(
@@ -164,7 +164,7 @@ def infer_main(argv: Optional[List[str]] = None):
 
 
 def _infer_main(argv: Optional[List[str]] = None):
-    from swift.dev.builders import build_engine_args
+    from swift.dev.builder import build_engine_args
     from swift.dev.config import process_and_validate_configs
     from swift.dev.recipe.infer import infer_cli, run_infer
 

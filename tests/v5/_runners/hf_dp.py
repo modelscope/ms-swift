@@ -28,7 +28,7 @@ def _run(shape, data_path, out_dir):
     """
     from modelscope import snapshot_download
 
-    import swift.dev.builders as builders
+    import swift.dev.builder as builders
     from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
     from swift.dev.recipe.sft.run_sft import run_sft

@@ -495,7 +495,7 @@ def test_decision_templates_refuse_a_dialogue_sample():
     nonsense while the dialogue matrix stayed quiet about it. Reverse check: teach any of these
     templates to render a plain dialogue sample and this test goes red.
     """
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.dev.template import TRAIN
     from swift.model import get_model_processor
@@ -580,7 +580,7 @@ def _matrix_report(templates, case_specs):
     Shared by the PR-tier core subset and the daily full matrix so both tiers exercise the exact
     same comparison code; only the breadth differs.
     """
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.dev.template import INFER, TRAIN
     from swift.model import get_model_processor

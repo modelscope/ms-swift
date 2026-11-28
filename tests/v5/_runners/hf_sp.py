@@ -42,7 +42,7 @@ def _peak_mem_mb():
 def _run(shape, data_path, out_dir, padding_free, max_length, sp_size, max_steps):
     """run_sft with sequence_parallel_size=2 (sp2) or 1 (single); see _hf_dp_runner for the
     capturing-build_model rationale (run_sft does not return the model it built)."""
-    import swift.dev.builders as builders
+    import swift.dev.builder as builders
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,

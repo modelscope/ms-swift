@@ -22,7 +22,7 @@ import os
 
 import json
 
-from swift.dev.components.infer.component import (
+from swift.dev.recipe.infer.inferencer import (
     _CandidateCache,
     _dpo_row,
     _emit_grpo,
@@ -146,7 +146,7 @@ def test_reverse_control_dropping_media_term_reintroduces_collision(tmp_path, mo
     twin = {"messages": MESSAGES, "images": [bytes(IMG_A)]}
     assert _prompt_key(MESSAGES, row_a) == _prompt_key(MESSAGES, twin)
     # end-to-end single point: neutralising the fingerprint brings the NPZ overwrite BACK ...
-    import swift.dev.components.infer.component as component
+    import swift.dev.recipe.infer.inferencer as component
 
     monkeypatch.setattr(component, "_media_fingerprint", lambda row: "")
     out_a, files_a = _emit_media_row(tmp_path, IMG_A, "red_a")

@@ -133,7 +133,7 @@ def configure_decision_loss(model: TrainableModel, *, loss_type: str = "scoring"
 def configure_decision_metric(model: TrainableModel) -> None:
     from twinkle.metric import Accuracy
 
-    from swift.dev.metrics import DecisionScoringMetric
+    from swift.dev.metric import DecisionScoringMetric
 
     model.add_metric(DecisionScoringMetric, is_training=None)
     # The default group seeds a token Accuracy that the scoring head replaces. Strip it worker-side:

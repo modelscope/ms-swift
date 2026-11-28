@@ -331,7 +331,7 @@ def test_streaming_megatron_keeps_the_exact_batch_invariant():
     backend decision (megatron drops the trailing partial batch even on an iterable, where the
     stream simply ends mid-batch) and _twinkle_loader_layout sizes the batch by the DP width.
     The 2-rank streaming megatron TRAIN lands with the S13 feature batch."""
-    from swift.dev.builders.dataset import _drop_last, _twinkle_loader_layout
+    from swift.dev.builder.dataset import _drop_last, _twinkle_loader_layout
     from swift.dev.config import DistributedConfig
 
     megatron = DistributedConfig(backend='megatron', mode='local', nproc_per_node=2)
@@ -348,7 +348,7 @@ def _hf(rows):
 def test_concat_with_cached_refuses_lazy_and_stream_mixing():
     """S3-52: a lazy/stream wrapper cannot concatenate with a map-style cached_dataset -- the
     refusal names the fix (eager-encode or cache only); a cache ALONE in those modes is fine."""
-    from swift.dev.builders.dataset import _concat_with_cached
+    from swift.dev.builder.dataset import _concat_with_cached
 
     cached = [_hf([{'messages': [{'role': 'user', 'content': 'cached'}]}])]
     for mode in ('lazy', 'stream'):
@@ -362,7 +362,7 @@ def test_concat_with_cached_refuses_lazy_and_stream_mixing():
 def test_concat_with_cached_puts_fresh_rows_before_cached_rows():
     """S3-53: the fresh split comes FIRST, the cache after -- order is observable training data,
     so it is pinned, not incidental."""
-    from swift.dev.builders.dataset import _concat_with_cached
+    from swift.dev.builder.dataset import _concat_with_cached
 
     fresh = _hf([{'messages': [{'role': 'user', 'content': f'fresh{i}'}]} for i in range(2)])
     cached = [_hf([{'messages': [{'role': 'user', 'content': f'cached{i}'}]} for i in range(3)])]
@@ -375,7 +375,7 @@ def test_concat_with_cached_aligns_schemas_onto_the_cache():
     """S3-52 (schema half): the fresh split and the cache may carry the same columns with different
     arrow types (struct vs json content, depending on how each was produced); concatenation casts
     the FRESH side onto the cache's schema, while a column-set mismatch is refused by name."""
-    from swift.dev.builders.dataset import _concat_with_cached
+    from swift.dev.builder.dataset import _concat_with_cached
 
     fresh = _hf([{'messages': [{'role': 'user', 'content': 'f'}]}])
     # a cache whose messages column is json-typed (as an incremental jsonl round-trip produces)

@@ -59,7 +59,7 @@ class TestEncode:
 
     @patch('swift.dev.dataset.LazyLLMDataset')
     def test_lazy_mode_returns_lazy_dataset(self, MockLazy):
-        from swift.dev.builders.dataset import _encode
+        from swift.dev.builder.dataset import _encode
         dataset = make_mock_dataset(10)
         template = make_mock_template()
         result = _encode(dataset, template, mode='lazy', num_proc=1, strict=False)
@@ -69,7 +69,7 @@ class TestEncode:
     @patch('swift.dev.dataset.MeasurePreprocessor')
     def test_eager_mode_uses_add_length(self, MockAddLength):
         """Non-'split' eager encoding keeps rows raw + only adds `lengths` (MeasurePreprocessor)."""
-        from swift.dev.builders.dataset import _encode
+        from swift.dev.builder.dataset import _encode
         mock_instance = MagicMock()
         mock_instance.return_value = make_mock_dataset(5)
         MockAddLength.return_value = mock_instance
@@ -80,7 +80,7 @@ class TestEncode:
 
     @patch('swift.dev.dataset.MeasurePreprocessor')
     def test_stream_mode_uses_add_length(self, MockAddLength):
-        from swift.dev.builders.dataset import _encode
+        from swift.dev.builder.dataset import _encode
         mock_instance = MagicMock()
         mock_result = MagicMock()
         mock_instance.return_value = mock_result
@@ -92,7 +92,7 @@ class TestEncode:
         assert result == mock_result
 
     def test_split_strategy_requires_eager(self):
-        from swift.dev.builders.dataset import _encode
+        from swift.dev.builder.dataset import _encode
         dataset = make_mock_dataset(10)
         template = make_mock_template(truncation_strategy='split')
         with pytest.raises(ValueError, match="truncation_strategy='split' requires mode='eager'"):
@@ -103,7 +103,7 @@ class TestEncode:
     @patch('swift.dev.dataset.EncodePreprocessor')
     def test_split_strategy_with_eager_uses_full_encode(self, MockPreprocessor):
         """'split' expands one input into many samples, so it must fully encode (EncodePreprocessor)."""
-        from swift.dev.builders.dataset import _encode
+        from swift.dev.builder.dataset import _encode
         mock_instance = MagicMock()
         mock_instance.return_value = make_mock_dataset(5)
         MockPreprocessor.return_value = mock_instance
@@ -116,7 +116,7 @@ class TestEncode:
     def test_materialize_uses_full_encode(self, MockPreprocessor):
         """``materialize=True`` (the cached-dataset exporter's ``store_encoded``) fully encodes even without
         'split', so the store carries ``input_ids``/``labels`` and trains with no re-encoding."""
-        from swift.dev.builders.dataset import _encode
+        from swift.dev.builder.dataset import _encode
         mock_instance = MagicMock()
         mock_instance.return_value = make_mock_dataset(5)
         MockPreprocessor.return_value = mock_instance
@@ -129,7 +129,7 @@ class TestEncode:
     def test_materialize_false_keeps_measure(self, MockMeasure):
         """The training path passes ``materialize=False`` (the default): rows stay raw + ``lengths`` and the
         tokens are still produced per batch at train time. Pins that an explicit False does not materialize."""
-        from swift.dev.builders.dataset import _encode
+        from swift.dev.builder.dataset import _encode
         mock_instance = MagicMock()
         mock_instance.return_value = make_mock_dataset(5)
         MockMeasure.return_value = mock_instance
@@ -146,7 +146,7 @@ class TestPack:
 
     @patch('swift.dev.dataset.PackingDataset')
     def test_static_packing(self, MockPacking):
-        from swift.dev.builders.dataset import _pack
+        from swift.dev.builder.dataset import _pack
         mock_instance = MagicMock()
         MockPacking.return_value = mock_instance
         dataset = make_encoded_dataset(20)
@@ -165,7 +165,7 @@ class TestPack:
 
     @patch('swift.dev.dataset.IterablePackingDataset')
     def test_streaming_packing(self, MockIterPacking):
-        from swift.dev.builders.dataset import _pack
+        from swift.dev.builder.dataset import _pack
         mock_instance = MagicMock()
         MockIterPacking.return_value = mock_instance
         dataset = make_encoded_dataset(20)
@@ -177,7 +177,7 @@ class TestPack:
 
     @patch('swift.dev.dataset.PackingDataset')
     def test_default_packing_length_falls_back_to_template(self, MockPacking):
-        from swift.dev.builders.dataset import _pack
+        from swift.dev.builder.dataset import _pack
         MockPacking.return_value = MagicMock()
         dataset = make_encoded_dataset(20)
         template = make_mock_template(max_length=1024)
@@ -209,10 +209,10 @@ class TestBuildDatasetEncode:
         return dc, TrainConfig(), DistributedConfig()
 
     @patch('twinkle.dataloader.DataLoader')
-    @patch('swift.dev.builders.dataset._encode')
+    @patch('swift.dev.builder.dataset._encode')
     @patch('swift.dev.dataset.load_dataset')
     def test_encode_false_skips_encoding(self, mock_load, mock_encode, mock_build_dl):
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         raw = make_mock_dataset(10)
         mock_load.return_value = (raw, None)
         mock_build_dl.return_value = 'LOADER'
@@ -225,10 +225,10 @@ class TestBuildDatasetEncode:
         assert train_loader == 'LOADER' and val_loader is None
 
     @patch('twinkle.dataloader.DataLoader')
-    @patch('swift.dev.builders.dataset._encode')
+    @patch('swift.dev.builder.dataset._encode')
     @patch('swift.dev.dataset.load_dataset')
     def test_encode_true_encodes(self, mock_load, mock_encode, mock_build_dl):
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         raw = make_mock_dataset(10)
         mock_load.return_value = (raw, None)
         mock_encode.return_value = 'ENCODED'
@@ -242,18 +242,18 @@ class TestBuildDatasetEncode:
     @patch('twinkle.dataloader.DataLoader')
     @patch('swift.dev.dataset.load_dataset')
     def test_encode_false_with_map_packing_raises(self, mock_load, mock_build_dl):
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         mock_load.return_value = (make_mock_dataset(10), None)
         template = make_mock_template()
         dc, tc, dist = self._configs(packing=True, streaming=False)
         with pytest.raises(ValueError, match='requires streaming=True'):
             build_dataset(dc, template, tc, dist, encode=False)
 
-    @patch('swift.dev.builders.dataset._pack', return_value='PACKED')
+    @patch('swift.dev.builder.dataset._pack', return_value='PACKED')
     @patch('twinkle.dataloader.DataLoader')
     @patch('swift.dev.dataset.load_dataset')
     def test_encode_false_with_streaming_packing_ok(self, mock_load, mock_build_dl, mock_pack):
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         raw = make_mock_dataset(10)
         mock_load.return_value = (raw, None)
         template = make_mock_template()
@@ -274,11 +274,11 @@ class TestBuildDatasetLoadOnce:
         return DatasetConfig(**dc_kw), TrainConfig(), DistributedConfig()
 
     @patch('twinkle.dataloader.DataLoader', return_value='L')
-    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.builder.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
     def test_split_val_loads_once(self, mock_load, _enc, _dl):
         """Val split off via split_dataset_ratio must NOT re-load: exactly one load_dataset call."""
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         mock_load.return_value = (make_mock_dataset(10), make_mock_dataset(2))
         dc, tc, dist = self._configs(dataset=['d'], split_dataset_ratio=0.2)
         train_loader, val_loader = build_dataset(dc, make_mock_template(), tc, dist)
@@ -286,11 +286,11 @@ class TestBuildDatasetLoadOnce:
         assert train_loader == 'L' and val_loader == 'L'
 
     @patch('twinkle.dataloader.DataLoader', return_value='L')
-    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.builder.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
     def test_separate_val_dataset_loads_twice(self, mock_load, _enc, _dl):
         """A separate val_dataset is a distinct source -> legacy loads it with its own call."""
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         mock_load.side_effect = [
             (make_mock_dataset(10), None),  # train
             (None, make_mock_dataset(3)),  # separate val (split_ratio=1.0)
@@ -304,11 +304,11 @@ class TestBuildDatasetLoadOnce:
         assert mock_load.call_args_list[1].kwargs['split_dataset_ratio'] == 1.0
 
     @patch('twinkle.dataloader.DataLoader', return_value='L')
-    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.builder.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
     def test_full_kwargs_forwarded(self, mock_load, _enc, _dl):
         """All legacy get_dataset_kwargs keys must reach load_dataset (not the previous 6-key subset)."""
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         mock_load.return_value = (make_mock_dataset(10), None)
         dc, tc, dist = self._configs(
             dataset=['d'], interleave_prob=[0.5, 0.5], columns={'a': 'b'}, model_name=['n'], use_hf=True)
@@ -324,12 +324,12 @@ class TestBuildDatasetLoadOnce:
         assert 'remove_unused_columns' not in kw and 'disable_auto_column_mapping' not in kw
 
     @patch('twinkle.dataloader.DataLoader', return_value='L')
-    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.builder.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
     def test_unsupported_column_knobs_are_refused(self, mock_load, _enc, _dl):
         """dev already behaves the way both defaults ask for, so a non-default request must fail rather
         than be accepted and ignored (which would silently train on a different set of columns)."""
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         mock_load.return_value = (make_mock_dataset(10), None)
         for kwargs, message in (({
                 'remove_unused_columns': False
@@ -341,11 +341,11 @@ class TestBuildDatasetLoadOnce:
                 build_dataset(dc, make_mock_template(), tc, dist)
 
     @patch('twinkle.dataloader.DataLoader', return_value='L')
-    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.builder.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
     def test_load_time_vs_dataloader_shuffle(self, mock_load, _enc, mock_dl):
         """dataset_shuffle drives the load-time shuffle; train_dataloader_shuffle drives the sampler."""
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
         mock_load.return_value = (make_mock_dataset(10), None)
         dc = DatasetConfig(dataset=['d'], dataset_shuffle=True)
@@ -379,7 +379,7 @@ class TestTwinkleLoaderLayout:
 
     def test_local_passes_the_mesh_and_the_global_batch(self, monkeypatch):
         """local: the loader owns DP sharding, so it gets the mesh and per_device*dp as the width."""
-        from swift.dev.builders.dataset import _twinkle_loader_layout
+        from swift.dev.builder.dataset import _twinkle_loader_layout
         monkeypatch.setenv('RANK', '0')
         monkeypatch.setenv('WORLD_SIZE', '4')
         global_batch, mesh = _twinkle_loader_layout(
@@ -390,7 +390,7 @@ class TestTwinkleLoaderLayout:
     def test_ray_gets_no_mesh(self, monkeypatch):
         """ray: DP scatter happens later in forward_backward(dispatch='slice_dp'), so the driver loader
         must NOT self-shard -- only the global WIDTH matters here."""
-        from swift.dev.builders.dataset import _twinkle_loader_layout
+        from swift.dev.builder.dataset import _twinkle_loader_layout
         monkeypatch.setenv('RANK', '0')
         monkeypatch.setenv('WORLD_SIZE', '4')
         global_batch, mesh = _twinkle_loader_layout(
@@ -400,7 +400,7 @@ class TestTwinkleLoaderLayout:
 
     def test_single_process_keeps_the_per_device_batch(self):
         """No nproc_per_node -> no DP layout to size: the width is the per-device batch, unscaled."""
-        from swift.dev.builders.dataset import _twinkle_loader_layout
+        from swift.dev.builder.dataset import _twinkle_loader_layout
         assert _twinkle_loader_layout(self._dc(backend='hf', mode='local'), 3) == (3, None)
 
 
@@ -428,11 +428,11 @@ class TestDropLast:
         return DistributedConfig(**kw)
 
     def test_megatron_train_drops_remainder(self):
-        from swift.dev.builders.dataset import _drop_last
+        from swift.dev.builder.dataset import _drop_last
         assert _drop_last(self._dc(backend='megatron', mode='local'), ) is True
 
     def test_megatron_ray_drops_remainder(self):
-        from swift.dev.builders.dataset import _drop_last
+        from swift.dev.builder.dataset import _drop_last
 
         # The global-batch invariant holds regardless of who performs the DP scatter, so ray mode
         # must not differ from local here (unlike _twinkle_loader_layout, which does).
@@ -444,7 +444,7 @@ class TestDropLast:
         )
 
     def test_hf_train_does_not_drop_remainder(self):
-        from swift.dev.builders.dataset import _drop_last
+        from swift.dev.builder.dataset import _drop_last
 
         # legacy defers to TrainingArguments.dataloader_drop_last, whose default is False. Flipping
         # this globally would silently discard training samples on the transformers path.
@@ -456,7 +456,7 @@ class TestDropLast:
         )
 
     def test_megatron_eval_also_drops_matching_legacy(self):
-        from swift.dev.builders.dataset import _drop_last
+        from swift.dev.builder.dataset import _drop_last
 
         # legacy's val sampler is MegatronPretrainingSampler, whose drop_last defaults to True and
         # which base.py:990-996 constructs without overriding -- so legacy drops the eval remainder.
@@ -467,14 +467,14 @@ class TestDropLast:
         assert _drop_last(self._dc(backend='megatron', mode='local')) is True
 
     def test_hf_eval_keeps_remainder(self):
-        from swift.dev.builders.dataset import _drop_last
+        from swift.dev.builder.dataset import _drop_last
 
         # Unchanged on the transformers path: legacy defers to dataloader_drop_last (default False).
         assert _drop_last(self._dc(backend='hf', mode='local')) is False  # eval keeps the remainder too
 
     @pytest.mark.parametrize("drop_last", [False, True])
     @patch('twinkle.dataloader.DataLoader', return_value='L')
-    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.builder.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
     def test_build_dataset_forwards_drop_last_per_split(self, mock_load, _enc, mock_dl, drop_last):
         """The policy is worthless if build_dataset does not actually pass it down.
@@ -482,7 +482,7 @@ class TestDropLast:
         Guards the wiring, which is exactly what was missing before: the factory default (False)
         reached the loader on every path because no caller ever supplied drop_last.
         """
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
 
         for backend in ('megatron', 'hf'):
@@ -507,7 +507,7 @@ class TestDropLast:
         ],
     )
     def test_dataset_size_need_not_be_a_multiple_of_ga(self, backend, mode, dp, count):
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
 
         with patch("swift.dev.dataset.load_dataset", return_value=(make_mock_dataset(count), None)), patch(
@@ -534,7 +534,7 @@ class ShardedBatchSamplerCase:
 
     @staticmethod
     def mesh(rank, world, monkeypatch):
-        from swift.dev.builders import build_parallel_mesh
+        from swift.dev.builder import build_parallel_mesh
         from swift.dev.config import DistributedConfig
         monkeypatch.setenv('RANK', str(rank))
         monkeypatch.setenv('WORLD_SIZE', str(world))
@@ -591,14 +591,14 @@ class TestGroupByLength:
 
     def test_extract_lengths_reads_column(self):
         """_extract_lengths returns the eager `lengths` column verbatim."""
-        from swift.dev.builders.dataset import _extract_lengths
+        from swift.dev.builder.dataset import _extract_lengths
         enc = make_encoded_dataset(num_samples=16)
         lengths = _extract_lengths(enc)
         assert lengths == list(enc['lengths'])
 
     def test_extract_lengths_fail_fast_when_no_column(self):
         """Lazy/streaming datasets have no `lengths` column -> actionable ValueError, not KeyError."""
-        from swift.dev.builders.dataset import _extract_lengths
+        from swift.dev.builder.dataset import _extract_lengths
         no_len = HfDataset.from_dict({'input_ids': [[1, 2, 3]] * 4})
         with pytest.raises(ValueError, match='requires a `lengths` column'):
             _extract_lengths(no_len)
@@ -690,7 +690,7 @@ class TestDataSharding(ShardedBatchSamplerCase):
         with pytest.raises(ValueError, match='data_sharding needs'):
             ShardedBatchSampler(None, None, data_sharding=True, dataset_length=40, batch_size=4)
 
-    @patch('swift.dev.builders.dataset._encode', return_value='E')
+    @patch('swift.dev.builder.dataset._encode', return_value='E')
     @patch('swift.dev.dataset.load_dataset')
     def test_build_dataset_downgrades_data_sharding_under_group_by_length(self, mock_load, _enc, monkeypatch, caplog):
         """Length grouping needs the global order, so the two are mutually exclusive. legacy downgrades
@@ -698,12 +698,12 @@ class TestDataSharding(ShardedBatchSamplerCase):
         scripts that set both running -- dev must do the same, and must SAY so."""
         import logging
 
-        from swift.dev.builders.dataset import build_dataset
+        from swift.dev.builder.dataset import build_dataset
         from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
         mock_load.return_value = (make_encoded_dataset(16), None)
-        monkeypatch.setattr('swift.dev.builders.dataset._extract_lengths', lambda enc: list(range(16)))
+        monkeypatch.setattr('swift.dev.builder.dataset._extract_lengths', lambda enc: list(range(16)))
         with patch('twinkle.dataloader.DataLoader', return_value='L') as mock_dl, \
-                caplog.at_level(logging.WARNING, logger='swift.dev.builders.dataset'):
+                caplog.at_level(logging.WARNING, logger='swift.dev.builder.dataset'):
             build_dataset(
                 DatasetConfig(dataset=['d'], data_sharding=True, group_by_length=True), make_mock_template(),
                 TrainConfig(), DistributedConfig(backend='megatron', mode='local', nproc_per_node=1))
@@ -829,7 +829,7 @@ class TestEpochReshuffle:
         """
         from megatron.core.parallel_state import RankGenerator
 
-        from swift.dev.builders import build_parallel_mesh
+        from swift.dev.builder import build_parallel_mesh
         from swift.dev.config import DistributedConfig
 
         dc = DistributedConfig(

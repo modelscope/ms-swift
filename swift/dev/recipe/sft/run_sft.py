@@ -350,7 +350,7 @@ def run_decision(
 
 def _bind_temperature_calibration(handler, template, model, eval_dataloader, micro_step_fn, eval_iters: int) -> None:
     """Bind the decision temperature-calibration callbacks after the loop is assembled"""
-    from swift.dev.callbacks import TemperatureCalibrationCallback
+    from swift.dev.callback import TemperatureCalibrationCallback
 
     targets = [cb for cb in handler.callbacks if isinstance(cb, TemperatureCalibrationCallback)]
     if not targets or eval_dataloader is None:
@@ -379,7 +379,7 @@ def _bind_temperature_calibration(handler, template, model, eval_dataloader, mic
 
 def _bind_decision_checkpoint(handler, model, save_weights: bool) -> None:
     """Bind the decision head-checkpoint callback to the model, with the adapter/full choice fixed"""
-    from swift.dev.callbacks import DecisionCheckpointCallback
+    from swift.dev.callback import DecisionCheckpointCallback
 
     for callback in handler.callbacks:
         if isinstance(callback, DecisionCheckpointCallback):

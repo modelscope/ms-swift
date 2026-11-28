@@ -206,8 +206,8 @@ def _capture_megatron_kwargs():
     """
     from unittest.mock import MagicMock, patch
 
-    with patch('swift.dev.builders.model._resolve_model_loader', return_value=None), \
-            patch('swift.dev.builders.model._build_hf_config', return_value=MagicMock()), \
+    with patch('swift.dev.builder.model._resolve_model_loader', return_value=None), \
+            patch('swift.dev.builder.model._build_hf_config', return_value=MagicMock()), \
             patch('twinkle.model.megatron.MegatronModel') as mock_model:
         yield mock_model
 
@@ -218,7 +218,7 @@ def test_build_model_forwards_the_backend_to_megatron(tmp_path):
     Asserted on the kwargs handed to twinkle's MegatronModel, which is where mcore reads it from
     (get_model_config does config_kwargs.update(kwargs), strategy/megatron.py:271-272).
     """
-    from swift.dev.builders.model import build_model
+    from swift.dev.builder.model import build_model
     from swift.dev.config import DistributedConfig, ModelConfig
 
     model_dir = tmp_path / 'm'
@@ -241,7 +241,7 @@ def test_build_model_forwards_attn_impl_for_the_worker_side_pin(tmp_path):
     original string. Forwarding only the enum would collapse flash_3 to AttnBackend.flash and lose the
     version for good.
     """
-    from swift.dev.builders.model import build_model
+    from swift.dev.builder.model import build_model
     from swift.dev.config import DistributedConfig, ModelConfig
 
     model_dir = tmp_path / 'm'
@@ -298,7 +298,7 @@ def test_both_bridge_backends_get_the_same_backend(tmp_path):
     path on auto: the same dev Config ran a different kernel depending on bridge_backend. Both now
     read the single resolved value, so this compares them rather than trusting the removal.
     """
-    from swift.dev.builders.model import build_model
+    from swift.dev.builder.model import build_model
     from swift.dev.config import DistributedConfig, ModelConfig
 
     model_dir = tmp_path / 'm'

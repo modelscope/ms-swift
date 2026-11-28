@@ -29,7 +29,7 @@ import pytest
 
 
 def _templates():
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
     from tests.v5.tiny import TinyModel

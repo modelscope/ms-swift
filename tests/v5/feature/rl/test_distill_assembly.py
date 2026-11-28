@@ -54,7 +54,7 @@ def test_distill_group_requests_plans_groups_per_teacher_shape(rl_type, extra, e
 
 def _stub_teachers(monkeypatch):
     """Capture build_ref_model calls; return a per-call sentinel instead of a Ray actor."""
-    import swift.dev.builders
+    import swift.dev.builder
 
     calls = []
 
@@ -62,7 +62,7 @@ def _stub_teachers(monkeypatch):
         calls.append(kwargs)
         return f"ref[{kwargs['model_id']}#{kwargs['instance_id'] if 'instance_id' in kwargs else ''}]"
 
-    monkeypatch.setattr(swift.dev.builders, 'build_ref_model', fake_build_ref_model)
+    monkeypatch.setattr(swift.dev.builder, 'build_ref_model', fake_build_ref_model)
     return calls
 
 
@@ -122,7 +122,7 @@ def test_build_teachers_separate_frozen_teacher_passes_spec_and_adapters(monkeyp
 
 def test_build_teachers_gkd_offload_moves_teacher_to_cpu(monkeypatch):
     """offload_teacher_model (GKD-only) parks the frozen teacher on CPU between forwards."""
-    import swift.dev.builders
+    import swift.dev.builder
 
     offloaded = []
 
@@ -131,7 +131,7 @@ def test_build_teachers_gkd_offload_moves_teacher_to_cpu(monkeypatch):
         def offload_to_cpu(self):
             offloaded.append(self)
 
-    monkeypatch.setattr(swift.dev.builders, 'build_ref_model', lambda **kw: _Ref())
+    monkeypatch.setattr(swift.dev.builder, 'build_ref_model', lambda **kw: _Ref())
     teachers, options = _build(RLConfig(rl_type='gkd', teacher_model=['t'], offload_teacher_model=True))
     assert options == {'offload': True}
     assert offloaded == teachers, 'the built teacher must be the one offloaded'

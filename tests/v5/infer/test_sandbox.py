@@ -10,8 +10,8 @@ lazily-imported twinkle env classes so nothing heavy (or networked) is construct
 import pytest
 
 from swift.dev.config import RolloutConfig
-from swift.dev.builders import sandbox as sandbox_mod
-from swift.dev.builders.sandbox import SandboxTools, build_env_pool, build_tools, resolve_tool_plugins
+from swift.dev.builder import sandbox as sandbox_mod
+from swift.dev.builder.sandbox import SandboxTools, build_env_pool, build_tools, resolve_tool_plugins
 
 
 # --- default-off contract -------------------------------------------------------------
@@ -100,7 +100,7 @@ def test_build_tools_with_tools_builds_pool_and_manager(monkeypatch, tmp_path):
 def test_tool_kind_registers_sandbox_against_the_tools_field():
     """Importing the module declares the 'tool' extension point (selected via RolloutConfig.tools) and
     registers the built-in 'sandbox' plugin against it."""
-    from swift.dev.builders.sandbox import TOOL
+    from swift.dev.builder.sandbox import TOOL
     assert TOOL.name == 'tool'
     assert TOOL.config_field == 'tools'
     assert 'sandbox' in TOOL.entries

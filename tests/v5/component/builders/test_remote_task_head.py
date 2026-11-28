@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from swift.dev.builders.remote import _remote_task_head_kwargs, configure_remote_loss
+from swift.dev.builder.remote import _remote_task_head_kwargs, configure_remote_loss
 from swift.dev.config import ModelConfig, TrainConfig
 
 

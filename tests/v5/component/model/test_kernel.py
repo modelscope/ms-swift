@@ -6,7 +6,7 @@ from swift.dev.config import ModelConfig
 
 
 def test_enable_kernel_calls_kernelize(monkeypatch):
-    from swift.dev.builders import model as model_builder
+    from swift.dev.builder import model as model_builder
 
     called = {"value": False}
 

@@ -141,7 +141,7 @@ def test_set_load_kwarg_rejects_disagreement():
     """S4-13: the load-kwargs seam -- a set value lands, None is a no-op (the default never
     overwrites a user's model_kwargs), and a DISAGREEMENT with model_kwargs is refused rather than
     silently last-wins (the seam max_memory/attn_implementation/torch_dtype all flow through)."""
-    from swift.dev.builders.model import _set_load_kwarg
+    from swift.dev.builder.model import _set_load_kwarg
 
     kwargs: dict = {}
     _set_load_kwarg(kwargs, 'max_memory', {0: '10GiB'})
@@ -168,7 +168,7 @@ def test_rope_scaling_name_maps_to_type_dict():
     is refused with the supported set (both forms end on the config)."""
     from transformers import Qwen2Config
 
-    from swift.dev.builders.model import _build_hf_config
+    from swift.dev.builder.model import _build_hf_config
     from swift.dev.config import ModelConfig
 
     base = Qwen2Config(max_position_embeddings=512)
@@ -237,7 +237,7 @@ def test_mixed_precision_follows_torch_dtype():
 def test_all_linear_single_element_folds_to_the_bare_string():
     """S4-29: ['all-linear'] folds to 'all-linear' -- peft accepts the bare string but a 1-element
     list is a different (regex-list) meaning, so the fold is semantic, not cosmetic."""
-    from swift.dev.builders.adapter import _resolve_target_modules
+    from swift.dev.builder.adapter import _resolve_target_modules
 
     assert _resolve_target_modules(__import__('swift.dev.config', fromlist=['TunerConfig']).TunerConfig(
         target_modules=['all-linear'])) == 'all-linear'
@@ -245,7 +245,7 @@ def test_all_linear_single_element_folds_to_the_bare_string():
 
 def test_init_weights_string_parsing():
     """S4-30: 'true'/'false' become peft's bool; the named strategies pass through verbatim."""
-    from swift.dev.builders.adapter import _resolve_init_weights
+    from swift.dev.builder.adapter import _resolve_init_weights
     from swift.dev.config import TunerConfig
 
     assert _resolve_init_weights(TunerConfig(init_weights='true')) is True
@@ -261,7 +261,7 @@ def test_init_weights_string_parsing():
 def test_is_base_modifying_init_table(name, expected):
     """S4-31: exactly the strategies that read/rewrite the base weight at injection -- they make
     the adapter fit only the RESIDUAL base it produced, so merge/save must route them apart."""
-    from swift.dev.builders.adapter import is_base_modifying_init
+    from swift.dev.builder.adapter import is_base_modifying_init
 
     assert is_base_modifying_init(name) is expected, name
 
@@ -269,7 +269,7 @@ def test_is_base_modifying_init_table(name, expected):
 def test_trainable_tokens_requires_indices():
     """S4-33: trainable_tokens without indices is refused (peft would silently target nothing);
     with indices the config carries them and infers the embedding module."""
-    from swift.dev.builders.adapter import _build_adapter_config
+    from swift.dev.builder.adapter import _build_adapter_config
     from swift.dev.config import TunerConfig
 
     with pytest.raises(ValueError, match='requires trainable_token_indices'):

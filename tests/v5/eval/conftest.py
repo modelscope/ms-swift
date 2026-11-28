@@ -167,7 +167,7 @@ def real_template():
     The hermetic fast tier does not need it (the QA scoring path never decodes tokens), so it is only used
     where a real template is wanted; it downloads/caches just the tokenizer.
     """
-    from swift.dev.builders import build_template, load_model_processor
+    from swift.dev.builder import build_template, load_model_processor
     from swift.dev.config import ModelConfig, TemplateConfig
     _, processor = load_model_processor(ModelConfig(model=MODEL), load_model=False)
     return build_template(TemplateConfig(), processor)

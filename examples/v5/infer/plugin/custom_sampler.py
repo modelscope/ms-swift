@@ -3,7 +3,7 @@
 
 ``--sampler`` normally names a built-in engine (``vllm`` / ``sglang`` / ``transformers``, with ``pt`` an
 alias of ``transformers``). It also accepts an external SOURCE -- a local ``.py`` file, a local folder, or
-a ``hf://`` / ``ms://`` id -- which ``swift.dev.builders.sampler._resolve_sampler`` resolves through the
+a ``hf://`` / ``ms://`` id -- which ``swift.dev.builder.sampler._resolve_sampler`` resolves through the
 same unified loader (``resolve_plugin_class`` -> ``Plugin.load_plugin``) and picks the twinkle ``Sampler``
 subclass out of. So a custom sampler is selected by pointing ``--sampler`` AT THIS FILE::
 

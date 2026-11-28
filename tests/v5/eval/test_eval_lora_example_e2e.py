@@ -30,7 +30,7 @@ def lora_adapter(tmp_path_factory):
     import torch
     from peft import LoraConfig, get_peft_model
 
-    from swift.dev.builders import load_model_processor
+    from swift.dev.builder import load_model_processor
     from swift.dev.config import ModelConfig
 
     dest = str(tmp_path_factory.mktemp('lora') / 'checkpoint-100')

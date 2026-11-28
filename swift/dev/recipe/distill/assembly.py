@@ -155,10 +155,10 @@ def initialize_distill_cluster(
     optimizer's LR scheduler is fully configured here; ``batch_size`` is the rows of one driver
     batch (it bounds the episodes in flight).
     """
-    from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model
-    from swift.dev.builders.adapter import apply_tuner
-    from swift.dev.builders.optimizer import configure_optimizer
-    from swift.dev.builders.streaming import (
+    from swift.dev.builder import apply_full_param_freeze, build_dp_mesh, build_model
+    from swift.dev.builder.adapter import apply_tuner
+    from swift.dev.builder.optimizer import configure_optimizer
+    from swift.dev.builder.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
         build_cluster_adapter,
@@ -207,7 +207,7 @@ def initialize_distill_cluster(
     else:
         apply_full_param_freeze(model, train_config)
     if remote_run:
-        from swift.dev.builders.remote import configure_remote_processor
+        from swift.dev.builder.remote import configure_remote_processor
 
         configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
@@ -243,7 +243,7 @@ def initialize_distill_cluster(
         template_config=template_config,
     )
     if remote_run:
-        from swift.dev.builders.remote import RemoteWeightSync
+        from swift.dev.builder.remote import RemoteWeightSync
 
         engine = RemoteWeightSync(model, sampler)
     else:
@@ -313,7 +313,7 @@ def _build_teachers(
     worker forwards it with ``disable_lora``), a separate frozen model (``teacher_model``), or --
     OPSD's default -- the student's CURRENT weights (dynamic self-distillation). MOPD builds K.
     """
-    from swift.dev.builders import build_ref_model
+    from swift.dev.builder import build_ref_model
     from swift.dev.recipe.utils import single_teacher_id
 
     if signal == "multi_logps":
@@ -439,7 +439,7 @@ def build_distill_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_con
     Distillation scores no outcome channel and has no group verdict: the driver only streams the
     student's rollouts; the teacher scoring happens in the DistillWorker per update.
     """
-    from swift.dev.builders.streaming import build_streaming_driver
+    from swift.dev.builder.streaming import build_streaming_driver
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,

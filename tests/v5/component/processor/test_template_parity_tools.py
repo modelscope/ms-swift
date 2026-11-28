@@ -58,7 +58,7 @@ def _tokenizer(model_id):
 @pytest.mark.parametrize('template, model_id', PAIRS)
 def test_tool_schema_renders_like_the_model_jinja(template, model_id):
     """S18-44: dev's rendered ids with a tools schema equal ``apply_chat_template(tools=...)``."""
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.dev.template import INFER
 
@@ -79,7 +79,7 @@ def test_tool_schema_renders_like_the_model_jinja(template, model_id):
 def test_tool_call_turn_round_trips_into_the_prompt(template, model_id):
     """S18-46: an assistant tool-call turn in the history renders like the model jinja -- the
     trajectory half of the agent seam (what a rollout feeds back on the next turn)."""
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.dev.template import TRAIN
 

@@ -115,16 +115,16 @@ See server-client.md for the full usage pattern.
 | `swift.dev.cli` | the eight command parsers (`sft/pt/rl/infer/deploy/export/merge/eval`) + `parser.py` (Config parsing), `legacy_coverage.py` (4.x alias map), `_megatron_compat.py` |
 | `swift.dev.config` | all Config dataclasses + `process.py` (assembly) + `validate.py` (early failure with guidance) |
 | `swift.dev.recipe` | `run_*` entry functions per direction: `sft/`, `grpo/`, `ppo/`, `rft/`, `distill/`, `rlhf/`, `infer/`, `export/` |
-| `swift.dev.builders` | reusable Config -> object glue (model, sampler, template, optimizer, adapter, remote, sandbox) |
+| `swift.dev.builder` | reusable Config -> object glue (model, sampler, template, optimizer, adapter, remote, sandbox) |
 | `swift.dev.model` | `MODEL_MAPPING` + `build_model_loader`: swift's per-family model loading (model_cls, remote code, quant corrections) |
 | `swift.dev.dataset` | `DatasetLoader` + `register_dataset` + `DATASET_MAPPING` — the dataset plugin surface |
-| `swift.dev.rewards` | reward plugins: `orm.py` (REWARD kind, the `orms` registry) and `prm.py` (PRM_SCORER kind) |
-| `swift.dev.callbacks` | `TrainCallback` + built-ins (`EarlyStopCallback`) — the callback plugin surface |
+| `swift.dev.reward` | reward plugins: `orm.py` (REWARD kind, the `orms` registry) and `prm.py` (PRM_SCORER kind) |
+| `swift.dev.callback` | `TrainCallback` + built-ins (`EarlyStopCallback`) — the callback plugin surface |
 | `swift.dev.loss` | Config -> twinkle loss wiring (loss selection, Liger fused CE) |
 | `swift.dev.utils` | `plugin.py` (PluginRegistry — see plugins.md) and `naming.py` (name resolution into twinkle kernel namespaces) |
-| `swift.dev.template` | swift-side template selection; shared `TemplateSpec` comes from `twinkle.template.contract` in twinkle-kit |
+| `swift.dev.template` | swift-side template selection; `spec.py` holds `TemplateSpec` (the serializable construction input a worker rebuilds a Template from via `Template.from_spec`) |
 | `swift.dev.patch` | dev-side compatibility patches (Accelerate offload hook, torch conv3d / dist-save, transformers hub kernels, unsloth distributed, ...) |
 | `swift.dev.data_format` | re-exports the shared value types (`InputFeature`, `ModelOutput`, `LossOutput`) for dev-side code |
-| `swift.dev.components` | the infer component assembly |
+| `swift.dev.recipe.infer` / `swift.dev.recipe.export` | the non-training entries: `Inferencer` (dataset batch infer) and the model / dataset transforms (`Merger`, `ModelQuantizer`, `CheckpointConverter`, `CachedDatasetExporter`), each beside its procedural `run_*` |
 | `swift.dev.webui` | webui parameter registry |
-| `swift.dev.weight_sync` | trainer->sampler weight sync orchestration |
+| `twinkle.sampler.vllm_sampler.quant_sync` | quantized (FP8 / MXFP4) vLLM rollout refit during RL weight sync |

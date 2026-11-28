@@ -42,7 +42,7 @@ logger = get_logger()
 
 def _is_vpp_megatron(distributed_config: "DistributedConfig") -> bool:
     """Whether the active backend is megatron with virtual pipeline stages enabled."""
-    from swift.dev.builders import is_megatron_backend
+    from swift.dev.builder import is_megatron_backend
 
     return (is_megatron_backend(distributed_config)
             and (distributed_config.virtual_pipeline_model_parallel_size or 1) > 1)
@@ -300,7 +300,7 @@ def run_supervised(
     """
     from twinkle.perf import Perf
 
-    from swift.dev.builders.optimizer import resolve_max_grad_norm
+    from swift.dev.builder.optimizer import resolve_max_grad_norm
 
     model = cluster.model
     dataloader = cluster.dataloader

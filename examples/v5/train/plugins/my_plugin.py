@@ -1,6 +1,6 @@
 # A custom training callback plugin, loaded with --external_plugins and selected with --callbacks.
 #
-# The `callback` extension point (swift.dev.callbacks) fires at transformers-Trainer-equivalent points
+# The `callback` extension point (swift.dev.callback) fires at transformers-Trainer-equivalent points
 # in dev's training loop. A callback subclasses TrainCallback, overrides only the events it needs (all
 # no-op by default), and is registered by name with @PluginRegistry.register('callback', <name>). The
 # loop passes a CallbackState (where training is: global_step / epoch / loss / metrics / best_metric)
@@ -8,11 +8,11 @@
 # should_evaluate / should_log). Set a control flag to steer the run -- e.g. should_save forces a
 # checkpoint at that step.
 #
-# This plugin just observes and logs progress; see EarlyStopCallback (swift.dev.callbacks.builtins) for a
+# This plugin just observes and logs progress; see EarlyStopCallback (swift.dev.callback.builtins) for a
 # built-in that reads the same state and sets control.should_training_stop.
 from typing import Any, Dict, Optional
 
-from swift.dev.callbacks import CallbackControl, CallbackState, TrainCallback
+from swift.dev.callback import CallbackControl, CallbackState, TrainCallback
 from swift.dev.utils.plugin import PluginRegistry
 from swift.dev.utils import get_logger
 # MEASURED: peak VRAM ~3 GiB/card (Qwen3.5-0.8B, 4-step smoke, 1 card(s), 2026-11-24)

@@ -23,7 +23,7 @@ from swift.dev.utils.plugin import PluginRegistry
 
 _PLUGIN_SOURCE = (
     "from swift.dev.utils.plugin import PluginRegistry\n"
-    "from swift.dev.rewards.reward import ORM\n"
+    "from swift.dev.reward.reward import ORM\n"
     "@PluginRegistry.register('reward', '{name}')\n"
     "class {cls}(ORM):\n"
     "    def __call__(self, completions, **kw): return [0.0 for _ in completions]\n"
@@ -34,7 +34,7 @@ _PLUGIN_SOURCE = (
 def clean_env(tmp_path):
     """Snapshot KINDS/entries; restore after. Builtin kinds are never removed -- only kinds and
     entries THIS test creates are torn down."""
-    import swift.dev.rewards.orm  # noqa: F401 -- declares the builtin kinds
+    import swift.dev.reward.orm  # noqa: F401 -- declares the builtin kinds
 
     kinds_snapshot = dict(PluginRegistry.KINDS)
     entries_snapshot = {name: dict(kind.entries) for name, kind in kinds_snapshot.items()}
@@ -57,11 +57,11 @@ class TestBuiltinKinds:
     external plugin can register into them -- an external source hitting an undeclared kind crashes."""
 
     def test_builtin_kinds_declared_with_expected_shape(self):
-        import swift.dev.rewards.orm  # noqa: F401
+        import swift.dev.reward.orm  # noqa: F401
 
         assert set(PluginRegistry.KINDS) >= {'reward'}
         reward = PluginRegistry.kind('reward')
-        from swift.dev.rewards.reward import ORM
+        from swift.dev.reward.reward import ORM
 
         assert reward.base is ORM  # the base flipped to ORM (SwiftPlugin is long gone)
         assert 'accuracy' in reward.entries and 'format' in reward.entries
@@ -82,7 +82,7 @@ class TestRegistrySingleton:
         assert after.name == 'reward'
 
     def test_duplicate_entry_name_rejected(self, clean_env):
-        from swift.dev.rewards.reward import ORM
+        from swift.dev.reward.reward import ORM
 
         with pytest.raises(ValueError, match='accuracy.*is already registered by MathAccuracy'):
             @PluginRegistry.register('reward', 'accuracy')
@@ -116,7 +116,7 @@ class TestResolve:
         assert type(PluginRegistry.resolve('reward', 'accuracy')).__name__ == 'MathAccuracy'
 
     def test_resolve_class_instantiates_no_arg(self, clean_env):
-        from swift.dev.rewards.orm import MathAccuracy
+        from swift.dev.reward.orm import MathAccuracy
 
         assert isinstance(PluginRegistry.resolve('reward', MathAccuracy), MathAccuracy)
 

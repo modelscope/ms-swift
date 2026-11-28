@@ -252,8 +252,8 @@ def initial_adapter_dir(tuner_config: Optional['TunerConfig'], distributed_confi
     A base-modifying init (pissa ...) makes every saved checkpoint need the initial-adapter snapshot
     plus a converted copy; a plain init needs neither, so the knob stays None.
     """
-    from swift.dev.builders import is_megatron_backend
-    from swift.dev.builders.adapter import is_base_modifying_init
+    from swift.dev.builder import is_megatron_backend
+    from swift.dev.builder.adapter import is_base_modifying_init
 
     if not has_adapter(tuner_config) or not is_base_modifying_init(tuner_config.init_weights):
         return None
@@ -501,7 +501,7 @@ def _restore_training(model: Any, checkpoint_config: Optional['CheckpointConfig'
     model weights (build_model redirected the model id); a tuned run keeps the original base and
     reloads its adapter through the ``adapter_name`` path below.
     """
-    from swift.dev.builders import is_megatron_backend
+    from swift.dev.builder import is_megatron_backend
     from swift.dev.utils.storage import Storage
 
     path = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
@@ -656,8 +656,8 @@ class StepState:
                  extra_metrics_granularity: str = 'step'):
         # The tracker initializes its reporters as a construction side effect (validation ran above).
 
-        from swift.dev.callbacks import build_callbacks
-        from swift.dev.callbacks.handler import CallbackHandler
+        from swift.dev.callback import build_callbacks
+        from swift.dev.callback.handler import CallbackHandler
 
         self.model = model
         self.dp_balance = dp_balance
@@ -1320,9 +1320,9 @@ def initialize_rl_devices(*, model_config: 'ModelConfig', template_config: 'Temp
     from twinkle.perf import Perf
     from twinkle_agentic.async_rl import estimate_plan, resource_device_groups
 
-    from swift.dev.builders import build_dp_mesh, build_template, load_model_processor
-    from swift.dev.builders.sandbox import SANDBOX
-    from swift.dev.builders.streaming import CONTROL_GROUP, ENV_GROUP, ROLLOUT_GROUP
+    from swift.dev.builder import build_dp_mesh, build_template, load_model_processor
+    from swift.dev.builder.sandbox import SANDBOX
+    from swift.dev.builder.streaming import CONTROL_GROUP, ENV_GROUP, ROLLOUT_GROUP
     from swift.dev.config import process_configs, validate_configs
 
     process_configs(
@@ -1456,7 +1456,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         from twinkle_client.rollout import HTTPSampler
         from twinkle_client.sampler import vLLMSampler as ClientSampler
 
-        from swift.dev.builders.template import build_template_spec
+        from swift.dev.builder.template import build_template_spec
 
         sampler = ClientSampler(model_config.model)
         spec = build_template_spec(template_config, model_config)
@@ -1467,7 +1467,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         return HTTPSampler(sampler, template)
     from twinkle import DeviceMesh
 
-    from swift.dev.builders import build_engine_args, build_sampler
+    from swift.dev.builder import build_engine_args, build_sampler
 
     backend = rollout_config.rollout_sampler
     sampler_engine_args = build_engine_args(backend, None, rollout_config)
@@ -1479,7 +1479,7 @@ def build_rl_sampler(*, model_config: 'ModelConfig', rollout_config: 'RolloutCon
         # Every RL weight sync lands through twinkle's vLLM worker extension. Install the
         # quant-aware subclass so an FP8 / MXFP4 engine can absorb the trainer's BF16 stream;
         # it is a pass-through when the engine is not quantized. An explicit engine arg wins.
-        from swift.dev.weight_sync import QUANT_SYNC_WORKER_EXTENSION
+        from twinkle.sampler.vllm_sampler.quant_sync import QUANT_SYNC_WORKER_EXTENSION
         sampler_engine_args.setdefault('worker_extension_cls', QUANT_SYNC_WORKER_EXTENSION)
     if colocate:
         sampler_engine_args['enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'] = True
@@ -1533,9 +1533,9 @@ def resolve_reward_scorers(channel: str, *, reward_config: Any, model_config: 'M
     """
     from twinkle.reward import FunctionWorker
 
-    from swift.dev.builders import build_reward_model
-    from swift.dev.rewards.reward import get_reward_funcs
-    from swift.dev.rewards.scorer import ChannelCompanions, resolve_channel
+    from swift.dev.builder import build_reward_model
+    from swift.dev.reward.reward import get_reward_funcs
+    from swift.dev.reward.scorer import ChannelCompanions, resolve_channel
 
     plan = resolve_channel(
         list(getattr(reward_config, channel)),
@@ -1614,7 +1614,7 @@ def prompt_rows_from_dataset(
     ``system`` (``TemplateConfig.system``) is written into the messages of both ``rows`` and
     ``prompts``, so a prompt carries its system turn itself whichever sampler or template encodes it.
     """
-    from swift.dev.builders import load_prompt_only_rows
+    from swift.dev.builder import load_prompt_only_rows
 
     rows = load_prompt_only_rows(dataset_config, None, split_dataset_ratio=0.0)
     if not rows:
@@ -1832,7 +1832,7 @@ def build_generative_eval(*, model: Any, template: Any, model_config: 'ModelConf
 
     from twinkle.checkpoint_engine import CheckpointEngineManager
 
-    from swift.dev.builders import build_dp_mesh, build_sampler
+    from swift.dev.builder import build_dp_mesh, build_sampler
     # The hand-over sleeps the engine to free the GPU for the trainer, which each backend permits
     # only with its own memory-saver flag on (vLLM: enable_sleep_mode, sglang: enable_memory_saver).
     sleep_arg = 'enable_sleep_mode' if backend == 'vllm' else 'enable_memory_saver'
@@ -2178,7 +2178,7 @@ def save_training_checkpoint(model: 'TrainableModel', name: str, *, output_dir: 
         # A full-parameter BF16 export of a packed source is not loadable by the packed
         # rollout engine (DeepSeek-V4's FlashMLA o_proj reads FP8 weight_scale_inv).
         # Restore the source's packed format in place, using the trained weights.
-        from swift.dev.weight_sync.requantize import requantize_checkpoint
+        from twinkle.sampler.vllm_sampler.quant_sync.requantize import requantize_checkpoint
         requantize_checkpoint(ckpt_dir, requantize_source)
     return ckpt_dir
 

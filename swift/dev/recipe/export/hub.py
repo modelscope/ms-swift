@@ -2,7 +2,7 @@
 """The export chain's Hub upload step: publish one produced model directory.
 
 Not a weight transform -- it moves an already-written directory to the Hub, so it stays a
-plain function beside the transform recipes rather than becoming a component.
+plain function beside the transform recipes rather than a Recipe subclass of its own.
 """
 from __future__ import annotations
 

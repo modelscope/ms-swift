@@ -50,7 +50,7 @@ def test_model_is_required():
 
 @pytest.fixture
 def spy_workers(monkeypatch, tmp_path):
-    """Stub both conversion workers, recording which one ``ConvertComponent.run`` routes to.
+    """Stub both conversion workers, recording which one ``CheckpointConverter.run`` routes to.
 
     The real workers import ``swift.megatron`` and load weights; the routing decision under test is
     made entirely from ConvertConfig fields before that, so stubbing them isolates the branch logic.
@@ -74,8 +74,8 @@ def spy_workers(monkeypatch, tmp_path):
         calls['output_dir'] = output_dir
         return 'HF2MCORE'
 
-    monkeypatch.setattr('swift.dev.components.weight_transform.convert.ConvertComponent._convert_mcore', _mcore)
-    monkeypatch.setattr('swift.dev.components.weight_transform.convert.ConvertComponent._convert_hf2mcore',
+    monkeypatch.setattr('swift.dev.recipe.export.convert.CheckpointConverter._convert_mcore', _mcore)
+    monkeypatch.setattr('swift.dev.recipe.export.convert.CheckpointConverter._convert_hf2mcore',
                         _hf2mcore)
     return calls
 

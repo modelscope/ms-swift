@@ -15,7 +15,7 @@ import copy
 
 import pytest
 
-from swift.dev.builders.template import build_template
+from swift.dev.builder.template import build_template
 from swift.dev.config import TemplateConfig
 from swift.dev.template import ENGINE, INFER, SCORE, TRAIN
 from swift.dev.template.inputs import preference_sample_from_row

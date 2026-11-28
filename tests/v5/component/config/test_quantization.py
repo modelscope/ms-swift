@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from swift.dev.builders.model import _apply_unsloth_kwargs
-from swift.dev.builders.quantization import build_load_quantization_config, modules_to_not_convert, quantizer_kwargs
-from swift.dev.builders.sampler import build_sampler
+from swift.dev.builder.model import _apply_unsloth_kwargs
+from swift.dev.builder.quantization import build_load_quantization_config, modules_to_not_convert, quantizer_kwargs
+from swift.dev.builder.sampler import build_sampler
 from swift.dev.config import (
     DatasetConfig,
     DistributedConfig,
@@ -121,7 +121,7 @@ def test_transformers_sampler_receives_quantization_config(monkeypatch):
 
     monkeypatch.setattr('twinkle.sampler.TransformersSampler', Sampler)
     monkeypatch.setattr(
-        'swift.dev.builders.quantization.build_load_quantization_config',
+        'swift.dev.builder.quantization.build_load_quantization_config',
         lambda config, **kwargs: {'method': config.quant_method})
     build_sampler(ModelConfig(model='m'), backend='transformers', quantize_config=QuantizeConfig(quant_method='bnb'))
     assert captured['engine_args']['quantization_config'] == {'method': 'bnb'}

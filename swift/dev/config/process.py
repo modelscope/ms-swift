@@ -63,7 +63,7 @@ def process_configs(
             'imports torch_npu unconditionally, so the switch follows the platform).')
     os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = _npu_patch
 
-    from swift.dev.builders import is_megatron_backend
+    from swift.dev.builder import is_megatron_backend
     from swift.dev.utils.plugin import PluginRegistry
 
     # Plugins must be registered before validation resolves their configured names.

@@ -48,7 +48,7 @@ def validate_configs(
     training: bool = True,
 ) -> None:
     """Validate cross-Config constraints before anything heavy is built; raises ValueError."""
-    from swift.dev.builders import is_megatron_backend
+    from swift.dev.builder import is_megatron_backend
     is_megatron = is_megatron_backend(distributed_config)
 
     _check_remote_mode(distributed_config, is_megatron, rl_config,
@@ -210,7 +210,7 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             "adapter mechanism is LoRA on the resident base. Use --tuner lora, or none for "
             "full-parameter remote training.")
     if has_adapter(tuner_config) and tuner_config.tuner == 'lora':
-        from swift.dev.builders.adapter import is_base_modifying_init
+        from swift.dev.builder.adapter import is_base_modifying_init
 
         if is_base_modifying_init(tuner_config.init_weights):
             # The initial-adapter snapshot (save_initial_adapter) has no client-side counterpart;
@@ -1306,7 +1306,7 @@ def _check_channel_companions(reward_config: 'RewardConfig', channel: str) -> No
     One entry per model id (rule items hold no model); the synthesis path's lone-adapter sampler-reuse
     spelling is resolved there (resolve_reward_channel), which validate never sees.
     """
-    from swift.dev.rewards.reward import is_registered_reward
+    from swift.dev.reward.reward import is_registered_reward
 
     items = getattr(reward_config, channel) or []
     model_count = sum(1 for item in items if not is_registered_reward(item))
@@ -1504,7 +1504,7 @@ def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
             f'{template_config.sequence_parallel_size}: unsloth\'s fused kernels assume a whole sequence per '
             'rank. Set sequence_parallel_size=1, or use the default backend.')
     if has_adapter(tuner_config):
-        from swift.dev.builders.adapter import is_base_modifying_init
+        from swift.dev.builder.adapter import is_base_modifying_init
 
         if is_base_modifying_init(tuner_config.init_weights):
             # A base-modifying LoRA init (pissa/olora/lora-ga/loftq...) needs the initial-adapter snapshot
@@ -1688,7 +1688,7 @@ def _check_cp_partition_mode(distributed_config: 'DistributedConfig', is_megatro
     if distributed_config.cp_partition_mode != 'zigzag':
         raise NotImplementedError(
             'DistributedConfig.cp_partition_mode="contiguous" is only honoured by the checkpoint '
-            'repartition path (components/weight_transform); the training CP split and router replay are '
+            'repartition path (recipe/export); the training CP split and router replay are '
             'load-balanced (zigzag) only. Keep the default zigzag for a CP training run.')
 
 
@@ -1748,7 +1748,7 @@ def _check_load_quantization(model_config: 'ModelConfig', distributed_config: 'D
     if quantize_config is None or quantize_config.quant_method is None:
         return
 
-    from swift.dev.builders.quantization import CALIBRATION_QUANT_METHODS, LOAD_TIME_QUANT_METHODS
+    from swift.dev.builder.quantization import CALIBRATION_QUANT_METHODS, LOAD_TIME_QUANT_METHODS
 
     method = quantize_config.quant_method
     if method in CALIBRATION_QUANT_METHODS:
@@ -2078,7 +2078,7 @@ def _check_megatron_optimizer(train_config: 'TrainConfig', is_megatron: bool) ->
     """Reject an inconsistent Megatron optimizer/scheduler config before the weights are loaded."""
     if not is_megatron:
         return
-    from swift.dev.builders.optimizer import megatron_weight_decay_bounds, warmup_budget
+    from swift.dev.builder.optimizer import megatron_weight_decay_bounds, warmup_budget
 
     # Delegates so the weight-decay rule has one definition (configure_optimizer uses the same).
     start_wd, end_wd = megatron_weight_decay_bounds(train_config)

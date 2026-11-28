@@ -23,7 +23,7 @@
 
 import math
 
-from swift.dev.builders.optimizer import resolve_max_grad_norm
+from swift.dev.builder.optimizer import resolve_max_grad_norm
 from swift.dev.config import (
     CheckpointConfig,
     DatasetConfig,

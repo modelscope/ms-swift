@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from swift.dev.builders import build_engine_args
+from swift.dev.builder import build_engine_args
 from swift.dev.cli.infer import (_derive_result_path, _guard_interactive, _interactive_dp_width,
                                  infer_main, parse_infer_configs)
 from swift.dev.config import DistributedConfig, RolloutConfig
@@ -150,7 +150,7 @@ def test_interactive_dp_width_local_reads_world_size(monkeypatch):
 
 def test_interactive_dp_width_ray_reads_mesh(monkeypatch):
     """Under mode='ray' the width is the sampler mesh's data world size, not the torchrun world."""
-    import swift.dev.builders as builders
+    import swift.dev.builder as builders
 
     class _Mesh:
         data_world_size = 1
@@ -380,11 +380,11 @@ def test_validate_multi_turn_bounds():
 
 
 def _sampling_guard(infer_config, *, multi_turn_enabled=False):
-    """Drive ``InferComponent._validate_sampling`` directly: the sampling-knob guards moved from the
+    """Drive ``Inferencer._validate_sampling`` directly: the sampling-knob guards moved from the
     old run_infer inline path onto the component's own up-front check, and the method only reads
     ``self.infer_config`` -- so a bare instance carries the whole contract without a model or GPU."""
-    from swift.dev.components.infer import InferComponent
-    component = InferComponent.__new__(InferComponent)
+    from swift.dev.recipe.infer.inferencer import Inferencer
+    component = Inferencer.__new__(Inferencer)
     component.infer_config = infer_config
     return component._validate_sampling(infer_config.num_return_sequences, infer_config.output_format,
                                         multi_turn_enabled)
@@ -413,7 +413,7 @@ def test_dpo_n_best_to_keep_must_be_lt_num_return():
 
 def test_save_rollout_tokens_needs_output_path(patch_prompt_rows, monkeypatch):
     """The NPZ sidecar is placed beside the jsonl, so save_rollout_tokens without an output_path is rejected.
-    The guard sits in InferComponent's NPZ-writer construction, after the dataset load -- drive the real
+    The guard sits in Inferencer's NPZ-writer construction, after the dataset load -- drive the real
     run_infer path with the 'no' (message-only) backend: it raises before any model or GPU is touched."""
     from swift.dev.config import DistributedConfig, GenerationConfig, InferConfig, ModelConfig, TemplateConfig
     from swift.dev.config import DatasetConfig

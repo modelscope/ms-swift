@@ -65,7 +65,7 @@ def publish_worker_setup_hook(target: str) -> None:
     """Append a ``module:attr`` worker-startup hook to ``TWINKLE_WORKER_SETUP_HOOK`` for this driver's workers.
 
     twinkle's ``run_worker_setup_hook`` runs every comma-separated target once per worker process, so
-    the plugin reloader and the server-side namespace export (``swift.dev.processor.server_plugin:register``)
+    the plugin reloader and the server-side namespace export (``swift.dev.builder.server_plugin:register``)
     add up instead of one overwriting the other; an already-registered target is kept where it is.
     """
     from twinkle.utils.loader import WORKER_SETUP_HOOK_ENV
@@ -157,15 +157,15 @@ class PluginKind:
 
 #: Modules whose import declares swift's built-in plugin kinds (each runs ``register_kind`` at module
 #: top level). A user's ``--external_plugins`` file may ``@register`` against any built-in kind -- the
-#: ``tool`` kind (``swift.dev.builders.sandbox``), the ``reward`` kind (``swift.dev.rewards.orm``) or
-#: the ``callback`` kind (``swift.dev.callbacks``) --
+#: ``tool`` kind (``swift.dev.builder.sandbox``), the ``reward`` kind (``swift.dev.reward.orm``) or
+#: the ``callback`` kind (``swift.dev.callback``) --
 #: so the loader must guarantee those kinds are declared BEFORE it imports the user file. Nothing in the
 #: CLI's config lifecycle imports them that early (``process_configs`` calls ``load_configured`` before
 #: any recipe runs), so a plugin registering a built-in kind would otherwise hit an empty ``KINDS``.
-_BUILTIN_KIND_MODULES = ('swift.dev.rewards.orm', 'swift.dev.rewards.prm',
-                         'swift.dev.builders.sandbox',
-                         'swift.dev.callbacks', 'swift.dev.builders.optimizer_plugins',
-                         'swift.dev.harnesses')
+_BUILTIN_KIND_MODULES = ('swift.dev.reward.orm', 'swift.dev.reward.prm',
+                         'swift.dev.builder.sandbox',
+                         'swift.dev.callback', 'swift.dev.builder.optimizer_plugins',
+                         'swift.dev.harness')
 
 
 def _declare_builtin_kinds() -> None:

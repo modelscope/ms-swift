@@ -11,7 +11,7 @@ import dataclasses
 
 import pytest
 
-from swift.dev.builders.model import (
+from swift.dev.builder.model import (
     _MEGATRON_FIELD_ALIASES,
     _NON_MODEL_MEGATRON_FIELDS,
     _megatron_model_kwargs,

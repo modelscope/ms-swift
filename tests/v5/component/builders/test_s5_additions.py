@@ -21,7 +21,7 @@ import pytest
 
 
 def test_param_groups_lora_plus_emits_three_rules_in_order():
-    from swift.dev.builders.optimizer import build_param_groups_spec
+    from swift.dev.builder.optimizer import build_param_groups_spec
     from swift.dev.config import TrainConfig, TunerConfig
 
     cfg = TrainConfig(learning_rate=1e-4)
@@ -37,7 +37,7 @@ def test_param_groups_lora_plus_emits_three_rules_in_order():
 
 
 def test_param_groups_tower_rules_aligner_claims_first():
-    from swift.dev.builders.optimizer import build_param_groups_spec
+    from swift.dev.builder.optimizer import build_param_groups_spec
     from swift.dev.config import TrainConfig
 
     # only vit_lr set: the aligner rule is STILL emitted (at base lr) so the broader
@@ -56,8 +56,8 @@ def test_param_groups_tower_rules_aligner_claims_first():
 
 
 def test_param_groups_plugins_append_after_builtins():
-    from swift.dev.builders.optimizer import build_param_groups_spec
-    from swift.dev.builders.optimizer_plugins import PARAM_GROUPS
+    from swift.dev.builder.optimizer import build_param_groups_spec
+    from swift.dev.builder.optimizer_plugins import PARAM_GROUPS
     from swift.dev.config import TrainConfig, TunerConfig
     from swift.dev.utils.plugin import PluginRegistry
 
@@ -80,7 +80,7 @@ def test_param_groups_plugins_append_after_builtins():
 
 
 def test_encode_mode_three_states():
-    from swift.dev.builders.dataset import _encode_mode
+    from swift.dev.builder.dataset import _encode_mode
     from swift.dev.config import DatasetConfig
 
     mm_template = SimpleNamespace(model_meta=SimpleNamespace(is_multimodal=True))
@@ -99,7 +99,7 @@ def test_encode_mode_three_states():
 
 
 def test_twinkle_loader_layout_scales_by_dp_width(monkeypatch):
-    from swift.dev.builders import dataset as dataset_module
+    from swift.dev.builder import dataset as dataset_module
     from swift.dev.config import DistributedConfig
 
     # no mesh, no nproc_per_node: plain torchrun scales by the env world size, mesh stays None
@@ -109,7 +109,7 @@ def test_twinkle_loader_layout_scales_by_dp_width(monkeypatch):
     # megatron + ray: the loader is a bare driver loader (DP scatter happens in forward_backward)
     fake_mesh = SimpleNamespace(data_world_size=3)
     monkeypatch.setattr(dataset_module, 'build_parallel_mesh', lambda dc: fake_mesh, raising=False)
-    import swift.dev.builders.model as model_module
+    import swift.dev.builder.model as model_module
     monkeypatch.setattr(model_module, 'build_parallel_mesh', lambda dc: fake_mesh)
     dc = DistributedConfig(backend='megatron', nproc_per_node=8, mode='ray')
     assert dataset_module._twinkle_loader_layout(dc, 2) == (6, None)
@@ -126,7 +126,7 @@ def test_twinkle_loader_layout_scales_by_dp_width(monkeypatch):
 
 
 def test_load_prompt_only_rows_val_wins_and_ratio_slices(tmp_path):
-    from swift.dev.builders.dataset import load_prompt_only_rows
+    from swift.dev.builder.dataset import load_prompt_only_rows
     from swift.dev.config import DatasetConfig
     from tests.v5.tiny import TinyData
 
@@ -153,7 +153,7 @@ def test_load_prompt_only_rows_val_wins_and_ratio_slices(tmp_path):
 def test_build_prompt_dataloader_guards_and_iterates():
     from twinkle.data_format import user_data_get
 
-    from swift.dev.builders.dataset import build_prompt_dataloader
+    from swift.dev.builder.dataset import build_prompt_dataloader
 
     with pytest.raises(ValueError, match='at least one prompt'):
         build_prompt_dataloader([], None, seed=0)
@@ -184,7 +184,7 @@ def test_build_prompt_dataloader_guards_and_iterates():
 
 
 def test_to_trajectory_replaces_system_and_carries_mm_columns():
-    from swift.dev.builders.dataset import to_trajectory
+    from swift.dev.builder.dataset import to_trajectory
     from swift.dev.config import TemplateConfig
 
     messages = [{'role': 'system', 'content': 'old'}, {'role': 'user', 'content': 'hi'}]
@@ -200,7 +200,7 @@ def test_to_trajectory_replaces_system_and_carries_mm_columns():
 
 
 def test_split_prompt_and_reference_moves_trailing_assistant():
-    from swift.dev.builders.dataset import split_prompt_and_reference
+    from swift.dev.builder.dataset import split_prompt_and_reference
     from swift.dev.config import TemplateConfig
 
     rows = [
@@ -236,7 +236,7 @@ def test_split_prompt_and_reference_moves_trailing_assistant():
 
 
 def test_frozen_auxiliary_config_inherits_identity_only():
-    from swift.dev.builders.model import frozen_auxiliary_distributed_config
+    from swift.dev.builder.model import frozen_auxiliary_distributed_config
     from swift.dev.config import DistributedConfig
 
     trainer = DistributedConfig(backend='megatron', mode='local', nproc_per_node=8, tensor_model_parallel_size=4)
@@ -251,7 +251,7 @@ def test_frozen_auxiliary_config_inherits_identity_only():
 
 
 def test_build_ref_model_three_branches(monkeypatch):
-    from swift.dev.builders import model as model_module
+    from swift.dev.builder import model as model_module
     from swift.dev.config import DistributedConfig, ModelConfig, TemplateConfig
 
     # disable_adapter without the policy model is a hard error (the shared-weights view IS the ref)
@@ -315,9 +315,9 @@ def test_build_ref_model_three_branches(monkeypatch):
 def test_build_reward_model_dispatches_by_kind(monkeypatch):
     from twinkle.reward import FunctionWorker, GenerativeWorker
 
-    from swift.dev.builders import reward as reward_module
+    from swift.dev.builder import reward as reward_module
     from swift.dev.config import DistributedConfig, ModelConfig, TemplateConfig
-    from swift.dev.rewards.scorer import ApiJudgeReward, RewardModel, RewardSpec
+    from swift.dev.reward.scorer import ApiJudgeReward, RewardModel, RewardSpec
 
     common = dict(
         model_config=ModelConfig(model='policy'), template_config=TemplateConfig(),
@@ -352,7 +352,7 @@ def test_build_reward_model_dispatches_by_kind(monkeypatch):
 
 
 def test_build_engine_args_prefix_stripping():
-    from swift.dev.builders.sampler import build_engine_args
+    from swift.dev.builder.sampler import build_engine_args
     from swift.dev.config import InferConfig, RolloutConfig
 
     # 'pt' is an alias; the transformers engine only takes the batch ceiling
@@ -373,7 +373,7 @@ def test_build_engine_args_prefix_stripping():
 
 
 def test_to_sampling_params_maps_and_rejects():
-    from swift.dev.builders.sampler import to_sampling_params
+    from swift.dev.builder.sampler import to_sampling_params
     from swift.dev.config import GenerationConfig
 
     gen = GenerationConfig(
@@ -397,7 +397,7 @@ def test_to_sampling_params_maps_and_rejects():
 
 
 def test_sampled_texts_groups_per_input():
-    from swift.dev.builders.sampler import sampled_texts
+    from swift.dev.builder.sampler import sampled_texts
 
     responses = [
         SimpleNamespace(sequences=[SimpleNamespace(decoded='a1'), SimpleNamespace(decoded='a2')]),
@@ -420,8 +420,8 @@ def test_build_rl_sampler_placement_and_replay_knob(monkeypatch):
         calls.append(kwargs)
         return SimpleNamespace(**kwargs)
 
-    monkeypatch.setattr('swift.dev.builders.build_sampler', fake_build_sampler)
-    monkeypatch.setattr('swift.dev.builders.build_engine_args', lambda *a, **k: {})
+    monkeypatch.setattr('swift.dev.builder.build_sampler', fake_build_sampler)
+    monkeypatch.setattr('swift.dev.builder.build_engine_args', lambda *a, **k: {})
 
     model_config = ModelConfig(model='m')
     template = SimpleNamespace()
@@ -475,7 +475,7 @@ def test_build_model_torch_dtype_overrides_on_a_copy(monkeypatch, tmp_path):
     Regression anchor for `model_config = copy(model_config)` -- with the copy MODULE imported as
     `copy`, that line died with "'module' object is not callable" on every torch_dtype build.
     """
-    from swift.dev.builders import model as model_module
+    from swift.dev.builder import model as model_module
     from swift.dev.config import DistributedConfig, ModelConfig
 
     seen: Dict[str, Any] = {}
@@ -498,7 +498,7 @@ def test_build_model_torch_dtype_overrides_on_a_copy(monkeypatch, tmp_path):
 @pytest.mark.parametrize("mode", ["local", "ray"])
 @pytest.mark.parametrize("world,sp", [(2, 2), (4, 2), (4, 4)])
 def test_fsdp_ulysses_mesh_layout(monkeypatch, mode, world, sp):
-    from swift.dev.builders.model import build_dp_mesh
+    from swift.dev.builder.model import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
     monkeypatch.setattr('twinkle.utils.Platform.get_world_size', staticmethod(lambda: world))
@@ -512,7 +512,7 @@ def test_fsdp_ulysses_mesh_layout(monkeypatch, mode, world, sp):
 
 @pytest.mark.parametrize("spec", ["dp1fsdp4ul1", "dp1fsdp4ul4"])
 def test_parallel_spec_rejects_mismatched_sp(spec):
-    from swift.dev.builders.model import build_dp_mesh
+    from swift.dev.builder.model import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
     config = DistributedConfig(mode='ray', nproc_per_node=4, parallel_spec=spec, fsdp='full_shard')
@@ -521,7 +521,7 @@ def test_parallel_spec_rejects_mismatched_sp(spec):
 
 
 def test_parallel_spec_accepts_matching_sp():
-    from swift.dev.builders.model import build_dp_mesh
+    from swift.dev.builder.model import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
     config = DistributedConfig(mode='ray', nproc_per_node=4, parallel_spec='dp1fsdp4ul2', fsdp='full_shard')
@@ -532,7 +532,7 @@ def test_parallel_spec_accepts_matching_sp():
 
 @pytest.mark.parametrize("mode", ["ray", "local"])
 def test_hf_sp_loader_mesh_ownership(mode):
-    from swift.dev.builders.dataset import _twinkle_loader_layout
+    from swift.dev.builder.dataset import _twinkle_loader_layout
     from swift.dev.config import DistributedConfig
 
     mesh = SimpleNamespace(data_world_size=2)

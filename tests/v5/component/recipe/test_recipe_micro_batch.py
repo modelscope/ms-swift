@@ -403,7 +403,7 @@ def test_distill_entry_budgets_updates_across_prompt_loader_batches(monkeypatch,
     monkeypatch.setattr(recipe, "prompt_rows_from_dataset", lambda config, system=None: ([], prompts, [{}] * 5))
     monkeypatch.setattr(recipe, "initialize_rl_devices", lambda **kwargs: (None, None, None))
     monkeypatch.setattr(recipe, "distill_dataset_rows", lambda *args: [object()])
-    monkeypatch.setattr("swift.dev.builders.build_dp_mesh", lambda *args: SimpleNamespace(data_world_size=1))
+    monkeypatch.setattr("swift.dev.builder.build_dp_mesh", lambda *args: SimpleNamespace(data_world_size=1))
 
     class BudgetCaptured(Exception):
         pass

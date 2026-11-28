@@ -69,7 +69,7 @@ I/O-bound rewards can implement `async def __call__` without a separate async ba
 Append to the same plugin file:
 
 ```python
-from swift.dev.callbacks import TrainCallback
+from swift.dev.callback import TrainCallback
 
 
 @PluginRegistry.register('callback', 'progress_printer')
@@ -87,12 +87,12 @@ swift sft --model Qwen/Qwen3.5-4B \
     --output_dir output/callback
 ```
 
-`CallbackState` provides read-only loop position and recent metrics. Request actions through `CallbackControl.should_training_stop`, `should_save`, `should_evaluate` or `should_log` instead of editing loop counters. Events cover train / epoch / step begin and end, optimizer, log, evaluate and save; see [exact signatures](https://github.com/modelscope/ms-swift/blob/main/swift/dev/callbacks/base.py).
+`CallbackState` provides read-only loop position and recent metrics. Request actions through `CallbackControl.should_training_stop`, `should_save`, `should_evaluate` or `should_log` instead of editing loop counters. Events cover train / epoch / step begin and end, optimizer, log, evaluate and save; see [exact signatures](https://github.com/modelscope/ms-swift/blob/main/swift/dev/callback/base.py).
 
 ## Optimizer parameter grouping
 
 ```python
-from swift.dev.builders.optimizer_plugins import ParamGroupsPlugin
+from swift.dev.builder.optimizer_plugins import ParamGroupsPlugin
 
 
 @PluginRegistry.register('param_groups', 'no_decay_embeddings')
@@ -101,7 +101,7 @@ class NoDecayEmbeddings(ParamGroupsPlugin):
         return [{'match': {'module_type': 'Embedding'}, 'weight_decay': 0.0}]
 ```
 
-Select with `--param_groups_plugins no_decay_embeddings`. Return serializable rules instead of reading parameters from a driver proxy. twinkle matches real parameters on workers. Built-in multimodal and LoRA+ rules come first; the first matching rule wins. See [build_param_groups_spec](https://github.com/modelscope/ms-swift/blob/main/swift/dev/builders/optimizer.py) for the grammar.
+Select with `--param_groups_plugins no_decay_embeddings`. Return serializable rules instead of reading parameters from a driver proxy. twinkle matches real parameters on workers. Built-in multimodal and LoRA+ rules come first; the first matching rule wins. See [build_param_groups_spec](https://github.com/modelscope/ms-swift/blob/main/swift/dev/builder/optimizer.py) for the grammar.
 
 ## Tools, harnesses and process rewards
 
