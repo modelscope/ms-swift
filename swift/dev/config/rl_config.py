@@ -151,6 +151,9 @@ class RLConfig:
     rollout_importance_sampling_threshold: float = 2.0
     log_rollout_offpolicy_metrics: bool = False
     off_policy_sequence_mask_delta: Optional[float] = None
+    # Additive score-centering term over the sampler's top-k heads (GPG only).
+    score_centering: bool = False
+    score_centering_top_k: int = 8
 
     # === GKD ===
     sft_alpha: float = 0

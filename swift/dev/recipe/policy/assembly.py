@@ -235,6 +235,8 @@ def build_policy_objects(
         model, sampler, rollout_config, configs.distributed, resource_plan, lend=critic is None
     )
     params = rollout_sampling_params(rl.max_completion_length, configs.generation)
+    if rl.score_centering:
+        params["logprobs"] = rl.score_centering_top_k
     rollout = build_rollout(
         sampler,
         template,

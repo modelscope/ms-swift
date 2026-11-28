@@ -494,6 +494,7 @@ _POLICY_ONLY_KNOBS = (
     "sync_ref_model",
     "router_replay_mode",
     "enable_sampling_replay",
+    "score_centering",
 )
 
 
@@ -552,6 +553,7 @@ def _check_policy_recipe(
     _check_chord(cfg)
     _check_router_replay(cfg)
     _check_sampling_replay(cfg, rollout_config)
+    _check_score_centering(cfg, train_config, rollout_config, distributed_config)
     _check_segments(cfg, rollout_config, reward_config)
     _check_prm(cfg, reward_config)
     _check_self_distillation(cfg, train_config, reward_config)
@@ -1359,6 +1361,39 @@ def _check_router_replay(cfg: "RLConfig") -> None:
             f"router_replay_mode={mode!r} is incompatible with CHORD (--chord_sft_dataset): "
             "CHORD auxiliary SFT rows carry no expert routing and cannot share the replay "
             "forward. Use router_replay_mode=disabled with CHORD, or drop --chord_sft_dataset."
+        )
+
+
+def _check_score_centering(
+    cfg: "RLConfig",
+    train_config: "TrainConfig",
+    rollout_config: Optional["RolloutConfig"],
+    distributed_config: Optional["DistributedConfig"],
+) -> None:
+    """The centering term reads full training logits plus sampler top-k heads; GPG only."""
+    if not cfg.score_centering:
+        return
+    from inspect import signature
+
+    from twinkle.loss import GRPOLoss
+
+    loss_type = cfg.loss_type[0] if cfg.loss_type else None
+    if loss_type != "gpg":
+        raise ValueError(f"score_centering is an additive REINFORCE term; requires loss_type=gpg, got {loss_type!r}.")
+    if cfg.rollout_importance_sampling_mode is not None:
+        raise ValueError("score_centering does not compose with rollout importance sampling.")
+    if not 1 <= cfg.score_centering_top_k <= 20:
+        raise ValueError(
+            f"score_centering_top_k must be in [1, 20] (vLLM max_logprobs default), got {cfg.score_centering_top_k}."
+        )
+    if train_config.use_liger_kernel:
+        raise ValueError("score_centering needs full-vocabulary logits; disable use_liger_kernel.")
+    if rollout_config is not None and rollout_config.rollout_sampler != "vllm":
+        raise ValueError("score_centering requires the vLLM sampler for top-k logprobs.")
+    if "score_centering" not in signature(GRPOLoss.__init__).parameters:
+        raise NotImplementedError(
+            "This Twinkle build lacks GRPOLoss(score_centering=...) and the rollout "
+            "top-k fields; update the pinned Twinkle before enabling score_centering."
         )
 
 

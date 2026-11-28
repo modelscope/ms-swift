@@ -408,6 +408,9 @@ def _online_loss_kwargs(rl_type: str, rl_config: "RLConfig", grpo_loss_type: str
     kwargs["rollout_importance_sampling_threshold"] = rl_config.rollout_importance_sampling_threshold
     kwargs["log_rollout_offpolicy_metrics"] = rl_config.log_rollout_offpolicy_metrics
     kwargs["off_policy_sequence_mask_delta"] = rl_config.off_policy_sequence_mask_delta
+    if rl_config.score_centering:
+        kwargs["score_centering"] = True
+        kwargs["score_centering_top_k"] = rl_config.score_centering_top_k
     kwargs["fipo_decay_rate"] = rl_config.fipo_decay_rate
     kwargs["fipo_clip_range"] = rl_config.fipo_clip_range
     kwargs["fipo_clip_high_only"] = rl_config.fipo_clip_high_only
