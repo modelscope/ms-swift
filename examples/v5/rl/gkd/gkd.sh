@@ -24,7 +24,7 @@
 #
 # Teacher selection (every teacher scores with forward_only; there is NO HTTP server -- server teachers were
 # removed, all-Ray premise):
-#   * SEPARATE FROZEN TEACHER (used here): --teacher_model is a DISTINCT, stronger model (a 4B teacher into a
+#   * SEPARATE FROZEN TEACHER (used here): --teacher_model is a DISTINCT, stronger model (a 9B teacher into a
 #     4B student). It is built as a frozen Ray actor on its OWN 'teacher' DeviceGroup, so it needs +1 GPU
 #     beyond the trainer/sampler cards. It MUST share the student's tokenizer (both Qwen3.5 here), since it
 #     re-scores the student's own response token ids. A distinct checkpoint also matters for a visible signal:
@@ -95,7 +95,7 @@ swift rl \
     --rlhf_type gkd \
     --model Qwen/Qwen3.5-4B \
     --attn_impl flash_attention_2 \
-    --teacher_model Qwen/Qwen3.5-4B \
+    --teacher_model Qwen/Qwen3.5-9B \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
     --tuner lora \
     --lora_rank 8 \

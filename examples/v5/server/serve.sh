@@ -25,7 +25,7 @@ RAY_ADDRESS=127.0.0.1:${RAY_PORT}
 
 # Fail fast with a clear message if the toolchain or swift loader is missing.
 command -v ray >/dev/null 2>&1 || { echo 'ray not installed; install server deps first' >&2; exit 1; }
-command -v twinkle-server >/dev/null 2>&1 || { echo 'twinkle-server not installed; pip install -e ".[client,server]"' >&2; exit 1; }
+command -v twinkle-server >/dev/null 2>&1 || { echo 'twinkle-server not installed; from the twinkle repo run: pip install -e . && pip install -e twinkle_cs/client && pip install -e twinkle_cs/server (the twinkle-client/twinkle-server split packages are not on PyPI, so the ms-swift [client,server] extras cannot resolve them from an index)' >&2; exit 1; }
 python -c 'import swift.dev.model.loader' >/dev/null 2>&1 \
   || { echo 'ms-swift not importable; from the ms-swift root run: pip install -e .' >&2; exit 1; }
 

@@ -28,6 +28,23 @@ def _native_rows(report_row):
     return rows
 
 
+def _primary_metric_score(score_row):
+    """The row's primary-metric numeric score under evalscope's schema v2 (>= 1.11).
+
+    v2 serializes the structured ``metrics`` list plus ``primary_metric_identity`` instead of the
+    v1 convenience ``score`` key (same contract as test_evaluator_e2e._primary_score and
+    swift.dev.recipe.utils.flatten_evalscope_report). The original flat ``score_row.get('score')``
+    read (written at f4d54d450 against the retired v1 shape) returned None on every real report.
+    Same real gate: a numeric score for the primary metric of the benchmark actually run.
+    """
+    assert score_row['schema_version'] == 2
+    primary = score_row['primary_metric_identity']
+    assert primary is not None and score_row['primary_metric_unavailable_reason'] is None
+    matches = [m for m in score_row['metrics'] if m['identity'] == primary]
+    assert len(matches) == 1
+    return matches[0]['score']
+
+
 def test_eval_example_scores_gsm8k_end_to_end(tmp_path):
     """``swift eval`` on gsm8k: exit 0, an on-disk EvalScope report, and a scored ``result_jsonl`` row."""
     out_dir = tmp_path / 'eval_output'
@@ -63,5 +80,5 @@ def test_eval_example_scores_gsm8k_end_to_end(tmp_path):
     assert len(gsm8k) == 1, _native_rows(row)
     score_row = gsm8k[0]
     # The model was really run over the (limited) benchmark: some samples scored, a numeric score reported.
-    assert isinstance(score_row.get('score'), (int, float))
+    assert isinstance(_primary_metric_score(score_row), (int, float))
     assert score_row.get('num', 0) > 0

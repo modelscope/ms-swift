@@ -7,7 +7,7 @@
 # `--runner pooling`"), so no extra engine flag is needed for a dedicated reranker.
 #
 # THE CLIENT PATH DIFFERS FROM EMBEDDING. The gateway's OpenAI surface only exposes /embeddings, and that
-# route hardcodes the pooling task to 'embed' (twinkle/server/gateway/openai_bridge.py). There is NO OpenAI
+# route hardcodes the pooling task to 'embed' (twinkle_server/gateway/openai_bridge.py). There is NO OpenAI
 # endpoint for classify, so a reranker/seq_cls/reward client cannot use the OpenAI SDK. Instead it calls the
 # sampler's own /twinkle/encode route directly with pooling_params {'task': 'classify'}. Each served model
 # gets its own single-copy sampler mounted at {route_prefix}/sampler/{served_model_name} (the old Ray Serve
