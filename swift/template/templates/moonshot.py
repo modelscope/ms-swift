@@ -106,6 +106,30 @@ class KimiK25Template(Template):
     support_padding_free = True
     skip_prompt = False
 
+    def _has_toolcall(self, message) -> bool:
+        content = message['content']
+        if isinstance(content, list):
+            content = ''.join(part for part in content if isinstance(part, str))
+        if not isinstance(content, str):
+            return False
+        try:
+            return bool(self.agent_template.get_toolcall(content))
+        except Exception:
+            return False
+
+    def _get_current_round_start(self, messages) -> int:
+        """The official template ends history after the last assistant that issued no tool call."""
+        for i in range(len(messages) - 1, -1, -1):
+            message = messages[i]
+            if message['role'] != 'assistant':
+                continue
+            if i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
+                continue
+            if self._has_toolcall(message):
+                continue
+            return i + 1
+        return 0
+
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         system = super()._get_system(inputs)
         if system is not None and '<|im_middle|>' not in system:  # compat agent
@@ -194,6 +218,7 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        default_enable_thinking=True,
         agent_template='kimi_k25',
     ))
 
@@ -214,10 +239,9 @@ class KimiK3Template(Template):
     valid_thinking_efforts = {'low', 'high', 'max'}
 
     def __init__(self, *args, **kwargs):
-        # Kimi K3 always has thinking enabled (the base class defaults hybrid-thinking
-        # templates with a non_thinking_prefix to False).
-        if kwargs.get('enable_thinking') is None:
-            kwargs['enable_thinking'] = True
+        if not kwargs.get('use_chat_template', True) and kwargs.get('enable_thinking') is None:
+            meta = kwargs.get('template_meta') if 'template_meta' in kwargs else args[1]
+            kwargs['enable_thinking'] = meta.default_enable_thinking
         super().__init__(*args, **kwargs)
 
     def _thinking_to_xtml(self, text: str, complete: bool = True) -> str:
@@ -281,12 +305,11 @@ class KimiK3Template(Template):
         return self.template_meta.history_thinking_prefix + content
 
     def _get_preserve_thinking(self, inputs=None):
-        preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
+        preserve_thinking = self._get_chat_template_arg('preserve_thinking', inputs)
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
         if preserve_thinking is None:
-            # K3 was trained in preserved-thinking-history mode: keep historical
-            # reasoning by default (pass `--preserve_thinking false` to drop it).
+            # K3 was trained in preserved-thinking-history mode; pass `--preserve_thinking false` to drop it.
             preserve_thinking = True
         return preserve_thinking
 
@@ -429,8 +452,7 @@ register_template(
     KimiK3TemplateMeta(
         MLLMTemplateType.kimi_k3,
         template_cls=KimiK3Template,
-        # Kimi K3 always has thinking enabled; the <think> channel is structural
-        # (assistant messages carry it even when the reasoning is empty).
+        default_enable_thinking=True,
         is_thinking=True,
         thinking_prefix='<|open|>think<|sep|>',
         non_thinking_prefix='<|open|>think<|sep|><|close|>think<|sep|><|open|>response<|sep|>',

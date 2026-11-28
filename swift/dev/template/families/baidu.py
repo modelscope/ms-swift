@@ -214,7 +214,16 @@ class PaddleOCRTemplate(Template):
         return {"inputs_embeds": inputs_embeds}
 
 
-register_template(ERNIETemplateMeta(MLLMTemplateType.paddle_ocr, template_cls=PaddleOCRTemplate))
+register_template(
+    ERNIETemplateMeta(
+        MLLMTemplateType.paddle_ocr,
+        template_cls=PaddleOCRTemplate,
+        # the PaddleOCR-VL jinja closes every assistant turn with '</s>' (its eos_token default),
+        # not the ERNIE <|end_of_sentence|> marker.
+        chat_sep=["</s>"],
+        suffix=["</s>"],
+    )
+)
 
 
 class ERNIE_VLTemplate(Template):

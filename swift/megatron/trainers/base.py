@@ -9,7 +9,6 @@ import torch.nn
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, nullcontext
 from functools import partial
-from mcore_bridge import LoraParallelLinear
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import FullyShardedDataParallel as megatron_FSDP
@@ -24,6 +23,7 @@ from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelpe
 from megatron.core.utils import get_attr_wrapped_model
 from modelscope import check_local_model_is_latest
 from pathlib import Path
+from peft.tuners.lora import LoraLayer
 from typing import Any, Callable, Dict, List, Optional
 
 from swift.dataset import RowPreprocessor
@@ -579,7 +579,7 @@ class BaseMegatronTrainer(ABC):
         with torch.no_grad():
             for model in self.unwrapped_models:
                 for module in model.modules():
-                    if isinstance(module, LoraParallelLinear):
+                    if isinstance(module, LoraLayer):
                         # Merge all active adapters
                         module.merge(adapter_names=[adapter_name])
 
@@ -588,7 +588,7 @@ class BaseMegatronTrainer(ABC):
         with torch.no_grad():
             for model in self.unwrapped_models:
                 for module in model.modules():
-                    if isinstance(module, LoraParallelLinear):
+                    if isinstance(module, LoraLayer):
                         # Unmerge to restore separate LoRA weights for training
                         module.unmerge()
 

@@ -55,6 +55,13 @@ Env overrides (all optional, read by `train.sh`/`client.py`): `TWINKLE_SERVER_UR
   base `Template`, which renders through the checkpoint's own jinja `chat_template`.
 - **The sampler is vLLM with LoRA enabled** (`enable_lora: true`); `sample(..., adapter_uri=twinkle_path)`
   selects a trained adapter, `adapter_uri=None` samples the base.
+- **Each adapter trains its own self-cognition persona** (`ADAPTER_PERSONAS` in `client.py`:
+  `assistant` → `twinkle助手`, `coder` → `twinkle代码助手`), so sampling the two adapters yields
+  distinguishable identities while the base answers with its pretrained identity. The sample
+  window is `max_tokens=512`: Qwen3.5 emits a thinking preamble first, and a short window (e.g. 64)
+  stops mid-thought before the identity is ever stated. Note `TWINKLE_MAX_STEPS` counts *micro*
+  steps; with the default `gradient_accumulation_steps=2` the optimizer updates are half that, and
+  a smoke-sized run (default 6) will not implant the identity strongly enough to observe it.
 
 ## Deploying a sentence-transformers embedding model
 

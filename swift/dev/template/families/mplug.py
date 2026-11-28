@@ -185,7 +185,8 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
 @dataclass
 class mPlugOwl3TemplateMeta(QwenTemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ["<|im_start|>system\n{{SYSTEM}}<|im_end|>\n"])
-    default_system: Optional[str] = None
+    # the official jinja injects this default system block when the conversation has none
+    default_system: Optional[str] = "You are a helpful assistant."
     system_prefix: Optional[Prompt] = None
 
 

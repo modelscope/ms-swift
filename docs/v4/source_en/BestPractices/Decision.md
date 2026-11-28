@@ -15,9 +15,9 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
 
 ## Supported Models
 
-1. JEV: Qwen3.5 backbone + PEFT adapter (verbalizer scoring head; JEV-27B-VL ships the full multimodal layout, JEV-27B / JEV-9B ship the text-only layout, JEV-35B ships the multimodal MoE layout with the decision head merged into the weights, no LoRA adapter)
+1. JEV: Qwen3.5 backbone + PEFT adapter (verbalizer scoring head; JEV-27B-VL ships the full multimodal layout, JEV-27B / JEV-9B ship the text-only layout, JEV-35B ships the multimodal MoE layout)
    - [JEV-35B](https://www.modelscope.cn/models/autotrust/JEV-35B) / [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL) / [JEV-27B](https://www.modelscope.cn/models/autotrust/JEV-27B) / [JEV-9B](https://www.modelscope.cn/models/autotrust/JEV-9B)
-2. Clef: Full Qwen3.5 multimodal with LoRA already merged
+2. Clef: Full Qwen3-VL with LoRA already merged
    - [ModelScope](https://www.modelscope.cn/models/Cloudflare/clef)
 3. OmniJev: Qwen3.5-4B (hybrid gated-deltanet + VL) + PEFT adapter
    - [ModelScope](https://modelscope.cn/models/AI-ModelScope/OmniJev)
@@ -29,17 +29,20 @@ For video support (multimodal decision models), `ffmpeg` and `ffprobe` must also
    - [ModelScope](https://modelscope.cn/models/convaiinnovations/laya) / [HuggingFace](https://huggingface.co/convaiinnovations/laya)
 7. StartLux-Decision v1.1 AutoThink: merged Qwen3.5 hybrid (vision + causal attention), letter read-out
    - [ModelScope 4B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink) / [9B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink) / [27B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink)
+8. H2O-4B: Qwen3.5-4B hybrid with the released LoRA already merged + a fixed 255-row label readout, one question per sequence
+   - [ModelScope](https://modelscope.cn/models/h2oai/h2o-lightning-4b) / [HuggingFace](https://huggingface.co/h2oai/h2o-lightning-4b)
 
 | Model | `--model_type` | Base | Head Artifacts | `--loss_type` |
 |-------|----------------|------|----------------|----------------|
-| JEV-27B-VL | `jev` | Qwen3.5 multimodal + PEFT adapter | `decision_head.json` + `calibration.json` (24-slot verbalizer bias) | `distill_rps` |
-| JEV-35B | `jev` | Qwen3.5 MoE (35B-A3B), decision head merged into the weights (no LoRA) | `decision_head.json` + `calibration.json` (264-slot verbalizer bias, up to 256 options per pass) | `distill_rps` |
-| Clef | `clef` | Merged Qwen3.5 multimodal (LoRA already merged) | `joint_head.safetensors` + `joint_head_config.json` | `smooth_brier` |
+| JEV-27B-VL | `jev` | Qwen3-VL + PEFT adapter | `decision_head.json` + `calibration.json` (24-slot verbalizer bias) | `distill_rps` |
+| JEV-35B | `jev` | Qwen3.5 MoE (35B-A3B) + PEFT adapter | `decision_head.json` + `calibration.json` (264-slot verbalizer bias, wide256 layout) | `distill_rps` |
+| Clef | `clef` | Merged Qwen3-VL (LoRA already merged) | `joint_head.safetensors` + `joint_head_config.json` | `smooth_brier` |
 | OmniJev | `omnijev` | Qwen3.5-4B hybrid + PEFT adapter | `head.pt` (FiLM) + `ord.pt` (ordinal regression) + `new_tok_emb.pt` (2 new tokens) + `head_meta.json` | `ce_rps` |
 | Kev | `kev` | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt` (pointer head, fp32) + fitted `temperature` (eval-time only) | `scoring` |
 | THX-02 | `thx02` | Merged Qwen3.5 hybrid (noncausal full attention) | `readout.safetensors` (linear readout over 255 answer codes) + `decision_config.json` (calibrated temperature) | `distill_rps` |
 | Laya | `laya` | ModernBERT-large (bidirectional, no adapter) | `model.safetensors` (encoder + head in one file) + `rl_agent_config.json` (architecture + per-kind/per-bucket temperatures) | `ce_rps` |
 | StartLux | `startlux` | Merged Qwen3.5 hybrid (vision tower, causal) | `decision_config.json` (26 letter token ids + per-kind read-out temperatures) | `distill_rps` |
+| H2O-4B | `h2o` | Qwen3.5-4B hybrid with the released LoRA already merged | `label_rows.safetensors` (fixed 255×hidden readout) + `serve_config.json` (255 labels + per-kind temperatures) | `scoring` |
 
 Developers can convert any CausalLM into a decision model by specifying:
 
@@ -342,6 +345,28 @@ schema as a Decisions API request. Images are optional and can be combined with 
   probabilities for distillation).
 - `images`: optional list of image paths, URLs or data URIs.
 
+### H2O
+
+H2O uses its own request format: `questions` is a **list**, one question is read per forward, and the
+readout dots the last hidden state of the `Answer:` prefill (the next position to be generated) with the
+fixed 255-row label matrix.
+
+```json lines
+{"state": "I was charged twice for the same order.", "questions": [{"type": "choice", "instructions": "Which team should handle this?", "criteria": {"billing": "Charges and refunds", "support": "Technical problems"}}, {"type": "noul", "instructions": "Does the customer ask for a refund?"}], "answers": {"0": "billing", "1": false}}
+{"state": {"order": 48213, "status": "delivered"}, "questions": [{"type": "score", "instructions": "How late is the parcel?", "criteria": ["on time", "a day late", "later"]}], "gold": 1}
+```
+
+- `state`: string or any JSON value; a structured state is rendered into the prompt as compact JSON.
+- `questions`: a list; each item has `type` (`noul`/`choice`/`score`), optional `instructions`, and
+  `criteria` (`{option name: description}` for `choice`, kept in the given order; a list of level
+  descriptions for `score`; optional for `noul`).
+- The gold may sit inside the question (`gold`/`answer`/`label`/`target`) or at record level as
+  `answers`/`golds`/`targets` (indexed by **position** for list questions, by key for dict questions).
+  It may be an option name, an index, or a full distribution in option order.
+- Differences from THX-02: `questions` is a list rather than a dict; options are rendered as
+  `A) name: description`, where the letter is presentation only and the 255 readout rows follow the
+  `criteria` order; each record renders exactly one question.
+
 ## Training
 
 ms-swift ships a training script per integrated model at `examples/train/decision/<model_type>.sh` (using **local mini datasets** — no download needed), loading local data via `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision`; **remote datasets** (`--dataset open_jev_<model_type>:all`, requiring online download of the Open-Jev corpus) are also supported. The two methods differ only in data source; all other parameters are identical. See the [Datasets](#datasets) section for details. Each model's complete runnable command (including `--adapters` path resolution and head-artifact env exports) is in its script.
@@ -437,6 +462,74 @@ Key parameters:
   trained with) and at least 65536 px. `--max_pixels` is applied first, so it can lower the resolution down to
   that minimum but not raise it above the bound
 
+### H2O
+
+The H2O release ships the backbone, the published merged LoRA and the 255-row readout together. Training a
+new LoRA on top keeps the readout fixed (`label_rows` is stored as a buffer and is not trained); only the
+LoRA is updated.
+
+H2O's request format differs from THX-02 (`questions` is a list), so the dataset is registered through a
+small external plugin (the sample dataset and training script are not distributed with the repo):
+
+```python
+# h2o_dataset.py
+from swift.dataset import DatasetMeta, register_dataset
+from swift.dataset.preprocessor.decision import H2OPreprocessor
+
+register_dataset(
+    DatasetMeta(dataset_name='h2o_decision', dataset_path='data/h2o.jsonl',
+                preprocess_func=H2OPreprocessor()),
+    exist_ok=True)
+```
+
+```bash
+USE_HF=0 \
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --external_plugins h2o_dataset.py \
+    --model h2oai/h2o-lightning-4b \
+    --model_type h2o \
+    --task_type decision \
+    --loss_type scoring \
+    --dataset h2o_decision \
+    --tuner_type lora \
+    --target_modules q_proj k_proj v_proj o_proj in_proj_qkv in_proj_z in_proj_a in_proj_b out_proj gate_proj up_proj down_proj \
+    --lora_rank 64 \
+    --lora_alpha 128 \
+    --freeze_vit true \
+    --torch_dtype bfloat16 \
+    --attn_impl sdpa \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --learning_rate 1e-5 \
+    --gradient_accumulation_steps 8 \
+    --gradient_checkpointing true \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --max_length 4096 \
+    --split_dataset_ratio 0 \
+    --output_dir output \
+    --dataloader_num_workers 1
+```
+
+Key parameters:
+
+- `--model_type h2o` — loads the hybrid backbone from the checkpoint's own `config.json` (`qwen3_5`) and
+  attaches `label_rows.safetensors` as `scoring_head`; the head has no parameters, so only the LoRA trains
+- `--loss_type scoring` — masked soft cross-entropy over the 255 answer codes
+- The released weights **already contain** H2O's LoRA: never pass the adapter inside the model directory as
+  `--adapters`, or it is applied twice
+- Packing / `--padding_free` is not supported (one question per sequence); records are never truncated and
+  raise `MaxLengthError` beyond `--max_length`
+- The attention mode follows the checkpoint's `serve_config.json` (`two_way.default = bidirectional`), i.e.
+  **bidirectional by default**, while the gated-deltanet layers stay causal; `H2O_TWO_WAY=1/0` overrides it
+  explicitly (`1` two-way, `0` one-way)
+- Two-way needs `transformers>=5.13.0`; older versions can only run `H2O_TWO_WAY=0`. The per-kind temperatures
+  come from `two_way.temperature` and the top-level `temperature` respectively -- never mix them
+- The output dir contains the adapter, `scoring_head.safetensors` (255-row readout) and `scoring_head.json`
+  (`head_temperature` + per-kind `temperatures`)
+
 ### StartLux
 
 StartLux-Decision v1.1 AutoThink ships a merged backbone, so a fresh LoRA is trained on top and the letter
@@ -487,6 +580,19 @@ Key parameters:
 - Packing / `--padding_free` is not supported (records would attend to each other)
 - The **Instant** (prompt-bidirectional) StartLux folders are rejected by the loader — they need a
   different attention mode this integration does not implement; point `--model` at an AutoThink checkpoint
+
+After training, merge the adapter for the official decision server:
+
+```bash
+swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
+```
+
+For StartLux, the merged backbone weights exclude `scoring_head.*`, which vLLM cannot load. The export writes the
+trained read-out to `decision_config.json`: `letter_bias` contains 26 offsets in A–Z order, and
+`temperature_by_type` includes both global and per-kind calibration. The source folder's prompt and AutoThink
+settings are preserved. **Keep the exported config; copying the original config over it discards the trained
+read-out.** Use a `startlux-decide` version that supports `letter_bias`; older versions ignore these offsets.
+The bias is added to each letter's log-probability before dividing by the question type's temperature.
 
 ### Train Any CausalLM from Scratch
 
@@ -723,10 +829,42 @@ The computation takes the argmax of `target_probs` as the gold answer and the `i
 
 Decision models carry a **pluggable scoring head** (`ScoringHead`) that is trained jointly with the backbone (or LoRA adapter). The head is stored **separately** from the backbone weights to avoid the "config says generative model but weights contain a classifier" mismatch:
 
-- **Save**: `ScoringTrainer._save` first saves the adapter (or full model) via the standard path, then writes the head artifacts beside it. For adapter (LoRA) training, it writes both `scoring_head.safetensors` (head parameters) and `scoring_head.json` (head type + calibration metadata). For full-finetune training, it writes only `scoring_head.json` — the head parameters are already inside the model's safetensors shards (ignored by `from_pretrained` because `scoring_head` was not yet attached).
-- **Load**: `maybe_load_trained_scoring_head(model, adapter_dir)` is called automatically after `Swift.from_pretrained` on all three loading paths (`--adapters` continue-training, `--resume_from_checkpoint`, and inference). It handles two scenarios: when `scoring_head.safetensors` exists (adapter checkpoint), it loads weights from it; when only `scoring_head.json` exists (full-finetune checkpoint), it extracts head weights from the model's safetensors shards. It is a **guarded no-op** for non-decision models.
+- **Save**: `ScoringTrainer._save` first saves the adapter (or full model) via the standard path, then writes the head artifacts beside it. For adapter (LoRA) training, it writes both `scoring_head.safetensors` (head parameters) and `scoring_head.json` (head type + calibration metadata). For full-finetune training, it writes only `scoring_head.json` — the head parameters are already inside the model weights (ignored by `from_pretrained` because `scoring_head` was not yet attached).
+- **Load**: `maybe_load_trained_scoring_head(model, adapter_dir)` is called automatically after `Swift.from_pretrained` on all three loading paths (`--adapters` continue-training, `--resume_from_checkpoint`, and inference). It handles two scenarios: when `scoring_head.safetensors` exists (adapter checkpoint), it loads weights from it; when only `scoring_head.json` exists (full-finetune checkpoint), it extracts head weights from the model checkpoint. Both single-file and sharded safetensors and PyTorch `.bin` formats are supported, with safetensors taking precedence. It is a **guarded no-op** for non-decision models.
 
-This means a trained decision checkpoint can be deployed immediately — `swift infer` or `--adapters <checkpoint>` will automatically reload the trained head.
+- **Merged LoRA export**: `swift export --merge_lora true` keeps `scoring_head.*` out of the
+  backbone weight files (including shard indexes) for all seven heads: JEV, StartLux, Clef,
+  THX-02, OmniJev, Kev and Laya. It saves the trained head in `scoring_head/scoring_head.safetensors` and
+  its constructor/calibration metadata in `scoring_head.json`. Retain both files and load the
+  export through Swift with `--model <merged-directory>` and the corresponding `--model_type`;
+  no adapter is needed. A backbone-only inference engine does not execute these heads automatically.
+  The head weights live in a subdirectory so engines that scan top-level weight files do not load them.
+  Native decision servers still need their model-specific head format and inference support.
+  StartLux additionally exports its trained letter biases and effective temperatures to
+  `decision_config.json`; see the StartLux inference-version requirement above.
+
+For full-finetuned checkpoints, pass the checkpoint directory as `--model` with the corresponding
+`--model_type` (`jev`, `startlux`, `clef`, `omnijev`, `kev`, `thx02`, or `laya`). When factory head
+artifacts are absent, the shared loader rebuilds the head from `scoring_head.json`, then restores
+its trained weights and calibration. The metadata includes a `head_type` tag and constructor
+arguments, including non-default head dimensions. A mismatched type is rejected. Factory artifacts
+and environment-variable overrides retain precedence; incomplete or malformed factory artifacts
+still raise an error.
+
+New OmniJev full checkpoints also record the option-token IDs in `config.json` and retain their
+trained embeddings, so reloading does not reinitialize them from `new_tok_emb.pt`. New THX-02 full
+checkpoints retain the effective answer codes, attention mode, temperature and image bounds in
+`config.json`. Older metadata without a type tag remains supported, but checkpoints missing
+structural metadata or these processor/tokenizer settings still need the original artifacts.
+Older full checkpoints that stored the output embeddings under a
+`scoring_head._output_embeddings.*` alias require weight migration and are explicitly rejected;
+the loader does not silently replace those trained weights with a random output head.
+LoRA checkpoints are loaded with their base model and `--adapters <checkpoint>`.
+
+To add a decision head, define its `head_type`, factory artifact locations and `_from_factory`
+loader. Its `extra_state_for_save()` must return JSON-serializable arguments accepted by
+`cls(**meta)`; the base class supplies metadata saving and checkpoint construction. Model-specific
+processor or tokenizer state must also survive the normal checkpoint save/load path.
 
 ## OmniJev: `MSO_BRANCH_CKPT` and Gradient Checkpointing
 
@@ -770,6 +908,7 @@ When head artifacts are not in the same directory as the base model (adapter-onl
 | `LAYA_CHECKPOINT` | `laya` | checkpoint dir | Points at one of the bundled checkpoints (root / `typed-decisions` / `multilingual`) |
 | `LAYA_CONFIG` | `laya` | `rl_agent_config.json` | Override the head architecture + temperature calibration config path |
 | `STARTLUX_DECISION_CONFIG` | `startlux` | `decision_config.json` | Override the letter token ids + per-kind read-out temperature config path |
+| `H2O_LABEL_ROWS` | `h2o` | `label_rows.safetensors` | Override the 255-row readout weights load path |
 
 When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirectory for `jev`) automatically. On file-missing errors, the message instructs the user to set the corresponding env var.
 
@@ -785,6 +924,10 @@ When unset, the loader searches `model_dir` (and the `adapter_vllm/` subdirector
   only lowers image resolution within [65536 px, `max_pixels` in `decision_config.json`].
 - **`laya` requires `--tuner_type full`**: the bidirectional encoder has no generation head, so the default LoRA/PeftModel causal-LM wrap does not apply.
 - **`startlux` one-pass read-out only**: the AutoThink gate/thought loop is out of scope (use the official `startlux-decide` package for it); choice lists are capped at 26 options in one pass (the official server's knockout rounds are not implemented); Instant (prompt-bidirectional) folders are rejected; records are never truncated (over-long records raise `MaxLengthError`).
+- **`h2o` one question per sequence**: each forward reads a single question, so `--packing` / `--padding_free` are rejected; records are never truncated (over-long records raise `MaxLengthError`).
+- **`h2o` fixed readout**: `label_rows` is stored as a buffer and is not trained; `serve_config.json` (255 labels + per-kind temperatures) must ship with the checkpoint.
+- **`h2o` bidirectional attention**: follows `two_way.default` in `serve_config.json` (bidirectional) by default and can fall back with `H2O_TWO_WAY=0`; two-way requires `transformers>=5.13.0`, and on Ascend NPU the full-attention mask is materialised as `[B,1,S,S]`.
+- **`h2o` image input is not supported yet**: the template already passes images through, but the preprocessor does not lift them from the record, so only textual `state` works for now; planned as a follow-up.
 - **`tie_word_embeddings=True` adapter merge**: Only affects "merge adapter / convert format"; training and inference are unaffected.
 
 ## Verification Report

@@ -346,6 +346,11 @@ class SwiftMixin:
         safe_serialization = self.args.safe_serialization
         use_flash_ckpt = self.args.use_flash_ckpt
 
+        if self.args.tuner_type == 'full' and getattr(getattr(self.model, 'model_meta', None), 'model_type',
+                                                      None) == 'qwen4_exp':
+            from swift.model.models.qwen import _restore_qwen4_exp_ple_state_dict
+            state_dict = _restore_qwen4_exp_ple_state_dict(self.model, state_dict)
+
         if not isinstance(self.model, supported_classes) and self.model.__class__.__name__ not in supported_names:
             if state_dict is None:
                 state_dict = self.model.state_dict()

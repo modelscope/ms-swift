@@ -6,9 +6,10 @@
 # gemma-4-E2B-it is the smallest (effective-2B MoE) and the one used here. The family needs a shared
 # vision/audio keep-alive on text-only micro-batches (the loader's _Gemma4KeepAlive), handled for you.
 # --freeze_vit/--freeze_aligner keep the vision + audio towers and projectors frozen while LoRA tunes the
-# language model. --attn_impl flash_attention_2 is pinned: the default SDPA path resolves to a cuDNN
-# attention kernel whose bf16 BACKWARD returns NaN on longer rows; FA2 avoids it (verified on the sibling
-# multimodal qwen3_5 recipe) and is passed straight through to HF as `flash_attention_2` (not `flash_attn`).
+# language model. --attn_impl sdpa: gemma-4's full_attention layers use global_head_dim=512, which the
+# FlashAttention-2 kernel cannot run (hard limit head_dim<=256 -> "FlashAttention forward only supports
+# head dimension at most 256"); FA2 is therefore NOT usable for this family (measured 2026-11-27 on
+# gemma-4-E2B-it, transformers 5.16.1). SDPA handles head_dim 512 via its math/cuDNN backends.
 #
 # REFERENCE-ONLY: not smoke-run here. google/gemma-4-* is a GATED checkpoint (accept the license on
 # ModelScope/HF first) and is not cached on this box; the family also `requires` transformers>=5.10.1 for
@@ -21,7 +22,7 @@ swift sft \
     --model google/gemma-4-E2B-it \
     --task_type causal_lm \
     --torch_dtype bfloat16 \
-    --attn_impl flash_attention_2 \
+    --attn_impl sdpa \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
     --tuner lora \
     --lora_rank 8 \

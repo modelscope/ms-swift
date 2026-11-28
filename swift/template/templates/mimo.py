@@ -59,6 +59,9 @@ class MiMoV2Template(Template):
     placeholder_tokens = ['<|image_pad|>', '<|video_pad|>', '<|audio_pad|>']
     norm_bbox = 'none'
     use_model = True
+    # Plain chatml with per-media token expansion (no mrope), so packed sequences keep correct
+    # per-segment position ids.
+    support_padding_free = True
 
     def init_env_args(self) -> None:
         super().init_env_args()

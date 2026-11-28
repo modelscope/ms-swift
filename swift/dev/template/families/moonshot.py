@@ -122,6 +122,73 @@ class KimiK25Template(Template):
             system = f"system<|im_middle|>{system}"
         return system
 
+    def _encode_sample(self, inputs, return_length: bool = False):
+        # The official jinja echoes the caller's OpenAI ``tool_calls[].id``; the shared
+        # ``normalize_messages`` contract drops it (its output is contract-tested), so capture
+        # the ids from the RAW row here, before ``TemplateInputs.from_dict`` normalizes, and
+        # keep them in a family-local side channel for ``_preprocess_tool_call`` below.
+        self._kimi_raw_call_ids = None
+        if isinstance(inputs, dict):
+            ids = []
+            for message in inputs.get("messages") or []:
+                if message.get("role") == "tool_call":
+                    ids.append(message.get("tool_call_id"))
+                elif message.get("role") == "assistant":
+                    ids.extend(call.get("id") for call in message.get("tool_calls") or [])
+            self._kimi_raw_call_ids = ids
+        try:
+            return super()._encode_sample(inputs, return_length=return_length)
+        finally:
+            self._kimi_raw_call_ids = None
+
+    def _preprocess_tool_call(self, inputs: StdTemplateInputs) -> None:
+        # Re-attach the captured caller ids to the normalized tool_call messages (in order:
+        # normalize_messages emits one tool_call message per raw call, preserving order). The
+        # base merge keeps only loss/loss_scale/_swift_turn_index, so the id never leaks past
+        # the agent's ``_format_tool_calls``, which reads it to echo ``<|tool_call_begin|>{id}``.
+        ids = getattr(self, "_kimi_raw_call_ids", None)
+        if ids:
+            id_iter = iter(ids)
+            for message in inputs.messages:
+                if message["role"] == "tool_call":
+                    call_id = next(id_iter, None)
+                    if call_id and not message.get("tool_call_id"):
+                        message["tool_call_id"] = call_id
+        super()._preprocess_tool_call(inputs)
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        # The official jinja renders the empty think block on EVERY assistant turn (history and
+        # final alike), ahead of the content and any tool-calls section. Mark the turns here so
+        # the rendered response always equals the message content (required by loss_scale); a
+        # turn whose reasoning was folded into the open-marker form already carries it.
+        for message in inputs.messages:
+            if message["role"] == "assistant" and isinstance(message["content"], str):
+                content = message["content"]
+                if not content.startswith(self.template_meta.thinking_prefix):
+                    message["content"] = self.template_meta.history_thinking_prefix + content
+
+    def _remove_thinking_content(self, content: str, thinking_suffix="\n") -> str:
+        # The wire form uses the literal think tags (special tokens), not plain newlines:
+        # strip everything up to the close tag, then re-apply the history empty block.
+        content = content.split("</think>")[-1].strip()
+        return self.template_meta.history_thinking_prefix + content
+
+    def _get_response_prefix(self, inputs=None):
+        response_prefix = None if inputs is None else inputs.chat_template_kwargs.get("response_prefix")
+        if response_prefix is None:
+            response_prefix = self.response_prefix
+        if response_prefix is not None:
+            return response_prefix
+        if not self.use_chat_template:
+            return ""
+        # Unlike the Qwen3-style mixed jinjas, the K2.5 jinja prefills the think opener by
+        # default (``thinking`` undefined) and writes the empty block only when thinking is
+        # explicitly disabled.
+        if self._explicit_non_thinking(inputs):
+            return self.template_meta.non_thinking_prefix
+        return self.template_meta.thinking_prefix
+
     def replace_tag(
         self, media_type: Literal["image", "video", "audio"], index: int, inputs: StdTemplateInputs
     ) -> List[Context]:

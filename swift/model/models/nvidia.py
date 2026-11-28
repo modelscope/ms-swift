@@ -20,6 +20,7 @@ def _nemotron_omni_forward(self,
                            position_ids=None,
                            image_flags=None,
                            past_key_values=None,
+                           cache=None,
                            labels=None,
                            sound_clips=None,
                            use_cache=None,
@@ -28,6 +29,9 @@ def _nemotron_omni_forward(self,
                            return_dict=None,
                            **kwargs):
     # Keep the official named arguments visible to HF Trainer's remove_unused_columns.
+    # transformers>=5.24 renames `past_key_values` to `cache`.
+    if past_key_values is None:
+        past_key_values = cache
     kwargs.update(
         attention_mask=attention_mask,
         position_ids=position_ids,

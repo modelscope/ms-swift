@@ -19,6 +19,12 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+#: Grace period (seconds) between SIGTERM and a forced SIGKILL when stopping a deploy subprocess.
+#: Must cover the launcher's full graceful teardown (controller/engine release + blocking
+#: ``serve.delete`` of every owned app + ``serve.shutdown`` of the HTTP listener); see the
+#: ``run_deploy_process`` finally block. A reverse control can restore the pre-fix value (10s).
+_DEPLOY_TEARDOWN_GRACE_S = 120.0
+
 
 def run_deploy(
     model_config: ModelConfig,
@@ -578,8 +584,20 @@ def run_deploy_process(*args, port: int = 8000, timeout: float = 300.0, **kwargs
             yield f"{scheme}://127.0.0.1:{port}{deploy_config.route_prefix}"
         finally:
             process.terminate()
-            process.join(timeout=10)
+            # The twinkle launcher's graceful teardown is sequential and takes well over ten
+            # seconds: it stops the sampler/training controllers (releasing vLLM/SGLang engines and
+            # placement groups), re-deploys the gateway to unpublish discovery, then ``serve.delete``
+            # each owned app -- which BLOCKS until every replica stops (~2s per replica) -- and only
+            # then calls ``serve.shutdown()`` to release the cluster HTTP listener. A short grace
+            # SIGKILLs the child mid-teardown, before ``serve.shutdown()`` runs, orphaning the Serve
+            # controller + proxy: the listener stays bound (a later deploy attaches to the zombie and
+            # its requested port never opens) and detached sampler controllers leak. Wait long enough
+            # for the graceful path to finish; SIGKILL is only a last resort for a truly stuck child.
+            process.join(timeout=_DEPLOY_TEARDOWN_GRACE_S)
             if process.is_alive():
+                logger.warning(
+                    f"deploy subprocess did not exit within {_DEPLOY_TEARDOWN_GRACE_S}s of SIGTERM; "
+                    "forcing SIGKILL (Serve listener / detached controllers may leak).")
                 process.kill()
 
     return _manager()

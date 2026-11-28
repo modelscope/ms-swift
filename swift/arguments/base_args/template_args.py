@@ -102,6 +102,7 @@ class TemplateArguments:
             If enable_thinking is False, a non-thinking prefix is added, for example the Qwen3-8B hybrid thinking
             model adds the prefix `'<think>\n\n</think>\n\n'`, while Qwen3-8B-Thinking does not add a prefix.
             If enable_thinking is True, a thinking prefix is added, for example `'<think>\n'`.
+            For thinking-only models (e.g. QwQ, DeepSeek-R1) `False` is ignored with a warning.
             Note: The priority of this parameter is lower than the response_prefix parameter.
         preserve_thinking (Optional[bool]): Whether to preserve historical thinking content during inference and
             training. When set to `True`, thinking content from all rounds is retained. When set to `False`,

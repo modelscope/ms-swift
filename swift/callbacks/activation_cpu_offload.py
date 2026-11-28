@@ -3,6 +3,7 @@ import functools
 import torch
 from torch.distributed.fsdp import FSDPModule as FSDP2
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.tensor import DTensor
 from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_torch_musa_available, is_torch_npu_available
@@ -48,12 +49,15 @@ class FSDPParameterFilter:
         self.model_parameters_storage = set()
 
     def __call__(self, tensor):
+        if isinstance(tensor, DTensor):
+            tensor = tensor.to_local()
         return tensor.untyped_storage().data_ptr() not in self.model_parameters_storage
 
     def update_model_parameters(self, model):
         new_storage = set()
         for p in model.parameters():
-            new_storage.add(p.data.untyped_storage().data_ptr())
+            tensor = p.to_local() if isinstance(p, DTensor) else p
+            new_storage.add(tensor.untyped_storage().data_ptr())
         self.model_parameters_storage = new_storage
 
 
@@ -605,7 +609,7 @@ class ActivationCpuOffloadCallBack(TrainerCallback):
                 # Check if fsdp_config is a dictionary and has activation_cpu_offload enabled
                 if isinstance(fsdp_config, dict) and fsdp_config.get('activation_cpu_offload', False):
                     # Get FSDP version from fsdp_config
-                    strategy = fsdp_config.get('version', None)
+                    strategy = fsdp_config.get('version', fsdp_config.get('fsdp_version', None))
                     if strategy is not None:
                         fsdp_version = 'fsdp' if strategy == 1 else 'fsdp2'
                         # Get activation checkpointing setting from fsdp_config

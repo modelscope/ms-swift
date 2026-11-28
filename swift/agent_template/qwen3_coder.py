@@ -31,6 +31,8 @@ TOOL_DESC_SUFFIX = (
 
 
 class Qwen3CoderAgentTemplate(HermesAgentTemplate):
+    # Separator inserted between consecutive <tool_call> blocks.
+    tool_call_separator = '\n'
 
     @staticmethod
     def _find_function_call(single_content: str) -> Optional[Function]:
@@ -152,7 +154,7 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
             result_parts.append('</function>\n</tool_call>')
             # ref: https://github.com/QwenLM/Qwen3-Coder/blob/0ae30f55e9d6c47ff763c334f99c135ad68915dd/qwencoder-eval/tool_calling_eval/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/qwen_fc.py#L21  # noqa
             if idx != len(tool_call_messages) - 1:
-                result_parts.append('\n')
+                result_parts.append(self.tool_call_separator)
         return ''.join(result_parts)
 
     def _get_tool_responses(self, tool_messages):

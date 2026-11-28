@@ -77,6 +77,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🔥 2026.11.18: Support training for [Hy4-flash](https://modelscope.cn/models/Tencent-Hunyuan/Hy4-flash) through the official ms-swift plugin released by the Tencent Hunyuan team. Thanks to the Hunyuan team for the Day-0 support. Refer to the [SFT examples](examples/models/hy4_flash).
 - 🔥 2026.10.29: Day-0 Support for [NVIDIA-Nemotron-3.5-Transcribe](nv-community/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B), Refer to the [SFT examples](examples/models/nemotron_transcribe).
 - 🔥 2026.10.22: Support [EntroPack](https://github.com/modelscope/entropack) flexible bitrate model quantization, enabling fine-grained control of the model's bitrate based on the VRAM budget, with support for Transformers inference and LoRA training. See the [best practices](docs/v4/source_en/BestPractices/Flexble-Quantization-With-Entropack.md) and the [QLoRA example](examples/train/qlora/entropack.sh).
 - 🔥 2026.10.19: Support for [EmbeddingGemma-2](https://www.modelscope.cn/models/google/embeddinggemma-2) (740M, multimodal embedding model, unifying text/image/video/audio in a single 768d vector space). Inference and training verified with infonce loss fine-tuning.

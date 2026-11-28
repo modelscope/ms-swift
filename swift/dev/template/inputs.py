@@ -155,29 +155,45 @@ class StdTemplateInputs:
         for message in messages:
             content = message["content"]
             if isinstance(content, str):
-                continue
+                # Native twinkle shape: the placeholder is already in the text and the media rides
+                # per-message keys (images/videos/audios). Lift them so the renderer sees the media
+                # and keeps the placeholder; otherwise the tag is stripped and the image is dropped
+                # (the engine then holds 0 placeholders for N images).
+                for key in ("images", "audios", "videos"):
+                    value = message.get(key)
+                    if value:
+                        res[key].extend(value if isinstance(value, (list, tuple)) else [value])
             elif (isinstance(content, list) and content and isinstance(content[0], int)) or (
                 isinstance(content, dict) and "token_ids" in content
             ):
                 continue
-            # str / token ids pass through above; a multimodal item list is rewritten to text here
-            new_content = ""
-            for item in content:
-                key: str = item["type"]
-                value = item.get(key)
-                if key == "text":
-                    new_content += value
-                    continue
-                # media item (also the *_url form): placeholder stays in text, the ref is lifted
-                if key.endswith("_url"):
-                    key = key[: -len("_url")]
-                new_content += f"<{key}>"
-                if isinstance(value, dict):
-                    value = value["url"]
-                if value:
-                    res[f"{key}s"].append(value)
-            message["content"] = new_content
+            else:
+                # a multimodal item list is rewritten to text here, the refs lifted into res
+                message["content"] = StdTemplateInputs._lift_content_media(content, res)
         return res
+
+    @staticmethod
+    def _lift_content_media(content: list, res: Dict[str, Any]) -> str:
+        new_content = ""
+        for item in content:
+            key: str = item["type"]
+            value = item.get(key)
+            if key == "text":
+                new_content += value
+                continue
+            # media item (also the *_url form): placeholder stays in text, the ref is lifted
+            if key.endswith("_url"):
+                key = key[: -len("_url")]
+            new_content += f"<{key}>"
+            # twinkle's standard block carries the ref under 'url'/'path' rather than the type
+            # key ({"type":"image","url":...}); fall back so the media is lifted, not dropped.
+            if value is None:
+                value = item.get("url") or item.get("path")
+            if isinstance(value, dict):
+                value = value["url"]
+            if value:
+                res[f"{key}s"].append(value)
+        return new_content
 
 
 # TODO: this pair is kept legacy-identical on purpose. Once legacy retires, rename to show the split at a

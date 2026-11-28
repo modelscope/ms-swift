@@ -1063,11 +1063,19 @@ class SwiftRolloutDeploy(SwiftPipeline):
             use_gym_env = True
         engine_type = 'AsyncLLMEngine' if self.use_async_engine else 'LLMEngine'
         enable_lora = self.args.vllm_enable_lora
+        # The engine template lives in the worker process; the main process only has self.args.
+        # args.get_template() builds the worker template from these same values, with delete
+        # normalized to raise (mirroring get_template_kwargs).
+        truncation_strategy = self.args.truncation_strategy
+        if truncation_strategy == 'delete':
+            truncation_strategy = 'raise'
         return {
             'engine_type': engine_type,
             'enable_multi_turn': enable_multi_turn,
             'use_gym_env': use_gym_env,
             'enable_lora': enable_lora,
+            'max_length': self.args.max_length,
+            'truncation_strategy': truncation_strategy,
         }
 
     async def close_communicator(self):

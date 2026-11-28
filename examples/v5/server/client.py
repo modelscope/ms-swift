@@ -41,13 +41,25 @@ adapter_names = [n for n in os.environ.get('TWINKLE_ADAPTER_NAMES', 'assistant,c
 max_steps = int(os.environ.get('TWINKLE_MAX_STEPS', '6'))
 data_slice = int(os.environ.get('TWINKLE_DATA_SLICE', '200'))
 
+# Per-adapter self-cognition personas: each named LoRA is taught a DIFFERENT identity, so
+# sampling adapter A vs adapter B yields distinguishable identities (the un-adapted base
+# model answers with its own pretrained identity as a third, independent control). Training
+# every adapter on one shared recipe would make their identities indistinguishable by name.
+ADAPTER_PERSONAS = {
+    'assistant': {'model_name': 'twinkle助手', 'model_author': 'ModelScope社区'},
+    'coder': {'model_name': 'twinkle代码助手', 'model_author': 'ModelScope社区'},
+}
 
-def build_dataloader():
+
+def build_dataloader(adapter_name):
     # Self-cognition dataset: teaches the model its own name/author. Encoded server-side by
-    # the processor app; the client only ships the recipe.
+    # the processor app; the client only ships the recipe. One dataloader per adapter, each
+    # with that adapter's persona, so every adapter trains its own identity from row 0.
+    persona = ADAPTER_PERSONAS.get(
+        adapter_name, {'model_name': f'twinkle模型（{adapter_name}）', 'model_author': 'ModelScope社区'})
     dataset = Dataset(dataset_meta=DatasetMeta('ms://swift/self-cognition', data_slice=range(data_slice)))
     dataset.set_template(template_cls, model_id=f'ms://{base_model}', max_length=512)
-    dataset.map('SelfCognitionProcessor', init_args={'model_name': 'twinkle模型', 'model_author': 'ModelScope社区'})
+    dataset.map('SelfCognitionProcessor', init_args=persona)
     dataset.encode(batched=True)
     return DataLoader(dataset=dataset, batch_size=4)
 
@@ -102,15 +114,24 @@ def sample(adapter_uri=None, tokenizer=None):
     sampler = vLLMSampler(model_id=base_model)
     sampler.set_template(template_cls, model_id=base_model)
 
-    trajectory = {
-        'messages': [
-            {'role': 'system', 'content': 'You are a helpful assistant.'},
-            {'role': 'user', 'content': '你是谁？'},
-        ]
-    }
+    # Identity probes: 「你是谁？」 elicits the trained author, but at small step counts the
+    # persona NAME may only surface on a name-eliciting question (the self-cognition recipe's
+    # {{NAME}} rows include 「你叫什么名字呀！」-style queries). Probe BOTH so each adapter's
+    # own persona name is observable; the un-adapted base must still answer with its own
+    # pretrained identity on the SAME prompts (third-identity control).
+    trajectories = [
+        {
+            'messages': [
+                {'role': 'system', 'content': 'You are a helpful assistant.'},
+                {'role': 'user', 'content': prompt},
+            ]
+        } for prompt in ('你是谁？', '你叫什么名字？')
+    ]
+    # max_tokens must clear Qwen3.5's thinking preamble: a 64-token window stops mid-thought,
+    # before the identity statement is ever emitted. 512 tokens reaches the answer (measured).
     responses = sampler.sample(
-        inputs=[trajectory],
-        sampling_params={'max_tokens': 64, 'temperature': 0.0},
+        inputs=trajectories,
+        sampling_params={'max_tokens': 512, 'temperature': 0.0},
         adapter_uri=adapter_uri,
     )
 
@@ -130,7 +151,6 @@ def main():
     for item in client.get_server_capabilities().supported_models:
         logger.info('- ' + item.model_name)
 
-    dataloader = build_dataloader()
     model = MultiLoraTransformersModel(model_id=f'ms://{base_model}')
 
     # Decode sampler token ids with the base tokenizer. Resolve the checkpoint through
@@ -138,9 +158,12 @@ def main():
     from swift.dev.utils.hub import safe_snapshot_download
     tokenizer = AutoTokenizer.from_pretrained(safe_snapshot_download(base_model), trust_remote_code=True)
 
-    # Train each named adapter against the one resident base model (multi-LoRA).
+    # Train each named adapter against the one resident base model (multi-LoRA). Each gets
+    # its own dataloader carrying its own persona (a shared dataloader would both share the
+    # identity and hand later adapters a mid-dataset slice).
     saved = {}
     for adapter_name in adapter_names:
+        dataloader = build_dataloader(adapter_name)
         twinkle_path, losses = train_adapter(model, dataloader, adapter_name)
         saved[adapter_name] = twinkle_path
         if losses:

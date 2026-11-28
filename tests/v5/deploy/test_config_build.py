@@ -119,8 +119,11 @@ def test_build_server_config_gateway_and_sampler():
     assert sampler.args.model_id == MODEL
     assert sampler.args.api_key == "EMPTY"
     assert sampler.args.data_plane_url is None
-    # the template is pinned at construction, resolved by name from the model id
-    assert sampler.args.template["template_cls"] == "Qwen3_5Template"
+    # the template is pinned at construction. f2871af62 changed the pin from twinkle's family-map
+    # class name to SwiftTemplate + a serialized dev TemplateSpec (the same shape the remote client
+    # paths post); the spec must still carry the configured template family.
+    assert sampler.args.template["template_cls"] == "SwiftTemplate"
+    assert sampler.args.template["template_spec"]["template_type"] == "qwen3_5"
 
 
 def test_sampler_app_names_distinguish_slash_and_underscore():
