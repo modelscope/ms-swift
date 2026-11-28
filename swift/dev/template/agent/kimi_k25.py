@@ -23,7 +23,8 @@ class KimiK25AgentTemplate(BaseAgentTemplate):
       <|im_system|>tool<|im_middle|>## Return of {tool_call_id}
       {content}<|im_end|>
 
-    The tool call id has the form `functions.{function_name}:{idx}`; the function name is parsed from it.
+    The tool call id is the caller's ``tool_call_id`` when present (the official jinja echoes it);
+    id-less calls fall back to ``functions.{function_name}:{idx}``, which ``get_toolcall`` parses.
     """
 
     tool_call_start = "<|tool_calls_section_begin|>"
@@ -109,11 +110,23 @@ class KimiK25AgentTemplate(BaseAgentTemplate):
         tool_calls = []
         for i, message in enumerate(tool_call_messages):
             tool_call = self._parse_tool_call(message["content"])
-            tool_call_id = f"functions.{tool_call['name']}:{i}"
+            # The official jinja echoes the caller's tool_call id verbatim; the fabricated
+            # functions.{name}:{idx} form is only the fallback for id-less calls. The id is
+            # re-attached by the family's _preprocess_tool_call (raw-row side channel) or rides
+            # inside the payload (dataset-loader form).
+            payload = self._parse_json(message["content"]) or {}
+            tool_call_id = message.get("tool_call_id") or payload.get("id") or f"functions.{tool_call['name']}:{i}"
             arguments = json.dumps(tool_call["arguments"], ensure_ascii=False)
             tool_calls.append(
                 f"<|tool_call_begin|>{tool_call_id}<|tool_call_argument_begin|>{arguments}<|tool_call_end|>")
         return f"<|tool_calls_section_begin|>{''.join(tool_calls)}<|tool_calls_section_end|>"
+
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        # The official jinja renders the empty think block on every assistant turn, including a
+        # tool-call turn with no preceding assistant text (whose turn opener carries no block).
+        if pre_message is None or pre_message["role"] != "assistant":
+            tool_content = "<think></think>" + tool_content
+        return tool_content
 
     def _format_tool_responses(
         self,
@@ -123,7 +136,9 @@ class KimiK25AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
-        res = ["<|im_end|>"]
+        # The turn's closing <|im_end|> is the family's chat_sep and the next assistant opener is
+        # the response_opener: the block itself carries neither, or both would render twice.
+        res = []
         contents = assistant_content if isinstance(assistant_content, list) else [assistant_content]
         # Tool responses follow the order of the tool calls in the preceding assistant turn.
         tool_call_ids = re.findall(self.tool_call_id_pattern, "".join(c for c in contents if isinstance(c, str)))
@@ -134,5 +149,4 @@ class KimiK25AgentTemplate(BaseAgentTemplate):
                 tool_call_id = tool_message.get("tool_call_id", "")
             tool_content = tool_message["content"]
             res.append(f"<|im_system|>tool<|im_middle|>## Return of {tool_call_id}\n{tool_content}<|im_end|>")
-        res.append("<|im_assistant|>assistant<|im_middle|>")
         return assistant_content, res

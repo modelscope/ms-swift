@@ -1284,11 +1284,29 @@ class Qwen3TTSLoader(ModelLoader):
         downloaded and attached to the processor as ``tts_tokenizer``.
       * ``get_input_embeddings`` / ``gradient_checkpointing_enable`` are delegated to ``talker``.
 
-    **Not verified: the ``qwen-tts`` package is not installed in this environment**, so neither the
-    Auto* registration nor the forward patch has been exercised on transformers 5.5. Legacy pinned
-    ``transformers<5``; that ceiling is dropped here on the same reasoning as ``qwen3_asr`` (the pin
-    guards the package, not the weights), but unlike ASR there is no import-level evidence yet. Expect
-    to need a compat shim similar to ``compat_check_model_inputs`` when the package is first installed.
+    **The ``transformers<5`` ceiling is dropped via the same narrow shim as ``qwen3_asr``.** Root cause:
+    ``qwen_tts/core/tokenizer_12hz/modeling_qwen3_tts_tokenizer_v2.py`` decorates with
+    ``@check_model_inputs()`` (the transformers 4.x factory spelling), but transformers 5.x turned
+    ``check_model_inputs`` into a bare decorator, so merely importing ``qwen_tts`` (whose ``__init__``
+    pulls in the tokenizer) raises ``TypeError: check_model_inputs() missing 1 required positional
+    argument: 'func'``. ``compat_check_model_inputs`` (mirrored from ``Qwen3ASRLoader``) makes the symbol
+    accept both spellings; it is applied before the ``qwen_tts`` imports in ``build_config`` /
+    ``build_processor`` so the package imports cleanly under transformers 5.x (verified on 5.16.1).
+
+    A second 4.x/5.x gap is bridged by ``compat_rope_init_functions``: transformers 5.x removed the
+    ``"default"`` entry from ``ROPE_INIT_FUNCTIONS`` (default RoPE is now computed inside the native
+    ``RotaryEmbedding``), but ``qwen_tts``'s vendored rotary classes (talker AND speech tokenizer)
+    still do ``ROPE_INIT_FUNCTIONS[self.rope_type]`` with ``rope_type="default"``, raising
+    ``KeyError: 'default'`` at model construction. The shim re-registers the 4.x default computation
+    when the entry is absent; it is a no-op on transformers 4.x.
+
+    Third gap, silent rather than raising: transformers 5.x materializes non-persistent buffers
+    with ``torch.empty_like`` during ``from_pretrained`` and relies on ``_init_weights`` to
+    recompute them, but ``qwen_tts``'s 4.x-era ``_init_weights`` overrides do not handle rotary
+    modules (and the tokenizer's rotary class is named ``...RotatoryEmbedding``, so even the base
+    class's ``RotaryEmbedding`` name-match misses it). ``inv_freq`` would stay uninitialized and
+    corrupt every attention. ``compat_rope_buffer_init`` wraps the vendored ``_init_weights`` to
+    recompute the 4.x rotary pattern's buffers after the package's own init.
     """
 
     model_type = "qwen3_tts"
@@ -1309,7 +1327,155 @@ class Qwen3TTSLoader(ModelLoader):
     def model_arch(self) -> ModelArch:
         return ModelArch(language_model=["talker"], generator=["speaker_encoder"])
 
+    @staticmethod
+    def compat_check_model_inputs():
+        """Let ``check_model_inputs`` accept the transformers 4.x ``@deco()`` spelling.
+
+        Mirrors ``Qwen3ASRLoader.compat_check_model_inputs``: transformers 4.57 exposed a decorator
+        *factory*; 5.x exposes a plain decorator. ``qwen_tts``'s tokenizer module is written for 4.57
+        and fails at import under 5.x. Wrapping the symbol so it dispatches on "was I handed the
+        function or not" keeps both spellings working. Idempotent. Applied before ``qwen_tts`` is
+        imported so its ``from transformers.utils.generic import check_model_inputs`` binds the wrapper.
+        """
+        import transformers.utils.generic as generic
+
+        origin = getattr(generic, "check_model_inputs", None)
+        if origin is None or getattr(origin, "_swift_compat", False):
+            return
+
+        def check_model_inputs(*args, **kwargs):
+            if len(args) == 1 and not kwargs and callable(args[0]):
+                return origin(args[0])  # bare @check_model_inputs
+            return lambda func: origin(func)  # @check_model_inputs(...)
+
+        check_model_inputs._swift_compat = True
+        generic.check_model_inputs = check_model_inputs
+
+    @staticmethod
+    def compat_rope_init_functions():
+        """Restore the ``"default"`` RoPE init entry that transformers 5.x removed.
+
+        transformers 4.x shipped ``ROPE_INIT_FUNCTIONS["default"]`` (plain inv_freq =
+        theta**-arange/dim, attention_scaling 1.0); 5.x dropped it because the native
+        ``RotaryEmbedding`` computes default RoPE inline. ``qwen_tts``'s vendored rotary classes
+        (talker and 12Hz speech tokenizer) were written against 4.x and index the mapping with
+        ``rope_type="default"``, so constructing either model raises ``KeyError: 'default'``.
+        Re-registering the 4.x computation when the key is absent keeps that code working; the
+        formula is identical to 4.x's ``_compute_default_rope_parameters`` (with a fallback to the
+        5.x ``rope_parameters`` migration for theta / partial_rotary_factor). Idempotent; a no-op
+        on transformers versions that still ship the entry. Mutating the shared dict also covers
+        modules that bound ``ROPE_INIT_FUNCTIONS`` at import time.
+        """
+        import torch
+        from transformers import modeling_rope_utils as rope_utils
+
+        init_functions = rope_utils.ROPE_INIT_FUNCTIONS
+        if "default" in init_functions:
+            return
+
+        def _compute_default_rope_parameters(config, device=None, seq_len=None, **rope_kwargs):
+            rope_parameters = getattr(config, "rope_parameters", None) or {}
+            base = getattr(config, "rope_theta", None)
+            if base is None:
+                base = rope_parameters.get("rope_theta", 10000.0)
+            partial_rotary_factor = getattr(config, "partial_rotary_factor", None)
+            if partial_rotary_factor is None:
+                partial_rotary_factor = rope_parameters.get("partial_rotary_factor", 1.0)
+            head_dim = getattr(config, "head_dim", None)
+            if head_dim is None:
+                head_dim = config.hidden_size // config.num_attention_heads
+            dim = int(head_dim * partial_rotary_factor)
+            inv_freq = 1.0 / (base**(torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim))
+            return inv_freq, 1.0
+
+        _compute_default_rope_parameters._swift_compat = True
+        init_functions["default"] = _compute_default_rope_parameters
+
+    @staticmethod
+    def compat_rope_buffer_init():
+        """Restore the vendored 4.x rotary buffers after transformers 5.x meta-device loading.
+
+        transformers 5.x initializes models on meta device, materializes non-persistent buffers
+        with ``torch.empty_like`` (they are absent from checkpoints), and expects
+        ``PreTrainedModel._init_weights`` to recompute them -- the base implementation carries a
+        ``RotaryEmbedding`` branch for exactly this. ``qwen_tts``'s ``_init_weights`` overrides
+        were written for 4.x (which kept the ``__init__``-computed buffers) and only handle
+        Linear/Embedding/norms; the tokenizer's rotary class is additionally named
+        ``Qwen3TTSTokenizerV2DecoderRotatoryEmbedding``, so the base name-match would miss it even
+        without the overrides. Result: ``inv_freq`` left uninitialized -- silent numeric
+        corruption, not an exception. Wrapping each vendored ``PreTrainedModel`` subclass's
+        ``_init_weights`` to recompute any module carrying the 4.x rotary pattern
+        (``rope_init_fn`` + ``inv_freq`` buffer) restores the ``__init__`` values exactly.
+        Idempotent; value-identical no-op on transformers 4.x.
+        """
+        import transformers
+
+        from qwen_tts.core.models import modeling_qwen3_tts
+        from qwen_tts.core.tokenizer_12hz import modeling_qwen3_tts_tokenizer_v2
+
+        for modeling_module in (modeling_qwen3_tts, modeling_qwen3_tts_tokenizer_v2):
+            for cls in vars(modeling_module).values():
+                if not (isinstance(cls, type) and issubclass(cls, transformers.PreTrainedModel)
+                        and cls.__module__ == modeling_module.__name__):
+                    continue
+                origin = cls._init_weights
+                if getattr(origin, "_swift_compat", False):
+                    continue
+
+                def _init_weights(self, module, _origin=origin):
+                    _origin(self, module)
+                    if hasattr(module, "rope_init_fn") and hasattr(module, "inv_freq"):
+                        inv_freq, attention_scaling = module.rope_init_fn(module.config, module.inv_freq.device)
+                        module.inv_freq.copy_(inv_freq)
+                        if hasattr(module, "original_inv_freq"):
+                            module.original_inv_freq.copy_(inv_freq)
+                        module.attention_scaling = attention_scaling
+
+                _init_weights._swift_compat = True
+                cls._init_weights = _init_weights
+
+    @staticmethod
+    def compat_config_special_tokens():
+        """Restore the transformers 4.x special-token attribute guarantee on vendored configs.
+
+        4.x's ``PretrainedConfig.__init__`` unconditionally set ``pad_token_id`` / ``bos_token_id``
+        / ``eos_token_id`` (default ``None``); 5.x only stores them when present in the config
+        dict and raises ``AttributeError`` on access otherwise. ``qwen_tts``'s talker and
+        code-predictor models read ``config.pad_token_id`` directly (the 4.x contract), and the
+        Base checkpoint's talker config omits the field, so model construction raises under 5.x.
+        Wrapping the vendored config classes' ``__init__`` re-establishes the three attributes
+        when absent. Idempotent; a no-op on 4.x where they already exist.
+        """
+        import transformers
+
+        from qwen_tts.core.models import configuration_qwen3_tts
+        from qwen_tts.core.tokenizer_12hz import configuration_qwen3_tts_tokenizer_v2
+
+        for config_module in (configuration_qwen3_tts, configuration_qwen3_tts_tokenizer_v2):
+            for cls in vars(config_module).values():
+                if not (isinstance(cls, type) and issubclass(cls, transformers.PretrainedConfig)
+                        and cls.__module__ == config_module.__name__):
+                    continue
+                origin = cls.__init__
+                if getattr(origin, "_swift_compat", False):
+                    continue
+
+                def __init__(self, *args, _origin=origin, **kwargs):
+                    _origin(self, *args, **kwargs)
+                    for attr in ("pad_token_id", "bos_token_id", "eos_token_id"):
+                        try:
+                            getattr(self, attr)
+                        except AttributeError:
+                            setattr(self, attr, None)
+
+                __init__._swift_compat = True
+                cls.__init__ = __init__
+
     def build_config(self, model_dir: str, **kwargs):
+        self.compat_check_model_inputs()
+        self.compat_rope_init_functions()
+        self.compat_rope_buffer_init()
+        self.compat_config_special_tokens()
         from qwen_tts.core.models import Qwen3TTSConfig, Qwen3TTSForConditionalGeneration, Qwen3TTSProcessor
         from transformers import AutoConfig, AutoModel, AutoProcessor
 
@@ -1319,6 +1485,10 @@ class Qwen3TTSLoader(ModelLoader):
         return super().build_config(model_dir, **kwargs)
 
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
+        self.compat_check_model_inputs()
+        self.compat_rope_init_functions()
+        self.compat_rope_buffer_init()
+        self.compat_config_special_tokens()
         from qwen_tts import Qwen3TTSTokenizer
 
         from swift.dev.utils import get_env_args, safe_snapshot_download

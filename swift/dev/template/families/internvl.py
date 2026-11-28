@@ -394,6 +394,10 @@ register_template(
         template_cls=InternvlhfTemplate,
         default_system=INTERNS1_DEFAULT_SYSTEM,
         is_thinking=True,
+        # the official jinja renders the empty reasoning block '\n' + '' + '\n\n'
+        # (literal think tags, which are special tokens) on the final response of a training
+        # render; history turns stay bare.
+        train_final_think_block="<think>\n\n</think>\n",
         thinking_prefix="<think>",
     )
 )

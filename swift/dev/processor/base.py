@@ -340,7 +340,14 @@ class InputProcessor(TwinkleInputProcessor):
         mid-group orphans anchors/negatives, and InfoNCE's ``nonzero(labels)`` parse then builds ragged
         groups that index past the doc bank (defect124). Ride twinkle's generic ``micro_batch_plan`` seam
         so each group-intact micro-batch collates independently.
+
+        An externally agreed plan (the megatron backend's cross-DP micro-batch-count equalization for
+        packed batches) already mirrors twinkle's plan-branch split; use it verbatim so the media
+        grouping below matches the collated outputs.
         """
+        plan = kwargs.get('micro_batch_plan')
+        if plan is not None:
+            return plan
         if self._task_type in self._EMBEDDING_TASK_TYPES and micro_batch_size is not None:
             groups = self._embedding_micro_batch_plan(inputs, micro_batch_size)
             kwargs['micro_batch_plan'] = groups

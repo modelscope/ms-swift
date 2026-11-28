@@ -13,6 +13,7 @@ from ..register import TemplateMeta, register_template
 from ..runtime import get_env_args, to_float_dtype
 from ..utils import Context, findall
 from .qwen import QwenTemplateMeta
+from .utils import ChatmlTemplateMeta
 
 
 class GOTImageEvalProcessor:
@@ -285,14 +286,12 @@ class StepAudio2MiniTemplate(Template):
 
 
 register_template(
-    TemplateMeta(
+    ChatmlTemplateMeta(
         MLLMTemplateType.step_audio2_mini,
         template_cls=StepAudio2MiniTemplate,
-        prefix=[],
-        prompt=["<|BOT|>human\n{{QUERY}}<|EOT|><|BOT|>assistant\n"],
-        system_prefix=["<|BOT|>system\n{{SYSTEM}}<|EOT|>"],
-        chat_sep=["<|EOT|>"],
-        suffix=["<|EOT|>"],
+        # The shipped tokenizer_config.json jinja is chatml with a default system block,
+        # not the <|BOT|> form (official-jinja parity).
+        default_system="You are a helpful assistant.",
     )
 )
 
@@ -300,9 +299,14 @@ register_template(
     TemplateMeta(
         MLLMTemplateType.step_audio,
         template_cls=StepAudioTemplate,
-        prefix=["<s>"],
-        prompt=["<|BOT|>human\n{{QUERY}}<|EOT|><|BOT|>assistant\n"],
-        system_prefix=["<s><|BOT|>system\n{{SYSTEM}}<|EOT|>"],
+        # The official jinja spells out no bos, injects a default system when the conversation
+        # has none, and renders consecutive user messages as separate turns (opener once per
+        # round, hence response_opener split out of the prompt).
+        prefix=[],
+        prompt=["<|BOT|>human\n{{QUERY}}<|EOT|>"],
+        response_opener=["<|BOT|>assistant\n"],
+        system_prefix=["<|BOT|>system\n{{SYSTEM}}<|EOT|>"],
+        default_system="You are a helpful assistant.",
         chat_sep=["<|EOT|>"],
         suffix=["<|EOT|>"],
     )
