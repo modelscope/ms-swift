@@ -46,7 +46,7 @@ def _sample(n_img, answer="A cat."):
 @pytest.fixture(scope="module")
 def vl():
     """(dev Template, legacy train-mode template) for the SAME VL family, independent instances."""
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
     from swift.template import get_template
@@ -138,7 +138,7 @@ def test_native_engine_encode_agrees_with_the_full_render(template_type, model_i
     reference: the served ids have no official counterpart to compare against, because the processor
     exposes the expanded form only through the model's own image-token count.
     """
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.dev.template import ENGINE, INFER
     from swift.model import get_model_processor

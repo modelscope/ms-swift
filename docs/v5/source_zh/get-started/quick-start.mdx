@@ -4,26 +4,29 @@ description: 了解 swift 的基本使用方法
 ---
 
 SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于以简洁的API 支持大模型的训练与训练后操作，并 day0 保持新模型和新算法的高效更新。
-到目前为止，SWIFT 已支持纯文本和多模态大模型逾千个，在 swift 5 中，swift 原生支持 基于 ray 的 Agentic RL，可以轻松融合大量的 harness、沙箱进行高效异步的强化学习训练。
+到目前为止，SWIFT 已支持纯文本和多模态大模型逾千个，原生支持 基于 ray 的 Agentic RL，可以轻松融合大量的 harness、沙箱进行高效异步的强化学习训练。
 
-**为什么选择 SWIFT v5？**
+**为什么选择 SWIFT？**
 
 - **写单机代码，训任意规模**：同一份代码从单卡扩展到大规模集群化训练，分布式与采样调度通过配置驱动。
 - **稳定性与速度**：支持 Async RL、Delta同步、低精度训练、训练集群自动扩缩容等技术，支持高效稳定的训练
-- **训练技术**：不仅维持了 SWIFT 的 PT、SFT 技术优势，并完整扩展了 PPO、GRPO、OPD、MOPD、OPSD 等各类强化学习和蒸馏方案，在新算法兼容上仍极具扩展性
-- **丰富的训练后端**：不仅支持 transformers、megatron，还通过组件化方式兼容了 unsloth、sentence-transformers 训练，且以上模型均可用于 SaaS 化部署训练
-- **数据集**：内置 150+ 任务数据集，支持数据湖（Data Lake），并支持新数据集动态添加训练
-- **硬件支持**：丰富的硬件支持，除NVIDIA GPU外，还支持AMD GPU、昇腾 NPU、Apple MPS、平头哥、沐曦、寒武纪等生态
-- **训练即服务**：在算力机器部署 twinkle-server，本地无需 GPU 即可训练大模型，适合希望开放训练服务的个人和厂商
+- **训练技术**：原生完整支持 PT、SFT、GRPO、PPO、OPD、MOPD、OPSD 等各类监督训练、强化学习和蒸馏方案，在新算法兼容上仍极具扩展性
+- **丰富的训练后端**：不仅支持 transformers、megatron，还通过组件化方式兼容了 unsloth、sentence-transformers 训练，并且具有兼容更多模型框架的能力
+- **数据集**：内置 150+ 任务数据集，支持数据湖（Data Lake），并支持新数据集动态添加
+- **硬件支持**：丰富的硬件支持，除NVIDIA GPU外，还支持AMD GPU、昇腾 NPU、昆仑芯 XPU、平头哥、沐曦、Apple MPS 等生态
+- **训练即服务**：在算力集群进行部署一个 API 化的训练服务，使用者可以远端连接，本地无需显卡即可训练大模型，适合希望开放训练服务的个人和厂商
 
 ## 环境安装与样例
 
-在 SWIFT 的架构体系中涉及到以下包：
+在 SWIFT 的架构体系中涉及到以下python包：
 
-- swift: 涵盖命令行和训练主体
-- twinkle-kit: 底层算法基础组件，自动随 swift 安装，用户无需关心
+- swift: 提供了完整的大模型训练工具集，除命令行式训练外，还支持简洁的代码式训练，方便vibecoding和实验
+- twinkle-kit: 底层算法组件库，自动随 swift 安装
+
+SaaS 功能：
+
 - twinkle-server: 服务化训练框架，可以将 swift 所有支持的训练类型和模型转换为远端 HTTP 训练模式
-- twinkle-client: 远程训练和采样的 Python SDK，客户端无需安装 twinkle-server
+- twinkle-client: 远程训练SDK，原生完整支持 PT、SFT、GRPO、PPO、OPD、MOPD、OPSD 等各类训练方案
 
 ### 本地训练
 
@@ -33,7 +36,7 @@ SWIFT 是魔搭社区提供的一站式大模型训练框架。swift 致力于�
 pip install 'ms-swift>=5.0.0'
 ```
 
-使用开发分支时，按[源码安装](./installation.mdx#源码安装)说明从各自仓库安装 Twinkle 和 SWIFT。
+使用开发分支时，按[源码安装](./installation.mdx#源码安装)说明从各自仓库进行安装。
 
 完整环境要求见[安装](./installation.mdx)，容器启动见 [Docker](./docker.mdx)，模型选择和数据来源见[模型与数据集](./models-and-datasets.mdx)。
 
@@ -42,7 +45,7 @@ SWIFT 支持的训练算法包括：
 | 训练模式 | 命令 | 论文 | 示例 |
 |---|---|---|---|
 | 预训练 | `swift pt` | — | [pretrain](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/pretrain) |
-| 监督微调（`--task_type` 选择对话生成、序列分类、embedding、reranker、生成式 reranker、决策打分） | `swift sft` | — | [train](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| 监督微调（`--task_type` 选择对话生成 [`causal_lm`]、序列分类 [`seq_cls`]、embedding [`embedding`]、reranker [`reranker`]、生成式 reranker [`generative_reranker`]、决策打分 [`decision`]） | `swift sft` | — | [train](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
 | DPO 直接偏好优化 | `swift rl --rl_type dpo` | [Direct Preference Optimization](https://arxiv.org/abs/2305.18290) | [dpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/dpo) |
 | ORPO 偏好对齐（无参考模型） | `swift rl --rl_type orpo` | [ORPO](https://arxiv.org/abs/2403.07691) | [orpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/orpo) |
 | SimPO 偏好对齐（无参考模型） | `swift rl --rl_type simpo` | [SimPO](https://arxiv.org/abs/2405.14734) | [simpo](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl/simpo) |
@@ -66,14 +69,11 @@ SWIFT 支持的训练算法包括：
 | 导出与量化（GPTQ / AWQ / FP8 等） | `swift export` | [export](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
 | 评测 | `swift eval` | [eval](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
 
-可以参见下面具体的样例。本文的本地示例使用 NVIDIA GPU、BF16 与 FlashAttention 2。请安装与驱动、CUDA 环境匹配的 PyTorch，并安装 flash-attn（`pip install flash-attn --no-build-isolation`）。
-
 ```bash
 # A simple sft example
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3.5-4B \
-    --attn_impl flash_attention_2 \
     --dataset 'swift/self-cognition#600' \
     --model_name swift-robot \
     --model_author swift \
@@ -92,13 +92,12 @@ CUDA_VISIBLE_DEVICES=0,1 \
 swift rl \
     --rl_type grpo \
     --model Qwen/Qwen3.5-4B \
-    --attn_impl flash_attention_2 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
     --sampler_mode disaggregated \
     --vllm_gpu_memory_utilization 0.8 \
     --vllm_max_model_len 4096 \
     --generation_batch_size 8 \
-    --num_generations 4 \
+    --num_generations 8 \
     --max_length 2048 \
     --temperature 1.0 \
     --orm accuracy \
@@ -111,19 +110,19 @@ swift rl \
 ```
 
 ```python
+# A simple mopd code example
 # pip install vllm
+# CUDA_VISIBLE_DEVICES=0,1 python mopd.py: GPU0 trains, GPU1 runs the vLLM sampler.
 import math
 
-from swift.dev.builders import build_prompt_dataloader, resolve_rl_dp_size
+from swift.dev.builder import build_prompt_dataloader, resolve_rl_dp_size
 from swift.dev.config import (
     CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, RLConfig, RewardConfig,
     RolloutConfig, TemplateConfig, TrainConfig, TunerConfig)
 from swift.dev.recipe.distill.assembly import (
     DISTILL_SIGNALS, build_distill_driver, distill_group_requests, initialize_distill_cluster)
-from swift.dev.recipe.offload import sleep_for_rollout
 from swift.dev.recipe.utils import (
-    effective_colocate, initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset,
-    stream_batch_size)
+    initialize_rl_devices, optimizer_batch_slices, prompt_rows_from_dataset, stream_batch_size)
 from swift.dev.utils.scoring import copy_inputs
 
 
@@ -133,11 +132,12 @@ def main():
     dataset_config = DatasetConfig(dataset=['AI-MO/NuminaMath-TIR#2000'])
     train_config = TrainConfig(
         max_steps=20, per_device_train_batch_size=4, learning_rate=2e-5, gradient_checkpointing=True)
-    distributed_config = DistributedConfig(mode='ray', nproc_per_node=2)
+    # nproc_per_node = trainer GPUs; the sampler takes the GPU right after them.
+    distributed_config = DistributedConfig(mode='ray', nproc_per_node=1)
     checkpoint_config = CheckpointConfig(output_dir='output/mopd')
     generation_batch_size = 16  # prompts rolled out per batch
     rollout_config = RolloutConfig(
-        sampler_mode='colocate', vllm_gpu_memory_utilization=0.5,
+        sampler_mode='disaggregated', vllm_gpu_memory_utilization=0.8,
         generation_batch_size=generation_batch_size)
     # Two frozen teachers score the student's own rollouts; the weights are normalized to sum 1.
     rl_config = RLConfig(
@@ -161,8 +161,7 @@ def main():
     #    turns each teacher forward into the training signal.
     train_batch_size = train_config.per_device_train_batch_size * resolve_rl_dp_size(distributed_config)
     batch_size = stream_batch_size(
-        colocate=effective_colocate(rollout_config, resource_plan),
-        generation_batch_size=generation_batch_size, num_generations=rl_config.num_generations,
+        colocate=False, generation_batch_size=generation_batch_size, num_generations=rl_config.num_generations,
         train_batch_size=train_batch_size,
         gradient_accumulation_steps=train_config.gradient_accumulation_steps)
     cluster = initialize_distill_cluster(
@@ -186,9 +185,6 @@ def main():
     # 5. Loop: roll out, score with the teachers, update, publish the weights to the sampler.
     cluster.engine.sync_weights()
     for trajs, _ in driver:
-        if cluster.colocate:  # hand the GPUs back from the sampler
-            sleep_for_rollout(cluster.sampler, rollout_config.sleep_level)
-            cluster.model.reload_to_gpu()
         for lo, hi in optimizer_batch_slices(len(trajs), train_batch_size, 1):
             update = trajs[lo:hi]
             signal = dict(cluster.worker.forward_kwargs(update, True))
@@ -211,6 +207,7 @@ if __name__ == '__main__':
 ### 部署 server
 
 ```bash
+# Use swift model in twinkle-server
 pip install twinkle-server ms-swift
 ```
 
@@ -267,11 +264,12 @@ applications:
         dp_size: 1
 ```
 
-启动 Ray 和服务。`TWINKLE_WORKER_SETUP_HOOK` 让每个 worker 启动时运行 `swift.dev.processor.server_plugin:register`，把 swift 的模板（`SwiftTemplate`）和 processor（`DevInputProcessor`）注册进 twinkle 的命名空间；这个变量会传播到所有应用，客户端才能按名字让服务端用 swift 的模板编码：
+启动 Ray 和服务：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 ray start --head --num-gpus=2
-TWINKLE_WORKER_SETUP_HOOK=swift.dev.processor.server_plugin:register twinkle-server launch --config server_config.yaml
+# TWINKLE_WORKER_SETUP_HOOK可以将swift的template注册进twinkle-server
+TWINKLE_WORKER_SETUP_HOOK=swift.dev.builder.server_plugin:register twinkle-server launch --config server_config.yaml
 ```
 
 ### 客户端远程训练
@@ -289,11 +287,11 @@ import os
 from peft import LoraConfig
 from twinkle_client import init_twinkle_client
 
-from swift.dev.builders import build_prompt_dataloader, resolve_twinkle_template
-from swift.dev.builders.remote import configure_remote_processor
+from swift.dev.builder import build_prompt_dataloader, resolve_twinkle_template
+from swift.dev.builder.remote import configure_remote_processor
 from swift.dev.config import DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig
 from swift.dev.recipe.utils import prompt_rows_from_dataset
-from swift.dev.rewards.orm import MathAccuracy
+from swift.dev.reward.orm import MathAccuracy
 
 MODEL_ID = 'google/gemma-4-E4B-it'
 NUM_GENERATIONS = 4  # completions per prompt

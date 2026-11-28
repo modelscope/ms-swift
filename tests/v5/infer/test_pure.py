@@ -12,7 +12,7 @@ import pytest
 
 
 def test_sigmoid_is_numerically_stable_both_branches():
-    from swift.dev.components.infer.component import _sigmoid
+    from swift.dev.recipe.infer.inferencer import _sigmoid
     assert abs(_sigmoid(0.0) - 0.5) < 1e-12
     # large positive / negative must not overflow (the two-branch form exists for exactly this)
     assert abs(_sigmoid(50.0) - 1.0) < 1e-9
@@ -23,7 +23,7 @@ def test_sigmoid_is_numerically_stable_both_branches():
 
 
 def test_normalize_minmax_degenerate_and_nan_immune():
-    from swift.dev.components.infer.component import _min_max
+    from swift.dev.recipe.infer.inferencer import _min_max
     # spread group -> [0, ~1]. The denominator carries a +1e-5 epsilon, so the top lands just under
     # 1.0 (2/2.00001); assert to 1e-4, not exactly.
     out = _min_max([1.0, 2.0, 3.0])
@@ -44,7 +44,7 @@ def test_normalize_minmax_degenerate_and_nan_immune():
 
 
 def test_is_too_easy_threshold_and_disable():
-    from swift.dev.components.infer.component import _is_too_easy
+    from swift.dev.recipe.infer.inferencer import _is_too_easy
     assert _is_too_easy(3, 4, None) is False  # None disables
     assert _is_too_easy(3, 4, 0.75) is True  # 0.75 >= 0.75
     assert _is_too_easy(2, 4, 0.75) is False
@@ -53,7 +53,7 @@ def test_is_too_easy_threshold_and_disable():
 def test_plan_rows_keeps_partial_tail_and_respects_max():
     from dataclasses import replace
 
-    from swift.dev.components.infer.component import _plan_rows
+    from swift.dev.recipe.infer.inferencer import _plan_rows
     from swift.dev.config import InferConfig
 
     rows = [{'i': i} for i in range(7)]
@@ -68,7 +68,7 @@ def test_plan_rows_keeps_partial_tail_and_respects_max():
 
 
 def test_prompt_key_is_stable_and_order_insensitive_to_dict_keys():
-    from swift.dev.components.infer.component import _prompt_key
+    from swift.dev.recipe.infer.inferencer import _prompt_key
     a = [{'role': 'user', 'content': 'hi'}]
     b = [{'role': 'user', 'content': 'hi'}]
     assert _prompt_key(a) == _prompt_key(b)
@@ -81,7 +81,7 @@ def test_prompt_key_is_stable_and_order_insensitive_to_dict_keys():
 
 def test_compute_metric_acc_is_exact_string_match():
     """legacy's ``--metric acc`` is exact string equality, NOT token-level accuracy."""
-    from swift.dev.components.infer.component import compute_metric
+    from swift.dev.recipe.infer.inferencer import compute_metric
     results = [
         {'response': '4', 'labels': '4'},
         {'response': 'blue', 'labels': 'red'},
@@ -93,7 +93,7 @@ def test_compute_metric_acc_is_exact_string_match():
 
 
 def test_compute_metric_skips_rows_without_reference():
-    from swift.dev.components.infer.component import compute_metric
+    from swift.dev.recipe.infer.inferencer import compute_metric
     # no row has both a response and a labels -> empty dict (and a warning), not a zero score
     assert compute_metric([{'response': 'x'}], 'acc') == {}
 
@@ -108,8 +108,8 @@ def test_reward_device_groups_sizes_each_channel_from_its_own_spec(monkeypatch):
     """
     from types import SimpleNamespace
 
-    from swift.dev.components.infer.component import _reward_device_groups
-    from swift.dev.rewards.scorer import ChannelPlan, RewardSpec
+    from swift.dev.recipe.infer.inferencer import _reward_device_groups
+    from swift.dev.reward.scorer import ChannelPlan, RewardSpec
 
     def plan(*specs):
         return ChannelPlan(entries=list(specs))
@@ -138,7 +138,7 @@ def test_initialize_for_sampling_lays_out_disjoint_rank_blocks(monkeypatch):
     import sys
     import types
 
-    from swift.dev.components.infer.component import SAMPLER_GROUP, _initialize_for_sampling
+    from swift.dev.recipe.infer.inferencer import SAMPLER_GROUP, _initialize_for_sampling
     from swift.dev.config import DistributedConfig
 
     captured = {}
@@ -185,7 +185,7 @@ def test_initialize_for_sampling_lays_out_disjoint_rank_blocks(monkeypatch):
 
 
 def test_pooling_task_map_and_is_pooling():
-    from swift.dev.builders import is_pooling_task, pooling_task_for
+    from swift.dev.builder import is_pooling_task, pooling_task_for
     assert pooling_task_for('embedding') == 'embed'
     assert pooling_task_for('seq_cls') == 'classify'
     assert pooling_task_for('reranker') == 'classify'

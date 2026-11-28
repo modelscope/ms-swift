@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """S12 — export/merge/quantize contract tests (L1: CPU, no model forward).
 
-The export recipes (quantize / merge_lora / convert / cached_dataset / hub / to_peft) are thin
-delegates over their components; what can break silently is the ORCHESTRATION (which step runs,
+The export recipes (quantize / merge_lora / convert / cached_dataset / hub / to_peft) pair a
+procedural ``run_*`` entry with the transform class beside it; what can break silently is the ORCHESTRATION (which step runs,
 with what derived output directory, in what order) and the pass-through of the user's knobs. These
-tests pin exactly that, monkeypatching the component layer so each case asserts the calls the CLI
+tests pin exactly that, monkeypatching the transform class so each case asserts the calls the CLI
 actually made. The real-artifact e2e halves (S12-01/02/06/10/...) need a GPU and live in the slow
 tier separately.
 """
@@ -50,10 +50,10 @@ def test_quantize_kwargs_pass_through_to_the_component(monkeypatch, tmp_path):
             from types import SimpleNamespace
             return SimpleNamespace(path=str(tmp_path / 'q'))
 
-    # run_quantize imports QuantizeComponent from the components package inside the function
-    # body, so the patch point is the package the recipe resolves at call time.
-    import swift.dev.components as components
-    monkeypatch.setattr(components, 'QuantizeComponent', _FakeComponent)
+    # run_quantize resolves ModelQuantizer from its own module at call time, so the patch point is
+    # that module's attribute.
+    import swift.dev.recipe.export.quantize as quantize
+    monkeypatch.setattr(quantize, 'ModelQuantizer', _FakeComponent)
 
     from swift.dev.config import ModelConfig, QuantizeConfig, TemplateConfig
     from swift.dev.recipe.export import run_quantize
@@ -93,9 +93,9 @@ def test_merge_output_dir_defaults_to_adapter_merged(monkeypatch, tmp_path):
             merged = calls.get('output_dir') or f'{adapter}-merged'
             return SimpleNamespace(path=merged)
 
-    # MergeComponent is imported inside run_merge_lora's body from the components package.
-    import swift.dev.components as components
-    monkeypatch.setattr(components, 'MergeComponent', _FakeMerge)
+    # Merger lives in run_merge_lora's own module.
+    import swift.dev.recipe.export.merge_lora as merge_lora
+    monkeypatch.setattr(merge_lora, 'Merger', _FakeMerge)
 
     from swift.dev.config import ModelConfig, TemplateConfig, TunerConfig
     from swift.dev.recipe.export import run_merge_lora

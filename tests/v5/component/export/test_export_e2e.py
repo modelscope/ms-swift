@@ -140,8 +140,8 @@ def test_merge_lora_directory_semantics(tmp_path, tiny_base, lora_adapter):
 def test_quant_n_samples_truncates_the_calibration_set(tmp_path, tiny_base):
     """Exactly ``n_samples`` encoded rows feed the calibration blocks — never the whole dataset
     (an uncapped loop would let a large dataset dominate the quantization run)."""
-    from swift.dev.builders import build_template, load_model_processor
-    from swift.dev.components.weight_transform.quantize import QuantizeComponent
+    from swift.dev.builder import build_template, load_model_processor
+    from swift.dev.recipe.export.quantize import ModelQuantizer
     from swift.dev.config import DatasetConfig, ModelConfig, TemplateConfig
 
     dataset_path = TinyData.sft(tmp_path / 'calib.jsonl', n=4)
@@ -149,7 +149,7 @@ def test_quant_n_samples_truncates_the_calibration_set(tmp_path, tiny_base):
     template = build_template(TemplateConfig(template='qwen2_5'), processor)
     template.set_mode('train')
 
-    blocks = QuantizeComponent._build_calib_data(
+    blocks = ModelQuantizer._build_calib_data(
         'gptq', template, DatasetConfig(dataset=[dataset_path]),
         max_length=16, n_samples=1, is_multimodal=False)
 
@@ -174,7 +174,7 @@ def test_export_cached_dataset_roundtrip(tmp_path, tiny_base):
     template.encode output row by row (the read-back oracle: a cache that drifts from live
     encoding silently trains on the wrong tokens)."""
     from datasets import load_from_disk
-    from swift.dev.builders import build_template, load_model_processor
+    from swift.dev.builder import build_template, load_model_processor
     from swift.dev.config import DatasetConfig, ModelConfig, TemplateConfig
     from swift.dev.recipe.export import export_cached_dataset
 

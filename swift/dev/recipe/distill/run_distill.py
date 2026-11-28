@@ -197,7 +197,7 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
                          'privileged context (reference/rubric). None of the rows provide it. Add it '
                          'via a dataset plugin (see examples/rl/opsd), or use --rl_type gkd.')
     # the optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer.
-    from swift.dev.builders import resolve_rl_dp_size
+    from swift.dev.builder import resolve_rl_dp_size
 
     remote_run = distributed_config.mode == 'remote'
     dp_size = resolve_rl_dp_size(distributed_config, template_config.sequence_parallel_size)
@@ -238,8 +238,8 @@ def run_distill(model_config: 'ModelConfig', template_config: 'TemplateConfig',
         auxiliary_meshes=auxiliary_meshes,
     )
     # segment 4: dataloader + the dissolved step cadence + the save closure.
-    from swift.dev.builders import build_prompt_dataloader
-    from swift.dev.builders.optimizer import resolve_max_grad_norm
+    from swift.dev.builder import build_prompt_dataloader
+    from swift.dev.builder.optimizer import resolve_max_grad_norm
 
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=dataset_config.data_seed,

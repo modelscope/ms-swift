@@ -31,7 +31,7 @@ from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler  # n
 
 from swift.dev.config import TrainConfig  # noqa: E402
 from swift.dev.utils.naming import resolve_megatron_decay_style  # noqa: E402
-from swift.dev.builders.optimizer import megatron_weight_decay_bounds  # noqa: E402
+from swift.dev.builder.optimizer import megatron_weight_decay_bounds  # noqa: E402
 
 # dense.sh's schedule knobs (examples/megatron/lora/dense.sh).
 LR = 1e-4
@@ -192,7 +192,7 @@ def test_configure_optimizer_passes_min_lr_and_fractional_warmup():
 
     Uses a recording stub instead of a real model: what matters is WHICH kwargs reach twinkle.
     """
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.optimizer import configure_optimizer
 
     calls = {}
 

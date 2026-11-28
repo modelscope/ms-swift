@@ -2,7 +2,7 @@
 """Sampler dimension (RL_PLAN §四/③): the rollout engine honours sampling params and generates in process.
 
 The components under test are twinkle's real ``vLLMSampler`` (the engine the dev rollout builds via
-``swift.dev.builders.build_sampler``) and the one TransformersModel-only verb, in-place ``generate``. The
+``swift.dev.builder.build_sampler``) and the one TransformersModel-only verb, in-place ``generate``. The
 external contract is basic principle 1: on-policy generation always rides an independent sampler + per-step
 weight sync (a route both backends share), and ``generate`` is the SINGLE capability that is TransformersModel-
 only -- so it must work in process, and it must never be mistaken for the RL rollout main path (that mistaken
@@ -47,7 +47,7 @@ def _tiny_template(model_path, model_type='qwen2'):
     ``model_type`` is passed explicitly: the shrunk ``tiny_qwen2_5`` config matches BOTH ``qwen2`` and
     ``qwen2_gte``, so ``get_model_processor`` refuses to auto-pick and raises without it.
     """
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
     _, proc = get_model_processor(model_path, model_type=model_type, load_model=False)

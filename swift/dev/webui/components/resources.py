@@ -135,7 +135,7 @@ def build_template_from(tokenizer_id: str, template_kv: Optional[dict], node_id:
     locally built directory is ambiguous without an explicit ``model_type``);
     it must stay consistent with the model's own ModelConfig. A missing
     source fails loudly by name."""
-    from swift.dev.builders import build_template, load_model_processor
+    from swift.dev.builder import build_template, load_model_processor
     model_id = str(tokenizer_id or '').strip()
     if not model_id:
         raise ComponentError(f'{node_id}: tokenizer source is required -- '
@@ -254,11 +254,11 @@ class ModelComponent(ResourceComponent):
     #: build 在并行阶段会首次加载的模块（含函数体内 lazy import 的入口）：
     #: 预热必须覆盖它们，否则 worker 的深链 import 会与主线程设备构建的
     #: transformers 首次加载交错（半初始化模块上的 from-import 失败）。
-    IMPORTS = ('swift.dev.config', 'swift.dev.builders.model', 'swift.dev.builders.adapter',
+    IMPORTS = ('swift.dev.config', 'swift.dev.builder.model', 'swift.dev.builder.adapter',
                'transformers')
 
     def build(self, inputs: Dict[str, Any]) -> Any:
-        from swift.dev.builders.model import build_model
+        from swift.dev.builder.model import build_model
         config_pkg = _configs()
         backend = str(self.params.get('backend', 'hf') or 'hf')
         model_kv = dict(self.params.get('model_config') or {})
@@ -316,7 +316,7 @@ class ModelComponent(ResourceComponent):
             # apply_tuner every recipe runs); without it train_type='lora'
             # silently degrades to a full-parameter run. GA threads the
             # optimizer-group scale the recipes pass from TrainConfig.
-            from swift.dev.builders.adapter import apply_tuner
+            from swift.dev.builder.adapter import apply_tuner
             apply_tuner(
                 self.obj, tuner_config,
                 gradient_accumulation_steps=(
@@ -376,11 +376,11 @@ class SamplerComponent(ResourceComponent):
 
     type = 'sampler'
 
-    IMPORTS = ('swift.dev.config', 'swift.dev.builders', 'swift.dev.builders.sampler',
+    IMPORTS = ('swift.dev.config', 'swift.dev.builder', 'swift.dev.builder.sampler',
                'transformers')
 
     def build(self, inputs: Dict[str, Any]) -> Any:
-        from swift.dev.builders.sampler import build_sampler
+        from swift.dev.builder.sampler import build_sampler
         from ..placement import sampler_tp
         model_id = str(self.params.get('model') or '').strip()
         if not model_id:
@@ -579,7 +579,7 @@ class LossComponent(ResourceComponent):
             # A remote train_step installs the loss on the served model by NAME + scalar
             # kwargs (the panel values are JSON scalars by construction, so they cross
             # verbatim); the resident is the spec instead of the in-process instance.
-            from swift.dev.builders.remote import RemoteLossSpec
+            from swift.dev.builder.remote import RemoteLossSpec
 
             self.obj = RemoteLossSpec(name=cls.__name__, kwargs=kwargs,
                                       require_values=bool(getattr(cls, 'require_values', False)))
@@ -604,14 +604,14 @@ class ScorerComponent(ResourceComponent):
 
     type = 'scorer'
 
-    IMPORTS = ('swift.dev.rewards',)
+    IMPORTS = ('swift.dev.reward',)
 
     def build(self, inputs: Dict[str, Any]) -> Any:
         code = str(self.params.get('code', '') or '')
         if code:
             self.obj = load_code_component(code, 'score')
             return self.obj
-        from swift.dev.rewards import orms
+        from swift.dev.reward import orms
         from swift.dev.utils.plugin import SwiftPlugin
         kind = str(self.params.get('kind') or 'math')
         cls = orms.get(kind)
@@ -619,7 +619,7 @@ class ScorerComponent(ResourceComponent):
             raise ComponentError(
                 f'{self.node_id}: unknown scorer {kind!r}; available kinds: '
                 f'{sorted(orms)} -- the registry is open, plugins extend it '
-                'through swift.dev.rewards')
+                'through swift.dev.reward')
         kwargs = dict(self.params.get('scorer_kwargs') or {})
         # 注册表双构造协议：SwiftPlugin 型规则吃 args=Config（超参从 Config
         # 字段读，字段名校验由 _fill 承担）；twinkle 原生规则类型化旋钮直接

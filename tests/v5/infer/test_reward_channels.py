@@ -23,7 +23,7 @@ the judge template's marker), so the verdicts -- and thus the emitted scores -- 
 import pytest
 from twinkle.data_format.sampling import SampledSequence, SampleResponse
 
-from swift.dev.rewards.scorer import (judge_query, parse_judge_score, render_conversation,
+from swift.dev.reward.scorer import (judge_query, parse_judge_score, render_conversation,
                                       resolve_reward_model as _resolve_reward_model)
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -171,7 +171,7 @@ def test_scalar_reward_needs_ray(monkeypatch):
 def template():
     """The REAL dev template over the cached tokenizer (``load_model=False``), so the scripted sampler
     encodes through production code. Skips (not fails) on a box without the tokenizer cached."""
-    from swift.dev.builders.template import build_template
+    from swift.dev.builder.template import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
     try:
@@ -248,7 +248,7 @@ def test_generative_judge_scores_candidates_through_run_infer(template, monkeypa
     its ``Reward: <score>`` verdicts are parsed, weighted by ``orm_channel_weight`` (1.0, unnormalized) and
     emitted per candidate. Asserts the exact scores, proving resolve -> build -> judge -> channels -> emit
     are wired, not merely that a ``scores`` key appeared."""
-    import swift.dev.builders as builders
+    import swift.dev.builder as builders
     from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, RewardConfig,
                                   TemplateConfig)
     from swift.dev.recipe.infer.run_infer import run_infer

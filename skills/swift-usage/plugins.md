@@ -25,10 +25,10 @@ twinkle owns the loading itself. Two levels exist, so a third party can even add
 | Kind | Base | Select with | What it does |
 | --- | --- | --- | --- |
 | `reward` | `RewardPlugin` (`swift.dev.utils.plugin`) | `--orm name` | score completions against dataset columns; sync or async |
-| `prm_scorer` | `PRMScorer` (`swift.dev.rewards.prm`) | `--prm_scorer name` | process-reward scoring over reasoning steps |
+| `prm_scorer` | `PRMScorer` (`swift.dev.reward.prm`) | `--prm_scorer name` | process-reward scoring over reasoning steps |
 | `tool` | `ToolPlugin` | `--tools name` (+ `--max_turns`) | provide the tools a multi-turn rollout may call |
-| `callback` | `TrainCallback` (`swift.dev.callbacks`) | `--callbacks name` | observe/steer the training loop at Trainer-equivalent events |
-| `param_groups` | `ParamGroupsPlugin` (`swift.dev.builders.optimizer_plugins`) | `--param_groups_plugins name` | per-tower / LoRA-vs-base learning rates, per-group weight decay — serializable grouping rules applied worker-side on both backends |
+| `callback` | `TrainCallback` (`swift.dev.callback`) | `--callbacks name` | observe/steer the training loop at Trainer-equivalent events |
+| `param_groups` | `ParamGroupsPlugin` (`swift.dev.builder.optimizer_plugins`) | `--param_groups_plugins name` | per-tower / LoRA-vs-base learning rates, per-group weight decay — serializable grouping rules applied worker-side on both backends |
 | `sampler` | twinkle `Sampler` | `--sampler name-or-path` | a custom sampling engine; keep it in its **own** .py file (importing `twinkle.sampler` pulls vllm+torch — keep it out of shared plugin files) |
 
 ### Registry-based extension points (not PluginRegistry kinds, but plugins all the same)
@@ -117,7 +117,7 @@ class MyTool:
 ### callback — training-loop hooks
 
 ```python
-from swift.dev.callbacks import CallbackControl, CallbackState, TrainCallback
+from swift.dev.callback import CallbackControl, CallbackState, TrainCallback
 from swift.dev.utils.plugin import PluginRegistry
 
 @PluginRegistry.register('callback', 'progress_printer')

@@ -206,7 +206,7 @@ def test_template_plugin_builds_and_is_tool_capable(example_plugins, tokenizer_p
     TemplateMeta now declares ``agent_template='hermes'`` -- it can drive a multi-turn tool rollout (the
     example pairs it with ``--tools word_count``). Without that field ``template.agent_template`` raises, so
     this is the regression for the example's tool run."""
-    from swift.dev.builders.template import build_template
+    from swift.dev.builder.template import build_template
 
     template = build_template(TemplateConfig(template='demo_chatml', max_length=2048), tokenizer_processor)
     encoded = template.encode({'messages': [{'role': 'user', 'content': 'hi'}]})
@@ -235,7 +235,7 @@ def test_sampler_plugin_resolves_from_its_source_file():
     it, with no built-in engine attached."""
     from twinkle.sampler import TransformersSampler
 
-    from swift.dev.builders.sampler import _resolve_sampler
+    from swift.dev.builder.sampler import _resolve_sampler
 
     cls, engine = _resolve_sampler(str(CUSTOM_SAMPLER))
     assert cls.__name__ == 'LoggingTransformersSampler'
@@ -295,7 +295,7 @@ def test_tool_plugin_runs_the_real_multiturn_loop(example_plugins, tokenizer_pro
     schema into the prompt via the template's ``agent_template``, parses the model's call, the per-episode
     ``ToolManager`` dispatches into the plugin's ``_WordCount``, and the observation is fed back for the
     final answer. The trajectory's tool turn carries the real word count, proving the plugin executed."""
-    import swift.dev.builders as builders
+    import swift.dev.builder as builders
 
     prompt = {'messages': [{'role': 'user', 'content': 'How many words are in "hello there world"?'}]}
     call = _hermes_call('word_count', 'text', 'hello there world')
@@ -348,7 +348,7 @@ def test_per_channel_parallel_spec_attaches_to_the_model_slot_only(example_plugi
     which attaches the spec to the channel's reward-MODEL slot (so its DeviceGroup width / DeviceMesh derive
     from it) and leaves a rule slot model-less, where the spec is inert. Asserting both directions pins the
     per-channel routing: a rule-only ``--orm`` ignores the spec; a channel that resolves a model carries it."""
-    from swift.dev.components.infer.component import _resolve_channel
+    from swift.dev.recipe.infer.inferencer import _resolve_channel
 
     # a rule-only channel holds no model, so the spec stays inert (no spec to attach anywhere)
     plan = _resolve_channel(RewardConfig(orm=['length_bonus'],

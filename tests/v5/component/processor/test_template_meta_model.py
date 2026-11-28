@@ -14,7 +14,7 @@ import pytest
 import torch
 from transformers import AutoConfig, PreTrainedModel, Qwen2_5_VLConfig
 
-from swift.dev.builders.template import build_template
+from swift.dev.builder.template import build_template
 from swift.dev.config import TemplateConfig
 from swift.dev.model.loader import LoaderModelInfo, ModelLoader, get_model_loader
 from swift.dev.template import INFER
@@ -181,7 +181,7 @@ def test_builder_forwards_non_default_config():
 
 
 def test_template_spec_pickle_and_rebuild_with_supplied_processor():
-    from swift.dev.builders import build_template_from_spec
+    from swift.dev.builder import build_template_from_spec
 
     processor = _processor()
     template = build_template(TemplateConfig(template="qwen2_5", agent_template="hermes"), processor)

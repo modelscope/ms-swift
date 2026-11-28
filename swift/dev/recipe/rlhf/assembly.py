@@ -72,7 +72,7 @@ def _build_reference(
         # Reference-free dpo/kto: DPOLoss.reference_free anchors on the policy alone; wired in
         # lockstep with configure_rl_loss forwarding ``reference_free`` to the loss.
         return None
-    from swift.dev.builders import build_ref_model
+    from swift.dev.builder import build_ref_model
 
     if has_adapter(tuner_config) and not rl_config.ref_adapters:
         return model
@@ -145,7 +145,7 @@ def build_preference_objects(
     encode mode, the dataset stays RAW (``encode=False``; the encoder encodes each batch), and the
     loss / metric are the rlhf ones. The reference build shares the group-planning predicate.
     """
-    from swift.dev.builders import (
+    from swift.dev.builder import (
         apply_full_param_freeze,
         build_dataset,
         build_dp_mesh,
@@ -153,8 +153,8 @@ def build_preference_objects(
         build_template,
         load_model_processor,
     )
-    from swift.dev.builders.adapter import apply_tuner
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.adapter import apply_tuner
+    from swift.dev.builder.optimizer import configure_optimizer
     from swift.dev.loss import configure_rl_loss, configure_rl_metrics
     from swift.dev.processor import InputProcessor, input_processor_kwargs
 
@@ -221,7 +221,7 @@ def build_preference_objects(
         build_config = copy.copy(model_config)
         build_config.model = resume_dir
     if remote_run:
-        from swift.dev.builders.remote import (
+        from swift.dev.builder.remote import (
             apply_remote_tuner,
             build_remote_model,
             configure_remote_processor,

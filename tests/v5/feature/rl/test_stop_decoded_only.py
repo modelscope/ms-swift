@@ -27,7 +27,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.accel(1), pytest.mark.requires_vllm]
 
 
 def _sampler(model_path):
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
     from twinkle.sampler.vllm_sampler.vllm_sampler import vLLMSampler
@@ -42,7 +42,7 @@ def _sampler(model_path):
 
 def _rollout_stop_mapping():
     """CPU half of the contract: the dev rollout maps stop_words -> stop (d1)."""
-    from swift.dev.builders.streaming import rollout_sampling_params
+    from swift.dev.builder.streaming import rollout_sampling_params
     from swift.dev.config import GenerationConfig
 
     params = rollout_sampling_params(64, GenerationConfig(stop_words=['<|end|>']))

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from datasets import Dataset
 
-from swift.dev.builders.template import build_template
+from swift.dev.builder.template import build_template
 from swift.dev.config import TemplateConfig
 from swift.dev.dataset import EncodePreprocessor
 from swift.dev.template import ENGINE, INFER, SCORE, TRAIN

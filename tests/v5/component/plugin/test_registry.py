@@ -29,7 +29,7 @@ def test_the_legacy_dict_is_the_registry():
     consumer never has to ask which mechanism a reward came from. A copy would silently split them --
     exactly the legacy/dev split that made user rewards unresolvable on dev.
     """
-    from swift.dev.rewards import REWARD, orms
+    from swift.dev.reward import REWARD, orms
 
     assert REWARD.entries is orms
     assert set(orms) >= {'accuracy', 'format', 'cosine', 'repetition', 'soft_overlong'}
@@ -39,7 +39,7 @@ def test_orm_is_the_reward_kind_base():
     """dev2 flipped the reward kind's base: ``ORM`` (SwiftPlugin + twinkle's ``Reward`` protocol,
     one trajectory-row shape for rule / scalar-RM / judge alike) is what ``register_kind('reward')``
     binds, not the completions-scoring ``RewardPlugin``."""
-    from swift.dev.rewards import ORM, REWARD
+    from swift.dev.reward import ORM, REWARD
     from twinkle.reward.base import Reward
 
     assert REWARD.base is ORM
@@ -95,11 +95,11 @@ def test_one_base_covers_sync_and_async_rewards(kind):
     """Sync and async rewards are ONE extension point on ONE base.
 
     An ``async def __call__`` is just a ``RewardPlugin`` whose scoring does I/O; the scoring loop
-    (:func:`swift.dev.rewards.reward.compute_rewards_per_func`) resolves the returned coroutines with one
+    (:func:`swift.dev.reward.reward.compute_rewards_per_func`) resolves the returned coroutines with one
     ``asyncio.gather``. There is no separate async base to choose, so the ``reward`` kind's base is a
     single class, and both a sync and an async reward register against it.
     """
-    from swift.dev.rewards import ORM, REWARD
+    from swift.dev.reward import ORM, REWARD
 
     assert REWARD.base is ORM and not isinstance(REWARD.base, tuple)
 

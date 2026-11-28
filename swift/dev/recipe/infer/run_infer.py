@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# The infer entry point: plugin load, adapter resolution, optional merge-lora, then the component.
+# The infer entry point: plugin load, adapter resolution, optional merge-lora, then the Inferencer.
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -45,7 +45,7 @@ def run_infer(
     output_path: Optional[str] = None,
     _shutdown: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Infer over a dataset: plugin load, adapter resolution, then the InferComponent.
+    """Infer over a dataset: plugin load, adapter resolution, then the Inferencer.
 
     The generative path -- sample a candidate group per prompt, optionally score it, then shape
     the rows -- is driven by ``num_return_sequences``, the reward funcs and ``output_format``
@@ -64,11 +64,11 @@ def run_infer(
         # runs before either path initializes.
         model_config, adapters = _merge_adapters(model_config, template_config, adapters)
 
-    # One component serves every task type: InferComponent splits the sampling task from the
+    # One Inferencer serves every task type: it splits the sampling task from the
     # forward-pass task inside its own __call__, so no per-task entry point is needed here.
-    from swift.dev.components.infer import InferComponent
+    from swift.dev.recipe.infer.inferencer import Inferencer
 
-    return InferComponent(
+    return Inferencer(
         model_config,
         template_config,
         dataset_config,

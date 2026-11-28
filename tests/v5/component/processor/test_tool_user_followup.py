@@ -7,7 +7,7 @@ import pytest
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers
 from transformers import PreTrainedTokenizerFast
 
-from swift.dev.builders.template import build_template
+from swift.dev.builder.template import build_template
 from swift.dev.config import TemplateConfig
 from swift.dev.template import TRAIN
 from swift.dev.template.agent import agent_template_map

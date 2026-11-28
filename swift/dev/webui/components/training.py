@@ -176,7 +176,7 @@ class TrainStepStage(StageComponent):
         horizon (per-click budgets never reconfigure the scheduler)."""
         if getattr(self, '_optimizer_built', False):
             return
-        from swift.dev.builders.optimizer import configure_optimizer
+        from swift.dev.builder.optimizer import configure_optimizer
         kv = {
             'optim': self.params.get('optim', 'adamw'),
             'learning_rate': self.params.get('lr', 1e-5),
@@ -260,7 +260,7 @@ class TrainStepStage(StageComponent):
             set_loss = getattr(model, 'set_loss', None)
             if not callable(set_loss):
                 raise ComponentError(f'{self.node_id}: model exposes no set_loss()')
-            from swift.dev.builders.remote import RemoteLossSpec, RemoteModel
+            from swift.dev.builder.remote import RemoteLossSpec, RemoteModel
             if isinstance(model, RemoteModel):
                 # A served model installs the loss by NAME + scalar kwargs (a remote loss node's
                 # resident IS that spec); the keyed registration rides the kwargs the
@@ -417,7 +417,7 @@ class WeightSyncStage(StageComponent):
             managers = self._managers = {}
         manager = managers.get((id(model), id(target)))
         if manager is None:
-            from swift.dev.builders.remote import RemoteModel, RemoteWeightSync
+            from swift.dev.builder.remote import RemoteModel, RemoteWeightSync
 
             if isinstance(model, RemoteModel):
                 manager = RemoteWeightSync(model, target)
@@ -444,7 +444,7 @@ class WeightAverageStage(StageComponent):
         target = inputs.get('target')
         if source is None or target is None:
             raise ComponentError(f'{self.node_id}: weight_average needs source and target')
-        from swift.dev.builders.remote import RemoteModel
+        from swift.dev.builder.remote import RemoteModel
 
         if isinstance(source, RemoteModel) or isinstance(target, RemoteModel):
             # The copy/EMA transfers read in-process state dicts and rank-local channels; a

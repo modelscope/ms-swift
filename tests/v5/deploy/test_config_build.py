@@ -13,7 +13,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from swift.dev.builders.sampler import _derive_sampler_type
+from swift.dev.builder.sampler import _derive_sampler_type
 from swift.dev.config import DeployConfig, ModelConfig, QuantizeConfig, TemplateConfig
 from swift.dev.recipe.infer.run_deploy import (
     _deployment,

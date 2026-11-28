@@ -5,7 +5,7 @@ dev2's reward layer keeps only its own seams here: ``get_reward_funcs`` / ``is_r
 ``twinkle.advantage`` -- the estimator math lives in twinkle's suite, what is pinned is the dev
 entry contract: unbiased group std and the validation surface), the privileged teacher views in
 ``swift.dev.utils.scoring`` (RLSD/SDAR/OPSD share the encode-and-align-check tail), and the channel
-split/resolve in ``swift.dev.rewards.scorer``. Rollout-internal cases (ut_plan S8-27/32-36) are
+split/resolve in ``swift.dev.reward.scorer``. Rollout-internal cases (ut_plan S8-27/32-36) are
 twinkle_agentic-layer and covered by its own suite.
 
 Maps to ut_plan S8-26/28/30/38/39/40/42/45/46/57.
@@ -86,7 +86,7 @@ class TestGetRewardFuncs:
     def test_registered_name_resolves_to_wrapped_callable(self):
         """'accuracy' resolves through the registry to a MathAccuracy instance wrapped for sync
         calling, and the metric label keeps the registry display name."""
-        from swift.dev.rewards.reward import _AwaitableToSync, get_reward_funcs
+        from swift.dev.reward.reward import _AwaitableToSync, get_reward_funcs
 
         funcs, names = get_reward_funcs(['accuracy'])
         assert names == ['MathAccuracy']
@@ -96,7 +96,7 @@ class TestGetRewardFuncs:
     def test_plain_callable_is_accepted_and_wrapped(self):
         """A raw callable is accepted without registration, wrapped for sync calling (it may be
         async), and keeps its own metric label."""
-        from swift.dev.rewards.reward import _AwaitableToSync, get_reward_funcs
+        from swift.dev.reward.reward import _AwaitableToSync, get_reward_funcs
 
         def my_reward(completions, **kwargs):
             return [0.0 for _ in completions]
@@ -116,14 +116,14 @@ class TestGetRewardFuncs:
     (None, False),
 ])
 def test_is_registered_reward_string_states(spec, expected):
-    from swift.dev.rewards.reward import is_registered_reward
+    from swift.dev.reward.reward import is_registered_reward
 
     assert is_registered_reward(spec) is expected
 
 
 def test_is_registered_reward_class_and_callable_states():
-    from swift.dev.rewards.orm import MathAccuracy
-    from swift.dev.rewards.reward import ORM, is_registered_reward
+    from swift.dev.reward.orm import MathAccuracy
+    from swift.dev.reward.reward import ORM, is_registered_reward
 
     assert is_registered_reward(ORM) is True  # a Reward subclass is a rule
     assert is_registered_reward(MathAccuracy) is True
@@ -139,7 +139,7 @@ class TestAwaitableToSync:
 
     def test_sync_passthrough(self):
         """A sync reward's list passes through untouched (no event loop is spun up)."""
-        from swift.dev.rewards.reward import _AwaitableToSync
+        from swift.dev.reward.reward import _AwaitableToSync
 
         def sync_reward(completions, **kwargs):
             return [float(len(c)) for c in completions]
@@ -150,7 +150,7 @@ class TestAwaitableToSync:
     def test_async_resolved_via_asyncio_run(self):
         """An ``async def`` reward is resolved to completion: the coroutine's awaited value, not the
         coroutine object, comes back."""
-        from swift.dev.rewards.reward import _AwaitableToSync
+        from swift.dev.reward.reward import _AwaitableToSync
 
         async def async_reward(completions, **kwargs):
             await asyncio.sleep(0)
@@ -161,7 +161,7 @@ class TestAwaitableToSync:
 
     def test_display_name_preserved(self):
         """The wrapper's __name__ keeps the reward's metric label (display_name reads it first)."""
-        from swift.dev.rewards.reward import _AwaitableToSync
+        from swift.dev.reward.reward import _AwaitableToSync
 
         def my_custom_reward(completions, **kwargs):
             return [0.0]
@@ -268,14 +268,14 @@ class TestSplitChannel:
     def test_mixed_channel_splits_rules_and_model_ids(self):
         """S8-45: is_registered_reward decides the split -- registered names stay rules, unknown
         strings are model ids; order is preserved within each half."""
-        from swift.dev.rewards.scorer import split_channel
+        from swift.dev.reward.scorer import split_channel
 
         rules, model_ids = split_channel(['accuracy', 'format', 'openai/gpt-oss-20b'])
         assert rules == ['accuracy', 'format']
         assert model_ids == ['openai/gpt-oss-20b']
 
     def test_all_rules_channel_has_no_model_ids(self):
-        from swift.dev.rewards.scorer import split_channel
+        from swift.dev.reward.scorer import split_channel
 
         assert split_channel(['accuracy', 'format']) == (['accuracy', 'format'], [])
 
@@ -285,7 +285,7 @@ class TestResolveChannelCompanions:
     def test_companion_must_align_with_model_ids(self):
         """S8-46: companion lists carry exactly one entry per model id in the channel; a mismatched
         length is rejected (a silently misaligned adapter/model_type would target the wrong model)."""
-        from swift.dev.rewards.scorer import ChannelCompanions, resolve_channel
+        from swift.dev.reward.scorer import ChannelCompanions, resolve_channel
 
         companions = ChannelCompanions(model_types=['a', 'b'])  # 2 entries, 0 model ids
         with pytest.raises(ValueError, match='model_type'):
@@ -293,7 +293,7 @@ class TestResolveChannelCompanions:
                             backend='transformers')
 
     def test_more_than_one_model_id_rejected(self):
-        from swift.dev.rewards.scorer import ChannelCompanions, resolve_channel
+        from swift.dev.reward.scorer import ChannelCompanions, resolve_channel
 
         with pytest.raises(ValueError, match='at most one reward model'):
             resolve_channel(['accuracy', 'model/a', 'model/b'], ChannelCompanions(), channel='orm',
@@ -301,7 +301,7 @@ class TestResolveChannelCompanions:
 
     def test_rules_only_plan_preserves_typed_order(self):
         """The plan keeps the user's typed order (that is what *_weights align against)."""
-        from swift.dev.rewards.scorer import ChannelCompanions, resolve_channel
+        from swift.dev.reward.scorer import ChannelCompanions, resolve_channel
 
         plan = resolve_channel(['format', 'accuracy'], ChannelCompanions(), channel='orm',
                                sampler_model=None, backend='transformers')

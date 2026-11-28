@@ -126,7 +126,7 @@ def test_lora_plus_joint_training_warns_instead_of_failing(caplog):
 
 
 def _mtp_kwargs(**model_overrides):
-    from swift.dev.builders.model import _apply_mtp_kwargs
+    from swift.dev.builder.model import _apply_mtp_kwargs
     from swift.dev.config import ModelConfig
     kwargs: dict = {}
     strict: set = set()

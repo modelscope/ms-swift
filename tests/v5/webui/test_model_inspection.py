@@ -247,7 +247,7 @@ def test_explicit_lora_matches_peft_trainable_paths(tmp_path):
     from peft import get_peft_model
     from transformers import AutoConfig, AutoModelForCausalLM
 
-    from swift.dev.builders.adapter import _build_adapter_config
+    from swift.dev.builder.adapter import _build_adapter_config
 
     path = _build_text(tmp_path)
     tuner = TunerConfig(target_modules=['q_proj', 'v_proj'])

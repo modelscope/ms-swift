@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+"""The export recipes: each module holds one model / dataset transform (a ``Recipe`` subclass) and
+the procedural ``run_*`` entry the CLI calls."""
 from __future__ import annotations
 
 from .cached_dataset import export_cached_dataset

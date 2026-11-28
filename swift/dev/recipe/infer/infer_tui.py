@@ -47,7 +47,7 @@ def infer_cli(
     """
     from dataclasses import asdict
 
-    from swift.dev.builders import (apply_generation_baseline, build_sampler, build_template, load_model_processor,
+    from swift.dev.builder import (apply_generation_baseline, build_sampler, build_template, load_model_processor,
                                     to_sampling_params)
 
     _, processor = load_model_processor(model_config)
@@ -71,7 +71,7 @@ def infer_cli(
                     and rollout_config.max_turns is not None)
     rollout = None
     if tools_on:
-        from swift.dev.builders.streaming import build_rollout
+        from swift.dev.builder.streaming import build_rollout
 
         # The run's tools come from rollout_config; the env opens one session per episode -- for the
         # REPL that is the single interactive conversation; teardown is rollout.close(), not shutdown.
@@ -146,7 +146,7 @@ def _run_stream_turn(sampler: Any, trajectory: Dict[str, Any], params: Any, adap
 
 def _run_plain_turn(sampler: Any, trajectory: Dict[str, Any], params: Any, adapter_path: Optional[str]) -> str:
     """One non-streamed chat turn."""
-    from swift.dev.builders import sampled_texts
+    from swift.dev.builder import sampled_texts
     texts = sampled_texts(sampler.sample([trajectory], params, adapter_path=adapter_path))
     response = texts[0][0] if texts and texts[0] else ''
     print(f'{_CYAN}Agent:{_RESET} {response}', flush=True)

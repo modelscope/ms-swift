@@ -23,7 +23,7 @@ def processor():
 
 @pytest.fixture(scope="module")
 def template(processor):
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
 
     return build_template(TemplateConfig(template="qwen2_5", max_length=256), processor)
@@ -246,7 +246,7 @@ def test_dev_template_package_import_boundary():  # noqa: C901
     #: a module-level import would close a template -> model load cycle. An unrelated template
     #: reaching for the same module still fails.
     deferred = {
-        "swift.dev.builders.template": (),
+        "swift.dev.builder.template": (),
         "swift.dev.model": ("families/decision.py", ),
         "swift.dev.model.decision_head": ("base.py", "families/decision.py"),
         "swift.dev.model.decision_branch": ("families/decision.py", ),
@@ -287,8 +287,6 @@ def test_dev_template_package_import_boundary():  # noqa: C901
             if (
                 module == "swift.dev.template"
                 or module.startswith("swift.dev.template.")
-                or module == "swift.dev.template_contract"
-                or module.startswith("swift.dev.template_contract.")
             ):
                 return
             if module == "swift" or module.startswith("swift."):
@@ -323,7 +321,7 @@ def test_dev_template_package_import_boundary():  # noqa: C901
 @pytest.mark.slow
 def test_template_from_spec_works_in_fresh_process_without_prior_build():
     code = (
-        "from swift.dev.builders import build_template_spec; "
+        "from swift.dev.builder import build_template_spec; "
         "from swift.dev.config import ModelConfig, TemplateConfig; "
         "from swift.dev.template import Template; "
         "spec = build_template_spec(TemplateConfig(template='qwen2_5'), "
@@ -335,7 +333,7 @@ def test_template_from_spec_works_in_fresh_process_without_prior_build():
 
 @pytest.mark.slow
 def test_template_spec_rebuilds_processor_through_dev_loader(processor):
-    from swift.dev.builders import build_template, build_template_from_spec
+    from swift.dev.builder import build_template, build_template_from_spec
     from swift.dev.config import TemplateConfig
     from swift.dev.template import INFER
 
@@ -347,7 +345,7 @@ def test_template_spec_rebuilds_processor_through_dev_loader(processor):
 
 @pytest.mark.slow
 def test_qwen35_template_spec_rebuilds_without_processor_state_kwargs():
-    from swift.dev.builders import build_template, build_template_from_spec
+    from swift.dev.builder import build_template, build_template_from_spec
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
 

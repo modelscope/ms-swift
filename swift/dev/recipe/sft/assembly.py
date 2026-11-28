@@ -92,7 +92,7 @@ def build_supervised_objects(
     the optimizer (which must see the loss's parameters) and after the tuner. The optional
     ``configure_metric`` peer runs AFTER ``configure_optimizer``, once the group's metric list exists.
     """
-    from swift.dev.builders import (
+    from swift.dev.builder import (
         apply_full_param_freeze,
         build_dataset,
         build_dp_mesh,
@@ -100,8 +100,8 @@ def build_supervised_objects(
         build_template,
         load_model_processor,
     )
-    from swift.dev.builders.adapter import apply_tuner
-    from swift.dev.builders.optimizer import configure_optimizer
+    from swift.dev.builder.adapter import apply_tuner
+    from swift.dev.builder.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor, input_processor_kwargs, processor_cp_size
     from twinkle import Platform
     from twinkle.perf import Perf
@@ -121,7 +121,7 @@ def build_supervised_objects(
     # twinkle_client handle, and the loss/tuner/processor calls carry class names instead of
     # instances. The dataset and template stay local (rows are encoded here and shipped as forward
     # inputs), so build_dataset/plan_supervised_steps are shared by both modes.
-    from swift.dev.builders.remote import (
+    from swift.dev.builder.remote import (
         configure_remote_loss, configure_remote_metric, configure_remote_processor,
     )
     process_and_validate(

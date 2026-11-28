@@ -37,7 +37,7 @@ def _engine(model_path):
 
 
 def _prompt_ids(model_path):
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
 

@@ -48,7 +48,7 @@ def ppo_group_requests(
     its ``reward_<i>`` group; a PRM MODEL gets ``prm_0``; the critic shares the policy's 'model'
     group, so it plans none.
     """
-    from swift.dev.rewards.scorer import split_channel
+    from swift.dev.reward.scorer import split_channel
 
     requests: List[Tuple[str, Optional[str]]] = []
     if not (has_adapter(tuner_config) and not rl_config.ref_adapters and not rl_config.sync_ref_model):
@@ -124,11 +124,11 @@ def initialize_ppo_cluster(
     from twinkle.advantage import GAEAdvantage
     from twinkle.processor import TrajectoryFilter
 
-    from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
-    from swift.dev.builders.adapter import apply_tuner
-    from swift.dev.builders.optimizer import configure_optimizer
-    from swift.dev.rewards.prm import build_prm_segment
-    from swift.dev.builders.streaming import (
+    from swift.dev.builder import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
+    from swift.dev.builder.adapter import apply_tuner
+    from swift.dev.builder.optimizer import configure_optimizer
+    from swift.dev.reward.prm import build_prm_segment
+    from swift.dev.builder.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
         build_cluster_adapter,
@@ -185,7 +185,7 @@ def initialize_ppo_cluster(
     else:
         apply_full_param_freeze(model, train_config)
     if remote_run:
-        from swift.dev.builders.remote import configure_remote_processor
+        from swift.dev.builder.remote import configure_remote_processor
 
         configure_remote_processor(model, template_config, model_config, distributed_config)
     else:
@@ -220,12 +220,12 @@ def initialize_ppo_cluster(
     value_config = copy.deepcopy(model_config)
     value_config.task_type = "seq_cls"
     value_config.num_labels = 1
-    from swift.dev.rewards.scorer import split_channel
+    from swift.dev.reward.scorer import split_channel
 
     orm_models = split_channel(list(reward_config.orm))[1] if reward_config is not None else []
     value_config.model = orm_models[0] if orm_models else model_config.model
     if remote_run:
-        from swift.dev.builders.remote import build_remote_model, configure_remote_processor
+        from swift.dev.builder.remote import build_remote_model, configure_remote_processor
 
         if not has_adapter(tuner_config) or tuner_config.tuner != 'lora':
             raise ValueError(
@@ -236,7 +236,7 @@ def initialize_ppo_cluster(
         value_model = build_remote_model(value_config, distributed_config)
         from peft import LoraConfig
 
-        from swift.dev.builders.adapter import _lora_common_kwargs
+        from swift.dev.builder.adapter import _lora_common_kwargs
 
         value_model.add_adapter_to_model(
             'default', LoraConfig(**_lora_common_kwargs(tuner_config, task_type=None)),
@@ -283,7 +283,7 @@ def initialize_ppo_cluster(
         template_config=template_config,
     )
     if remote_run:
-        from swift.dev.builders.remote import RemoteWeightSync
+        from swift.dev.builder.remote import RemoteWeightSync
 
         engine = RemoteWeightSync(model, sampler)
     else:
@@ -399,7 +399,7 @@ def build_ppo_driver(*, cluster: Cluster, rl_config: 'RLConfig', rollout_config:
     name the scorers) and its light batch summary. The PRM segment predicate (turn boundaries for a
     multi-turn rollout) feeds the process-reward lane the GAE token rewards fuse.
     """
-    from swift.dev.builders.streaming import build_streaming_driver
+    from swift.dev.builder.streaming import build_streaming_driver
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,

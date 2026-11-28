@@ -26,9 +26,9 @@ def _drive(monkeypatch, tmp_path, hermetic_qa_dataset, *, continuous, adapters=N
     dataset_name, dataset_args, _qa = hermetic_qa_dataset
     sampler = make_scripted_sampler(continuous=continuous)
     # Only the model-construction seam is replaced; Evaluator / evalscope / summarize all run for real.
-    monkeypatch.setattr('swift.dev.builders.build_sampler', lambda *_a, **_k: sampler)
-    monkeypatch.setattr('swift.dev.builders.load_model_processor', lambda *_a, **_k: (None, None))
-    monkeypatch.setattr('swift.dev.builders.build_template', lambda *_a, **_k: None)
+    monkeypatch.setattr('swift.dev.builder.build_sampler', lambda *_a, **_k: sampler)
+    monkeypatch.setattr('swift.dev.builder.load_model_processor', lambda *_a, **_k: (None, None))
+    monkeypatch.setattr('swift.dev.builder.build_template', lambda *_a, **_k: None)
     out_dir = tmp_path / 'out'
     jsonl = tmp_path / 'results.jsonl'
     eval_config = EvalConfig(

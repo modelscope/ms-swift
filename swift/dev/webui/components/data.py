@@ -29,7 +29,7 @@ class DataloaderComponent(IteratorComponent):
     type = 'dataloader'
 
     def start(self, inputs: Dict[str, Any]) -> None:
-        from swift.dev.builders import build_prompt_dataloader
+        from swift.dev.builder import build_prompt_dataloader
         dataset = inputs.get('data')
         if not isinstance(dataset, dict) or 'prompts' not in dataset:
             raise ComponentError(f'{self.node_id}: dataloader needs a wired dataset')
@@ -121,8 +121,8 @@ class StreamingDriverComponent(IteratorComponent):
         import math
         from dataclasses import asdict
 
-        from swift.dev.builders.sampler import to_sampling_params
-        from swift.dev.builders.streaming import build_rollout, build_streaming_driver
+        from swift.dev.builder.sampler import to_sampling_params
+        from swift.dev.builder.streaming import build_rollout, build_streaming_driver
         from .resources import _configs, _fill
         engines = slot_values(inputs.get('engine'))
         episode = inputs.get('episode')
@@ -374,7 +374,7 @@ class GenerateStage(StageComponent):
         # construction-time defaults stand.
         from dataclasses import asdict
 
-        from swift.dev.builders.sampler import to_sampling_params
+        from swift.dev.builder.sampler import to_sampling_params
         from .resources import _configs, _fill
         gen_kv = dict(self.params.get('generation_config') or {})
         params = (asdict(to_sampling_params(_fill(_configs().GenerationConfig, gen_kv, self.node_id)))

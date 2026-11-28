@@ -146,7 +146,7 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
     sync (which wakes the sampler, pushes the policy, offloads it and wakes the KV cache), and both
     are reloaded once a batch is handed out.
     """
-    from swift.dev.builders.streaming import offload_kwargs
+    from swift.dev.builder.streaming import offload_kwargs
     from swift.dev.recipe.offload import sleep_for_rollout
 
     temperature = float(cluster.sampling_params.get('temperature', 1.0))
@@ -348,7 +348,7 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
         group_requests=(lambda: ppo_group_requests(
             rl_config, reward_config, distributed_config, tuner_config)))
     # the optimizer's LR-scheduler horizon (num_ppo_epochs replays per rollout), derived BEFORE the build.
-    from swift.dev.builders import resolve_rl_dp_size
+    from swift.dev.builder import resolve_rl_dp_size
 
     remote_run = distributed_config.mode == 'remote'
     dp_size = resolve_rl_dp_size(distributed_config, template_config.sequence_parallel_size)
@@ -388,8 +388,8 @@ def run_ppo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # n
     # segment 4: dataloader + driver + the step cadence + the save closure.
     from twinkle.metric import CompletionRewardMetric
 
-    from swift.dev.builders import build_prompt_dataloader, is_megatron_backend
-    from swift.dev.builders.optimizer import resolve_max_grad_norm
+    from swift.dev.builder import build_prompt_dataloader, is_megatron_backend
+    from swift.dev.builder.optimizer import resolve_max_grad_norm
 
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=dataset_config.data_seed,

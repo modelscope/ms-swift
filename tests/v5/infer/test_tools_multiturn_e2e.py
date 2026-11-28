@@ -118,7 +118,7 @@ def template():
     """The REAL dev template over the cached tokenizer (``load_model=False``: tokenizer only, CPU-only).
     A fresh box without the tokenizer cached skips rather than fails, and every test here depends on it
     so the skip cascades."""
-    from swift.dev.builders.template import build_template
+    from swift.dev.builder.template import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
     try:
@@ -134,7 +134,7 @@ def grpo_run(template, tmp_path_factory):
     share the result: one prompt, a 2-candidate GRPO group, the calculator tool loaded from
     ``--external_plugins``, and ``save_rollout_tokens`` on so the NPZ sidecar is written. ``template`` is
     requested only to inherit its skip; ``run_infer`` builds its own."""
-    import swift.dev.builders as builders
+    import swift.dev.builder as builders
     from swift.dev.config import (DatasetConfig, GenerationConfig, InferConfig, ModelConfig, PluginConfig,
                                   RolloutConfig, TemplateConfig)
     from swift.dev.recipe.infer.run_infer import run_infer
@@ -268,7 +268,7 @@ def test_external_plugins_registers_the_calculator(grpo_run):
     """``--external_plugins`` really imported ``examples/infer/code/custom_tools.py``: its ``@register``
     ran, so ``calculator`` resolves under the ``tool`` extension point. (That it also EXECUTED is proven
     by the ``'14'`` observation in ``test_multiturn_trajectory_runs_the_real_tool_loop``.)"""
-    from swift.dev.builders.sandbox import TOOL
+    from swift.dev.builder.sandbox import TOOL
     grpo_run  # the run above loaded the plugin file through PluginRegistry.load_configured
     assert 'calculator' in TOOL.entries
 
@@ -311,7 +311,7 @@ def test_infer_cli_multiturn_sandbox_executes_a_real_command(template, monkeypat
     traced -- and that the REPL prints the tool trace and the final answer."""
     import builtins
 
-    import swift.dev.builders as builders
+    import swift.dev.builder as builders
     from swift.dev.config import GenerationConfig, ModelConfig, RolloutConfig, TemplateConfig
     from swift.dev.recipe.infer.infer_tui import infer_cli
 

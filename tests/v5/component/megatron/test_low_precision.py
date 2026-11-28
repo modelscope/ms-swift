@@ -89,7 +89,7 @@ def test_fp4_compute_alone_does_not_need_the_distributed_optimizer():
 
 
 def _fp4_kwargs(**model_overrides):
-    from swift.dev.builders.model import _apply_fp4_kwargs
+    from swift.dev.builder.model import _apply_fp4_kwargs
     from swift.dev.config import ModelConfig
     kwargs: dict = {}
     strict: set = set()
@@ -291,7 +291,7 @@ def test_fp4_and_fp8_together_are_rejected():
 
 
 def _fp8_kwargs(**model_overrides):
-    from swift.dev.builders.model import _apply_fp8_kwargs
+    from swift.dev.builder.model import _apply_fp8_kwargs
     from swift.dev.config import ModelConfig
     kwargs: dict = {}
     strict: set = set()
@@ -341,7 +341,7 @@ def test_only_explicitly_requested_fields_enter_the_strict_set():
     """``_strict_model_kwargs`` records WHICH knobs the user asked for by name, so a bridge provider
     that falls back to its own defaults for unknown fields cannot silently drop them. A default-only
     config contributes nothing (no key at all), an explicit non-default value is carried by name."""
-    from swift.dev.builders.model import _apply_fp4_kwargs, _megatron_model_kwargs
+    from swift.dev.builder.model import _apply_fp4_kwargs, _megatron_model_kwargs
     from swift.dev.config import MegatronConfig, ModelConfig
 
     kwargs, strict = {}, set()

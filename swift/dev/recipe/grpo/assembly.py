@@ -82,7 +82,7 @@ def grpo_group_requests(
     model. A disable_adapter auxiliary reuses the policy actor and plans NO group.
     """
     from swift.dev.recipe.utils import single_teacher_id
-    from swift.dev.rewards.scorer import split_channel
+    from swift.dev.reward.scorer import split_channel
 
     requests: List[Tuple[str, Optional[str]]] = []
     if rl_config.beta and rl_config.calculate_KL is not False:
@@ -218,12 +218,12 @@ def initialize_cluster(
     from twinkle.metric import RolloutCorrection
     from twinkle.processor import RoutingReplay, TrajectoryUpdate
 
-    from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
-    from swift.dev.builders.adapter import apply_tuner
-    from swift.dev.builders.remote import configure_remote_processor
-    from swift.dev.rewards.prm import build_prm_segment
-    from swift.dev.builders.optimizer import configure_optimizer
-    from swift.dev.builders.streaming import (
+    from swift.dev.builder import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
+    from swift.dev.builder.adapter import apply_tuner
+    from swift.dev.builder.remote import configure_remote_processor
+    from swift.dev.reward.prm import build_prm_segment
+    from swift.dev.builder.optimizer import configure_optimizer
+    from swift.dev.builder.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
         build_cluster_adapter,
@@ -247,7 +247,7 @@ def initialize_cluster(
                else build_dp_mesh(distributed_config, sp))
     # Refuse the engine/training combinations a quantized refit cannot serve
     # (DeepSeek-V4 MXFP4 experts): cheaper now than after the engine is built.
-    from swift.dev.weight_sync import check_quantized_weight_sync
+    from twinkle.sampler.vllm_sampler.quant_sync import check_quantized_weight_sync
 
     model_info = getattr(template, "model_info", None)
     check_quantized_weight_sync(
@@ -330,7 +330,7 @@ def initialize_cluster(
         template_config=template_config,
     )
     if remote_run:
-        from swift.dev.builders.remote import RemoteWeightSync
+        from swift.dev.builder.remote import RemoteWeightSync
 
         engine = RemoteWeightSync(model, sampler)
     else:
@@ -485,7 +485,7 @@ def build_driver(*, cluster: Cluster, rl_config: "RLConfig", rollout_config: "Ro
     batch facts carrying the row-aligned score column (``orm_names`` / ``prm_names`` name the
     scorers); the group verdict reads the samples' ``orm_reward`` rows.
     """
-    from swift.dev.builders.streaming import build_streaming_driver
+    from swift.dev.builder.streaming import build_streaming_driver
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,

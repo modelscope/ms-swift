@@ -9,7 +9,7 @@ never triggers a download.
 """
 import pytest
 
-from swift.dev.builders import build_engine_args
+from swift.dev.builder import build_engine_args
 from swift.dev.cli.eval import eval_main, parse_eval_configs
 from swift.dev.config import QuantizeConfig
 

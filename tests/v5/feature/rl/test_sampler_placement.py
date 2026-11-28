@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 
 def check_replica(colocate, tp, pp, dp):
-    from swift.dev import builders
+    from swift.dev import builder as builders
     from swift.dev.config import ModelConfig, RolloutConfig
     from swift.dev.recipe.utils import build_rl_sampler, plan_device_groups
 
@@ -39,7 +39,7 @@ def check_replica(colocate, tp, pp, dp):
 
 
 def check_planned():
-    from swift.dev import builders
+    from swift.dev import builder as builders
     from swift.dev.config import ModelConfig, RolloutConfig
     from swift.dev.recipe.utils import build_rl_sampler
 

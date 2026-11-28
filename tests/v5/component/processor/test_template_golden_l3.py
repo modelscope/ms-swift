@@ -12,7 +12,7 @@ import copy
 
 import pytest
 
-from swift.dev.builders.template import build_template
+from swift.dev.builder.template import build_template
 from swift.dev.config import TemplateConfig
 from swift.dev.template import ENGINE, INFER, TRAIN
 from tests.v5.component.processor.test_chat_template_parity import REPRESENTATIVES, _unwrap_official

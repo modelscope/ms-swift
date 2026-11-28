@@ -113,7 +113,7 @@ def _build_qwen2_5_vl(directory):
 
 def _load(model_type, directory, **config_kwargs):
     """Resolve the family loader exactly as dev does, then construct through it. Returns (loader, model)."""
-    from swift.dev.builders.model import _resolve_model_loader
+    from swift.dev.builder.model import _resolve_model_loader
     from swift.dev.config import ModelConfig
     from swift.dev.model import TransformersModel
     loader = _resolve_model_loader(ModelConfig(model=directory, model_type=model_type, **config_kwargs))
@@ -126,7 +126,7 @@ def _load(model_type, directory, **config_kwargs):
 
 def test_resolve_model_loader_honours_explicit_type_and_infers_from_id():
     """``model_type`` is authoritative; without it the family is inferred from the checkpoint name."""
-    from swift.dev.builders.model import _resolve_model_loader
+    from swift.dev.builder.model import _resolve_model_loader
     from swift.dev.config import ModelConfig
     from swift.dev.model.loader import MODEL_MAPPING
 
@@ -145,7 +145,7 @@ def test_resolve_model_loader_honours_explicit_type_and_infers_from_id():
 
 def test_all_six_loader_hooks_fire_in_order(tmp_path):
     """``TransformersModel`` drives the loader through exactly its six construction hooks, in order."""
-    from swift.dev.builders.model import _resolve_model_loader
+    from swift.dev.builder.model import _resolve_model_loader
     from swift.dev.config import ModelConfig
     from swift.dev.model import TransformersModel
 
@@ -260,7 +260,7 @@ def test_megatron_config_path_runs_loader_build_and_process_config(tmp_path):
     loader is actually used on that branch: ``_build_hf_config`` == ``build_config`` + ``process_config``
     (+ the rope/max-length overrides the caller threads in).
     """
-    from swift.dev.builders.model import _build_hf_config, _resolve_model_loader
+    from swift.dev.builder.model import _build_hf_config, _resolve_model_loader
     from swift.dev.config import ModelConfig
     from swift.dev.utils import HfConfigFactory
 

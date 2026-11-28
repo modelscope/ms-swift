@@ -45,7 +45,7 @@ def _grounding_text(ref, bbox):
 def rig():
     from PIL import Image
 
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
 
@@ -118,7 +118,7 @@ def test_multi_object_grounding_keeps_ref_bbox_pairing(rig):
 
 
 def test_norm1000_coordinates_match_official(rig):
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.dev.template import TRAIN
 

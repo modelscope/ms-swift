@@ -313,11 +313,11 @@ CHECKPOINT = D('checkpoint', '保存检查点', 'Stage', '实际模型导出与�
             Q('cadence', '保存间隔', 1, type='int', minimum=1, phase='call')),
     required_when=(('profile', 'training', ('step', 'source')),), effects=('save',), surface='runtime')
 
-MERGE = D('merge', '权重合并', 'Task', '复用实体 MergeComponent，输出真实模型产物。',
+MERGE = D('merge', '权重合并', 'Task', '复用实体 Merger，输出真实模型产物。',
     ports_in=(P('artifact', 'ARTIFACT', '原权重', ('model',)),), ports_out=(P('model', 'ARTIFACT', '合并权重', ('model',)),),
     params=(Q('output_dir', '输出目录', 'output/merged'), Q('merge_config', '合并配置', {}, type='dict')), effects=('save',),
     surface='artifact')
-QUANTIZE = D('quantize', '权重量化', 'Task', '复用实体 QuantizeComponent，校准来源明确。',
+QUANTIZE = D('quantize', '权重量化', 'Task', '复用实体 ModelQuantizer，校准来源明确。',
     ports_in=(P('artifact', 'ARTIFACT', '原权重', ('model',)), P('calib', 'DATASET', '校准来源', optional=True)),
     ports_out=(P('model', 'ARTIFACT', '量化权重', ('model',)),),
     params=(Q('output_dir', '输出目录', 'output/quantized'), Q('quantize_config', '量化配置', {}, type='dict')), effects=('save',),

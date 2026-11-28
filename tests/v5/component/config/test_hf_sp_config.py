@@ -232,7 +232,7 @@ def test_sp_without_torchrun_is_rejected():
 
 def test_mesh_builder_returns_none_when_sp_is_off():
     """sp=1 must reach TransformersModel with NO mesh -- the deliberate default-mesh local path."""
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builder import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
     assert build_dp_mesh(DistributedConfig(), 1) is None
@@ -244,7 +244,7 @@ def test_mesh_builder_returns_none_when_sp_is_off():
 
 def test_mesh_builder_without_torchrun_raises():
     """Plain pytest process: WORLD_SIZE unset -> world=1 -> the world-size requirement fires."""
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builder import build_dp_mesh
     from swift.dev.config import DistributedConfig
 
     with pytest.raises(ValueError, match="WORLD_SIZE>=2"):

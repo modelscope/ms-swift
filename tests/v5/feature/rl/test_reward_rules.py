@@ -30,7 +30,7 @@ class TestReActFormat:
     """S8-47: the react-format rule rewards exactly the think-block + Action + Action Input shape."""
 
     def test_ground_truth_rows(self):
-        from swift.dev.rewards.orm import ReActFormat
+        from swift.dev.reward.orm import ReActFormat
 
         scores = ReActFormat()([
             _row(REACT_GOOD),
@@ -51,7 +51,7 @@ class TestCosineReward:
         return RewardConfig(cosine_max_len=10)  # value knobs keep their defaults
 
     def test_wrong_answer_curve(self):
-        from swift.dev.rewards.orm import CosineReward
+        from swift.dev.reward.orm import CosineReward
 
         rule = CosineReward(self._args())
         rows = [_row('x', response_token_ids=[1] * t) for t in (1, 5, 10)]  # no gold -> wrong
@@ -62,7 +62,7 @@ class TestCosineReward:
     def test_correct_answer_curve_decays_from_one(self):
         """A correct answer starts at min_len_value_correct=1.0 (t=0) and decays to
         max_len_value_correct=0.5 at t=T -- short correct answers are worth more."""
-        from swift.dev.rewards.orm import CosineReward
+        from swift.dev.reward.orm import CosineReward
 
         rule = CosineReward(self._args())
         rows = [_row('the answer is \\boxed{4}', solution='4', response_token_ids=[1] * t)
@@ -72,7 +72,7 @@ class TestCosineReward:
 
     def test_overlong_uses_configured_endpoint(self):
         from swift.dev.config import RewardConfig
-        from swift.dev.rewards.orm import CosineReward
+        from swift.dev.reward.orm import CosineReward
 
         args = RewardConfig(
             cosine_max_len=10, cosine_max_len_value_wrong=-0.1, cosine_max_len_value_correct=0.2)
@@ -89,7 +89,7 @@ class TestRepetitionPenalty:
 
     def test_ground_truth(self):
         from swift.dev.config import RewardConfig
-        from swift.dev.rewards.orm import RepetitionPenalty
+        from swift.dev.reward.orm import RepetitionPenalty
 
         rule = RepetitionPenalty(RewardConfig())  # n=3, max_penalty=-1.0
         scores = rule([_row('a a a a'), _row('a b c d a b c d'), _row('a b c d e f g h i')])
@@ -101,7 +101,7 @@ class TestRepetitionPenalty:
     def test_short_completion_is_exempt(self):
         """Fewer words than the ngram size cannot repeat -- 0.0, not a division error."""
         from swift.dev.config import RewardConfig
-        from swift.dev.rewards.orm import RepetitionPenalty
+        from swift.dev.reward.orm import RepetitionPenalty
 
         assert RepetitionPenalty(RewardConfig())([_row('a b')]) == [0.0]
 
@@ -111,7 +111,7 @@ class TestSoftOverlong:
 
     def test_ground_truth(self):
         from swift.dev.config import RewardConfig
-        from swift.dev.rewards.orm import SoftOverlong
+        from swift.dev.reward.orm import SoftOverlong
 
         rule = SoftOverlong(RewardConfig(soft_max_length=20, soft_cache_length=5))
         scores = rule([_row('x', response_token_ids=[1] * t) for t in (30, 25, 15, 5)])
@@ -124,14 +124,14 @@ class TestDirectTwinkleRules:
     registry -- a no-arg construct must work and the native input contract must hold."""
 
     def test_format_rule_is_the_twinkle_class(self):
-        from swift.dev.rewards.reward import get_reward_funcs
+        from swift.dev.reward.reward import get_reward_funcs
 
         funcs, names = get_reward_funcs(['format'])
         assert names == ['FormatReward']
         assert type(funcs[0]._func).__module__.startswith('twinkle'), 'must be the twinkle class'
 
     def test_math_rule_reads_the_solution_column(self):
-        from swift.dev.rewards.reward import get_reward_funcs
+        from swift.dev.reward.reward import get_reward_funcs
 
         funcs, names = get_reward_funcs(['math'])
         assert names == ['MathReward']
@@ -145,7 +145,7 @@ class TestMathAccuracy:
     """S8-52: the 'accuracy' ORM reads the dataset's ``solution`` gold column."""
 
     def test_ground_truth(self):
-        from swift.dev.rewards.orm import MathAccuracy
+        from swift.dev.reward.orm import MathAccuracy
 
         rule = MathAccuracy()
         assert rule.ground_truth_key == 'solution'
@@ -163,7 +163,7 @@ class TestCodeExecutionReward:
     def test_real_execution_pass_fraction(self):
         import asyncio
 
-        from swift.dev.rewards.code_reward import CodeExecutionReward
+        from swift.dev.reward.code_reward import CodeExecutionReward
 
         reward = CodeExecutionReward()  # args=None -> python + LocalEnv
         correct = _row('```python\nimport sys\nprint(sys.stdin.read().strip())\n```', test_cases=self._cases())
@@ -176,7 +176,7 @@ class TestCodeExecutionReward:
         """Guard: no test_cases column is a loud error -- the reward is meaningless without cases."""
         import asyncio
 
-        from swift.dev.rewards.code_reward import CodeExecutionReward
+        from swift.dev.reward.code_reward import CodeExecutionReward
 
         with pytest.raises(ValueError, match='test_cases'):
             asyncio.run(CodeExecutionReward()([_row('```python\nprint(1)\n```')]))

@@ -66,7 +66,7 @@ older docs and training data — does not exist in this package at all. Never wr
   loads processor only, no GPU):
 
 ```python
-from swift.dev.builders.template import build_template_spec, build_template_from_spec
+from swift.dev.builder.template import build_template_spec, build_template_from_spec
 from swift.dev.config import ModelConfig, TemplateConfig
 
 spec = build_template_spec(

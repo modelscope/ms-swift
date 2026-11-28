@@ -106,7 +106,7 @@ def _dump_records(dump_dir):
 def _dataset_row_ids(model_path, data):
     """Independent seq_cls render of each dataset row (INFER intent: the trainer pools the last
     position, so the render carries the assistant opener). Returns ids tuples in dataset order."""
-    from swift.dev.builders import build_template
+    from swift.dev.builder import build_template
     from swift.dev.config import TemplateConfig
     from swift.dev.template import INFER
     from swift.model import get_model_processor

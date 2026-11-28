@@ -37,7 +37,7 @@ def rft_group_requests(reward_config: "RewardConfig") -> List[Tuple[str, Optiona
     MODEL in the orm channel is its only frozen auxiliary -- one ``reward_<i>`` group per model,
     exactly the names :func:`resolve_reward_scorers` builds below (both sides split the channel).
     """
-    from swift.dev.rewards.scorer import split_channel
+    from swift.dev.reward.scorer import split_channel
 
     return [
         (f"reward_{index}", reward_config.orm_parallel_spec)
@@ -85,12 +85,12 @@ def initialize_rft_cluster(
     auxiliaries RFT does not have (no reference, no teacher, no PRM, no elastic adapter) and with
     the SFT cross-entropy loss instead of an RL one; ``max_steps`` is the resolved step budget
     (the LR-scheduler horizon), derived by the caller BEFORE this stage. ``inflight`` is the
-    episodes a round runs at once (see :func:`~swift.dev.builders.streaming.inflight_rows`).
+    episodes a round runs at once (see :func:`~swift.dev.builder.streaming.inflight_rows`).
     """
-    from swift.dev.builders import apply_full_param_freeze, build_dp_mesh, build_model
-    from swift.dev.builders.adapter import apply_tuner
-    from swift.dev.builders.optimizer import configure_optimizer
-    from swift.dev.builders.streaming import (
+    from swift.dev.builder import apply_full_param_freeze, build_dp_mesh, build_model
+    from swift.dev.builder.adapter import apply_tuner
+    from swift.dev.builder.optimizer import configure_optimizer
+    from swift.dev.builder.streaming import (
         CONTROL_GROUP,
         build_checkpoint_manager,
         build_rollout,
@@ -143,7 +143,7 @@ def initialize_rft_cluster(
     else:
         apply_full_param_freeze(model, train_config)
     if remote_run:
-        from swift.dev.builders.remote import (
+        from swift.dev.builder.remote import (
             configure_remote_loss,
             configure_remote_processor,
         )
@@ -188,7 +188,7 @@ def initialize_rft_cluster(
     rollout = build_rollout(sampler, template, rollout_config, sampling_params=params,
                             remote=not remote_run, inflight=inflight)
     if remote_run:
-        from swift.dev.builders.remote import RemoteWeightSync
+        from swift.dev.builder.remote import RemoteWeightSync
 
         engine = RemoteWeightSync(model, sampler)
     else:
@@ -239,7 +239,7 @@ def build_rft_driver(*, cluster: RFTCluster, rollout_config: "RolloutConfig", pr
     """
     import math
 
-    from swift.dev.builders.streaming import build_streaming_driver
+    from swift.dev.builder.streaming import build_streaming_driver
 
     return build_streaming_driver(
         dataloader=prompt_dataloader,

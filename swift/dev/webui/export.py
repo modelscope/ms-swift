@@ -26,7 +26,7 @@ def validate_factories() -> None:
     """Every declared factory path must resolve to a real importable object.
 
     ``module:attr`` (and ``module`` alone -- the constructor is the module's
-    namesake, e.g. swift.dev.builders.dataset) both resolve here. A stale
+    namesake, e.g. swift.dev.builder.dataset) both resolve here. A stale
     factory is caught at export time, not at first canvas click.
     """
     for descriptor in REGISTRY.values():

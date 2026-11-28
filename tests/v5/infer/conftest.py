@@ -99,15 +99,15 @@ class ScriptedSampler:
 
 @pytest.fixture
 def patch_prompt_rows(monkeypatch):
-    """Monkeypatch ``swift.dev.builders.load_prompt_only_rows`` to return a caller-supplied batch.
+    """Monkeypatch ``swift.dev.builder.load_prompt_only_rows`` to return a caller-supplied batch.
 
-    ``_run_generative`` / ``run_infer`` import ``load_prompt_only_rows`` from ``swift.dev.builders`` at call
+    ``_run_generative`` / ``run_infer`` import ``load_prompt_only_rows`` from ``swift.dev.builder`` at call
     time, so patching the attribute there is picked up. This keeps the fast pipeline test off the real
     dataset loader (and thus off the hub) while still driving the production code path.
     """
 
     def _patch(rows: List[Dict[str, Any]]):
-        import swift.dev.builders as builders
+        import swift.dev.builder as builders
         monkeypatch.setattr(builders, 'load_prompt_only_rows', lambda *a, **k: list(rows))
         return rows
 

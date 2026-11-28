@@ -26,7 +26,7 @@ def main():
 
     dist.init_process_group("gloo")
 
-    from swift.dev.builders import build_dp_mesh
+    from swift.dev.builder import build_dp_mesh
     from swift.dev.config import (
         CheckpointConfig,
         DatasetConfig,

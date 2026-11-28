@@ -75,7 +75,7 @@ def test_load_hf_config_forwards_revision(model_dir, monkeypatch):
 
 
 def test_generic_builder_bypasses_auto_config_override(model_dir):
-    from swift.dev.builders.model import _build_hf_config
+    from swift.dev.builder.model import _build_hf_config
     from swift.dev.config import ModelConfig
 
     config = _build_hf_config(ModelConfig(model=str(model_dir)))

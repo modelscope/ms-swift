@@ -44,7 +44,7 @@ def run_deploy(
     applications are RUNNING and the deployment keeps living on the Ray cluster; deployments of
     different model names coexist behind one shared gateway (the registry widens per deployment).
     """
-    from swift.dev.processor.server_plugin import WORKER_SETUP_HOOK
+    from swift.dev.builder.server_plugin import WORKER_SETUP_HOOK
     from swift.dev.utils.plugin import publish_worker_setup_hook
 
     publish_worker_setup_hook(WORKER_SETUP_HOOK)
@@ -135,7 +135,7 @@ def build_server_config(
     rebuilds that exact path from the request's model, so the two must agree.
 
     The sampler pins ``SwiftTemplate`` + a dev ``TemplateSpec``, a name that only resolves once
-    ``swift.dev.processor.server_plugin.register`` has run in the worker: a caller that launches this
+    ``swift.dev.builder.server_plugin.register`` has run in the worker: a caller that launches this
     config itself must publish ``WORKER_SETUP_HOOK`` (``publish_worker_setup_hook``) or set
     ``TWINKLE_WORKER_SETUP_HOOK`` in the app's ``runtime_env.env_vars`` before the workers start.
 
@@ -154,8 +154,8 @@ def build_server_config(
         ServerConfig,
     )
 
-    from swift.dev.builders import resolve_twinkle_template
-    from swift.dev.builders.sampler import _derive_sampler_type, _enable_lora
+    from swift.dev.builder import resolve_twinkle_template
+    from swift.dev.builder.sampler import _derive_sampler_type, _enable_lora
     from swift.dev.config import DeployConfig as _DeployConfig
     from swift.dev.config import DistributedConfig as _DistributedConfig
 
@@ -433,7 +433,7 @@ def _sampler_engine_args(
     if adapter_mapping:
         enable_lora(resolved, backend, list(adapter_mapping.values()))
     if model_config is not None:
-        from swift.dev.builders.model import _resolve_model_loader
+        from swift.dev.builder.model import _resolve_model_loader
 
         loader = _resolve_model_loader(model_config)
         if loader is not None:
@@ -453,7 +453,7 @@ def _device_spec(distributed_config: DistributedConfig) -> tuple:
     from twinkle import Platform
 
     nproc = distributed_config.nproc_per_node or 1
-    from swift.dev.builders import build_parallel_mesh
+    from swift.dev.builder import build_parallel_mesh
 
     mesh = build_parallel_mesh(distributed_config, none_if_single_rank=True)
     dp_size = int(getattr(mesh, "data_world_size", 1)) if mesh is not None else 1

@@ -481,7 +481,7 @@ def _load_chord_features(rl_config: 'RLConfig', dataset_config: 'DatasetConfig',
         return []
     from copy import copy
 
-    from swift.dev.builders import load_prompt_only_rows
+    from swift.dev.builder import load_prompt_only_rows
 
     chord_config = copy(dataset_config)
     chord_config.dataset = list(rl_config.chord_sft_dataset)
@@ -564,7 +564,7 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
             rl_config, reward_config, distributed_config, tuner_config)))
     remote_run = distributed_config.mode == 'remote'
     # the optimizer's LR-scheduler horizon, derived BEFORE the cluster builds the optimizer.
-    from swift.dev.builders import build_dp_mesh, build_parallel_mesh, is_megatron_backend
+    from swift.dev.builder import build_dp_mesh, build_parallel_mesh, is_megatron_backend
 
     if remote_run:
         # One client process drives the server: the policy handle's own mesh sizes the batches.
@@ -613,8 +613,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         moe_config=moe_config, generation_config=generation_config, resource_plan=resource_plan,
         auxiliary_meshes=auxiliary_meshes, teacher_prompt=teacher_prompt)
     # segment 4: dataloader + driver + the step cadence + the save closure.
-    from swift.dev.builders import build_prompt_dataloader
-    from swift.dev.builders.optimizer import resolve_max_grad_norm
+    from swift.dev.builder import build_prompt_dataloader
+    from swift.dev.builder.optimizer import resolve_max_grad_norm
 
     dataloader = build_prompt_dataloader(
         prompts, prompt_extras, seed=dataset_config.data_seed,
@@ -689,8 +689,8 @@ def run_grpo(model_config: 'ModelConfig', template_config: 'TemplateConfig',  # 
         log_formatter=_grpo_log_line)
     completion_log = None
     if rl_config.log_completions or state.tracker.logs_prompts:
-        from swift.dev.builders.streaming import CONTROL_GROUP
-        from swift.dev.metrics import CompletionLog
+        from swift.dev.builder.streaming import CONTROL_GROUP
+        from swift.dev.metric import CompletionLog
 
         completion_log = CompletionLog(remote_group=CONTROL_GROUP)
 

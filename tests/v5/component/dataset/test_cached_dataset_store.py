@@ -5,7 +5,7 @@
 end to end so the seams around it are proven too -- the ones a primitive-level test cannot see:
 
 * ``export_cached_dataset`` really loads a processor (``load_model=False``, tokenizer only, CPU), builds
-  a real template, and runs the SAME ``swift.dev.builders.dataset._encode`` the eager training path uses;
+  a real template, and runs the SAME ``swift.dev.builder.dataset._encode`` the eager training path uses;
 * ``store_encoded=False`` keeps the raw row plus a ``lengths`` column (``MeasurePreprocessor``), while
   ``store_encoded=True`` materialises real tokens (``EncodePreprocessor``) -- asserted by decoding the
   written ``input_ids`` back to the source text and checking the ``labels`` loss mask, so a template or
@@ -188,7 +188,7 @@ def test_exported_store_is_consumable_by_build_dataset_path(tokenizer, sft_file,
     """Full write -> consume loop: point ``DatasetConfig.cached_dataset`` at the exported ``train`` dir
     and load it through ``_load_cached_datasets`` -- the exact call ``build_dataset`` makes -- and the
     materialised rows come back with their tokens intact."""
-    from swift.dev.builders.dataset import _load_cached_datasets
+    from swift.dev.builder.dataset import _load_cached_datasets
     from swift.dev.config import DatasetConfig, TemplateConfig
 
     train_dir, _ = _export(tmp_path, sft_file, store_encoded=True)
@@ -207,7 +207,7 @@ def test_exported_store_is_consumable_by_build_dataset_path(tokenizer, sft_file,
 def test_consumer_delete_filter_applies_to_exported_store(tokenizer, sft_file, tmp_path):
     """The reader's ``truncation_strategy='delete'`` length filter works on a real exported store: a
     ``max_length`` below every row's length drops them all, proving ``lengths`` is wired to the filter."""
-    from swift.dev.builders.dataset import _load_cached_datasets
+    from swift.dev.builder.dataset import _load_cached_datasets
     from swift.dev.config import DatasetConfig, TemplateConfig
 
     train_dir, _ = _export(tmp_path, sft_file, store_encoded=True)
