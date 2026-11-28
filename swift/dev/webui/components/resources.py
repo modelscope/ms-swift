@@ -6,18 +6,17 @@ the canvas params (names ARE the field names; only the few combined canvas
 spellings split here), construct the native object through the EXISTING
 builders, keep it resident. Nothing native learns about the canvas.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 import dataclasses
 import os
 from typing import Any, Dict, Optional
 
+from twinkle.loss import Loss
+
 from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
-
-from ..component import (ComponentError, ResourceComponent, StageComponent,
-                         load_code_component)
-from twinkle.loss import Loss
+from ..component import ComponentError, ResourceComponent, StageComponent, load_code_component
 
 logger = get_logger()
 
@@ -36,8 +35,8 @@ def _fill(cls: Any, kv: Dict[str, str], node_id: str) -> Any:
     known: Dict[str, Any] = {}
     for key, value in kv.items():
         if key not in fields:
-            raise ComponentError(f'{node_id}: param {key!r} is not a field of {cls.__name__}')
-        if value == '' and typing.get_origin(hints.get(key)) is typing.Union:
+            raise ComponentError(f"{node_id}: param {key!r} is not a field of {cls.__name__}")
+        if value == "" and typing.get_origin(hints.get(key)) is typing.Union:
             continue
         known[key] = _coerce(value, hints.get(key, str), node_id, key)
     return cls(**known)
@@ -71,19 +70,18 @@ def _coerce(value: Any, hint: Any, node_id: str, key: str) -> Any:
         # Literal and unknown hints take the value as-is (the typed form
         # is the source of truth).
         if hint is int or hint is float or hint is bool:
-            raise ComponentError(
-                f'{node_id}.{key}: expected {hint.__name__}, got {type(value).__name__}')
+            raise ComponentError(f"{node_id}.{key}: expected {hint.__name__}, got {type(value).__name__}")
         return value
     if hint is bool:
-        if value.lower() not in ('true', 'false'):
-            raise ComponentError(f'{node_id}.{key}: expected true/false, got {value!r}')
-        return value.lower() == 'true'
+        if value.lower() not in ("true", "false"):
+            raise ComponentError(f"{node_id}.{key}: expected true/false, got {value!r}")
+        return value.lower() == "true"
     if hint is int:
         return int(value)
     if hint is float:
         return float(value)
     if origin in (list, typing.List) or hint in (typing.List, list):
-        parts = [p for chunk in value.split(',') for p in chunk.split() if p]
+        parts = [p for chunk in value.split(",") for p in chunk.split() if p]
         inner = typing.get_args(hint)
         inner_hint = inner[0] if inner else str
         return [_coerce(p, inner_hint, node_id, key) for p in parts]
@@ -94,6 +92,7 @@ def _configs():
     """The dev Config namespace, imported lazily (the session process may run
     before any training import)."""
     import swift.dev.config as config_pkg
+
     return config_pkg
 
 
@@ -108,24 +107,29 @@ def _reject_unknown_kwargs(cls: Any, kwargs: Dict[str, Any], node_id: str, label
     parameters (``*args`` / ``**kwargs``) do not count -- their names are
     spelling artefacts, not settable fields."""
     import inspect
+
     named = set()
     for klass in cls.__mro__:
-        init = klass.__dict__.get('__init__')
+        init = klass.__dict__.get("__init__")
         if init is None:
             continue
-        named |= {param.name for param in inspect.signature(init).parameters.values()
-                  if param.name not in ('self', 'args')
-                  and param.kind not in (inspect.Parameter.VAR_POSITIONAL,
-                                         inspect.Parameter.VAR_KEYWORD)}
+        named |= {
+            param.name
+            for param in inspect.signature(init).parameters.values()
+            if param.name not in ("self", "args")
+            and param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        }
     unknown = set(kwargs) - named
     if unknown:
         raise ComponentError(
-            f'{node_id}: {label} rejects kwargs {sorted(unknown)} '
-            f'(constructor accepts {sorted(named) if named else "no kwargs"})')
+            f"{node_id}: {label} rejects kwargs {sorted(unknown)} "
+            f"(constructor accepts {sorted(named) if named else 'no kwargs'})"
+        )
 
 
-def build_template_from(tokenizer_id: str, template_kv: Optional[dict], node_id: str,
-                        model_kv: Optional[dict] = None) -> Any:
+def build_template_from(
+    tokenizer_id: str, template_kv: Optional[dict], node_id: str, model_kv: Optional[dict] = None
+) -> Any:
     """The encoding rule for ONE tokenizer source: a resident real template.
 
     The processor loads WITHOUT the model (``load_model=False``), so the rule
@@ -138,15 +142,16 @@ def build_template_from(tokenizer_id: str, template_kv: Optional[dict], node_id:
     from swift.dev.builder import build_template, load_model_processor
     model_id = str(tokenizer_id or '').strip()
     if not model_id:
-        raise ComponentError(f'{node_id}: tokenizer source is required -- '
-                             'params.tokenizer names the model whose tokenizer loads')
+        raise ComponentError(
+            f"{node_id}: tokenizer source is required -- params.tokenizer names the model whose tokenizer loads"
+        )
     kv = dict(template_kv or {})
-    extra = {k: v for k, v in dict(model_kv or {}).items() if k != 'model'}
+    extra = {k: v for k, v in dict(model_kv or {}).items() if k != "model"}
     try:
         template_config = _configs().TemplateConfig(**kv)
         model_config = _configs().ModelConfig(model=model_id, **extra)
     except TypeError as exc:
-        raise ComponentError(f'{node_id}: {exc}') from None
+        raise ComponentError(f"{node_id}: {exc}") from None
     _model_or_none, processor = load_model_processor(model_config, load_model=False)
     return build_template(template_config, processor)
 
@@ -172,9 +177,8 @@ def encode_rows(template: Any, data: Any) -> list:
     reference model_forward -- yields the identical 2P layout and the
     reference logps stay aligned; a plain encode would silently drop the
     rejected side and let the loss pair unrelated rows."""
-    items = data if isinstance(data, list) else (
-        (data or {}).get('rows', []) if isinstance(data, dict) else [])
-    if isinstance(data, dict) and not isinstance(data.get('rows', []), list):
+    items = data if isinstance(data, list) else ((data or {}).get("rows", []) if isinstance(data, dict) else [])
+    if isinstance(data, dict) and not isinstance(data.get("rows", []), list):
         raise ComponentError(
             'cannot encode: a dict batch must expose a row list under "rows" '
             f'(got keys {sorted(data.keys())[:8]})')
@@ -184,41 +188,47 @@ def encode_rows(template: Any, data: Any) -> list:
     if items and not all(isinstance(item, dict) for item in items):
         kinds = sorted({type(item).__name__ for item in items if not isinstance(item, dict)})
         raise ComponentError(
-            'cannot encode: items are neither message rows nor trajectories '
-            f'(got {kinds}; a reference means an upstream stage handed off a stashed '
-            'payload without materialising it)')
-    if items and all(item.get('input_ids') is not None for item in items):
+            "cannot encode: items are neither message rows nor trajectories "
+            f"(got {kinds}; a reference means an upstream stage handed off a stashed "
+            "payload without materialising it)"
+        )
+    if items and all(item.get("input_ids") is not None for item in items):
         return list(items)
-    if any(item.get('input_ids') is not None for item in items):
-        failed = [item.get('error') for item in items if item.get('input_ids') is None]
+    if any(item.get("input_ids") is not None for item in items):
+        failed = [item.get("error") for item in items if item.get("input_ids") is None]
         raise ComponentError(
-            f'cannot encode: {len(failed)} of {len(items)} trajectories carry no encoding '
-            f'(a failed episode, e.g. {failed[0]!r}); re-encoding them would misalign the batch')
-    paired = [item for item in items
-              if item.get('rejected_messages') is not None or item.get('rejected_response') is not None]
+            f"cannot encode: {len(failed)} of {len(items)} trajectories carry no encoding "
+            f"(a failed episode, e.g. {failed[0]!r}); re-encoding them would misalign the batch"
+        )
+    paired = [
+        item for item in items if item.get("rejected_messages") is not None or item.get("rejected_response") is not None
+    ]
     if paired:
         if len(paired) != len(items):
             raise ComponentError(
-                'cannot encode: the batch mixes preference rows (with a rejected side) and plain '
-                'rows; the interleaved pair layout must stay atomic -- use a fully paired dataset')
+                "cannot encode: the batch mixes preference rows (with a rejected side) and plain "
+                "rows; the interleaved pair layout must stay atomic -- use a fully paired dataset"
+            )
         from swift.dev.template.inputs import preference_sample_from_row
+
         features: list = []
         for row in items:
             # encode(PreferenceSample) returns {'chosen': feature, 'rejected': feature} --
             # each side already a standalone finalized feature (prefix stripped by the template).
             encoded = template.encode(preference_sample_from_row(row))
-            for side in ('chosen', 'rejected'):
+            for side in ("chosen", "rejected"):
                 feature = dict(encoded.get(side) or {})
-                feature.pop('length', None)
-                if 'input_ids' not in feature:
+                feature.pop("length", None)
+                if "input_ids" not in feature:
                     raise ComponentError(
-                        f'cannot encode: the preference row produced no {side!r} sequence; '
-                        'DPO-family losses need paired chosen/rejected data')
+                        f"cannot encode: the preference row produced no {side!r} sequence; "
+                        "DPO-family losses need paired chosen/rejected data"
+                    )
                 features.append(feature)
         return features
-    encode = getattr(template, 'batch_encode', None)
+    encode = getattr(template, "batch_encode", None)
     if not callable(encode):
-        raise ComponentError(f'the template {template!r} exposes no batch_encode()')
+        raise ComponentError(f"the template {template!r} exposes no batch_encode()")
     result = encode(items)
     return result if isinstance(result, list) else [result]
 
@@ -238,7 +248,7 @@ class ModelComponent(ResourceComponent):
     ``build_model`` entry with zero backend branches here; the megatron tier
     additionally passes its megatron/moe config groups through."""
 
-    type = 'model'
+    type = "model"
 
     #: build 在并行阶段会首次加载的模块（含函数体内 lazy import 的入口）：
     #: 预热必须覆盖它们，否则 worker 的深链 import 会与主线程设备构建的
@@ -249,57 +259,66 @@ class ModelComponent(ResourceComponent):
     def build(self, inputs: Dict[str, Any]) -> Any:
         from swift.dev.builder.model import build_model
         config_pkg = _configs()
-        backend = str(self.params.get('backend', 'hf') or 'hf')
-        model_kv = dict(self.params.get('model_config') or {})
-        model_kv['model'] = self.params.get('model')
+        backend = str(self.params.get("backend", "hf") or "hf")
+        model_kv = dict(self.params.get("model_config") or {})
+        model_kv["model"] = self.params.get("model")
         model_config = _fill(config_pkg.ModelConfig, model_kv, self.node_id)
-        dist_kv = dict(self.params.get('distributed_config') or {})
+        dist_kv = dict(self.params.get("distributed_config") or {})
         if self.remote_target is not None:
             # mode='remote': the model is a served-model handle over the endpoint the resource
             # page names; ``model`` is the server-side served id. build_model self-dispatches
             # inside the builders, so everything below is the same call the local mode makes.
-            dist_kv.update({'mode': 'remote', 'backend': backend,
-                            'server_base_url': self.remote_target.server_url})
+            dist_kv.update({"mode": "remote", "backend": backend, "server_base_url": self.remote_target.server_url})
             if self.remote_target.server_api_key:
-                dist_kv['server_api_key'] = self.remote_target.server_api_key
+                dist_kv["server_api_key"] = self.remote_target.server_api_key
         else:
             # The session boots ray; there is no local form. The placement rides the session's
             # device plan: the card spec sizes nproc_per_node, parallel_spec shapes the mesh.
-            dist_kv.update({'mode': 'ray',
-                            'backend': backend,
-                            'nproc_per_node': self._card_count(),
-                            'parallel_spec': str(self.params.get('parallel_spec') or '') or None})
+            dist_kv.update(
+                {
+                    "mode": "ray",
+                    "backend": backend,
+                    "nproc_per_node": self._card_count(),
+                    "parallel_spec": str(self.params.get("parallel_spec") or "") or None,
+                }
+            )
         dist_config = _fill(config_pkg.DistributedConfig, dist_kv, self.node_id)
         if self.remote_target is None and not self.remote_group:
             raise ComponentError(
-                f'{self.node_id}: a model needs its planned DeviceGroup -- '
-                'run it through a booted session (the resource page picks the cards)')
+                f"{self.node_id}: a model needs its planned DeviceGroup -- "
+                "run it through a booted session (the resource page picks the cards)"
+            )
         megatron_config = moe_config = None
-        if backend == 'megatron':
-            kv = dict(self.params.get('megatron_config') or {})
+        if backend == "megatron":
+            kv = dict(self.params.get("megatron_config") or {})
             megatron_config = _fill(config_pkg.MegatronConfig, kv, self.node_id) if kv else None
-            kv = dict(self.params.get('moe_config') or {})
+            kv = dict(self.params.get("moe_config") or {})
             moe_config = _fill(config_pkg.MoeConfig, kv, self.node_id) if kv else None
-        elif self.params.get('megatron_config') or self.params.get('moe_config'):
-            raise ComponentError(
-                f'{self.node_id}: megatron_config/moe_config 仅在 backend=megatron 时生效')
-        train_type = str(self.params.get('train_type') or 'lora')
-        tuner_kv = dict(self.params.get('tuner_config') or {})
-        if train_type != 'full':
-            tuner_kv['tuner'] = train_type
+        elif self.params.get("megatron_config") or self.params.get("moe_config"):
+            raise ComponentError(f"{self.node_id}: megatron_config/moe_config 仅在 backend=megatron 时生效")
+        train_type = str(self.params.get("train_type") or "lora")
+        tuner_kv = dict(self.params.get("tuner_config") or {})
+        if train_type != "full":
+            tuner_kv["tuner"] = train_type
         tuner_config = _fill(config_pkg.TunerConfig, tuner_kv, self.node_id) if tuner_kv else None
         # train_config carries NATIVE TrainConfig field spellings as a dict;
         # _fill fails loudly on a name that is not a real field.
-        train_kv = dict(self.params.get('train_config') or {})
+        train_kv = dict(self.params.get("train_config") or {})
         train_config = _fill(config_pkg.TrainConfig, train_kv, self.node_id) if train_kv else None
         # The mesh is derived inside build_model from parallel_spec +
         # nproc_per_node (build_dp_mesh for transformers, the megatron bridge
         # for megatron) -- the same derivation every recipe uses, so the
-        # webui and run_grpo cannot drift apart in placement. Under remote the served
+        # webui and the policy recipe cannot drift apart in placement. Under remote the served
         # engine owns the layout and the builders' entry ignores the placement inputs.
-        self.obj = build_model(model_config, dist_config, train_config=train_config,
-                               tuner_config=tuner_config, megatron_config=megatron_config,
-                               moe_config=moe_config, remote_group=self.remote_group or None)
+        self.obj = build_model(
+            model_config,
+            dist_config,
+            train_config=train_config,
+            tuner_config=tuner_config,
+            megatron_config=megatron_config,
+            moe_config=moe_config,
+            remote_group=self.remote_group or None,
+        )
         if has_adapter(tuner_config):
             # The adapter install is a SEPARATE step after build_model (the same
             # apply_tuner every recipe runs); without it train_type='lora'
@@ -307,19 +326,21 @@ class ModelComponent(ResourceComponent):
             # optimizer-group scale the recipes pass from TrainConfig.
             from swift.dev.builder.adapter import apply_tuner
             apply_tuner(
-                self.obj, tuner_config,
-                gradient_accumulation_steps=(
-                    train_config.gradient_accumulation_steps if train_config else 1),
+                self.obj,
+                tuner_config,
+                gradient_accumulation_steps=(train_config.gradient_accumulation_steps if train_config else 1),
                 task_type=model_config.task_type,
-                model_config=model_config)
-        if self.params.get('freeze'):
+                model_config=model_config,
+            )
+        if self.params.get("freeze"):
             if self.remote_target is not None:
                 # The client handle has no in-process parameter graph to freeze: a frozen
                 # resident is a local concept (a served model's adapter policy is
                 # server-side).
                 raise ComponentError(
-                    f'{self.node_id}: a remote served-model handle cannot freeze parameters '
-                    'in-process. Drop freeze, or run this node on a local / cluster resource.')
+                    f"{self.node_id}: a remote served-model handle cannot freeze parameters "
+                    "in-process. Drop freeze, or run this node on a local / cluster resource."
+                )
             # A frozen resident (reference / teacher / value anchor): the
             # driver-facing handle works on every placement, proxy included.
             self.obj.freeze_parameters(freeze_ratio=1.0)
@@ -327,29 +348,43 @@ class ModelComponent(ResourceComponent):
 
     def _card_count(self) -> int:
         """The declared card spec: the explicit list's length, else the count."""
-        ids = self.params.get('gpu_ids') or []
-        return len(ids) if ids else int(self.params.get('gpu_count') or 1)
+        ids = self.params.get("gpu_ids") or []
+        return len(ids) if ids else int(self.params.get("gpu_count") or 1)
 
 
 class DatasetComponent(ResourceComponent):
     """The data distribution: rows + prompts off the real loader path."""
 
-    type = 'dataset'
+    type = "dataset"
 
     #: swift.dev.dataset 是 load_prompt_only_rows 深链的 lazy 入口，其顶层
     #: 连带加载 transformers（swift.dev.utils.utils 的 from-import）——预热它
     #: 才能保证 worker 线程的 from transformers import 命中已加载模块。
-    IMPORTS = ('swift.dev.config', 'swift.dev.recipe.grpo.run_grpo', 'swift.dev.dataset')
+    IMPORTS = ("swift.dev.config", "swift.dev.recipe.utils", "swift.dev.dataset")
 
     def build(self, inputs: Dict[str, Any]) -> Any:
-        from swift.dev.recipe.grpo.run_grpo import prompt_rows_from_dataset
-        kv = {k: v for k, v in self.params.items()
-              if k in {'dataset', 'packing', 'packing_strategy', 'streaming', 'lazy_tokenize',
-                       'split_dataset_ratio', 'dataloader_num_workers', 'train_dataloader_shuffle',
-                       'dataloader_drop_last', 'dataset_seed'}}
+        from swift.dev.recipe.utils import prompt_rows_from_dataset
+
+        kv = {
+            k: v
+            for k, v in self.params.items()
+            if k
+            in {
+                "dataset",
+                "packing",
+                "packing_strategy",
+                "streaming",
+                "lazy_tokenize",
+                "split_dataset_ratio",
+                "dataloader_num_workers",
+                "train_dataloader_shuffle",
+                "dataloader_drop_last",
+                "dataset_seed",
+            }
+        }
         dataset_config = _fill(_configs().DatasetConfig, kv, self.node_id)
         rows, prompts, extras = prompt_rows_from_dataset(dataset_config)
-        self.obj = {'rows': rows, 'prompts': prompts, 'extras': extras, 'config': dataset_config}
+        self.obj = {"rows": rows, "prompts": prompts, "extras": extras, "config": dataset_config}
         return self.obj
 
 
@@ -363,7 +398,7 @@ class SamplerComponent(ResourceComponent):
     and ``engine_args`` keep any explicit override. The engine and its knobs
     ride ``build_sampler``'s real signature."""
 
-    type = 'sampler'
+    type = "sampler"
 
     IMPORTS = ('swift.dev.config', 'swift.dev.builder', 'swift.dev.builder.sampler',
                'transformers')
@@ -371,70 +406,61 @@ class SamplerComponent(ResourceComponent):
     def build(self, inputs: Dict[str, Any]) -> Any:
         from swift.dev.builder.sampler import build_sampler
         from ..placement import sampler_tp
-        model_id = str(self.params.get('model') or '').strip()
+
+        model_id = str(self.params.get("model") or "").strip()
         if not model_id:
-            raise ComponentError(f'{self.node_id}: sampler needs params.model (the model id)')
+            raise ComponentError(f"{self.node_id}: sampler needs params.model (the model id)")
         if self.remote_target is None and not self.remote_group:
             raise ComponentError(
-                f'{self.node_id}: a sampler needs its planned DeviceGroup -- '
-                'run it through a booted session (the resource page picks the cards)')
+                f"{self.node_id}: a sampler needs its planned DeviceGroup -- "
+                "run it through a booted session (the resource page picks the cards)"
+            )
         template = build_template_from(
-            model_id, dict(self.params.get('template_config') or {}), self.node_id,
-            model_kv=dict(self.params.get('model_config') or {}))
-        cfg = dict(self.params.get('model_config') or {})
-        cfg['model'] = model_id
+            model_id,
+            dict(self.params.get("template_config") or {}),
+            self.node_id,
+            model_kv=dict(self.params.get("model_config") or {}),
+        )
+        cfg = dict(self.params.get("model_config") or {})
+        cfg["model"] = model_id
         try:
             model_config = _configs().ModelConfig(**cfg)
         except TypeError as exc:
-            raise ComponentError(f'{self.node_id}: model_config: {exc}') from None
-        engine = str(self.params.get('engine', 'vllm') or 'vllm')
+            raise ComponentError(f"{self.node_id}: model_config: {exc}") from None
+        engine = str(self.params.get("engine", "vllm") or "vllm")
         if self.remote_target is not None:
-            # A remote session serves the engines on the twinkle-server: the sampler is the
-            # client handle over the served one (build_sampler's own 'twinkle' tier -- the
-            # transport is already bound by the session bootstrap). Local placement knobs
-            # have nothing to size, so setting them is refused rather than dropped.
-            if engine != 'twinkle':
-                raise ComponentError(
-                    f'{self.node_id}: a remote resource page serves the engines on a '
-                    "twinkle-server -- set the sampler's engine to 'twinkle' (the client "
-                    'handle over the served one) instead of a local engine.')
-            if self.params.get('engine_args') or self.params.get('parallel_spec'):
-                raise ComponentError(
-                    f'{self.node_id}: engine_args / parallel_spec size a LOCAL engine layout; '
-                    'a served engine owns its layout server-side. Drop them.')
-            from twinkle import DeviceMesh
-
-            self.obj = build_sampler(
-                model_config,
-                backend='twinkle',
-                device_mesh=DeviceMesh.from_sizes(dp_size=1),
-                template=template)
-            return self.obj
+            # A remote session serves its engines on the twinkle-server; generation is an OpenAI call
+            # against that server (see the served-model resource), not a sampler swift builds.
+            raise ComponentError(
+                f'{self.node_id}: a remote resource page has no local sampler -- the engines are '
+                'served by the twinkle-server; drive generation through its OpenAI API.')
         engine_args = dict(self.params.get('engine_args') or {})
         # The engine's shape mirrors its DeviceGroup: tp GPUs per worker,
         # cards/tp workers. Derived from the declared spec exactly as the
         # planner sized the group, so the engine and the group cannot
         # drift; an explicit engine_args entry still wins.
         cards = self._card_count()
-        tp = sampler_tp(str(self.params.get('parallel_spec') or ''), cards)
-        engine_args.setdefault('tensor_parallel_size', tp)
+        tp = sampler_tp(str(self.params.get("parallel_spec") or ""), cards)
+        engine_args.setdefault("tensor_parallel_size", tp)
         replicas = cards // tp
         if replicas > 1:
-            engine_args.setdefault('data_parallel_size', replicas)
+            engine_args.setdefault("data_parallel_size", replicas)
         from twinkle import DeviceMesh
+
         self.obj = build_sampler(
             model_config,
             backend=engine,
             engine_args=engine_args or None,
             device_mesh=DeviceMesh.from_sizes(dp_size=replicas),
             template=template,
-            remote_group=self.remote_group)
+            remote_group=self.remote_group,
+        )
         return self.obj
 
     def _card_count(self) -> int:
         """The declared card spec: the explicit list's length, else the count."""
-        ids = self.params.get('gpu_ids') or []
-        return len(ids) if ids else int(self.params.get('gpu_count') or 1)
+        ids = self.params.get("gpu_ids") or []
+        return len(ids) if ids else int(self.params.get("gpu_count") or 1)
 
 
 class RolloutComponent(ResourceComponent):
@@ -444,40 +470,51 @@ class RolloutComponent(ResourceComponent):
     through the wired ENV, whose tools the rollout binds to each episode's
     session."""
 
-    type = 'rollout'
+    type = "rollout"
 
-    IMPORTS = ('twinkle_agentic.rollout.multi_turn', 'twinkle.data_format.sampling')
+    IMPORTS = ("twinkle_agentic.rollout.multi_turn", "twinkle.data_format.sampling")
 
     def build(self, inputs: Dict[str, Any]) -> Any:
         from twinkle_agentic.rollout.multi_turn import MultiTurnRollout
-        sampler = inputs.get('sampler')
+
+        sampler = inputs.get("sampler")
         if sampler is None:
-            raise ComponentError(f'{self.node_id}: rollout needs a wired sampler')
+            raise ComponentError(f"{self.node_id}: rollout needs a wired sampler")
         template = build_template_from(
-            str(self.params.get('tokenizer') or ''),
-            dict(self.params.get('template_config') or {}), self.node_id,
-            model_kv=dict(self.params.get('model_config') or {}))
-        cfg = dict(self.params.get('rollout_config') or {})
-        cfg.pop('max_turns', None)
-        gen = dict(self.params.get('generation_config') or {})
+            str(self.params.get("tokenizer") or ""),
+            dict(self.params.get("template_config") or {}),
+            self.node_id,
+            model_kv=dict(self.params.get("model_config") or {}),
+        )
+        cfg = dict(self.params.get("rollout_config") or {})
+        cfg.pop("max_turns", None)
+        gen = dict(self.params.get("generation_config") or {})
         sampling_params = None
         if gen:
             from twinkle.data_format.sampling import SamplingParams
+
             try:
                 sampling_params = SamplingParams(**gen)
             except TypeError as exc:
-                raise ComponentError(f'{self.node_id}: generation_config: {exc}') from None
+                raise ComponentError(f"{self.node_id}: generation_config: {exc}") from None
         import uuid
+
         from ..placement import NUMERIC_GROUP
 
         try:
             self.obj = MultiTurnRollout(
-                sampler, template=template, env=inputs.get('env'), tool_manager=inputs.get('tools'),
-                sampling_params=sampling_params, remote_group=NUMERIC_GROUP,
-                instance_id=f'{self.node_id}-{uuid.uuid4().hex[:8]}',
-                max_turns=int(self.params.get('max_turns', '8') or 8), **cfg)
+                sampler,
+                template=template,
+                env=inputs.get("env"),
+                tool_manager=inputs.get("tools"),
+                sampling_params=sampling_params,
+                remote_group=NUMERIC_GROUP,
+                instance_id=f"{self.node_id}-{uuid.uuid4().hex[:8]}",
+                max_turns=int(self.params.get("max_turns", "8") or 8),
+                **cfg,
+            )
         except TypeError as exc:
-            raise ComponentError(f'{self.node_id}: rollout_config: {exc}') from None
+            raise ComponentError(f"{self.node_id}: rollout_config: {exc}") from None
         return self.obj
 
 
@@ -489,20 +526,20 @@ class GroupRuleComponent(ResourceComponent):
     the typed ``kwargs``. No forward is ever run here -- baselines belong to
     the advantage estimator."""
 
-    type = 'group_rule'
+    type = "group_rule"
 
-    IMPORTS = ('twinkle.advantage.group_admission',)
+    IMPORTS = ("twinkle.advantage.group_admission",)
 
     def build(self, inputs: Dict[str, Any]) -> Any:
         from twinkle.advantage.group_admission import GroupAdmissionConfig, GroupAdmissionPolicy
-        kwargs = dict(self.params.get('kwargs') or {})
-        if self.params.get('resample', 'none') == 'zero_variance':
-            kwargs.setdefault('min_reward_std', 1e-6)
+
+        kwargs = dict(self.params.get("kwargs") or {})
+        if self.params.get("resample", "none") == "zero_variance":
+            kwargs.setdefault("min_reward_std", 1e-6)
         try:
             config = GroupAdmissionConfig(**kwargs)
         except TypeError as exc:
-            raise ComponentError(
-                f'{self.node_id}: admission kwargs {sorted(kwargs)} rejected: {exc}') from exc
+            raise ComponentError(f"{self.node_id}: admission kwargs {sorted(kwargs)} rejected: {exc}") from exc
         self.obj = GroupAdmissionPolicy(config)
         return self.obj
 
@@ -535,79 +572,81 @@ class LossComponent(ResourceComponent):
     to train_step, which installs it on the model's own loss registry --
     construction here, behaviour native."""
 
-    type = 'loss'
+    type = "loss"
 
-    IMPORTS = ('twinkle.loss',)
+    IMPORTS = ("twinkle.loss",)
 
     def build(self, inputs: Dict[str, Any]) -> Any:
-        code = str(self.params.get('code', '') or '')
+        code = str(self.params.get("code", "") or "")
         if code:
             if self.remote_target is not None:
                 # A formula is a callable bound to THIS process; only a class NAME plus
                 # scalar kwargs can cross HTTP, so a remote train_step cannot install it.
                 raise ComponentError(
-                    f'{self.node_id}: a custom loss formula cannot cross HTTP -- a remote '
-                    'train_step sets the loss by class name + scalar kwargs. Drop the '
-                    'formula, or run this node on a local / cluster resource.')
-            self.obj = _UserFormulaLoss(load_code_component(code, 'loss'))
+                    f"{self.node_id}: a custom loss formula cannot cross HTTP -- a remote "
+                    "train_step sets the loss by class name + scalar kwargs. Drop the "
+                    "formula, or run this node on a local / cluster resource."
+                )
+            self.obj = _UserFormulaLoss(load_code_component(code, "loss"))
             return self.obj
         from twinkle.loss import torch_loss_mapping
-        kind = str(self.params.get('kind') or 'cross_entropy')
+
+        kind = str(self.params.get("kind") or "cross_entropy")
         cls = torch_loss_mapping.get(kind)
         if cls is None:
             raise ComponentError(
-                f'{self.node_id}: unknown loss {kind!r}; available kinds: '
-                f'{sorted(torch_loss_mapping)}')
-        kwargs = dict(self.params.get('loss_kwargs') or {})
+                f"{self.node_id}: unknown loss {kind!r}; available kinds: {sorted(torch_loss_mapping)}"
+            )
+        kwargs = dict(self.params.get("loss_kwargs") or {})
         # Unknown names are refused BEFORE the constructor: the GRPO family
         # swallows ``**kwargs`` silently, and a panel typo must not run on
         # defaults without a trace. Type mismatches still surface from the
         # constructor itself.
-        _reject_unknown_kwargs(cls, kwargs, self.node_id, f'loss {kind!r}')
+        _reject_unknown_kwargs(cls, kwargs, self.node_id, f"loss {kind!r}")
         if self.remote_target is not None:
             # A remote train_step installs the loss on the served model by NAME + scalar
             # kwargs (the panel values are JSON scalars by construction, so they cross
             # verbatim); the resident is the spec instead of the in-process instance.
             from swift.dev.builder.remote import RemoteLossSpec
 
-            self.obj = RemoteLossSpec(name=cls.__name__, kwargs=kwargs,
-                                      require_values=bool(getattr(cls, 'require_values', False)))
+            self.obj = RemoteLossSpec(
+                name=cls.__name__, kwargs=kwargs, require_values=bool(getattr(cls, "require_values", False))
+            )
             return self.obj
         try:
             self.obj = cls(**kwargs)
         except TypeError as exc:
-            raise ComponentError(
-                f'{self.node_id}: loss {kind!r} rejects kwargs {sorted(kwargs)}: {exc}') from exc
+            raise ComponentError(f"{self.node_id}: loss {kind!r} rejects kwargs {sorted(kwargs)}: {exc}") from exc
         return self.obj
 
 
 class ScorerComponent(ResourceComponent):
     """r(tau) as a resident callable: a registered reward family, or user code.
 
-    ``kind`` names the ``orms`` plugin registry under the SAME dual
+    ``kind`` names the ``reward_rules`` plugin registry under the SAME dual
     construction the recipes use (SwiftPlugin rules take a filled
     RewardConfig; native rules take typed kwargs directly); ``code`` replaces
     it with the user's ``score(rows)`` callable. The object rides the SCORER
     channel to score, which calls it once per batch -- construction here,
     behaviour native."""
 
-    type = 'scorer'
+    type = "scorer"
 
     IMPORTS = ('swift.dev.reward',)
 
     def build(self, inputs: Dict[str, Any]) -> Any:
-        code = str(self.params.get('code', '') or '')
+        code = str(self.params.get("code", "") or "")
         if code:
-            self.obj = load_code_component(code, 'score')
+            self.obj = load_code_component(code, "score")
             return self.obj
-        from swift.dev.reward import orms
+        from swift.dev.reward import reward_rules
         from swift.dev.utils.plugin import SwiftPlugin
         kind = str(self.params.get('kind') or 'math')
-        cls = orms.get(kind)
+        cls = reward_rules.get(kind)
         if cls is None:
             raise ComponentError(
                 f'{self.node_id}: unknown scorer {kind!r}; available kinds: '
-                f'{sorted(orms)} -- the registry is open, plugins extend it '
+                f'{sorted(reward_rules)} -- the registry is open, plugins extend it '
                 'through swift.dev.reward')
         kwargs = dict(self.params.get('scorer_kwargs') or {})
         # 注册表双构造协议：SwiftPlugin 型规则吃 args=Config（超参从 Config
@@ -616,7 +655,7 @@ class ScorerComponent(ResourceComponent):
         if issubclass(cls, SwiftPlugin):
             self.obj = cls(args=_fill(_configs().RewardConfig, kwargs, self.node_id))
         else:
-            _reject_unknown_kwargs(cls, kwargs, self.node_id, f'scorer {kind!r}')
+            _reject_unknown_kwargs(cls, kwargs, self.node_id, f"scorer {kind!r}")
             self.obj = cls(**kwargs)
         return self.obj
 
@@ -629,22 +668,27 @@ class ToolsetComponent(ResourceComponent):
     plugin path the recipes use. Runtime binding to an environment lease is
     the consumer's business (rollout / challenger)."""
 
-    type = 'toolset'
+    type = "toolset"
 
-    IMPORTS = ('twinkle.utils', 'twinkle_agentic.tools.tool_manager')
+    IMPORTS = ("twinkle.utils", "twinkle_agentic.tools.tool_manager")
 
     def build(self, inputs: Dict[str, Any]) -> Any:
         from twinkle.utils import load_module
         from twinkle_agentic.tools.tool_manager import ToolManager
+
         tools = []
-        for source in (self.params.get('plugins') or []):
+        for source in self.params.get("plugins") or []:
             module = load_module(str(source))
-            found = [value for value in vars(module).values()
-                     if callable(getattr(value, 'tool_info', None)) and not isinstance(value, type)]
+            found = [
+                value
+                for value in vars(module).values()
+                if callable(getattr(value, "tool_info", None)) and not isinstance(value, type)
+            ]
             if not found:
                 raise ComponentError(
-                    f'{self.node_id}: plugin {source!r} defines no tool instance '
-                    '(a tool is a module-level object exposing tool_info())')
+                    f"{self.node_id}: plugin {source!r} defines no tool instance "
+                    "(a tool is a module-level object exposing tool_info())"
+                )
             tools.extend(found)
         self.obj = ToolManager(tools)
         return self.obj
@@ -663,49 +707,51 @@ class SandboxEnvComponent(ResourceComponent):
     environment variable named by ``api_key_env``.
     """
 
-    type = 'sandbox_env'
+    type = "sandbox_env"
 
-    IMPORTS = ('twinkle_agentic.envs',)
+    IMPORTS = ("twinkle_agentic.envs",)
 
     #: Constructor fields that take a Python callable. No canvas spelling can
     #: author one, so setting them here is refused with a pointer at native
     #: code rather than deferred to a confusing failure inside a rollout.
-    _CALLABLE_ONLY_FIELDS = ('pre_tool_call', 'action_mapper')
+    _CALLABLE_ONLY_FIELDS = ("pre_tool_call", "action_mapper")
 
-    _BACKENDS = ('local', 'agentenv', 'openenv', 'openenv_client')
+    _BACKENDS = ("local", "agentenv", "openenv", "openenv_client")
 
     def build(self, inputs: Dict[str, Any]) -> Any:
         from twinkle_agentic.envs import AgentEnv, LocalEnv, OpenEnv, OpenEnvClient
-        kind = str(self.params.get('kind', 'local') or 'local')
-        kv = dict(self.params.get('sandbox_config') or {})
+
+        kind = str(self.params.get("kind", "local") or "local")
+        kv = dict(self.params.get("sandbox_config") or {})
         callables = [key for key in self._CALLABLE_ONLY_FIELDS if key in kv]
         if callables:
             raise ComponentError(
-                f'{self.node_id}: sandbox_config keys {callables} take Python callables a '
-                'canvas cannot author; set them through a native plugin or code component')
-        cls = {'local': LocalEnv, 'agentenv': AgentEnv,
-               'openenv': OpenEnv, 'openenv_client': OpenEnvClient}.get(kind)
+                f"{self.node_id}: sandbox_config keys {callables} take Python callables a "
+                "canvas cannot author; set them through a native plugin or code component"
+            )
+        cls = {"local": LocalEnv, "agentenv": AgentEnv, "openenv": OpenEnv, "openenv_client": OpenEnvClient}.get(kind)
         if cls is None:
             raise ComponentError(
-                f'{self.node_id}: unknown sandbox kind {kind!r} '
-                f'(available kinds: {list(self._BACKENDS)})')
-        if kind == 'agentenv':
-            if 'api_key' in kv:
+                f"{self.node_id}: unknown sandbox kind {kind!r} (available kinds: {list(self._BACKENDS)})"
+            )
+        if kind == "agentenv":
+            if "api_key" in kv:
                 raise ComponentError(
-                    f'{self.node_id}: credentials never ride the graph -- name the '
-                    'environment variable in api_key_env instead of passing api_key')
-            api_key_env = str(self.params.get('api_key_env') or '')
+                    f"{self.node_id}: credentials never ride the graph -- name the "
+                    "environment variable in api_key_env instead of passing api_key"
+                )
+            api_key_env = str(self.params.get("api_key_env") or "")
             if api_key_env:
                 api_key = os.environ.get(api_key_env)
                 if not api_key:
                     raise ComponentError(
-                        f'{self.node_id}: api key env var {api_key_env!r} is unset; '
-                        'export it before building the sandbox')
-                kv['api_key'] = api_key
-        elif self.params.get('api_key_env'):
-            logger.warning('%s: api_key_env only applies to kind=agentenv; '
-                           'kind=%r ignores it', self.node_id, kind)
-        _reject_unknown_kwargs(cls, kv, self.node_id, f'sandbox {kind!r}')
+                        f"{self.node_id}: api key env var {api_key_env!r} is unset; "
+                        "export it before building the sandbox"
+                    )
+                kv["api_key"] = api_key
+        elif self.params.get("api_key_env"):
+            logger.warning("%s: api_key_env only applies to kind=agentenv; kind=%r ignores it", self.node_id, kind)
+        _reject_unknown_kwargs(cls, kv, self.node_id, f"sandbox {kind!r}")
         self.obj = cls(**kv)
         return self.obj
 
@@ -713,17 +759,18 @@ class SandboxEnvComponent(ResourceComponent):
 class ApiEndpointComponent(ResourceComponent):
     """An external OpenAI-compatible connection."""
 
-    type = 'api_endpoint'
+    type = "api_endpoint"
 
-    IMPORTS = ('twinkle_agentic.protocol.openai',)
+    IMPORTS = ("twinkle_agentic.protocol.openai",)
 
     def build(self, inputs: Dict[str, Any]) -> Any:
         from twinkle_agentic.protocol.openai import OpenAI
-        base_url = self.params.get('base_url', '') or None
-        model = self.params.get('model', '') or 'unknown'
+
+        base_url = self.params.get("base_url", "") or None
+        model = self.params.get("model", "") or "unknown"
         # Local compatible endpoints take any placeholder key; the SDK refuses
         # to construct without one. No request is sent at build time.
-        self.obj = OpenAI(model=model, base_url=base_url, api_key='EMPTY')
+        self.obj = OpenAI(model=model, base_url=base_url, api_key="EMPTY")
         return self.obj
 
 
@@ -731,13 +778,13 @@ class CodeComponent(ResourceComponent):
     """A user code blob as a resident callable. The blob IS the payload; the
     entry contract (fn / last def) matches the plugin path."""
 
-    type = 'code_component'
+    type = "code_component"
 
     def build(self, inputs: Dict[str, Any]) -> Any:
-        code = self.params.get('code', '') or getattr(self, 'code', '')
+        code = self.params.get("code", "") or getattr(self, "code", "")
         if not code:
-            raise ComponentError(f'{self.node_id}: this code component has no function body')
-        self.obj = load_code_component(code, self.params.get('entry', 'fn'))
+            raise ComponentError(f"{self.node_id}: this code component has no function body")
+        self.obj = load_code_component(code, self.params.get("entry", "fn"))
         return self.obj
 
     def invoke(self, inputs: Dict[str, Any], batch: Any) -> Dict[str, Any]:
@@ -754,12 +801,10 @@ class CodeComponent(ResourceComponent):
         outputs = self.obj(**inputs)
         if not isinstance(outputs, dict):
             raise ComponentError(
-                f'{self.node_id}: the code entry must return a dict keyed by its '
-                'declared output ports')
-        declared = [str(port.get('key') or '') for port in (self.params.get('ports_out') or [])]
+                f"{self.node_id}: the code entry must return a dict keyed by its declared output ports"
+            )
+        declared = [str(port.get("key") or "") for port in (self.params.get("ports_out") or [])]
         missing = [key for key in declared if key and key not in outputs]
         if missing:
-            raise ComponentError(
-                f'{self.node_id}: the code entry did not produce the declared '
-                f'output ports {missing}')
+            raise ComponentError(f"{self.node_id}: the code entry did not produce the declared output ports {missing}")
         return outputs

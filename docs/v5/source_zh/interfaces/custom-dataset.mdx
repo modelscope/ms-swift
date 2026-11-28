@@ -1,15 +1,15 @@
 ---
 title: 自定义数据集
-description: 使用本地文件、dataset_info.json 或自定义预处理器接入训练数据。
+description: 直接传入文件，声明 dataset_info.json 或自定义预处理器接入训练数据，以及各任务的标准数据格式。
 ---
 
 自定义数据集的接入方法有三种，对预处理函数的控制能力逐渐加强，但接入难度逐步增加：
 
-1. 【推荐】通过 `--dataset` 直接传入文件或数据集目录。数据加载器识别存储格式，预处理器将原始字段转换为标准格式；字段名不同可以通过 `--columns` 映射。
-2. 使用外接 `dataset_info.json` 声明数据集名称、路径、子集和字段映射，通过 `--custom_dataset_info` 加载。不需要修改安装包。
-3. 继承 `DatasetLoader` 和 `Preprocessor`，用 Python 定制逐行转换，通过 `--external_plugins` 加载注册内容。
+1. 【推荐】通过 `--dataset` 直接传入文件或数据集目录。格式转换器根据列名识别存储格式，预处理器将原始字段转换为标准格式；字段名不同可以通过 `--columns` 映射，常见别名会自动识别。不需要写代码。
+2. 使用外接 `dataset_info.json` 声明数据集的 ID，路径，子集，split 和列映射，通过 `--custom_dataset_info` 加载，再用 `--dataset 注册名` 选择。不需要修改安装包。
+3. 继承 `DatasetLoader` 和 `Preprocessor`，用 Python 定制逐行转换，通过 `--external_plugins` 加载注册内容。方案一和方案二在实现中都通过方案三的注册机制完成，只是注册过程自动发生。
 
-数据流为：原始文件或 Hub 数据集 → 行预处理 → 标准 `messages` 与附加列 → [模板编码](./template.mdx) → batch。预处理负责字段与样本结构，模板负责模型所需的 token、媒体输入和 loss mask；不要在数据预处理器里手工拼接模型专用特殊 token。
+数据流为：原始文件或 Hub 数据集 → 预处理器将原始字段转换为标准格式（非标准列名由格式转换器按列名识别并改写） → 校验 `messages` 与附加列 → [模板编码](./template.mdx) → batch。预处理器负责字段与样本结构，模板负责模型所需的 token，媒体输入和 loss mask；不要在预处理器里手工拼接模型专用特殊 token。
 
 ## 直接传入数据
 
@@ -33,21 +33,399 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --output_dir output/custom-data
 ```
 
-可以传入多个路径：`--dataset ./a.jsonl ./b.jsonl`。Hub 数据集使用 `ms://组织/数据集` 或 `hf://组织/数据集`；`#600` 表示采样 600 条。子集选择采用 `数据集:子集`。本地路径必须存在，不要用 Hub 前缀修饰本地文件。
+可以传入多个路径：`--dataset ./a.jsonl ./b.jsonl`。Hub 数据集使用 `ms://组织/数据集` 或 `hf://组织/数据集`；`#600` 表示采样 600 条；子集选择采用 `数据集:子集1/子集2`，三者可以组合为 `hf://org/name:sub1/sub2#500`。本地路径必须存在，不要用 Hub 前缀修饰本地文件。
 
-支持的文件读取器与格式转换器分别见 [storage](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset/storage) 和 [format_converter](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset/format_converter)。常用 JSON、JSONL、CSV 和数据集 snapshot 不需要单独注册。
+读取格式：`.jsonl` 和 `.json` 直接按行读取；`.csv`，`.parquet`，`.txt` 等交给 `datasets` 的 builder 读取，CSV 的空单元格保留为空字符串而不是 NaN；数据集目录（含 Hub snapshot）按 Arrow 读取。读取器的实现见 [storage](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset/storage)，常用格式不需要单独注册。
 
-### 兼容常见格式
+## 标准数据格式
 
-以下格式会转换为标准 `messages`：
+标准行以 `messages` 为核心，其他列按任务附加。下表是各任务对标准行的要求：
+
+| 任务 | 必需 | 可选 |
+| --- | --- | --- |
+| 预训练，SFT，推理，评测 | `messages` | `system`，`tools`，`objects`，`chat_template_kwargs`，`channel` |
+| DPO，ORPO，CPO，SimPO，RM | `messages` + `rejected_messages` | `margin`，`rejected_tools` |
+| KTO | `messages` + `label` | `rejected_messages` |
+| PPO，GRPO，GKD 等在线算法 | `messages`（最后一轮为 user） | 额外列透传给奖励函数 |
+| 序列分类，回归 | `messages` + `label` | |
+| Embedding | `messages` + `positive_messages` | `negative_messages`，`label` |
+| Reranker | `messages` + `positive_messages` 或 `negative_messages` | |
+
+通用约定：
+
+- `role` 取值为 `system`，`user`，`assistant`，`tool_call`，`tool_response`，`tool`；`tool_response` 与 `tool` 等价。`content` 不能为 `null`。
+- 每条消息允许的键只有 `role`，`content`，`loss`，`loss_scale`，`reasoning_content`，其他键在预处理时被删除。
+- system 消息可选。数据中的 system 优先于命令行 `--system`，最后使用模板默认值。
+- 多模态媒体写在消息的 `content` 内，使用 OpenAI 的 content parts 形式，这是标准写法，见[多模态](#多模态)。顶层 `images`/`videos`/`audios` 列配合 `<image>` 占位符是兼容写法，见下文[兼容常见格式](#兼容常见格式)；同一行只能使用其中一种，两者同时出现会报错。
+- 未识别的列不会被删除，会随样本透传给奖励函数，metric 等下游组件。
+- **消息顺序**：不要求 user/assistant 严格交替。开头可以连续写多条 system 消息，编码时按顺序合并成一条（空行分隔）；system 只能出现在开头，出现在中间会报错。一轮由若干条 user/tool 消息加一条 assistant 回复组成：连续多条 user 消息，tool 结果后紧跟 user 消息，都按官方模板各自渲染为一个对话轮，不合并。连续多条 assistant 消息视为同一条回复，内容拼接。末尾停在 user/tool 消息而没有回复时，按推理 prompt 渲染。
+
+### 预训练
+
+`messages` 只含一条 assistant 消息，整段文本参与损失计算：
 
 ```jsonl
-{"query": "你好", "response": "你好！", "history": [["你是谁？", "我是助手。"]]}
-{"instruction": "翻译为英文", "input": "你好", "output": "Hello"}
-{"messages": [{"role": "system", "content": "你是一个有用的助手"}, {"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好！"}]}
+{"messages": [{"role": "assistant", "content": "预训练的文本在这里"}]}
+{"messages": [{"role": "assistant", "content": "教练我要打篮球"}]}
 ```
 
-Alpaca 格式中，非空 `instruction` 和 `input` 合并成用户输入。`system` 是可选的；数据里的 system 优先于命令行 `--system`，最后才使用模板默认值。对不常见的列名显式映射，例如：
+### 监督微调
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是一个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "明天天气晴朗"}]}
+{"messages": [{"role": "user", "content": "1+1 等于几"}, {"role": "assistant", "content": "等于 2"}, {"role": "user", "content": "再加 1 呢"}, {"role": "assistant", "content": "等于 3"}]}
+```
+
+- **loss**：写在 assistant 消息上，决定该轮回复是否参与损失计算：`false` 强制不计算，`true` 强制计算，不写则按命令行 `--loss_scale` 的基础策略（`default` 监督全部 assistant 回复，`last_round` 只监督最后一轮，`all` 整个序列）。只对 assistant 消息生效。
+- **loss_scale**：写在 assistant 消息上，是一个数值权重。该轮参与损失计算时，整轮回复的每个 token 都乘这个权重，不再按 `--loss_scale` 选的加权配置（例如 `ignore_empty_think` 给空 think 块降权）分段计算。`loss: false` 的轮次写了也不生效。使用 0.5，2.0 这类非二值权重时需设置 `--is_binary_loss_scale false`，否则权重被二值化为是否参与损失，无法表达降低或提高权重。
+- **连续 tool_call**：多条 `tool_call` 合并为一条 assistant 消息，`loss`/`loss_scale` 只取第一条的设置。
+- **reasoning_content**：写在 assistant 消息上，编码时折入 think 块，与部署时的模板约定保持一致。
+
+```text
+消息角色
+  ├─ 非 assistant（system / user / tool...） ──► 权重 0（除非基础策略为 all）
+  └─ assistant
+        │
+        ▼
+消息级 loss 字段
+  ├─ false ──► 权重 0
+  ├─ true  ──► 参与损失，进入下一步
+  └─ 未写   ──► 由 --loss_scale 基础策略判定
+                  ├─ default    ：全部 assistant 轮参与
+                  ├─ last_round ：只有最后一轮参与，其余权重 0
+                  └─ all        ：全部参与（预训练用）
+        │
+        ▼
+消息级 loss_scale 字段
+  ├─ 有值 w ──► 整轮 token 权重 = w，跳过下面的加权配置
+  └─ 未写    ──► --loss_scale 加权配置链（按 + 顺序逐段处理，权重相乘）
+                  ├─ ignore_empty_think：空 think 块权重 0
+                  ├─ react / hermes / qwen / agentflan / alpha_umi：Agent 格式分段权重
+                  │   （如 react：Action / Action Input 2.0，Thought / Final Answer 1.0，Observation 内容 0）
+                  └─ 未选配置：权重 1.0
+        │
+        ▼
+--is_binary_loss_scale
+  ├─ true（权重全为 0/1 时自动） ──► 用 labels（-100）表达，不输出 loss_scale 字段
+  └─ false ──────────────────────► 逐 token 输出 loss_scale 字段（非二值权重需要）
+```
+
+TODO
+
+`--loss_scale` 的写法是 `基础策略+加权配置`，例如 `last_round+hermes+ignore_empty_think`。`--enable_channel_loss` 只影响 loss 的分组统计，不改变 token 权重。
+
+
+
+```jsonl
+{"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好，有什么可以帮助你的吗？", "loss": false}, {"role": "user", "content": "1+1 等于几？"}, {"role": "assistant", "content": "等于 2", "loss": true}]}
+{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 0.5}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}]}
+```
+
+**think（思考内容）**。训练数据里的思考内容有两种写法：写在 assistant 消息的 `reasoning_content` 字段，或直接写在 `content` 的 think 块里（如 `"<think>...</think>"`）。二者只能选其一，同时出现会报错。`reasoning_content` 在编码时由模板按目标模型的标记折成 think 块（Qwen3 系是 `<think>...</think>`，Gemma 等模型是各自的标记），因此换模型不需要改数据；直接写 think 块则必须与目标模型的格式一致。
+
+```jsonl
+{"messages": [{"role": "user", "content": "1+1 等于几"}, {"role": "assistant", "reasoning_content": "简单的加法，结果是 2。", "content": "等于 2"}]}
+```
+
+编码时的规则与模型类型有关，分两类：
+
+- **混合思考模型**（Qwen3，Qwen3-Omni，Intern-S1，DeepSeek-V4 等，模板声明了空 think 块）：训练时若最后一条 assistant 回复不以 think 块开头，自动在前面补该模型的空 think 块（Qwen3 系为 `<think>\n\n</think>\n\n`），与官方模板的渲染一致，这样不含思考过程的 SFT 数据也能直接训练；只补最后一轮，历史轮不补。用 `--add_non_thinking_prefix false` 关闭。构建模板时会自动追加 `ignore_empty_think` 策略，让这个自动补的空 think 块不参与损失，避免模型学会输出空思考；`--disable_ignore_empty_think true` 关闭，显式写在 `--loss_scale` 里的策略不重复追加。
+- **其他思考模型**（QwQ，Qwen3-Thinking，Qwen3.5，DeepSeek-R1 等）：不补空 think 块，最后一轮按数据原样渲染。数据里应当带完整的思考过程。
+
+think 块是 assistant 回复的一部分，默认与正文一起参与损失计算（权重 1），受消息级 `loss`/`loss_scale` 控制。历史轮的 think 是否保留由 `preserve_thinking` 决定，默认训练时 `--loss_scale` 基础策略不是 `last_round` 就保留（历史轮也被监督），否则剥掉只留最后一轮。推理时 `--enable_thinking` 只控制生成前缀：只思考的模型（QwQ，DeepSeek-R1）始终加 `<think>`，同时支持思考与非思考的模型只在显式关闭时加该模型的空 think 块，不影响训练数据；两者都可以在样本的 `chat_template_kwargs` 里逐样本覆盖。
+
+**chat_template_kwargs**：样本级模板参数，只作用于当前样本，优先级高于命令行的同名设置（`--enable_thinking`，`--reasoning_effort`，`--max_pixels` 等）。使用 `--template_backend jinja` 时整个字典会原样传给处理器自带的 jinja 模板，因此官方模板接受的任何参数都可以写在这里。
+
+所有模型都支持的参数：
+
+| 参数 | 取值 | 作用 |
+| --- | --- | --- |
+| `enable_thinking` | bool | 当前样本是否开启思考，见上文 think 一节 |
+| `preserve_thinking` | bool | 历史轮的 think 块是否保留 |
+| `response_prefix` | str | 覆盖生成前缀，即 assistant 回复开头自动添加的文本 |
+| `max_pixels` | int | 多模态模型通用：图片按比例缩放到不超过该像素数 |
+
+各模型特有的参数：
+
+| 模型 | 参数 | 取值 | 作用 |
+| --- | --- | --- | --- |
+| Qwen2-VL，Qwen2.5-VL，Qwen3-VL | `min_pixels`，`max_pixels`，`resized_height`，`resized_width` | int | 图片预处理，透传给 `qwen_vl_utils.fetch_image` |
+| Qwen2-VL，Qwen2.5-VL，Qwen3-VL | `min_pixels`，`max_pixels`，`total_pixels`，`fps`，`nframes`，`sample_fps`，`resized_height`，`resized_width` | int / float | 视频抽帧与缩放，透传给 `qwen_vl_utils.fetch_video` |
+| Qwen2-Audio，Qwen2.5-Omni，Qwen3-Omni | `sampling_rate` | int，默认处理器采样率 | 音频重采样率 |
+| DeepSeek-V4 | `reasoning_effort` | `max`，`high`，null | `max` 在 system 前加最高推理强度提示；null 关闭思考 |
+| GLM-5.2 | `reasoning_effort` | `max`，`high`，默认 `max` | system 前加 `Reasoning Effort: Max/High` |
+| Hunyuan V3（`hy_v3_preview`） | `reasoning_effort` | `high`，`low`，`no_think` | 写入 system 的推理模式；`no_think` 关闭思考 |
+| Kimi K3 | `thinking_effort`（别名 `reasoning_effort`） | `low`，`high`，`max` | 渲染 thinking-effort 系统消息 |
+| MiniMax-M3 | `thinking_mode` | `enabled`，`disabled`，`adaptive`，默认 `disabled` | 思考模式，`disabled` 等价于关闭思考 |
+| DeepSeek-OCR | `ocr_output_dir` | str，默认 `./ocr_output` | 推理结果里图片的输出目录 |
+| PaddleOCR-VL 1.5 | `shortest_edge`，`longest_edge` | int | 图像处理器 `size` 参数 |
+
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/rabbit.png"}}, {"type": "text", "text": "这是什么"}]}, {"role": "assistant", "content": "这是一只兔子"}], "chat_template_kwargs": {"max_pixels": 1048576}}
+{"messages": [{"role": "user", "content": "你是谁？"}], "chat_template_kwargs": {"enable_thinking": false}}
+```
+
+**channel loss**：设置 `--enable_channel_loss true` 后，按样本的 `channel` 列分组统计损失，没有 `channel` 的样本归入默认组。兼容 packing，padding_free 和 loss_scale。
+
+```jsonl
+{"messages": [{"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "明天天气晴朗"}], "channel": "general"}
+{"messages": [{"role": "user", "content": "1+1 等于几"}, {"role": "assistant", "content": "等于 2"}], "channel": "math"}
+```
+
+### 多模态
+
+多模态数据沿用上述格式，只是消息的 `content` 从字符串变为 OpenAI 的 content parts 列表：文本用 `{"type": "text", "text": ...}`，图片，视频，音频分别用 `{"type": "image_url", "image_url": {"url": ...}}`，`video_url`，`audio_url`，`url` 为本地路径或 URL，推荐绝对路径。媒体在 `content` 中的位置就是它插入对话的位置，编码时替换为模型的媒体 token。模型必须支持相应模态。
+
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/cat.png"}}, {"type": "text", "text": "图片中是什么？"}]}, {"role": "assistant", "content": "一只猫。"}]}
+{"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/cat.png"}}, {"type": "image_url", "image_url": {"url": "/data/dog.png"}}, {"type": "text", "text": "两张图片有什么区别"}]}, {"role": "assistant", "content": "前一张是小猫，后一张是小狗"}]}
+{"messages": [{"role": "user", "content": [{"type": "audio_url", "audio_url": {"url": "/data/speech.mp3"}}, {"type": "text", "text": "语音说了什么"}]}, {"role": "assistant", "content": "今天天气真好"}]}
+{"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/elephant.jpg"}}, {"type": "text", "text": "图片中是什么，"}, {"type": "video_url", "video_url": {"url": "/data/dog.mp4"}}, {"type": "text", "text": "视频中是什么"}]}, {"role": "assistant", "content": "图片中是一头大象，视频中是一只小狗在草地上奔跑"}]}
+```
+
+- 也接受把地址直接写在类型名下的简写：`{"type": "image", "url": ...}` 或 `{"type": "image", "path": ...}`，`video`，`audio` 同理。
+- 直接传 base64 时使用 data URI：`{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,<base64>"}}`，视频，音频同理。
+- 媒体路径必须对实际执行编码的进程可见。远程训练中，客户端本地的路径不会自动变成服务端可读的路径。
+- 偏好，序列分类，Embedding 等任务的 `messages`，`rejected_messages`，`positive_messages` 里同样可以写 content parts。
+
+### 偏好数据（DPO / ORPO / CPO / SimPO / RM）
+
+`messages` 为正例对话，`rejected_messages` 为负例对话，是一条完整对话，和 `messages` 一样可以写 content parts。负例不继承正例的任何列，`system`，工具和媒体都要写在 `rejected_messages` 里；工具集与正例不同时再加 `rejected_tools`：
+
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/cat.png"}}, {"type": "text", "text": "这是什么"}]}, {"role": "assistant", "content": "这是一只小猫。"}], "rejected_messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/dog.png"}}, {"type": "text", "text": "这是什么"}]}, {"role": "assistant", "content": "这是一只小狗。"}]}
+```
+
+多轮或 Agent 轨迹的负例同样用 `rejected_messages` 给出完整对话，复用的工具调用和返回要显式包含：
+
+```jsonl
+{"tools": [{"type": "function", "function": {"name": "get_aqi", "description": "查询城市的空气质量指数。", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}], "messages": [{"role": "user", "content": "北京当前的空气质量指数是多少？"}, {"role": "tool_call", "content": {"name": "get_aqi", "arguments": {"city": "北京"}}}, {"role": "tool_response", "content": "{\"aqi\": 50}"}, {"role": "assistant", "content": "北京当前的空气质量指数是 50。"}], "rejected_messages": [{"role": "user", "content": "北京当前的空气质量指数是多少？"}, {"role": "tool_call", "content": {"name": "get_aqi", "arguments": {"city": "北京"}}}, {"role": "tool_response", "content": "{\"aqi\": 50}"}, {"role": "assistant", "content": "北京当前的空气质量指数是 100。"}]}
+```
+
+- RM 训练可额外提供 `margin` 列（浮点数），作为该偏好对的间隔。
+- 检查正负例最终编码结果的方法见[模板文档](./template.mdx)：构建模板后执行 `template.set_mode('rlhf')`，再 `encode` 样本，分别解码 `chosen_labels` 和 `rejected_labels`。
+
+### KTO
+
+`label` 为布尔值或 0/1 整数，表示该回复是正例还是负例；`rejected_messages` 可选：
+
+```jsonl
+{"messages": [{"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "我不知道"}], "label": false}
+{"messages": [{"role": "user", "content": "1+1 等于几"}, {"role": "assistant", "content": "等于 2"}], "label": true}
+```
+
+### PPO / GRPO
+
+只提供 prompt：`messages` 以 user 消息结尾。末尾如果带 assistant 回复会被自动去掉，只保留到最后一条 user 消息；去掉的回复不作为参考答案使用，参考答案应放在额外列。因此 SFT 格式的数据可以直接复用：
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是一个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}]}
+{"messages": [{"role": "user", "content": "1+1 等于几"}, {"role": "assistant", "content": "等于 2"}, {"role": "user", "content": "再加 1 呢"}]}
+{"messages": [{"role": "user", "content": "计算 1+1，将答案写在 \\boxed{} 中。"}], "solution": "2"}
+```
+
+额外列随样本透传给奖励函数。奖励函数是 `RewardRule` 子类，`__call__(self, trajectories, **kwargs)` 返回与 `trajectories` 等长的分数列表。`trajectories` 的每个元素是一个字典：
+
+| 字段 | 内容 |
+| --- | --- |
+| `messages` | 完整对话，最后一条 assistant 是生成的回复 |
+| `tools`，`objects`，`chat_template_kwargs`，`images`/`videos`/`audios` | 数据集中的同名列 |
+| `user_data` | 特定任务的字段 |
+| `response_token_ids` | rollout 生成的回复 token id，不是数据集列；如果编写奖励函数可以用用该列算 token 数 |
+
+`self.completion(t)` 取回复文本。内置组件约定读取的额外列：
+
+| 列 | 读取方 |
+| --- | --- |
+| `solution` | 奖励 `math`，`accuracy`，`cosine`，`soft_overlong`，`react_format`，`toolbench` 的参考答案 |
+| `teacher_prompt` | 蒸馏，GKD 在线批次的特权 prompt：字符串，教师模型的特权信息，如问题加参考解答 |
+| `test_cases` + `language`，或 `verification_info` | 奖励 `code_execution` |
+
+```jsonl
+{"messages": [{"role": "user", "content": "1+1 等于几"}], "solution": "2", "teacher_prompt": "1+1 等于几？参考解答：1+1=2。请作答。"}
+{"messages": [{"role": "user", "content": "写一个函数，读入两个整数，输出它们的和"}], "test_cases": {"inputs": ["1 2\n", "10 20\n"], "outputs": ["3", "30"]}, "language": "python"}
+{"messages": [{"role": "user", "content": "写一个函数，读入两个整数，输出它们的和"}], "verification_info": {"language": "cpp", "test_cases": [{"input": "1 2\n", "output": "3"}]}}
+```
+
+`test_cases` 的 `inputs` 依次作为程序的 stdin，`outputs` 是期望的 stdout，得分是通过用例的比例；对比时忽略行尾空白和首尾空行。`language` 可选 `python`，`c`，`cpp`，`javascript`，缺省取 `--code_language`。`verification_info` 是 OpenR1 verifiable-coding 数据集的原生列，`language` 随它一起给出；两列同时存在时以 `test_cases` 为准。两列都可写成 JSON 字符串。
+
+保存为 `my_reward.py` 后用 `--external_plugins ./my_reward.py --orm my_reward` 加载：
+
+```python
+from typing import List
+
+from swift.dev.reward import RewardRule
+from swift.dev.utils.plugin import PluginRegistry
+
+
+@PluginRegistry.register('reward', 'my_reward')
+class MyReward(RewardRule):
+    def __call__(self, trajectories, **kwargs) -> List[float]:
+        scores = []
+        for t in trajectories:
+            answer = self.column(t, 'solution')
+            scores.append(1.0 if answer and answer in self.completion(t) else 0.0)
+        return scores
+```
+
+参考答案不应拼入用户输入。奖励的注册方式，异步写法和奖励模型见[插件文档](./plugins.mdx)。
+
+### GKD
+
+数据格式与监督微调相同，`messages` 含完整的教师回复。`--lmbda` 是每个 batch 使用学生在线生成结果（on-policy）的概率，其余 batch 使用数据集中的回复（off-policy），因此数据集中的回复不会被删除。
+
+### 序列分类
+
+`label` 为标量或列表，由 `--task_type seq_cls` 与模型头决定：
+
+```jsonl
+{"messages": [{"role": "user", "content": "这个包装很差，容易被调包。"}], "label": 0}
+{"messages": [{"role": "user", "content": "质量很好，物流也快，满意。"}], "label": 1}
+{"messages": [{"role": "user", "content": "今天天气真好呀"}], "label": [0, 2]}
+{"messages": [{"role": "user", "content": "求两句话的相似度，范围为 0-1。\nsentence1: 今天天气真好\nsentence2: 今天是个晴天"}], "label": 0.8}
+{"messages": [{"role": "user", "content": "评价这段文字"}], "label": [1.2, -0.6, 0.8]}
+```
+
+依次为单标签，多标签，单回归和多回归任务；多标签 `label` 为类别索引列表，多回归 `label` 为浮点数列表。
+
+### Embedding
+
+`messages` 为锚点，`positive_messages` 为正例，`negative_messages` 为难负例；正例和负例都是**会话列表**，每个元素是一条完整对话。`label` 可选，作为锚点与正例的相似度分数（默认 1.0），每个负例的分数为 0.0。训练只使用第一个正例：
+
+```jsonl
+{"messages": [{"role": "user", "content": "这个包装很差，容易被调包。"}], "positive_messages": [[{"role": "user", "content": "这是一条负面评价，表示不满意。"}]], "negative_messages": [[{"role": "user", "content": "这是一条正面评价，表示满意。"}]]}
+{"messages": [{"role": "user", "content": "一个人在弹吉他。"}], "positive_messages": [[{"role": "user", "content": "有人在演奏乐器。"}]], "label": 0.9}
+```
+
+InfoNCE 等对比损失会把 batch 内其他样本作为额外负例，因此不提供 `negative_messages` 也能训练。示例见 [examples/v5/train/embedding](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/embedding)。
+
+### Reranker
+
+`messages` 为查询，`positive_messages` 和 `negative_messages` 为候选文档，至少提供一种；每个候选是一条完整对话，编码时拼在查询之后，正例标签为 1，负例为 0。查询的 system 作为整条输入的指令：
+
+```jsonl
+{"messages": [{"role": "user", "content": "什么是深度学习？"}], "positive_messages": [[{"role": "assistant", "content": "深度学习是机器学习的一个分支。"}]], "negative_messages": [[{"role": "assistant", "content": "今天天气晴朗。"}]]}
+```
+
+示例见 [examples/v5/train/reranker](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/reranker)。
+
+### grounding
+
+物体检测，定位等任务有两种写法。
+
+1. 直接使用模型原生的 grounding 格式，在 `assistant` 回复中写模型特殊 token，例如 Qwen3-VL 的 `<|object_ref_start|>...<|object_ref_end|><|box_start|>(x1,y1),(x2,y2)<|box_end|>`。不同模型的特殊 token，坐标是否归一化各不相同，需要按对应模型的约定准备数据。
+
+2. 使用统一的 grounding 格式：回复中用 `<ref-object>` 和 `<bbox>` 占位，另加 `objects` 列，编码时替换为模型自己的格式并处理坐标归一化：
+
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/beach.jpg"}}, {"type": "text", "text": "描述图像"}]}, {"role": "assistant", "content": "<ref-object><bbox>和<ref-object><bbox>正在沙滩上玩耍"}], "objects": {"ref": ["一只狗", "一个女人"], "bbox": [[331.5, 761.4, 853.5, 1594.8], [676.5, 685.8, 1099.5, 1427.4]]}}
+{"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/sheep.jpg"}}, {"type": "text", "text": "找到图像中的<ref-object>"}]}, {"role": "assistant", "content": "<bbox><bbox>"}], "objects": {"ref": ["羊"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
+{"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "/data/desktop.png"}}, {"type": "text", "text": "帮我打开谷歌浏览器"}]}, {"role": "assistant", "content": "Action: click(start_box='<bbox>')"}], "objects": {"ref": [], "bbox": [[615, 226]]}}
+```
+
+`objects` 的字段：
+
+- `ref`：字符串列表，按顺序替换 `<ref-object>`，长度与占位符数量一致。
+- `bbox`：列表，按顺序替换 `<bbox>`，长度与占位符数量一致。每个元素长度为 4 表示两个角点 `(x1, y1, x2, y2)`，长度为 2 表示一个点。`<ref-object>` 与 `<bbox>` 各自独立替换，没有对应关系。
+- `bbox_type`：`real`（默认，像素坐标）或 `norm1`（已归一化到 0~1）。
+- `image_id`：整数列表，仅在 `bbox_type` 为 `real` 时生效，表示每个 bbox 属于第几张图片，从 0 开始；缺省补 0。多图 grounding 时长度必须与 `bbox` 一致。
+
+使用统一格式时，图像缩放与坐标由模板一并处理，可以配合 `--max_pixels` 或样本级 `chat_template_kwargs.max_pixels`。
+
+### Agent
+
+```jsonl
+{"tools": [{"type": "function", "function": {"name": "realtime_aqi", "description": "获取实时空气质量。", "parameters": {"type": "object", "properties": {"city": {"type": "string", "description": "城市名，例如：上海"}}, "required": ["city"]}}}], "messages": [{"role": "user", "content": "北京和上海今天的天气情况"}, {"role": "tool_call", "content": {"name": "realtime_aqi", "arguments": {"city": "北京"}}}, {"role": "tool_call", "content": {"name": "realtime_aqi", "arguments": {"city": "上海"}}}, {"role": "tool_response", "content": "{\"city\": \"北京\", \"aqi\": \"10\"}"}, {"role": "tool_response", "content": "{\"city\": \"上海\", \"aqi\": \"72\"}"}, {"role": "assistant", "content": "根据天气预报工具，北京今天的空气质量指数为 10，属于良好水平；上海今天的空气质量指数为 72，属于轻度污染水平。"}]}
+```
+
+- `tools` 为工具定义列表，也可以是整个列表的 JSON 字符串。编码时与 system 消息组合成完整的 system 部分。
+- `tool_call` 消息的 `content` 为 `{"name": ..., "arguments": ...}` 对象，也接受 JSON 字符串；连续的 `tool_call` 由 agent_template 转换并合并为一条 assistant 消息，支持并行调用。
+- `tool_response` 与 `tool` 等价，由 agent_template 转换格式；训练时不计算损失，作用等同于 user 消息。
+- 也可以直接把数据处理为只含 system，user，assistant 的 `messages`；agent_template 的作用只是把 `tools`，`tool_call`，`tool_response` 自动映射成这种形式。更多见 [Agentic 训练](../training/agentic.mdx)。
+
+## 兼容常见格式
+
+数据不是上述标准格式时，格式转换器会在预处理时自动转换。转换器只根据列名决定格式，再按每一行内容的形状改写，内置四种，按检测优先级从高到低：
+
+| 转换器 | 识别条件 | 处理内容 |
+| --- | --- | --- |
+| `openai` | 有 `messages`，`conversation` 或 `conversations` 列 | sharegpt，OpenAI `tool_calls`，OpenAI 多模态 content parts，Anthropic 内容块 |
+| `preference` | 有 `chosen` 或 `rejected` 列 | 顶层偏好对 |
+| `alpaca` | 同时有 `instruction` 和 `input` 列 | instruction 与 input 合并为用户输入 |
+| `response` | 兜底：有 `response` 列或其别名 | query，response 与多轮 history |
+
+以下格式都会转换成标准 `messages`，可直接用 `--dataset` 接入。实现见 [format_converter](https://github.com/modelscope/ms-swift/tree/main/swift/dev/dataset/format_converter)。
+
+**sharegpt 格式**。列名 `conversation` 或 `conversations`，角色键 `role` 或 `from`，内容键 `content` 或 `value`；每一项是一条消息，或一对 `{"user": ..., "assistant": ...}`：
+
+```jsonl
+{"conversation": [{"human": "你好", "gpt": "你好！"}, {"human": "1+1？", "gpt": "2"}]}
+{"conversations": [{"from": "system", "value": "你是一个有用的助手"}, {"from": "human", "value": "你好"}, {"from": "gpt", "value": "你好！"}]}
+```
+
+角色值的别名会自动映射：`user`，`human` → user；`assistant`，`gpt`，`bot`，`chatgpt` → assistant；`tool_call`，`function_call` → tool_call；`tool_response`，`tool`，`function_response`，`observation`，`observations` → tool_response；`system` → system。每条消息上的 `loss`，`loss_scale`，`reasoning_content` 会保留。
+
+**OpenAI 工具调用格式**。assistant 消息的 `tool_calls` 展开为多条 `tool_call` 消息，`content` 为 `{"name": ..., "arguments": ...}` 对象，`arguments` 为 JSON 字符串时会被解析；assistant 自身的 `content` 非空时保留为紧邻在前的一条 assistant 消息：
+
+```jsonl
+{"messages": [{"role": "user", "content": "天气如何？"}, {"role": "assistant", "content": null, "tool_calls": [{"type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Beijing\"}"}}]}, {"role": "tool", "content": "晴"}]}
+```
+
+**OpenAI 多模态 content parts**。`content` 为 `{"type": "text"|"image_url"|"video_url"|"audio_url", ...}` 列表时，`*_url` 块按原顺序改写为 `<image>`，`<video>`，`<audio>` 占位符，媒体地址提升到顶层 `images`，`videos`，`audios` 列，由模板编码：
+
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "比较这两张图片。"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,<base64>"}}, {"type": "image_url", "image_url": {"url": "https://example.com/input.png"}}]}, {"role": "assistant", "content": "我来检查。"}]}
+```
+
+**Anthropic 内容块**。`content` 为 `text`，`tool_use`，`tool_result`，`image` 块时：`tool_use` 展开为 `tool_call` 消息，`tool_result` 展开为 `tool_response` 消息；`image` 块转为标准的多模态 content part，base64 源转为 `data:` URI，URL 源原样保留：
+
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "图片中有什么？"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "<base64>"}}]}, {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_01", "name": "inspect_image", "input": {}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": "阳光明媚的海滩。"}]}]}
+```
+
+**query-response 格式**：
+
+```jsonl
+{"system": "你是一个有用的助手", "query": "1+1 等于几？", "response": "等于 2", "history": [["你好", "你好！"]]}
+{"prompt": "你好", "completion": "你好！"}
+{"instruction": "翻译为英文", "input": "你好", "output": "Hello"}
+```
+
+`history` 是 `[query, response]` 对的列表，按顺序展开为历史轮次，当前 `query`/`response` 作为最后一轮。`response` 为空时最后一轮没有 assistant 消息，可作为推理输入或在线 RL 的 prompt。`response` 为列表时默认取第一个答案；设置环境变量 `RANDOM_DATASET_RESPONSE=true` 则随机选取一个。以下列名自动转换为对应的标准列：
+
+- system：`system`，`system_prompt`。
+- query：`query`，`prompt`，`input`，`instruction`，`question`，`problem`。
+- response：`response`，`answer`，`output`，`targets`，`target`，`answer_key`，`answers`，`solution`，`text`，`completion`，`content`。
+
+**alpaca 格式**。需要同时有 `instruction` 和 `input` 列，`output` 作为 response；非空时 `query = instruction + "\n" + input`。
+
+**chosen / rejected 偏好格式**。顶层 `chosen` 为消息列表时作为 `messages`，否则作为最后一条回复；`rejected` 为消息列表时作为 `rejected_messages`，否则作为 `rejected_response`：
+
+```jsonl
+{"chosen": [{"role": "user", "content": "1+1？"}, {"role": "assistant", "content": "2"}], "rejected": [{"role": "user", "content": "1+1？"}, {"role": "assistant", "content": "3"}]}
+{"prompt": "1+1？", "chosen": "2", "rejected": "3"}
+```
+
+**rejected_response 简写**。正负例共用同一 prompt 时，不写 `rejected_messages`，改用 `rejected_response` 只写负例回复，可以是字符串或不含 `user` 角色的消息列表。编码时替换 `messages` 中最后一条 user 消息之后的全部消息组成负例对话，正例的 `system`，`tools`，媒体（含顶层 `images` 等列）随之继承；单条回复与正例完全相同时报错：
+
+```jsonl
+{"messages": [{"role": "system", "content": "你是一个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}, {"role": "assistant", "content": "明天天气晴朗"}], "rejected_response": "我不知道"}
+{"messages": [{"role": "user", "content": "1+1 等于几"}, {"role": "assistant", "content": "等于 2"}, {"role": "user", "content": "再加 1 呢"}, {"role": "assistant", "content": "等于 3"}], "rejected_response": [{"role": "assistant", "content": "等于 4"}]}
+```
+
+**顶层媒体列**。媒体不写在 `content` 里，而是放在行的顶层 `images`，`videos`，`audios` 列（值为路径或 URL 列表），用消息文本中的 `<image>`，`<video>`，`<audio>` 占位符按出现顺序对应：
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>图片中是什么？"}, {"role": "assistant", "content": "一只猫。"}], "images": ["/data/cat.png"]}
+{"messages": [{"role": "user", "content": "<image><image>两张图片有什么区别"}, {"role": "assistant", "content": "前一张是小猫，后一张是小狗"}], "images": ["/data/cat.png", "/data/dog.png"]}
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫。"}], "rejected_response": "这是一只小狗。", "rejected_images": ["/data/dog.png"]}
+```
+
+内置数据集和多数示例仍采用这种写法。base64 同样用 data URI；偏好数据负例的媒体用 `rejected_images` 指定，它只在 `rejected_response` 写法下生效，因为 `rejected_messages` 不会继承顶层列。单数的 `image`，`video`，`audio` 列名会自动映射为复数。
+
+### 列名映射
+
+列名映射通过 `--columns` 显式指定，方向始终是"原始列名 → 标准列名"：
 
 ```bash
 swift sft --model Qwen/Qwen3.5-4B \
@@ -57,36 +435,9 @@ swift sft --model Qwen/Qwen3.5-4B \
     --output_dir output/columns
 ```
 
-映射方向始终是“原始列名 → 标准列名”。
+映射规则：同一列名在两处都有定义时以 `--columns` 为准；多个列名映射到同一个标准名时取先声明者（顺序为媒体单数别名，转换器内置别名，`--columns`）；行内已有标准列名时，别名不覆盖。单数的 `image`，`video`，`audio` 列在任何格式下都会映射为 `images`，`videos`，`audios`。
 
-## 标准数据格式
-
-### 多轮 SFT 与监督范围
-
-```jsonl
-{"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好！", "loss": false}, {"role": "user", "content": "1+1？"}, {"role": "assistant", "content": "2", "loss": true}]}
-```
-
-assistant 消息上的 `loss: false` 排除这轮回复的监督；用户输入和工具观察默认不参与回复损失。用 `--loss_scale last_round` 只监督最后一轮，更多权重设置见 [模板](./template.mdx)。预训练可使用仅含 assistant 文本的 `messages`。
-
-### 多模态
-
-```jsonl
-{"messages": [{"role": "user", "content": "<image>图片中是什么？"}, {"role": "assistant", "content": "一只猫。"}], "images": ["/data/cat.png"]}
-```
-
-图片、视频和音频分别使用 `images`、`videos`、`audios`，占位符与媒体列表保持对应顺序。模型必须支持相应模态，媒体路径必须对实际编码进程可见。远程训练中，客户端路径不自动成为服务端可读路径。
-
-### 偏好数据和在线采样
-
-```jsonl
-{"messages": [{"role": "user", "content": "1+1？"}, {"role": "assistant", "content": "2"}], "rejected_response": "3"}
-{"messages": [{"role": "user", "content": "计算 1+1，将答案写在 \\boxed{} 中。"}], "solution": "2"}
-```
-
-第一行是偏好对；更复杂的拒绝轨迹可使用 `rejected_messages`。第二行是在线 RL 的 prompt：不预填待生成的 assistant 回复，`solution` 保留给数学奖励函数。附加奖励列需要与相应 prompt 一起保留，不能把参考答案拼到用户输入中。工具调用数据还可以带 `tools`，见 [Agentic](../training/agentic.mdx)。
-
-## 声明式注册
+## dataset_info.json
 
 在同一目录保存 `data.jsonl` 和 `dataset_info.json`：
 
@@ -96,6 +447,13 @@ assistant 消息上的 `loss: false` 排除这轮回复的监督；用户输入�
     "dataset_type": "my_qa",
     "dataset_path": "data.jsonl",
     "columns": {"prompt": "query", "completion": "response"}
+  },
+  {
+    "ms_dataset_id": "swift/alpaca-gpt4-data-zh",
+    "hf_dataset_id": "swift/alpaca-gpt4-data-zh",
+    "subsets": ["default"],
+    "split": ["train"],
+    "columns": {"input": "query", "output": "response"}
   }
 ]
 ```
@@ -108,11 +466,26 @@ swift sft --model Qwen/Qwen3.5-4B \
     --output_dir output/registered-data
 ```
 
-相对 `dataset_path` 以声明文件所在目录为基准。`dataset_type` 是内部注册名，不是文件格式；每项至少提供一个数据集 ID 或路径。可同时声明 `ms_dataset_id`、`hf_dataset_id`、`subsets`、`split` 和 `columns`，加载时仍走同一数据处理流程。
+每一项至少提供 `ms_dataset_id`，`hf_dataset_id`，`dataset_path` 之一，未识别的键会报错：
+
+| 键 | 说明 |
+| --- | --- |
+| `dataset_type` | 注册名，`--dataset` 用它选择。缺省为 ID 或路径的最后一段 |
+| `ms_dataset_id` / `hf_dataset_id` | ModelScope / HuggingFace 数据集 ID，可以只提供一个 |
+| `dataset_path` | 本地文件或目录。相对路径以 `dataset_info.json` 所在目录为基准 |
+| `subsets` | 子集名列表；或对象列表，每项可含 `subset`（Hub 子集名），`name`（命令行用的名字，缺省同 `subset`），`split`，`columns`，`preprocessor` |
+| `split` | 加载的 split 列表，默认 `["train"]`；子集对象里的 `split` 优先 |
+| `columns` | 列映射，原始列名 → 标准列名；子集对象里的 `columns` 优先 |
+| `ms_revision` / `hf_revision` | 固定的数据集版本 |
+| `tags` | 标签列表 |
+| `help` | 一行说明，列出数据集时显示 |
+| `huge_dataset` | 为 `true` 时提示使用者默认流式读取 |
+
+内置注册表见 [dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dev/dataset/loader/dataset_info.json)，字段含义相同。
 
 ## 自定义预处理
 
-保存为 `custom_data.py`：
+字段结构特殊，需要逐行计算时，继承 `Preprocessor` 重写 `preprocess`，并用 `register_dataset` 注册加载器。保存为 `custom_data.py`：
 
 ```python
 from swift.dev.dataset.loader import DatasetLoader, register_dataset
@@ -148,6 +521,16 @@ swift sft --model Qwen/Qwen3.5-4B \
     --output_dir output/preprocessed-data
 ```
 
-`preprocess(row)` 返回标准行；返回 `None` 丢弃该行，返回行列表可将一行展开为多行。注册中传预处理器类，加载器为每次读取创建实例，避免跨任务共享可变状态。
+`preprocess(row)` 接收原始行，返回标准行；返回 `None` 丢弃该行，返回行列表可将一行展开为多行。注册时传预处理器类而不是实例，加载器为每次读取创建实例，避免跨任务共享可变状态。
 
-`--strict true` 让错误行直接报错；默认会丢弃无法转换的行并记录诊断。首次接入应确认加载后的有效样本数，防止字段错误导致大量数据被过滤。多进程 map、流式读取和缓存分别由 `--dataset_num_proc`、`--streaming`、`--load_from_cache_file` 控制。完整组件示例见 [examples/v5/train/custom/dataset](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/custom/dataset)。
+不重写 `preprocess` 时，基类用格式转换器自动转换；通过类属性声明数据集的特点：
+
+- `format_name`：固定使用某个转换器（`openai`，`preference`，`alpaca`，`response`），不再按列名检测。
+- `columns`：列映射，与 `--columns` 等价，写在类上即可随注册一起分发。
+- `converter_kwargs`：传给转换器的参数，例如 `role_key`，`content_key`，`user_role`，`assistant_role` 用于指定自定义的角色键，内容键和角色值。
+
+先读取标准字段再改写时，用 `self.standardise(row)` 得到改名后的行；要保留的列应设置在 `preprocess` 返回的行上，而不是改名后写回原始列名，否则会被再次当作别名转换。
+
+`DatasetLoader` 的可声明属性：`dataset_type`（注册名，必填），`datasets`（Hub ID，两个 Hub 相同时写字符串，否则写 `(ms_id, hf_id)` 元组，缺失的一侧为 `None`），`dataset_paths`，`subsets`，`split`，`preprocessor`，`columns`，`ms_revision`，`hf_revision`，`tags`，`help`，`huge_dataset`，含义与 `dataset_info.json` 的同名字段一致。一个注册名可以同时绑定 Hub ID 和本地路径。
+
+`--strict true` 让错误行直接报错；默认丢弃无法转换的行并记录诊断。首次接入应确认加载后的有效样本数，防止字段错误导致大量数据被过滤。多进程 map，流式读取和缓存分别由 `--dataset_num_proc`，`--streaming`，`--load_from_cache_file` 控制。完整示例见 [examples/v5/train/custom/dataset](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train/custom/dataset)。

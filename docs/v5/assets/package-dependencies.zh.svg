@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" role="img" aria-labelledby="title desc">
+<title id="title">ms-swift 与 twinkle 三包的依赖关系</title><desc id="desc">ms-swift 的 base 依赖 twinkle-kit，extras [server] 与 [client] 分别依赖 twinkle-server 与 twinkle-client；twinkle-server 与 twinkle-client 只依赖 twinkle-kit，都不依赖 ms-swift。</desc>
+<defs>
+<marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#3566a0"/></marker>
+<filter id="sh" x="-5%" y="-5%" width="110%" height="115%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#20354e" flood-opacity="0.1"/></filter>
+<style>
+text{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;fill:#20354e}
+.band{fill:#f7fafc;stroke:#e3ebf3}
+.lbl{fill:#6b7f94;font-size:15px}
+.box{fill:#edf4fb;stroke:#9bb7d0;filter:url(#sh)}
+.top{fill:#e6effa;stroke:#7fa3c9}
+.kit{fill:#eaf6f1;stroke:#8fc3ae}
+.hd{font-size:20px;font-weight:600}
+.p{font-size:14px}.s{font-size:12.5px;fill:#4a5d70}
+.c{fill:none;stroke:#3566a0;stroke-width:2;marker-end:url(#b)}
+.n{fill:none;stroke:#c0392b;stroke-width:2;stroke-dasharray:6 5}
+.a{font-size:13px;fill:#3566a0}.x{font-size:13px;fill:#c0392b}
+</style></defs>
+<rect width="1000" height="600" rx="16" fill="#fff"/>
+<text x="35" y="40" font-size="23" font-weight="600">包依赖关系：ms-swift 依赖 twinkle，twinkle 不反向依赖 ms-swift</text>
+
+<rect class="band" x="20" y="70" width="960" height="130" rx="12"/><text class="lbl" x="35" y="95">业务编排层</text>
+<rect class="box top" x="260" y="90" width="480" height="90" rx="10"/>
+<text class="hd" x="280" y="120">ms-swift</text>
+<text class="p" x="280" y="145">训练 / 推理 / 部署 / 评测的 CLI 与 Python API</text>
+<text class="s" x="280" y="167">base 依赖 twinkle-kit · extras：[server] [client] [megatron] [eval]</text>
+
+<rect class="band" x="20" y="225" width="960" height="150" rx="12"/><text class="lbl" x="35" y="247">服务与 SDK 层</text>
+<rect class="box" x="100" y="250" width="320" height="100" rx="10"/>
+<text class="hd" x="120" y="282">twinkle-server</text>
+<text class="p" x="120" y="308">多租户训练与采样服务</text>
+<text class="s" x="120" y="330">Ray Serve · 部署在提供 GPU 的机器</text>
+<rect class="box" x="580" y="250" width="320" height="100" rx="10"/>
+<text class="hd" x="600" y="282">twinkle-client</text>
+<text class="p" x="600" y="308">远程训练的 Python SDK 与命令行</text>
+<text class="s" x="600" y="330">无需本地 GPU</text>
+
+<rect class="band" x="20" y="400" width="960" height="130" rx="12"/><text class="lbl" x="35" y="425">通用组件层</text>
+<rect class="box kit" x="260" y="420" width="480" height="90" rx="10"/>
+<text class="hd" x="280" y="452">twinkle-kit</text>
+<text class="p" x="280" y="477">训练 / 推理 / agentic 通用组件库</text>
+<text class="s" x="280" y="499">infra · sampler · template · storage · strategy</text>
+
+<path class="c" d="M500 180V420"/><text class="a" x="500" y="214" text-anchor="middle">base 依赖</text>
+<path class="c" d="M300 180L262 248"/><text class="a" x="312" y="226">extras [server]</text>
+<path class="c" d="M700 180L738 248"/><text class="a" x="688" y="226" text-anchor="end">extras [client]</text>
+<path class="c" d="M262 350L300 418"/>
+<path class="c" d="M738 350L700 418"/>
+
+<path class="n" d="M160 250V140H258"/><path class="n" d="M840 250V140H742"/>
+<g transform="translate(160 195)"><circle r="11" fill="#fff" stroke="#c0392b" stroke-width="2"/><path d="M-5 -5L5 5M-5 5L5 -5" stroke="#c0392b" stroke-width="2.2"/></g>
+<g transform="translate(840 195)"><circle r="11" fill="#fff" stroke="#c0392b" stroke-width="2"/><path d="M-5 -5L5 5M-5 5L5 -5" stroke="#c0392b" stroke-width="2.2"/></g>
+<text class="x" x="145" y="200" text-anchor="end">不依赖 ms-swift</text>
+<text class="x" x="855" y="200">不依赖 ms-swift</text>
+
+<path class="c" d="M40 565H90"/><text class="s" x="100" y="570">pip 依赖，箭头指向被依赖方</text>
+<path class="n" d="M320 565H370"/><g transform="translate(345 565)"><circle r="9" fill="#fff" stroke="#c0392b" stroke-width="2"/><path d="M-4 -4L4 4M-4 4L4 -4" stroke="#c0392b" stroke-width="2"/></g><text class="s" x="385" y="570">不存在的反向依赖：twinkle-server / twinkle-client 均不依赖 ms-swift</text>
+</svg>

@@ -12,10 +12,15 @@ class InferConfig:
     """
 
     # === Engine ===
-    # 'vllm'/'transformers'/'sglang' ('pt' alias), a Sampler subclass/plugin source, 'no' (none),
-    # or 'twinkle': the client-side sampler over a twinkle-server (needs --mode remote +
-    # --server_base_url; model names the SERVER-side served model).
+    # 'vllm'/'transformers'/'sglang' ('pt' alias), a Sampler subclass/plugin source, 'no' (none), or
+    # 'openai': the chat-completions API of an already-served model (needs --infer_url; --model is
+    # both the served model name and the local tokenizer/template source).
     sampler: Any = 'transformers'
+    #: OpenAI-compatible base_url for sampler='openai' (e.g. http://127.0.0.1:8100/v1); no local engine
+    #: is built, the served model answers and the reply is re-encoded with the local template.
+    infer_url: Optional[str] = None
+    #: Bearer key for ``infer_url`` endpoints that require one; local deployments omit it.
+    infer_api_key: Optional[str] = None
     # Requests batched into one engine call; transformers backend only (vLLM/SGLang self-batch).
     max_batch_size: int = 1
 

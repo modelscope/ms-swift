@@ -36,7 +36,7 @@ class DeployConfig:
     ray_address: Optional[str] = None
     ray_namespace: str = 'swift'
     # '/v1' reproduces the legacy OpenAI paths (/v1/chat/completions, /v1/completions, ...).
-    # A gateway consumed through twinkle_client (--mode remote / sampler='twinkle') needs
+    # A gateway consumed through twinkle_client (--mode remote) needs
     # '/api/v1' instead: the client appends '/api/v1' to the base URL, so any other prefix
     # answers with 404 (train-side validate refuses such a server_base_url path).
     route_prefix: str = '/v1'

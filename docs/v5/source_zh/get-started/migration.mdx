@@ -1,9 +1,9 @@
 ---
 title: v5 快速迁移
-description: 从 v4 命令、Python API 和插件迁移到 SWIFT v5。
+description: v5 相对 v4 的新特性与不兼容变化：命令，参数，数据格式，插件与 Python API 的对应关系。
 ---
 
-SWIFT v5 保留 `swift sft`、`swift infer`、`swift rl` 等任务入口，将模型、数据、采样和分布式执行委托给 twinkle 组件。迁移一个实验时，先保留模型、数据、优化参数和有效 batch，再调整接口与执行配置。
+SWIFT v5 保留 `swift pt`，`swift sft`，`swift rl`，`swift infer`，`swift deploy`，`swift eval`，`swift export` 等任务入口，把模型，数据，采样，分布式执行和服务端能力下沉到 [twinkle](https://github.com/modelscope/twinkle) 组件库：SWIFT 负责模型与数据适配，配置和算法 recipe，twinkle 提供训练循环，采样，Ray 执行与 twinkle-server。命令行从 `swift.arguments` 的单体参数换成了 `swift.dev.config` 下按职责拆分的 Config dataclass，本文按"多了什么"和"变了什么"两部分对照 v4。
 
 ## 安装
 
@@ -11,29 +11,181 @@ SWIFT v5 保留 `swift sft`、`swift infer`、`swift rl` 等任务入口，将�
 pip install 'ms-swift>=5.0.0'
 ```
 
-PyTorch、attention 内核和采样器依赖按[环境安装](./installation.mdx)准备。v5 的 Python API 位于 `swift.dev`；命令行使用安装后的 v5 入口。
+依赖按[环境安装](./installation.mdx)准备。v5 的 Python API 位于 `swift.dev`；设置 `USE_SWIFT_V5=0` 可以回到旧的命令行实现，用于逐步迁移。
 
-## 命令与参数
+## v5 新特性
 
-| v4 使用方式 | v5 使用方式 | 含义 |
+### 训练
+
+- **同一命令远程训练**：`--mode remote` 连接 twinkle-server，本机只运行客户端驱动，模型加载，数据编码，训练与保存都在服务端完成；用 `--server_base_url`，`--server_api_key` 指定服务，`--model` 填服务端模型名。见[服务端与客户端](../interfaces/server-client.mdx)。
+- **统一后端选择**：`--backend hf|megatron|unsloth`。Megatron 不再是独立命令，unsloth 不再是 tuner 的后端开关，与 transformers 后端共用全部参数。
+- **统一并行布局**：`--parallel_spec`（例如 `dp4tp2pp2`）一份 DeviceMesh 描述 dp/fsdp/tp/pp/cp/ep/etp/vpp/sp，transformers 与 Megatron 共用；辅助模型（`--ref_parallel_spec`，`--reference_parallel_spec`，`--teacher_parallel_spec`，`--orm_parallel_spec`，`--prm_parallel_spec`）各自声明放置。transformers 后端新增 FSDP2（`--fsdp`，`--fsdp_config`）与 Ulysses 序列并行（`--sequence_parallel_size`）。
+- **按 token 预算的动态批处理**：`--dynamic_batching`，`--max_tokens_per_micro_batch`，`--micro_batch_order`，更新量仍由 batch，DP 与梯度累积决定；`--packing_algorithm` 选择装箱算法。
+- **新的优化旋钮**：`--trainable_token_indices`（配合 `--tuner trainable_tokens` 学习新特殊 token），`--param_groups_plugins`（自定义参数分组，例如按塔设置学习率），`--lorap_emb_lr`，`--qk_clip_enabled`/`--qk_clip_tau`，`--dp_balance`，`--label_smoothing_factor`，`--acc_strategy`。
+- **MTP 训练改为显式开关**（Megatron 后端）：`--enable_mtp_training`，另有 `--mtp_freeze`，`--mtp_decoder_input_detach`，`--mtp_allow_random_init` 控制训练范围。
+- **数据落盘格式可插拔**：`--store_format` 支持 arrow，jsonl，orc，lance，`--store_fields` 选择保存列，可通过 `@register_storage` 新增格式。
+
+### 在线 RL 与蒸馏
+
+- **异步采样**：`--async_mode one_step_off|fully_async` 与 `--max_staleness`，采样使用落后若干版本的策略。
+- **权重同步控制**：`--weight_sync_backend delta_sharded` 只传输变化的权重，`--parameter_sync_step` 控制发布节奏。
+- **资源调度**：`--resource_mode manual|estimate|adaptive`，按显存估算或训练中动态调整采样副本；`--rollout_num_workers` 拆分 rollout 的 CPU 副本。
+- **过程奖励（PRM）通道**：`--prm`，`--prm_weights`，`--prm_scorer`，`--prm_step_delimiter`，`--prm_orm_mix`，与结果奖励按比例逐 token 融合。
+- **多轮，沙箱与 harness**：`--tools`，`--max_turns`，`--max_trajectory_tokens`，`--sandbox_kind` 及 `--sandbox_*`（AgentENV，OpenEnv，本地工作区），`--harness`（codex，ms_agent 等外部 agent 程序），`--segment_policy`，见 [Agentic 训练](../training/agentic.mdx)。
+- **新的算法与目标**：`--rl_type` 新增 `opsd`，`mopd`，`rft`；GRPO 变体新增 `dro`，`dppo_tv`，`dppo_kl`，`geo_mean`，`clip_cov`，`kl_cov`；`--enable_sampling_replay` 复用采样 token 训练。
+- **奖励源混排**：`--orm`/`--prm` 的每一项可以是规则名，奖励模型 id 或插件注册名，模型 id 的 LoRA，模板，类型由 `--orm_adapters`，`--orm_template`，`--orm_model_type` 等伴随列表给出；`--judge_template` 配置生成式评审模型；`--env_reward_weight`，`--code_*` 接入环境奖励与代码沙箱奖励。
+
+### 推理
+
+- `--num_samples`，`--n_best_to_keep`，`--reward_threshold`，`--easy_query_threshold`，`--normalize_rewards` 把原 `swift sample` 的候选采样与奖励筛选并入 `swift infer`。
+- `--output_format all|dpo|grpo` 直接产出偏好或 GRPO 训练数据；`--save_rollout_tokens` 保存 token 与 logprobs 供训练复用。
+- `swift infer --sampler openai --infer_url <base_url> [--infer_api_key <key>]` 推理任意 OpenAI 兼容服务，与 `swift eval --eval_url` 对称。
+- `--store_format`，`--store_fields`，`--store_encoded` 控制结果文件与缓存数据集的格式和列。
+
+### 部署
+
+- `--num_replicas`，`--autoscaling`，`--max_concurrency`，`--ray_address`，`--ray_namespace`，`--route_prefix`：采样器作为 Ray 副本按负载扩缩；twinkle_client 以 `/api/v1` 前缀直连。
+- `--detach`，`--stop` 在后台启动或停止服务。
+
+### 评测与导出
+
+- `swift eval --eval_url` 与 `--eval_api_key` 评测任意 OpenAI 兼容服务，`--result_jsonl` 保存逐样本明细。
+- `swift merge` 成为独立命令；`--replace_if_exists` 替代导出时的 `--exist_ok`；`--weight_transform_parallel_size` 按并行度切分转换后的权重。
+
+### 远程服务与 WebUI
+
+- twinkle-server 提供多租户的远程训练，推理与 checkpoint 管理；[ModelScope](/zh/services/modelscope)与 [Tinker](/zh/services/tinker)是托管形态。
+- WebUI 重写为训练任务，自动研究（autoresearch）与工作流编排三部分，见 [WebUI 快速启动](/zh/webui/quick-start)。工作流编排在节点画布上进行：从左侧面板拖入模型，数据集，训练，评测，LoRA 合并，部署等节点，按数据流连线构成图，点击节点即运行其全部上游节点并停在该节点，每个节点的输出可在页面上查看；节点背后是同一套 Config 与 builder，没有现成 recipe 的算法也可以用节点组合出来。
+- 自动研究（autoresearch）把一次调优实验交给模型驱动：在对话页里由模型与用户将目标收敛为三个可机械判定的要素——冻结的评测集，metric 与阈值，达标/放弃规则；之后模型自动发起训练，评测与用 Challenger 组件从原始数据或错误样本生成新数据，训练完成，失败等事件自动唤醒模型决定下一步，占用 GPU 的操作需用户审批；每次尝试记入迭代账本，与事件流一起在研究页查看。
+
+## Break Change
+
+### 命令
+
+| v4 | v5 | 说明 |
 | --- | --- | --- |
-| `swift sft` | `swift sft` | 指令微调及监督任务 |
-| `swift rlhf` | `swift rl` | 偏好学习、在线 RL 与蒸馏 |
-| `--rlhf_type grpo` | `--rl_type grpo` | 算法选择 |
-| `--tuner_type lora` | `--tuner lora` | 训练参数的选择方式 |
-| `--infer_backend vllm` | `--sampler vllm` | 离线推理引擎 |
-| `--vllm_mode colocate` | `--sampler_mode colocate` | 在线采样器与训练器共卡 |
-| rollout server 配置 | `--rollout_sampler vllm` 与采样放置配置 | 由 recipe 组装采样器 |
+| `swift rlhf` | `swift rl` | `rlhf` 仍是兼容别名 |
+| `swift merge-lora` | `swift merge` | 旧名报错并提示新命令 |
+| `swift sample` | `swift infer` | 候选采样与奖励筛选并入 infer |
+| `swift app`，`swift rollout` | 无 | 远程交互用 `swift deploy` 起 OpenAI 兼容服务，客户端以 OpenAI SDK 调用 |
+| `swift megatron pt/sft/rlhf` | `swift pt/sft/rl --backend megatron` | Megatron 不再是独立入口 |
+| `swift export --merge_lora true` | `swift merge` | 合并是命令本身 |
 
-使用 v5 的规范参数名编写新命令；完整字段与默认值见[命令行参数](../interfaces/cli.mdx)。
+`swift sample` 并入 `swift infer`：候选采样，PRM/ORM 打分与筛选都由 `swift infer` 完成。参数对应：`--sampler_engine` 改 `--sampler`，`--num_return_sequences` 改 `--num_samples`，`--prm_model`/`--orm_model` 改为 `--prm`/`--orm` 列表中的一项（奖励模型 id，规则名或插件注册名），`--prm_threshold` 改 `--reward_threshold`，结果文件由 `--result_path` 指定。v4 的示例：
 
-### 保留训练语义
+```bash
+swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine lmdeploy \
+    --num_return_sequences 5 --n_best_to_keep 2 --dataset tastelikefeet/competition_math#5 \
+    --prm_model AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft --orm_model math
+```
+
+v5 写法：
+
+```bash
+swift infer --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler vllm \
+    --num_samples 5 --n_best_to_keep 2 --output_format dpo --dataset tastelikefeet/competition_math#5 \
+    --prm AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft --orm math
+```
+
+### 参数改名
+
+下表左列在解析时自动折叠为右列；新命令请直接写右列。
+
+| v4 | v5 |
+| --- | --- |
+| `--rlhf_type` | `--rl_type` |
+| `--loss_type`（pt/sft 等监督任务） | `--loss`（`swift rl` 仍用 `--loss_type`） |
+| `--tuner_type`，`--train_type` | `--tuner`（`--train_type` 不在别名表内，会被拒绝） |
+| `--tuner_backend` | `--backend`（会被拒绝，提示新参数） |
+| `--infer_backend`，`--sampler_engine` | `--sampler` |
+| `--vllm_mode` | `--sampler_mode` |
+| `--use_ray` | `--mode ray` |
+| `--bf16`，`--fp16` | `--torch_dtype bfloat16`，`--torch_dtype float16` |
+| `--attention_backend` | `--attn_impl` |
+| `--lr_scheduler_type` | `--lr_scheduler` |
+| `--lr`，`--train_iters`，`--micro_batch_size` | `--learning_rate`，`--max_steps`，`--per_device_train_batch_size` |
+| `--lr_warmup_fraction`，`--lr_warmup_iters`，`--adam_eps`，`--clip_grad` | `--warmup_ratio`，`--warmup_steps`，`--adam_epsilon`，`--max_grad_norm` |
+| `--response_length` | `--max_completion_length` |
+| `--reward_funcs`，`--reward_weights`，`--prm_funcs` | `--orm`，`--orm_weights`，`--prm` |
+| `--prm_threshold` | `--reward_threshold` |
+| `--finetune`（Megatron） | `--resume_only_model` |
+| `--custom_register_path` | `--external_plugins`（会被拒绝，提示新参数） |
+
+### 默认值变化
+
+- `--sampler_mode` 可省略，默认 `disaggregated`；v4 的 `--vllm_mode` 在 `--use_vllm` 下是必填项。
+- `--packing_strategy` 默认 `binpack`，`--packing_length` 默认取 `--max_length`，与 v4 一致；动态批处理默认关闭。
+
+### 移除的参数
+
+传这些参数会直接报错并给出替代写法；完整校验逻辑在 `swift.dev.cli.legacy_coverage`。
+
+**训练与微调**
+
+| 移除的参数 | 替代 |
+| --- | --- |
+| `--orm_model`，`--prm_model`，`--reward_model` | 奖励模型 id 作为 `--orm`/`--prm` 的一项 |
+| `--reward_adapters`，`--reward_model_type`，`--reward_model_revision`，`--reward_template` | `--orm_adapters`，`--orm_model_type`，`--orm_model_revision`，`--orm_template`（PRM 同名 `prm_*`） |
+| `--reward_model_plugin` | 奖励模型打分内置，直接配置 `--orm`/`--prm` |
+| `--use_vllm` | `--rollout_sampler vllm` |
+| `--vllm_server_*`，`--teacher_model_server`，`--teacher_tag_key` | RL 任务在作业内按 `--parallel_spec` 启动采样器与教师模型，不再指向外部 rollout 服务 |
+| `--gym_env`，`--use_gym_env`，`--multi_turn_scheduler`，`--completion_length_limit_scope` | `--sandbox_*`，`--max_turns`，`--max_trajectory_tokens`，`--harness` |
+| `--steps_per_generation`，`--num_mini_batches` | `--num_iterations`，`--per_device_train_batch_size` |
+| `--seq_kd` | 用 GKD（`--rl_type gkd`）表达序列级蒸馏 |
+| `--num_generations_eval` | `--eval_generation_config` |
+| `--generation_config`，`--temperature`，`--max_new_tokens`，`--top_p` 等生成参数 | 训练命令不再接受；训练中评估的解码放在 `--eval_generation_config` |
+| `--train_type`，`--tuner_backend`，`--custom_register_path` | `--tuner`，`--backend`，`--external_plugins` |
+| `--device_map` | 运行时按并行策略放置模型 |
+| `--adalora_*`，`--lisa_*`，`--lora_ga_*`，`--fourier_*`，`--boft_*`，`--vera_*`，`--reft_*`，`--llamapro_*` | 这些 tuner 已退役；`--tuner` 只提供 `lora`，`full`，`trainable_tokens` |
+| `--torch_compile*`，`--accelerator_config`，`--auto_find_batch_size`，`--ds3_gather_for_generation`，`--use_cpu`，`--debug`，`--ddp_backend`，`--device_groups` | 无对应 |
+| `--max_epochs`，`--do_eval`，`--is_binary_loss_scale`，`--template_backend`，`--preserve_thinking`，`--disable_ignore_empty_think`，`--lora_dtype`，`--check_model`，`--eval_metric`，`--label_names`，`--prediction_loss_only`，`--disable_tqdm`，`--average_tokens_across_devices`，`--use_logits_to_keep` | `--num_train_epochs`，`--eval_strategy`，`--loss_scale`，`--enable_thinking`，其余为当前路径的固定行为 |
+
+**推理，部署，评测，导出**
+
+| 移除的参数 | 替代 |
+| --- | --- |
+| `--infer_backend lmdeploy` 与 `--lmdeploy_*` | `--sampler` 只提供 transformers，vllm，sglang，openai，no |
+| `--infer_backend client` | `--sampler openai --infer_url <base_url>`：通过服务的 OpenAI 接口（`/chat/completions`）推理，回复由本地模板重新编码 |
+| `--vllm_enable_lora`，`--vllm_max_lora_rank`，`--vllm_use_async_engine` | 传入 adapters 即自动启用 LoRA，rank 读自 adapter_config.json；异步引擎由引擎类决定 |
+| `--data_range` | `--dataset 路径#采样数` |
+| `--write_batch_size`，`--to_ollama`，`--use_swift_lora`，`--ignore_args_error` | 无对应 |
+| `--eval_backend`，`--eval_use_evalscope`，`--local_dataset` | `swift eval` 只保留原生评测器；训练中评估用 `--eval_strategy`，`--eval_dataset` |
+| `swift eval` 的 `--temperature`，`--max_new_tokens` 等 | `--eval_generation_config` |
+| `swift deploy` 的 `--verbose`，`--log_level` | 服务端自行管理日志 |
+| `--merge_lora`，`--exist_ok` | `swift merge`，`--replace_if_exists` |
+
+**Checkpoint**
+
+`--no_save_rng`，`--no_load_optim`，`--no_load_rng`，`--save_safetensors`，`--save_on_each_node`，`--use_persistent_ckpt_worker`，`--dist_ckpt_*`，`--create_checkpoint_symlink`，`--use_flash_ckpt` 不再接受；训练与导出命令各自拒绝 Megatron 原始格式的 `--mcore_model`/`--mcore_adapter`，先转换为 HF 格式。
+
+### 数据格式
+
+标准 `messages` 格式，`rejected_response` 简写，query-response 与 alpaca 等兼容格式仍可直接使用，差异如下：
+
+- `tools` 列是工具定义**列表**；v4 要求的 JSON 字符串仍可读。
+- `tool_call` 消息的 `content` 是 `{"name": ..., "arguments": ...}` 对象（`arguments` 为参数字典）；JSON 字符串形式仍可读。
+- 每条消息允许的键固定为 `role`，`content`，`loss`，`loss_scale`，`reasoning_content`，其余键在预处理时删除。
+- 多模态媒体的标准写法是消息 `content` 内的 content parts；顶层 `images`/`videos`/`audios` 列是兼容写法。同一行只能使用其中一种，二者同时出现会报错。
+- 使用 `rejected_messages` 时负例不继承正例的任何列，`system`，`tools` 与媒体都写在负例里；只给 `rejected_response` 时才继承。
+- Embedding 与 reranker 的 `positive_messages`/`negative_messages` 是会话列表，每个元素是一条完整对话；训练只使用第一个正例。
+
+细节与示例见[自定义数据集](../interfaces/custom-dataset.mdx)。
+
+### 插件与 Python API
+
+- 外部插件统一通过 `--external_plugins` 导入，按 kind 注册到 `PluginRegistry`：奖励规则继承 `RewardRule` 注册到 `reward` kind（v4 是往 `orms` 字典放函数），callback，loss_scale，loss，工具，harness，sampler，prm_scorer 同理；契约见[插件](../interfaces/plugins.mdx)。
+- `--callbacks` 填写 `callback` kind 的注册名，不再指向 `swift/callbacks/mapping.py`。
+- `--loss_type` 自定义损失改为 `@register_loss`；`--loss_scale` 自定义策略注册到 `loss_scale` kind。
+- Python 入口从 `swift.llm` 的 `*Arguments` 与 `*Main` 换成 `swift.dev.config` 的 Config dataclass 与 `swift.dev.recipe` 的 `run_*`；再往下可以直接组合 twinkle 组件，见[组件与 MP 分离](../interfaces/mp-separation.mdx)。
+- checkpoint 由 twinkle 的 checkpoint engine 读写，`--resume_from_checkpoint` 恢复的是 v5 自己写入的目录；v4 的 checkpoint 只能通过 `--model`/`--adapters` 加载权重后重新开始。
+
+## 迁移示例
+
+保留模型，数据，优化参数与有效 batch，只改接口与执行配置：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen3.5-4B \
-    --model_type qwen3_5 \
-    --template qwen3_5 \
     --torch_dtype bfloat16 \
     --attn_impl flash_attention_2 \
     --dataset 'swift/self-cognition#600' \
@@ -49,50 +201,88 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --output_dir output/migrated-sft
 ```
 
-数据并行训练的有效 batch 是每卡 batch、数据并行副本数和梯度累积步数的乘积。切换到远程客户端时，服务端还可能对提交的 batch 分片，应按[远程训练](../interfaces/server-client.mdx)的实际接口对齐，而不是机械复制 `nproc_per_node`。
+在线 RL 的最小改动：`--rlhf_type grpo` 改 `--rl_type grpo`，`--use_vllm true` 改 `--rollout_sampler vllm`，`--vllm_mode colocate` 改 `--sampler_mode colocate`，`--reward_funcs`/`--reward_weights` 改 `--orm`/`--orm_weights`，`--beta`，`--num_generations`，`--max_completion_length` 不变；示例见[快速启动](./quick-start.mdx)。
+
+数据并行训练的有效 batch 是每卡 batch，数据并行副本数和梯度累积步数的乘积。切换到远程客户端时，服务端还可能对提交的 batch 分片，应按[服务端与客户端](../interfaces/server-client.mdx)的实际接口对齐，而不是机械复制 `nproc_per_node`。
 
 ## 从命令行转成 Python
 
-v5 Config 字段对应命令行参数。调用 recipe 可以保留完整的训练、保存和恢复逻辑：
+v5 Config 字段对应命令行参数。用 Config 构造出模型，数据，优化器等对象后，训练循环写在调用方，与 `examples/v5/train/lora/train.py` 相同：
 
 ```python
-from swift.dev.config import (
-    CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-    TrainConfig, TunerConfig,
-)
-from swift.dev.recipe.sft.run_sft import run_sft
+import math
 
-run_sft(
-    model_config=ModelConfig(
-        model='Qwen/Qwen3.5-4B', model_type='qwen3_5',
-        torch_dtype='bfloat16', attn_impl='flash_attention_2',
-    ),
-    template_config=TemplateConfig(template='qwen3_5', max_length=2048),
-    dataset_config=DatasetConfig(dataset=['swift/self-cognition#600']),
-    train_config=TrainConfig(
-        num_train_epochs=3, per_device_train_batch_size=1,
-        gradient_accumulation_steps=8, learning_rate=1e-4,
-    ),
-    distributed_config=DistributedConfig(mode='local', backend='hf'),
-    tuner_config=TunerConfig(tuner='lora', lora_rank=8, lora_alpha=32),
-    checkpoint_config=CheckpointConfig(output_dir='output/migrated-python'),
-    output_dir='output/migrated-python',
+from swift.dev.loss import configure_loss
+from swift.dev.builder.optimizer import resolve_max_grad_norm
+from swift.dev.config import (
+    CheckpointConfig, DatasetConfig, DistributedConfig, LoggingConfig, ModelConfig, QuantizeConfig,
+    TemplateConfig, TrainConfig, TunerConfig,
 )
+from swift.dev.recipe.sft.assembly import build_supervised_objects
+from swift.dev.recipe.utils import (
+    StepState, build_save_knobs, grouped_training_batches, save_final_checkpoint, save_training_step,
+)
+
+# 与命令行一一对应的 Config 对象。
+model_config = ModelConfig(model='Qwen/Qwen3.5-4B', torch_dtype='bfloat16', attn_impl='flash_attention_2')
+template_config = TemplateConfig(max_length=2048)
+dataset_config = DatasetConfig(dataset=['swift/self-cognition#600'])
+train_config = TrainConfig(num_train_epochs=3, per_device_train_batch_size=1, gradient_accumulation_steps=8,
+                           learning_rate=1e-4)
+distributed_config = DistributedConfig(mode='ray', nproc_per_node=1)
+tuner_config = TunerConfig(tuner='lora', lora_rank=8, lora_alpha=32)
+checkpoint_config = CheckpointConfig(output_dir='output/migrated-python')
+logging_config = LoggingConfig(report_to=['tensorboard'], logging_steps=5)
+
+# 组装：twinkle 初始化 -> 模型 -> LoRA -> loss -> 优化器 -> 数据集，校验在其中完成。
+cluster = build_supervised_objects(
+    recipe='run_sft', model_config=model_config, template_config=template_config,
+    dataset_config=dataset_config, train_config=train_config, distributed_config=distributed_config,
+    checkpoint_config=checkpoint_config, tuner_config=tuner_config, logging_config=logging_config,
+    quantize_config=QuantizeConfig(), configure_loss=lambda model: configure_loss(model, loss_type='cross_entropy'),
+    output_dir=checkpoint_config.output_dir)
+model, dataloader = cluster.model, cluster.dataloader
+
+# 步进与保存：StepState 记录 loss/grad_norm/lr 并按 save_steps 触发保存。
+state = StepState(model, train_config, gradient_accumulation_steps=train_config.gradient_accumulation_steps,
+                  max_steps=cluster.total_opt_steps, max_grad_norm=resolve_max_grad_norm(train_config),
+                  logging_config=logging_config, output_dir=checkpoint_config.output_dir,
+                  save_steps=checkpoint_config.save_steps)
+save_knobs = build_save_knobs(checkpoint_config, dataset_config, distributed_config, tuner_config,
+                              output_dir=checkpoint_config.output_dir)
+
+
+def save(name: str, is_final: bool = False) -> str:
+    state.publish_state()
+    return save_training_step(model, state.handler, name, save_knobs, is_final=is_final)
+
+
+state.handler.on_train_begin()
+# 训练循环：每组 gradient_accumulation_steps 个 batch 做一次前向反向与一次参数更新。
+for epoch in range(math.ceil(train_config.num_train_epochs)):
+    dataloader.set_epoch(epoch)
+    for group, batch_count in grouped_training_batches(dataloader, train_config.gradient_accumulation_steps):
+        state.micro_step += batch_count
+        state.handler.on_step_begin()
+        model.forward_backward(inputs=group, task=cluster.forward_task, gradient_accumulation_steps=1,
+                               micro_batch_size=train_config.per_device_train_batch_size)
+        model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
+        state.handler.on_optimizer_step()
+        state.record()
+        state.step_tail(save=save)
+state.handler.on_train_end()
+save_final_checkpoint(model, save, enabled=True)
 ```
 
-更低一层可以直接调用模型的 `forward_backward`、采样器的生成方法、优化器和保存接口。详见[组件与 MP 分离](../interfaces/mp-separation.mdx)。
+`swift sft` 在此之上还有恢复训练，训练中评测，最优 checkpoint 跟踪等逻辑，见 `swift/dev/recipe/supervised.py`。
 
-## 数据与插件
+各对象的接口见[组件与 MP 分离](../interfaces/mp-separation.mdx)。
 
-标准 `messages` 格式仍可直接使用。无需为了迁移改变训练样本的语义；自定义列映射、数据集注册和预处理入口见[自定义数据集](../interfaces/custom-dataset.mdx)。
-
-外部插件仍通过 `--external_plugins` 导入。v5 使用 `PluginRegistry` 和内核类加载机制选择实现；迁移时更新 import、基类和回调签名，不能只保留旧文件路径。[插件文档](../interfaces/plugins.mdx)给出各扩展点的契约。
-
-## 本地、Ray 与远程
+## 本地 / Ray 与远程
 
 - SFT 等监督任务可使用本地执行或 Ray 执行；`--backend` 选择训练后端，与 `--mode` 是不同维度。
-- 本机在线 RL 的训练器、采样器及辅助模型由 Ray 管理。`--nproc_per_node` 是训练组的进程数，不是训练组与采样组 GPU 数的总和。
+- 本机在线 RL 的训练器，采样器及辅助模型由 Ray 管理。`--nproc_per_node` 是训练组的进程数，不是训练组与采样组 GPU 数的总和。
 - `--sampler_mode disaggregated` 为采样器分配独立 GPU；`colocate` 使用共享 GPU 的阶段调度。
 - `--mode remote` 连接已部署的 twinkle-server，模型与计算留在服务端；服务端放置来自服务配置。
 
-迁移效果应比较 loss/reward、grad_norm、有效更新次数和 checkpoint，而不只确认命令退出成功。已完成的 v4/v5/remote 对比见[性能测试与榜单](../performance.mdx)。
+迁移效果应比较 loss/reward，grad_norm，有效更新次数和 checkpoint，而不只确认命令退出成功。已完成的 v4，v5 与 remote 对比见[性能测试与榜单](../performance.mdx)。

@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-# Outcome-reward (ORM) rule plugins over trajectory rows; comparators shared with twinkle/reward.
+# Reward rule plugins (selected through ``--orm`` / ``--prm``) over trajectory rows; comparators shared
+# with twinkle/reward.
 
 import json
 import re
@@ -8,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 from swift.dev.utils.plugin import PluginRegistry
 
 from .code_reward import CodeExecutionReward
-from .reward import ORM
+from .reward import RewardRule
 from twinkle.reward import FormatReward, MathReward
 from twinkle.reward.gsm8k import MathVerifyAccuracyReward as _MathVerifyAccuracyReward
 
@@ -21,7 +22,7 @@ class MathAccuracy(_MathVerifyAccuracyReward):
         super().__init__(**kwargs)
 
 
-class ReActFormat(ORM):
+class ReActFormat(RewardRule):
 
     def __call__(self, trajectories, **kwargs) -> List[float]:
         """Reward function that checks if the completion has a specific format."""
@@ -30,7 +31,7 @@ class ReActFormat(ORM):
         return [1.0 if match else 0.0 for match in matches]
 
 
-class CosineReward(ORM):
+class CosineReward(RewardRule):
     # https://arxiv.org/abs/2502.03373
     def __init__(self, args: Optional[Any] = None, accuracy_orm=None):
         super().__init__(args)
@@ -66,7 +67,7 @@ class CosineReward(ORM):
         return rewards
 
 
-class RepetitionPenalty(ORM):
+class RepetitionPenalty(RewardRule):
     # https://arxiv.org/abs/2502.03373
     def __init__(self, args: Optional[Any] = None, **kwargs):
         super().__init__(args)
@@ -95,7 +96,7 @@ class RepetitionPenalty(ORM):
         return rewards
 
 
-class SoftOverlong(ORM):
+class SoftOverlong(RewardRule):
 
     def __init__(self, args: Optional[Any] = None, **kwargs):
         super().__init__(args)
@@ -118,7 +119,7 @@ class SoftOverlong(ORM):
         return rewards
 
 
-class ReactORM(ORM):
+class ToolbenchReward(RewardRule):
 
     @staticmethod
     def evaluate_action_reward(action_pred: list, action_ref: list, cand_list: list, ref_list: list):
@@ -147,7 +148,7 @@ class ReactORM(ORM):
             if ref_action != pred_action or (ref_is_json ^ cand_is_json):
                 f1.append(0)
             elif not ref_is_json and not cand_is_json:
-                rougel = ReactORM.evaluate_rougel([ref_input_json], [cand_input_json])
+                rougel = ToolbenchReward.evaluate_rougel([ref_input_json], [cand_input_json])
                 if rougel is None or rougel < 10:
                     f1.append(0)
                 elif 10 <= rougel < 20:
@@ -206,7 +207,7 @@ class ReactORM(ORM):
 
     @staticmethod
     def parse_output(text):
-        action, action_input = ReactORM.parse_action(text)
+        action, action_input = ToolbenchReward.parse_action(text)
         return action, action_input
 
     def __call__(self, trajectories: List[Dict], **kwargs) -> List[float]:
@@ -220,9 +221,9 @@ class ReactORM(ORM):
                 prediction = prediction[:prediction.index('Observation:')].strip()
             reference = ground_truth
             prediction = prediction.replace('<|endoftext|>', '').replace('<|im_end|>', '').strip()
-            ref_action, ref_input = ReactORM.parse_output(reference)
-            pred_action, pred_input = ReactORM.parse_output(prediction)
-            reward = ReactORM.evaluate_action_reward(
+            ref_action, ref_input = ToolbenchReward.parse_output(reference)
+            pred_action, pred_input = ToolbenchReward.parse_output(prediction)
+            reward = ToolbenchReward.evaluate_action_reward(
                 [pred_action or 'none'], [ref_action], [pred_input or '{}'], [ref_input])
             rewards.append(float(reward))
         return rewards
@@ -241,8 +242,8 @@ class ReactORM(ORM):
             return None
 
 
-orms = {
-    'toolbench': ReactORM,
+reward_rules = {
+    'toolbench': ToolbenchReward,
     # identical scorers are twinkle's own classes, used directly (no re-wrapper): resolve()
     # no-arg constructs them and the row protocol is already their native input.
     'math': MathReward,
@@ -255,10 +256,10 @@ orms = {
     'code_execution': CodeExecutionReward,
 }
 
-#: The 'reward' extension point adopts ``orms`` *itself* as its registry, so
-#: ``@PluginRegistry.register('reward', ...)`` and the historical ``orms['my'] = MyReward`` write to one
+#: The 'reward' extension point adopts ``reward_rules`` *itself* as its registry, so
+#: ``@PluginRegistry.register('reward', ...)`` and ``reward_rules['my'] = MyReward`` write to one
 #: dict -- no consumer has to know which form a plugin arrived in, and there is no second roster to
-#: keep in sync. The kind's base is the ``ORM`` rule itself (the twinkle ``Reward`` protocol plus the
-#: plugin construction contract); an async reward is just an ``ORM`` with ``async def __call__``.
+#: keep in sync. The kind's base is the ``RewardRule`` rule itself (the twinkle ``Reward`` protocol plus
+#: plugin construction contract); an async reward is just a ``RewardRule`` with ``async def __call__``.
 REWARD = PluginRegistry.register_kind(
-    'reward', ORM, config_field='orm', entries=orms)
+    'reward', RewardRule, config_field='orm', entries=reward_rules)

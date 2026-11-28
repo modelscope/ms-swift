@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from swift.dev.config.adapter_config import has_adapter
 from swift.dev.utils.logger import get_logger
+from .rl_config import POLICY_RL_TYPES, PREFERENCE_RL_TYPES
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -26,20 +27,54 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+def normalize_rl_type(rl_config: Optional["RLConfig"]) -> None:
+    """Fill the estimator default; REAL is its own rl_type, not a legacy GRPO spelling."""
+    if rl_config is None:
+        return
+    normalize_advantage_estimator(rl_config)
+
+
+def normalize_advantage_estimator(rl_config: Optional["RLConfig"]) -> None:
+    if rl_config is not None and rl_config.advantage_estimator is None:
+        rl_config.advantage_estimator = "gae" if rl_config.rl_type == "ppo" else "grpo"
+
+
+def _policy_alias(rl_config: "RLConfig", field: str, legacy: str):
+    value = getattr(rl_config, field)
+    if rl_config.rl_type != "ppo":
+        return value
+    from .validate import _changed_fields
+
+    changed = set(_changed_fields(rl_config))
+    legacy_value = getattr(rl_config, legacy)
+    if field in changed:
+        if legacy in changed and value != legacy_value:
+            raise ValueError(f"{field} and {legacy} specify different policy values.")
+        return value
+    return legacy_value
+
+
+def policy_replay_count(rl_config: "RLConfig") -> int:
+    return _policy_alias(rl_config, "num_iterations", "num_ppo_epochs")
+
+
+def policy_clip_range(rl_config: "RLConfig") -> float:
+    return _policy_alias(rl_config, "epsilon", "cliprange")
+
+
 def process_configs(
-    model_config: 'ModelConfig',
-    template_config: 'TemplateConfig',
-    dataset_config: 'DatasetConfig',
-    train_config: 'TrainConfig',
-    distributed_config: 'DistributedConfig',
-    checkpoint_config: Optional['CheckpointConfig'] = None,
-    tuner_config: Optional['TunerConfig'] = None,
-    rl_config: Optional['RLConfig'] = None,
-    rollout_config: Optional['RolloutConfig'] = None,
-    megatron_config: Optional['MegatronConfig'] = None,
-    quantize_config: Optional['QuantizeConfig'] = None,
-    plugin_config: Optional['PluginConfig'] = None,
-    reward_config: Optional['RewardConfig'] = None,
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    dataset_config: "DatasetConfig",
+    train_config: "TrainConfig",
+    distributed_config: "DistributedConfig",
+    checkpoint_config: Optional["CheckpointConfig"] = None,
+    tuner_config: Optional["TunerConfig"] = None,
+    rl_config: Optional["RLConfig"] = None,
+    rollout_config: Optional["RolloutConfig"] = None,
+    quantize_config: Optional["QuantizeConfig"] = None,
+    plugin_config: Optional["PluginConfig"] = None,
+    reward_config: Optional["RewardConfig"] = None,
 ) -> None:
     """Load configured plugins and resolve every cross-Config derived value in place.
 
@@ -51,17 +86,19 @@ def process_configs(
     # torch_npu unconditionally, so a torch_npu-less host (GPU/MPS/CPU) must keep it OFF while
     # NPU keeps it ON. Legacy v4 still accepts the argv flag; the env var set here wins there.
     from twinkle.utils import Platform
-    _npu_patch = str(Platform.get_platform().__name__ == 'NPU')
+
+    _npu_patch = str(Platform.get_platform().__name__ == "NPU")
     # An externally set value that disagrees with the platform verdict is being overridden here;
     # say so rather than silently swallowing it (the env is v5's authority, but the clobber should
     # be visible to whoever set it).
-    _external = os.environ.get('SWIFT_ENABLE_NPU_MODEL_PATCH')
+    _external = os.environ.get("SWIFT_ENABLE_NPU_MODEL_PATCH")
     if _external is not None and _external != _npu_patch:
         logger.warning(
-            f'SWIFT_ENABLE_NPU_MODEL_PATCH={_external} was set externally but the platform is '
-            f'{Platform.get_platform().__name__}; overriding to {_npu_patch} (the model patch '
-            'imports torch_npu unconditionally, so the switch follows the platform).')
-    os.environ['SWIFT_ENABLE_NPU_MODEL_PATCH'] = _npu_patch
+            f"SWIFT_ENABLE_NPU_MODEL_PATCH={_external} was set externally but the platform is "
+            f"{Platform.get_platform().__name__}; overriding to {_npu_patch} (the model patch "
+            "imports torch_npu unconditionally, so the switch follows the platform)."
+        )
+    os.environ["SWIFT_ENABLE_NPU_MODEL_PATCH"] = _npu_patch
 
     from swift.dev.builder import is_megatron_backend
     from swift.dev.utils.plugin import PluginRegistry
@@ -70,6 +107,7 @@ def process_configs(
     PluginRegistry.load_configured(plugin_config)
     is_megatron = is_megatron_backend(distributed_config)
 
+    normalize_rl_type(rl_config)
     _derive_gradient_accumulation_steps(train_config, distributed_config, is_megatron)
     # Order matters: the eval schedule reads split_dataset_ratio after the val-dataset rule zeroed
     # it, and task_type must settle (rm -> seq_cls) before the per-token-loss default reads it.
@@ -106,79 +144,82 @@ def process_and_validate_configs(
     from .train_config import TrainConfig
     from .validate import validate_configs
 
-    train_config = configs.get('train_config') or TrainConfig()
-    distributed_config = configs.get('distributed_config') or DistributedConfig()
+    train_config = configs.get("train_config") or TrainConfig()
+    distributed_config = configs.get("distributed_config") or DistributedConfig()
     process_configs(
-        configs['model_config'],
-        configs['template_config'],
-        configs['dataset_config'],
+        configs["model_config"],
+        configs["template_config"],
+        configs["dataset_config"],
         train_config,
         distributed_config,
-        configs.get('checkpoint_config'),
-        configs.get('tuner_config'),
-        rl_config=configs.get('rl_config'),
-        rollout_config=configs.get('rollout_config'),
-        megatron_config=configs.get('megatron_config'),
-        quantize_config=configs.get('quantize_config'),
-        plugin_config=configs.get('plugin_config'),
-        reward_config=configs.get('reward_config'),
+        configs.get("checkpoint_config"),
+        configs.get("tuner_config"),
+        rl_config=configs.get("rl_config"),
+        rollout_config=configs.get("rollout_config"),
+        quantize_config=configs.get("quantize_config"),
+        plugin_config=configs.get("plugin_config"),
+        reward_config=configs.get("reward_config"),
     )
     validate_configs(
-        configs['model_config'],
-        configs['template_config'],
-        configs['dataset_config'],
+        configs["model_config"],
+        configs["template_config"],
+        configs["dataset_config"],
         train_config,
         distributed_config,
-        configs.get('checkpoint_config'),
-        configs.get('tuner_config'),
-        configs.get('rl_config'),
-        reward_config=configs.get('reward_config'),
-        rollout_config=configs.get('rollout_config'),
-        logging_config=configs.get('logging_config'),
-        quantize_config=configs.get('quantize_config'),
-        megatron_config=configs.get('megatron_config'),
-        moe_config=configs.get('moe_config'),
-        training='train_config' in configs,
+        configs.get("checkpoint_config"),
+        configs.get("tuner_config"),
+        configs.get("rl_config"),
+        reward_config=configs.get("reward_config"),
+        rollout_config=configs.get("rollout_config"),
+        logging_config=configs.get("logging_config"),
+        quantize_config=configs.get("quantize_config"),
+        megatron_config=configs.get("megatron_config"),
+        moe_config=configs.get("moe_config"),
+        training="train_config" in configs,
     )
-    rollout_config = configs.get('rollout_config')
+    rollout_config = configs.get("rollout_config")
     if rollout_config is not None:
         from .validate import validate_multi_turn_config
+
         validate_multi_turn_config(rollout_config)
     if rollout_config is not None:
         from .validate import validate_rollout_config
+
         # Fold the legacy ``async_generate`` bool into ``async_mode`` BEFORE validation reads it, so
         # ``async_mode`` is the one source of truth downstream (process modifies, validate only reads).
         _derive_async_mode(rollout_config)
         # max_turns lives on the RolloutConfig itself; rl_config tells _check_async_mode and
         # _check_rollout_tools the training surface (None = sampling).
-        validate_rollout_config(rollout_config, configs.get('rl_config'))
-    infer_config = configs.get('infer_config')
+        validate_rollout_config(rollout_config, configs.get("rl_config"))
+    infer_config = configs.get("infer_config")
     if infer_config is not None:
         from .validate import validate_infer_config
+
         validate_infer_config(infer_config)
-    convert_config = configs.get('convert_config')
+    convert_config = configs.get("convert_config")
     if convert_config is not None:
         from .validate import validate_convert_config
+
         validate_convert_config(convert_config)
-    seed_config = configs.get('train_config') or configs.get('runtime_config')
+    seed_config = configs.get("train_config") or configs.get("runtime_config")
     bootstrap_run(
-        configs['model_config'],
-        configs['checkpoint_config'],
-        configs.get('dataset_config'),
-        configs.get('tuner_config'),
-        seed=getattr(seed_config, 'seed', None),
+        configs["model_config"],
+        configs["checkpoint_config"],
+        configs.get("dataset_config"),
+        configs.get("tuner_config"),
+        seed=getattr(seed_config, "seed", None),
         add_version=add_version,
         create_output_dir=create_output_dir,
         resolve_model=resolve_model,
-        remote_mode=configs.get('distributed_config', DistributedConfig()).mode == 'remote',
+        remote_mode=configs.get("distributed_config", DistributedConfig()).mode == "remote",
     )
 
 
 def bootstrap_run(
-    model_config: 'ModelConfig',
-    checkpoint_config: 'CheckpointConfig',
-    dataset_config: Optional['DatasetConfig'] = None,
-    tuner_config: Optional['TunerConfig'] = None,
+    model_config: "ModelConfig",
+    checkpoint_config: "CheckpointConfig",
+    dataset_config: Optional["DatasetConfig"] = None,
+    tuner_config: Optional["TunerConfig"] = None,
     *,
     seed: Optional[int] = None,
     add_version: Optional[bool] = None,
@@ -189,10 +230,11 @@ def bootstrap_run(
     """Apply CLI runtime side effects after processing and validation."""
     if seed is not None:
         from swift.dev.utils import seed_everything
-        rank = max(int(os.environ.get('RANK', '-1')), 0)
+
+        rank = max(int(os.environ.get("RANK", "-1")), 0)
         seed_everything(seed + rank)
     if dataset_config is not None and dataset_config.use_hf:
-        os.environ['USE_HF'] = '1'
+        os.environ["USE_HF"] = "1"
     _prepare_output_dir(checkpoint_config, add_version=add_version, create_output_dir=create_output_dir)
     _export_model_kwargs(model_config)
     _login_hub(dataset_config)
@@ -204,8 +246,9 @@ def bootstrap_run(
     _resolve_adapters(tuner_config, dataset_config)
 
 
-def _prepare_output_dir(checkpoint_config: 'CheckpointConfig', *, add_version: Optional[bool],
-                        create_output_dir: bool) -> None:
+def _prepare_output_dir(
+    checkpoint_config: "CheckpointConfig", *, add_version: Optional[bool], create_output_dir: bool
+) -> None:
     from swift.dev.utils import add_version_to_work_dir
     from swift.dev.utils.storage import Storage, is_remote_url
 
@@ -224,16 +267,16 @@ def _prepare_output_dir(checkpoint_config: 'CheckpointConfig', *, add_version: O
         if not is_remote_url(resume):
             resume = os.path.abspath(os.path.expanduser(resume))
         if not Storage.from_url(resume).exists(resume):
-            raise ValueError(f'resume_from_checkpoint does not exist: {resume}')
+            raise ValueError(f"resume_from_checkpoint does not exist: {resume}")
         checkpoint_config.resume_from_checkpoint = resume
 
 
-def _export_model_kwargs(model_config: 'ModelConfig') -> None:
+def _export_model_kwargs(model_config: "ModelConfig") -> None:
     for key, value in (model_config.model_kwargs or {}).items():
         os.environ[key.upper()] = str(value)
 
 
-def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['DatasetConfig']) -> None:
+def _resolve_model(model_config: "ModelConfig", dataset_config: Optional["DatasetConfig"]) -> None:
     if not model_config.model:
         return
     from swift.dev.utils.hub import safe_snapshot_download
@@ -244,10 +287,10 @@ def _resolve_model(model_config: 'ModelConfig', dataset_config: Optional['Datase
     # portable id (`swift infer <ckpt>` re-resolves it anywhere); transient attr, not a CLI field.
     # The parse-time checkpoint scan may already have stored one (and resolved .model to the local
     # dir in the same breath) -- the FIRST id wins: it is the one actually typed by the user.
-    model_config._model_id_or_path = getattr(
-        model_config, '_model_id_or_path', None) or model_config.model
+    model_config._model_id_or_path = getattr(model_config, "_model_id_or_path", None) or model_config.model
     model_config.model = safe_snapshot_download(
-        model_config.model, revision=model_config.model_revision, use_hf=use_hf, hub_token=hub_token)
+        model_config.model, revision=model_config.model_revision, use_hf=use_hf, hub_token=hub_token
+    )
 
 
 def split_served_name(adapter: str) -> tuple:
@@ -255,13 +298,13 @@ def split_served_name(adapter: str) -> tuple:
 
     Splits only when the segment before ``=`` is a bare name, so a path containing ``=`` survives.
     """
-    head, sep, tail = adapter.partition('=')
-    if sep and head and '/' not in head and '\\' not in head:
+    head, sep, tail = adapter.partition("=")
+    if sep and head and "/" not in head and "\\" not in head:
         return head, tail
     return None, adapter
 
 
-def _resolve_adapters(tuner_config: Optional['TunerConfig'], dataset_config: Optional['DatasetConfig']) -> None:
+def _resolve_adapters(tuner_config: Optional["TunerConfig"], dataset_config: Optional["DatasetConfig"]) -> None:
     if not has_adapter(tuner_config) or not tuner_config.adapters:
         return
     from swift.dev.utils.hub import safe_snapshot_download
@@ -273,74 +316,80 @@ def _resolve_adapters(tuner_config: Optional['TunerConfig'], dataset_config: Opt
         # Resolve the path portion, then re-attach the served name so deploy's routing label survives.
         name, path = split_served_name(adapter)
         local = safe_snapshot_download(path, use_hf=use_hf, hub_token=hub_token)
-        resolved.append(f'{name}={local}' if name else local)
+        resolved.append(f"{name}={local}" if name else local)
     tuner_config.adapters = resolved
 
 
-def _login_hub(dataset_config: Optional['DatasetConfig']) -> None:
+def _login_hub(dataset_config: Optional["DatasetConfig"]) -> None:
     if dataset_config is None or not dataset_config.hub_token:
         return
     from swift.dev.utils.hub import get_hub
+
     get_hub(dataset_config.use_hf).try_login(dataset_config.hub_token)
 
 
-def _derive_gradient_accumulation_steps(train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
-                                        is_megatron: bool) -> None:
+def _derive_gradient_accumulation_steps(
+    train_config: "TrainConfig", distributed_config: "DistributedConfig", is_megatron: bool
+) -> None:
     """Derive gradient accumulation from Megatron's global batch size."""
     if train_config.global_batch_size is None:
         return
     if not is_megatron:
-        raise ValueError('global_batch_size is a Megatron-only derived setting. Use '
-                         'gradient_accumulation_steps with the transformers backend.')
+        raise ValueError(
+            "global_batch_size is a Megatron-only derived setting. Use "
+            "gradient_accumulation_steps with the transformers backend."
+        )
 
-    world_size = int(os.environ.get('WORLD_SIZE') or distributed_config.nproc_per_node or 1)
+    world_size = int(os.environ.get("WORLD_SIZE") or distributed_config.nproc_per_node or 1)
     tp = distributed_config.tensor_model_parallel_size
     pp = distributed_config.pipeline_model_parallel_size
     cp = distributed_config.context_parallel_size
     model_parallel_size = tp * pp * cp
     if model_parallel_size < 1 or world_size % model_parallel_size:
         raise ValueError(
-            f'world_size={world_size} must be divisible by tp*pp*cp={model_parallel_size} '
-            f'(tp={tp}, pp={pp}, cp={cp}).')
+            f"world_size={world_size} must be divisible by tp*pp*cp={model_parallel_size} (tp={tp}, pp={pp}, cp={cp})."
+        )
     data_parallel_size = world_size // model_parallel_size
     micro_batch_size = train_config.per_device_train_batch_size
     denominator = micro_batch_size * data_parallel_size
     if train_config.global_batch_size % denominator:
         raise ValueError(
-            f'global_batch_size={train_config.global_batch_size} must be divisible by '
-            f'micro_batch_size*data_parallel_size={denominator}.')
+            f"global_batch_size={train_config.global_batch_size} must be divisible by "
+            f"micro_batch_size*data_parallel_size={denominator}."
+        )
     derived = train_config.global_batch_size // denominator
-    explicit = 'gradient_accumulation_steps' in getattr(train_config, '_explicit_fields', set())
-    default = next(f.default for f in dataclasses.fields(train_config) if f.name == 'gradient_accumulation_steps')
-    if ((explicit or train_config.gradient_accumulation_steps != default)
-            and train_config.gradient_accumulation_steps != derived):
+    explicit = "gradient_accumulation_steps" in getattr(train_config, "_explicit_fields", set())
+    default = next(f.default for f in dataclasses.fields(train_config) if f.name == "gradient_accumulation_steps")
+    if (
+        explicit or train_config.gradient_accumulation_steps != default
+    ) and train_config.gradient_accumulation_steps != derived:
         raise ValueError(
-            f'gradient_accumulation_steps={train_config.gradient_accumulation_steps} conflicts with '
-            f'global_batch_size={train_config.global_batch_size}, which derives {derived}.')
+            f"gradient_accumulation_steps={train_config.gradient_accumulation_steps} conflicts with "
+            f"global_batch_size={train_config.global_batch_size}, which derives {derived}."
+        )
     train_config.gradient_accumulation_steps = derived
 
 
-def _derive_lr_decay_style(train_config: 'TrainConfig', is_megatron: bool) -> None:
+def _derive_lr_decay_style(train_config: "TrainConfig", is_megatron: bool) -> None:
     """Make `lr_decay_style` the single value the Megatron scheduler reads.
 
     An explicit style stands, else it is derived from `lr_scheduler` ('WSD' has no equivalent).
     """
     if not is_megatron:
         return
-    explicit = getattr(train_config, '_explicit_fields', set())
+    explicit = getattr(train_config, "_explicit_fields", set())
     defaults = {f.name: f.default for f in dataclasses.fields(train_config)}
-    style_explicit = ('lr_decay_style' in explicit
-                      or train_config.lr_decay_style != defaults['lr_decay_style'])
-    scheduler_explicit = ('lr_scheduler' in explicit
-                          or train_config.lr_scheduler != defaults['lr_scheduler'])
+    style_explicit = "lr_decay_style" in explicit or train_config.lr_decay_style != defaults["lr_decay_style"]
+    scheduler_explicit = "lr_scheduler" in explicit or train_config.lr_scheduler != defaults["lr_scheduler"]
     derived = _try_megatron_decay_style(train_config.lr_scheduler)
 
     if style_explicit:
         if scheduler_explicit and derived is not None and derived != train_config.lr_decay_style:
             raise ValueError(
-                f'lr_decay_style={train_config.lr_decay_style!r} conflicts with '
-                f'lr_scheduler={train_config.lr_scheduler!r}, which maps to {derived!r}. '
-                'Use one spelling or select equivalent schedules.')
+                f"lr_decay_style={train_config.lr_decay_style!r} conflicts with "
+                f"lr_scheduler={train_config.lr_scheduler!r}, which maps to {derived!r}. "
+                "Use one spelling or select equivalent schedules."
+            )
         return
     if derived is not None:
         train_config.lr_decay_style = derived
@@ -352,13 +401,14 @@ def _try_megatron_decay_style(lr_scheduler: str) -> Optional[str]:
     Errors are swallowed only here: the fast-fail report belongs to the scheduler build site.
     """
     from swift.dev.utils.naming import resolve_megatron_decay_style
+
     try:
         return resolve_megatron_decay_style(lr_scheduler)
     except Exception:
         return None
 
 
-def _derive_virtual_pipeline(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+def _derive_virtual_pipeline(distributed_config: "DistributedConfig", is_megatron: bool) -> None:
     """Resolve the virtual-pipeline width, and the two overlaps that only exist when it is set.
 
     Mirrors legacy _init_vpp_size: a layout implies the stage count; 1 normalises to None.
@@ -371,9 +421,10 @@ def _derive_virtual_pipeline(distributed_config: 'DistributedConfig', is_megatro
             pp = distributed_config.pipeline_model_parallel_size
             if num_stages % pp:
                 raise ValueError(
-                    f'pipeline_model_parallel_layout describes {num_stages} stages, which is not divisible by '
-                    f'pipeline_model_parallel_size={pp}. Each pipeline rank has to hold a whole number of '
-                    'virtual stages.')
+                    f"pipeline_model_parallel_layout describes {num_stages} stages, which is not divisible by "
+                    f"pipeline_model_parallel_size={pp}. Each pipeline rank has to hold a whole number of "
+                    "virtual stages."
+                )
             distributed_config.virtual_pipeline_model_parallel_size = num_stages // pp
     if distributed_config.virtual_pipeline_model_parallel_size == 1:
         distributed_config.virtual_pipeline_model_parallel_size = None
@@ -397,35 +448,38 @@ def _layout_num_stages(layout: str) -> Optional[int]:
     return PipelineParallelLayerLayout.get_num_stages_from_str(layout)
 
 
-def _derive_grad_accum_dtype(model_config: 'ModelConfig', train_config: 'TrainConfig', is_megatron: bool) -> None:
+def _derive_grad_accum_dtype(model_config: "ModelConfig", train_config: "TrainConfig", is_megatron: bool) -> None:
     """Accumulate gradients in fp32 when training in bf16 and keeping fp32 master gradients.
 
     Mirrors legacy _map_dtype: a bf16 reduction would round every accumulation. Only ever turns it on.
     """
-    explicit = getattr(train_config, '_explicit_fields', set())
-    if (not is_megatron or train_config.accumulate_allreduce_grads_in_fp32
-            or 'accumulate_allreduce_grads_in_fp32' in explicit):
+    explicit = getattr(train_config, "_explicit_fields", set())
+    if (
+        not is_megatron
+        or train_config.accumulate_allreduce_grads_in_fp32
+        or "accumulate_allreduce_grads_in_fp32" in explicit
+    ):
         return
-    dtype = model_config.torch_dtype or 'bfloat16'
-    if dtype == 'bfloat16' and train_config.main_grads_dtype == 'fp32':
+    dtype = model_config.torch_dtype or "bfloat16"
+    if dtype == "bfloat16" and train_config.main_grads_dtype == "fp32":
         train_config.accumulate_allreduce_grads_in_fp32 = True
 
 
-def _derive_per_token_loss(model_config: 'ModelConfig', train_config: 'TrainConfig',
-                           rl_config: Optional['RLConfig'], is_megatron: bool) -> None:
+def _derive_per_token_loss(
+    model_config: "ModelConfig", train_config: "TrainConfig", rl_config: Optional["RLConfig"], is_megatron: bool
+) -> None:
     """Average the loss per token for plain causal-LM training, per batch otherwise.
 
     Mirrors legacy _set_default; only fills in None.
     """
     if not is_megatron or train_config.calculate_per_token_loss is not None:
         return
-    is_causal_lm = model_config.task_type in (None, 'causal_lm')
-    is_rl = rl_config is not None and getattr(rl_config, 'rl_type', None) is not None
+    is_causal_lm = model_config.task_type in (None, "causal_lm")
+    is_rl = rl_config is not None and getattr(rl_config, "rl_type", None) is not None
     train_config.calculate_per_token_loss = is_causal_lm and not is_rl
 
 
-def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig',
-                                       tuner_config: Optional['TunerConfig']) -> None:
+def _derive_vit_gradient_checkpointing(train_config: "TrainConfig", tuner_config: Optional["TunerConfig"]) -> None:
     """Follow the LLM tower's checkpointing; legacy keyed it off ``freeze_vit`` and lost it (#9945)."""
     if train_config.vit_gradient_checkpointing is not None:
         return
@@ -434,18 +488,18 @@ def _derive_vit_gradient_checkpointing(train_config: 'TrainConfig',
     train_config.vit_gradient_checkpointing = train_config.gradient_checkpointing
 
 
-def _derive_packing(dataset_config: 'DatasetConfig', template_config: 'TemplateConfig') -> None:
+def _derive_packing(dataset_config: "DatasetConfig", template_config: "TemplateConfig") -> None:
     """Enable the padding-free representation required by packing and derive its default length."""
     if not dataset_config.packing:
         return
     if not template_config.padding_free:
-        logger.info('Setting padding_free=True because packing is enabled.')
+        logger.info("Setting padding_free=True because packing is enabled.")
         template_config.padding_free = True
     if dataset_config.packing_length is None and template_config.max_length is not None:
         dataset_config.packing_length = template_config.max_length
 
 
-def _derive_split_dataset_ratio(dataset_config: 'DatasetConfig') -> None:
+def _derive_split_dataset_ratio(dataset_config: "DatasetConfig") -> None:
     """Stop carving a validation split off the train set once a real one is available.
 
     Mirrors legacy data_args:110-116; only lowers the ratio to 0, never raises it.
@@ -454,13 +508,14 @@ def _derive_split_dataset_ratio(dataset_config: 'DatasetConfig') -> None:
         return
     has_val = bool(dataset_config.val_dataset) or bool(dataset_config.cached_val_dataset)
     if has_val or dataset_config.streaming:
-        reason = 'a val_dataset is set' if has_val else 'streaming is enabled'
-        logger.info('Setting split_dataset_ratio=0.0 because %s.', reason)
+        reason = "a val_dataset is set" if has_val else "streaming is enabled"
+        logger.info("Setting split_dataset_ratio=0.0 because %s.", reason)
         dataset_config.split_dataset_ratio = 0.0
 
 
-def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetConfig',
-                          checkpoint_config: Optional['CheckpointConfig']) -> None:
+def _derive_eval_schedule(
+    train_config: "TrainConfig", dataset_config: "DatasetConfig", checkpoint_config: Optional["CheckpointConfig"]
+) -> None:
     """Make the evaluation cadence follow the save cadence, and turn it off when nothing validates it.
 
     Mirrors legacy _init_eval_strategy: no eval data forces 'no'; eval_steps inherits save_steps.
@@ -468,13 +523,16 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
     if train_config.predict_with_generate:
         has_eval_data = bool(train_config.eval_dataset)
     else:
-        has_eval_data = (bool(dataset_config.val_dataset) or bool(dataset_config.cached_val_dataset)
-                         or (bool(dataset_config.dataset) and dataset_config.split_dataset_ratio > 0))
+        has_eval_data = (
+            bool(dataset_config.val_dataset)
+            or bool(dataset_config.cached_val_dataset)
+            or (bool(dataset_config.dataset) and dataset_config.split_dataset_ratio > 0)
+        )
     if not has_eval_data:
-        train_config.eval_strategy = 'no'
+        train_config.eval_strategy = "no"
     elif checkpoint_config is not None and train_config.eval_strategy is None:
         train_config.eval_strategy = checkpoint_config.save_strategy
-    if train_config.eval_strategy == 'no':
+    if train_config.eval_strategy == "no":
         train_config.eval_steps = None
         if dataset_config.split_dataset_ratio > 0:
             logger.info('Setting split_dataset_ratio=0.0 because eval_strategy is "no".')
@@ -482,11 +540,11 @@ def _derive_eval_schedule(train_config: 'TrainConfig', dataset_config: 'DatasetC
         return
     if checkpoint_config is None:
         return
-    if train_config.eval_strategy == 'steps' and train_config.eval_steps is None:
+    if train_config.eval_strategy == "steps" and train_config.eval_steps is None:
         train_config.eval_steps = checkpoint_config.save_steps
 
 
-def _derive_streaming_dataloader_workers(dataset_config: 'DatasetConfig') -> None:
+def _derive_streaming_dataloader_workers(dataset_config: "DatasetConfig") -> None:
     """Read a streaming dataset from a single worker (legacy megatron_base_args:54-57).
 
     An IterableDataset has no random access; several workers duplicate or race. Only lowers.
@@ -494,16 +552,16 @@ def _derive_streaming_dataloader_workers(dataset_config: 'DatasetConfig') -> Non
     if not dataset_config.streaming:
         return
     if dataset_config.dataloader_num_workers is not None and dataset_config.dataloader_num_workers > 1:
-        logger.info('Setting dataloader_num_workers=1 because the dataset is streaming.')
+        logger.info("Setting dataloader_num_workers=1 because the dataset is streaming.")
         dataset_config.dataloader_num_workers = 1
 
 
 # torch_dtype -> the fp compute dtype bitsandbytes should dequantize its 4-bit weights into. fp16 and
 # fp32 both compute in fp32 (a 4-bit path gains nothing from an fp16 accumulate and loses range).
-_BNB_COMPUTE_DTYPE = {'float16': 'float32', 'float32': 'float32', 'bfloat16': 'bfloat16'}
+_BNB_COMPUTE_DTYPE = {"float16": "float32", "float32": "float32", "bfloat16": "bfloat16"}
 
 
-def _derive_bnb_compute_dtype(model_config: 'ModelConfig', quantize_config: Optional['QuantizeConfig']) -> None:
+def _derive_bnb_compute_dtype(model_config: "ModelConfig", quantize_config: Optional["QuantizeConfig"]) -> None:
     """Default the bnb 4-bit compute dtype from the model's torch_dtype (legacy quant_args:116-122).
 
     When unset it tracks the model's dtype, so a bf16 run does not compute in fp32.
@@ -515,63 +573,66 @@ def _derive_bnb_compute_dtype(model_config: 'ModelConfig', quantize_config: Opti
         quantize_config.bnb_4bit_compute_dtype = derived
 
 
-def _derive_async_mode(rollout_config: 'RolloutConfig') -> None:
+def _derive_async_mode(rollout_config: "RolloutConfig") -> None:
     """Fold the legacy ``async_generate`` bool into ``async_mode`` (the one source of truth).
 
     True meant a one-batch lookahead (successor 'one_step_off'); an explicit async_mode wins. Idempotent.
     """
-    if rollout_config.async_generate and rollout_config.async_mode == 'none':
-        rollout_config.async_mode = 'one_step_off'
+    if rollout_config.async_generate and rollout_config.async_mode == "none":
+        rollout_config.async_mode = "one_step_off"
 
 
-def _derive_rl_task_type(model_config: 'ModelConfig', rl_config: Optional['RLConfig']) -> None:
+def _derive_rl_task_type(model_config: "ModelConfig", rl_config: Optional["RLConfig"]) -> None:
     """A reward model is a single-logit sequence classifier (legacy rlhf_args.py::_init_rm).
 
     `rl_type=rm` trains a seq_cls head with num_labels=1; only fills in defaults.
     """
-    if rl_config is None or getattr(rl_config, 'rl_type', None) != 'rm':
+    if rl_config is None or getattr(rl_config, "rl_type", None) != "rm":
         return
     if model_config.task_type is None:
-        model_config.task_type = 'seq_cls'
+        model_config.task_type = "seq_cls"
     if model_config.num_labels is None:
         model_config.num_labels = 1
 
 
 # rl_type -> its default `beta` (KL / deviation-from-reference weight). opsd/mopd are self-distillation
 # (no reference-KL term by default) and rft is plain rejection-sampling SFT, so all three take 0.
-_RL_BETA_DEFAULTS = {'grpo': 0.04, 'gkd': 0.5, 'simpo': 2.0, 'opsd': 0.0, 'mopd': 0.0, 'rft': 0.0}
+_RL_BETA_DEFAULTS = {"grpo": 0.04, "gkd": 0.5, "simpo": 2.0, "opsd": 0.0, "mopd": 0.0, "rft": 0.0}
 
 
-def _derive_rl_beta(rl_config: Optional['RLConfig']) -> None:
+def _derive_rl_beta(rl_config: Optional["RLConfig"]) -> None:
     """Fill the reference-deviation weight with the chosen algorithm's default.
 
     The scattered legacy defaults collected into one table; only fills None (`--beta 0` preserved).
     """
     if rl_config is None or rl_config.beta is not None:
         return
-    rl_config.beta = _RL_BETA_DEFAULTS.get(getattr(rl_config, 'rl_type', None), 0.1)
+    family = "grpo" if rl_config.rl_type == "real" else rl_config.rl_type
+    rl_config.beta = _RL_BETA_DEFAULTS.get(family, 0.1)
 
 
-def _derive_rl_loss_scale(template_config: 'TemplateConfig', rl_config: Optional['RLConfig'],
-                            rollout_config: Optional['RolloutConfig'] = None) -> None:
+def _derive_rl_loss_scale(
+    template_config: "TemplateConfig", rl_config: Optional["RLConfig"], rollout_config: Optional["RolloutConfig"] = None
+) -> None:
     """Default the loss-mask strategy to the algorithm's sensible one (legacy _set_loss_scale).
 
     'last_round' everywhere except GRPO/PPO multi-turn (-> 'default'); coincide on single-turn data.
     """
-    if rl_config is None or getattr(rl_config, 'rl_type', None) is None:
+    if rl_config is None or getattr(rl_config, "rl_type", None) is None:
         return
-    if 'loss_scale' in getattr(template_config, '_explicit_fields', set()):
+    if "loss_scale" in getattr(template_config, "_explicit_fields", set()):
         return
     # GRPO and PPO multi-turn both train every assistant turn ('default'); single-turn (and the other
     # scalar algorithms) train the last round only. The two coincide on single-turn data.
-    if rl_config.rl_type in ('grpo', 'ppo') and rollout_config is not None and rollout_config.max_turns is not None:
-        template_config.loss_scale = 'default'
+    if rl_config.rl_type in POLICY_RL_TYPES and rollout_config is not None and rollout_config.max_turns is not None:
+        template_config.loss_scale = "default"
     else:
-        template_config.loss_scale = 'last_round'
+        template_config.loss_scale = "last_round"
 
 
-def _derive_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
-                           rl_config: Optional['RLConfig']) -> None:
+def _derive_rl_ref_model(
+    model_config: "ModelConfig", tuner_config: Optional["TunerConfig"], rl_config: Optional["RLConfig"]
+) -> None:
     """Point the reference model at the policy model when the algorithm needs one and none was given.
 
     Full-param DPO/KTO/PPO/GRPO default ref_model to `model` (legacy :289-297); GRPO beta=0 needs none.
@@ -580,68 +641,75 @@ def _derive_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['Tu
         return
     if isinstance(rl_config.ref_adapters, str):
         rl_config.ref_adapters = [rl_config.ref_adapters]
-    rl_type = getattr(rl_config, 'rl_type', None)
-    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    if rl_type == 'grpo' and rl_config.beta == 0.0:
+    rl_type = getattr(rl_config, "rl_type", None)
+    tuner = getattr(tuner_config, "tuner", "full") if tuner_config is not None else "full"
+    if rl_type in ("grpo", "real") and rl_config.beta == 0.0:
         rl_config.ref_model = None
-    elif rl_type in ('dpo', 'kto', 'ppo', 'grpo') and (tuner == 'full' or rl_config.ref_adapters):
+    elif rl_type in POLICY_RL_TYPES | PREFERENCE_RL_TYPES and (tuner == "full" or rl_config.ref_adapters):
         rl_config.ref_model = rl_config.ref_model or model_config.model
         rl_config.ref_model_type = rl_config.ref_model_type or model_config.model_type
         rl_config.ref_model_revision = rl_config.ref_model_revision or model_config.model_revision
-    if (getattr(rl_config, 'sync_ref_model', False) and rl_type in ('grpo', 'ppo')
-            and tuner != 'full' and not rl_config.ref_adapters and not rl_config.ref_model):
+    if (
+        getattr(rl_config, "sync_ref_model", False)
+        and rl_type in POLICY_RL_TYPES
+        and tuner != "full"
+        and not rl_config.ref_adapters
+        and not rl_config.ref_model
+    ):
         # A LoRA run's default reference is the policy actor itself (disable_adapter), but that
         # lane is suppressed under sync_ref_model -- so neither the EMA nor the KL anchor would
         # exist, silently. Fail loudly instead.
         raise ValueError(
-            'sync_ref_model on a LoRA run needs an explicit --ref_model (or --ref_adapters) for a '
-            'separate frozen reference: without one, the in-actor disable_adapter reference is '
-            'suppressed and neither the EMA sync nor the KL anchor would happen. Pass one, or drop '
-            '--sync_ref_model.')
+            "sync_ref_model on a LoRA run needs an explicit --ref_model (or --ref_adapters) for a "
+            "separate frozen reference: without one, the in-actor disable_adapter reference is "
+            "suppressed and neither the EMA sync nor the KL anchor would happen. Pass one, or drop "
+            "--sync_ref_model."
+        )
 
 
-def _derive_rl_teacher(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
-                         rl_config: Optional['RLConfig']) -> None:
+def _derive_rl_teacher(
+    model_config: "ModelConfig", tuner_config: Optional["TunerConfig"], rl_config: Optional["RLConfig"]
+) -> None:
     """Resolve self-distillation defaults without loading a teacher."""
     if rl_config is None:
         return
     if isinstance(rl_config.teacher_adapters, str):
         rl_config.teacher_adapters = [rl_config.teacher_adapters]
-    for field in ('teacher_model', ):
+    for field in ("teacher_model",):
         value = getattr(rl_config, field)
         if isinstance(value, str):
             setattr(rl_config, field, [value])
     # teacher_model is a list (shared with MOPD); self-distillation is when the one teacher IS the student.
-    if (rl_config.teacher_model == [model_config.model] and has_adapter(tuner_config)
-            and not rl_config.teacher_adapters):
+    if rl_config.teacher_model == [model_config.model] and has_adapter(tuner_config) and not rl_config.teacher_adapters:
         rl_config._teacher_use_disable_adapter = True
         rl_config.teacher_model = None
 
 
-def _derive_grpo_reward_defaults(rl_config: Optional['RLConfig']) -> None:
+def _derive_grpo_reward_defaults(rl_config: Optional["RLConfig"]) -> None:
     """Choose the reward-normalisation defaults that match the GRPO advantage estimator.
 
     Mirrors legacy _init_grpo; only fills None.
     """
-    if rl_config is None or getattr(rl_config, 'rl_type', None) != 'grpo':
+    if rl_config is None or rl_config.rl_type not in POLICY_RL_TYPES:
         return
+    normalize_rl_type(rl_config)
     estimator = rl_config.advantage_estimator
     if rl_config.kl_in_reward is None:
-        rl_config.kl_in_reward = estimator in ('rloo', 'reinforce_plus_plus', 'reinforce_plus_plus_baseline')
+        rl_config.kl_in_reward = estimator in ("rloo", "reinforce_plus_plus", "reinforce_plus_plus_baseline")
     if rl_config.scale_rewards is None:
         rl_config.scale_rewards = {
-            'grpo': 'group',
-            'rloo': 'none',
-            'reinforce_plus_plus': 'batch',
-            'reinforce_plus_plus_baseline': 'batch',
-            'remax': 'none',
-            'opo': 'none',
-            'gpg': 'none',
-            'grpo_passk': 'group',
+            "grpo": "group",
+            "rloo": "none",
+            "reinforce_plus_plus": "batch",
+            "reinforce_plus_plus_baseline": "batch",
+            "remax": "none",
+            "opo": "none",
+            "gpg": "none",
+            "grpo_passk": "group",
         }.get(estimator)
 
 
-def _derive_reward_rule_defaults(reward_config: Optional['RewardConfig'], rl_config: Optional['RLConfig']) -> None:
+def _derive_reward_rule_defaults(reward_config: Optional["RewardConfig"], rl_config: Optional["RLConfig"]) -> None:
     """Port legacy's rule-reward backfills (rlhf_args.py / rlhf_trainers arguments).
 
     ``cosine_max_len`` and ``soft_max_length`` default to ``max_completion_length``; the soft
@@ -650,16 +718,16 @@ def _derive_reward_rule_defaults(reward_config: Optional['RewardConfig'], rl_con
     """
     if reward_config is None or rl_config is None:
         return
-    if 'cosine' in reward_config.orm and reward_config.cosine_max_len is None:
+    if "cosine" in reward_config.orm and reward_config.cosine_max_len is None:
         reward_config.cosine_max_len = rl_config.max_completion_length
-    if 'soft_overlong' in reward_config.orm:
+    if "soft_overlong" in reward_config.orm:
         if reward_config.soft_cache_length is None:
-            raise ValueError('The soft_cache_length must be set when using the soft_overlong reward.')
+            raise ValueError("The soft_cache_length must be set when using the soft_overlong reward.")
         if reward_config.soft_max_length is None:
             reward_config.soft_max_length = rl_config.max_completion_length
 
 
-def _derive_best_model_metric(train_config: 'TrainConfig', rl_config: Optional['RLConfig']) -> None:
+def _derive_best_model_metric(train_config: "TrainConfig", rl_config: Optional["RLConfig"]) -> None:
     """Pick the metric that selects the best checkpoint, and which direction counts as better.
 
     GRPO -> reward, generation -> ROUGE, else eval_loss; PPO stays unset (loss not monotone in
@@ -667,20 +735,20 @@ def _derive_best_model_metric(train_config: 'TrainConfig', rl_config: Optional['
     (``utils.py::track_best`` reads this dict), so the val-loss default is ``eval_loss`` --
     legacy's bare ``loss`` never matches a key there and silently disabled best-model tracking.
     """
-    rl_type = getattr(rl_config, 'rl_type', None) if rl_config is not None else None
+    rl_type = getattr(rl_config, "rl_type", None) if rl_config is not None else None
     if train_config.metric_for_best_model is None:
-        if rl_type == 'grpo':
-            train_config.metric_for_best_model = 'reward'
-        elif rl_type != 'ppo':
-            train_config.metric_for_best_model = 'rouge-l' if train_config.predict_with_generate else 'eval_loss'
+        if rl_type in POLICY_RL_TYPES - {"ppo"}:
+            train_config.metric_for_best_model = "reward"
+        elif rl_type != "ppo":
+            train_config.metric_for_best_model = "rouge-l" if train_config.predict_with_generate else "eval_loss"
     if train_config.greater_is_better is None and train_config.metric_for_best_model is not None:
-        train_config.greater_is_better = 'loss' not in train_config.metric_for_best_model
+        train_config.greater_is_better = "loss" not in train_config.metric_for_best_model
 
 
-def _normalize_recompute_granularity(distributed_config: 'DistributedConfig') -> None:
+def _normalize_recompute_granularity(distributed_config: "DistributedConfig") -> None:
     """Treat the string 'none' as no recomputation (legacy megatron_args:797-798).
 
     Every downstream check tests the field for None, so "off" gets a single representation.
     """
-    if distributed_config.recompute_granularity == 'none':
+    if distributed_config.recompute_granularity == "none":
         distributed_config.recompute_granularity = None

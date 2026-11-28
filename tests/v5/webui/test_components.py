@@ -50,7 +50,7 @@ class TestLossComponent:
 
 
 class TestScorerComponent:
-    """kind reaches the orms plugin registry; code is the user callable."""
+    """kind reaches the reward_rules plugin registry; code is the user callable."""
 
     def test_kind_constructs_the_native_scorer(self):  # S20-55
         from twinkle.reward import MathReward

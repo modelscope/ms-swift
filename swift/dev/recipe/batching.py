@@ -4,6 +4,9 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+if TYPE_CHECKING:
+    from swift.dev.recipe.utils import StepState
+
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -18,7 +21,7 @@ def micro_batch_config_from(train_config: "TrainConfig") -> Dict[str, Any]:
     A config field the recipe leaves out of these kwargs is a knob nobody reads, so the recipe does
     not pick a subset by hand: ``micro_batch_order`` applies to planned micro-batches whether or not
     ``dynamic_batching`` is on, and the dynamic fields ride along only when it is (validate confines
-    them to the GRPO recipe on the HF backend, like the order itself).
+    them to the policy recipes on the HF backend, like the order itself).
     """
     options: Dict[str, Any] = {
         "micro_batch_size": train_config.per_device_train_batch_size,
@@ -33,8 +36,14 @@ def micro_batch_config_from(train_config: "TrainConfig") -> Dict[str, Any]:
     return options
 
 
-def balance_update(state: Any, update: List[Any], lengths: Optional[List[int]],
-                   *, micro_batch_kwargs: Optional[Dict[str, Any]] = None) -> Tuple[List[Any], Dict[str, float]]:
+def balance_update(
+    state: StepState,
+    update: List[Any],
+    lengths: Optional[List[int]],
+    *,
+    micro_batch_kwargs: Optional[Dict[str, Any]] = None,
+    group_size: int = 1,
+) -> Tuple[List[Any], Dict[str, float]]:
     """Reorder one optimizer batch's trajectories so ``slice_dp`` splits the workload evenly.
 
     Every per-sample training signal rides the trajectories, so reordering the list is the
@@ -44,16 +53,20 @@ def balance_update(state: Any, update: List[Any], lengths: Optional[List[int]],
     materialised), or by the planner itself for DP=1 / uneven batches. The PPO value model
     is never reordered: its rank-local token mean is not permutation-invariant.
     """
-    if not getattr(state, 'dp_balance', False) or lengths is None:
+    if not getattr(state, "dp_balance", False) or lengths is None:
         return update, {}
     from twinkle.model import MicroBatchConfig
     from twinkle.model.dp_balance import plan_dp_balance_for_lengths
 
     if len(lengths) != len(update):
-        raise ValueError(f'batch balancing needs one row length per trajectory ({len(lengths)} for {len(update)}).')
+        raise ValueError(f"batch balancing needs one row length per trajectory ({len(lengths)} for {len(update)}).")
     plan = plan_dp_balance_for_lengths(
-        lengths, state.model.device_mesh.data_world_size, padding_free=state.padding_free,
-        micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})))
+        lengths,
+        state.model.device_mesh.data_world_size,
+        padding_free=state.padding_free,
+        micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})),
+        **({"group_size": group_size} if group_size > 1 else {}),
+    )
     return [update[index] for index in plan.order], dict(plan.metrics)
 
 
@@ -80,10 +93,15 @@ def _group_rows(episode_ids: List[Any], group_size: int) -> Optional[List[int]]:
     return [sum(episodes[start:start + group_size]) for start in range(0, len(episodes), group_size)]
 
 
-def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
-                  group_size: int, micro_batch_kwargs: Optional[Dict[str, Any]] = None,
-                  episode_ids: Optional[List[Any]] = None
-                  ) -> Tuple[List[Any], Optional[List[int]], Optional[List[int]]]:
+def balance_lanes(
+    state: StepState,
+    trajs: List[Any],
+    lengths: Optional[List[int]],
+    *,
+    group_size: int,
+    micro_batch_kwargs: Optional[Dict[str, Any]] = None,
+    episode_ids: Optional[List[Any]] = None,
+) -> Tuple[List[Any], Optional[List[int]], Optional[List[int]]]:
     """Plan the DP-balanced order for the whole-batch forwards (reference/teacher/old-logps lanes).
 
     Returns ``(permuted, order, restore)``: feed the lanes ``permuted``, permute every row-aligned
@@ -94,7 +112,7 @@ def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
     row lengths; a shape that cannot keep groups whole on equal ranks keeps the caller's order too
     (fixed-size groups: warned; collected groups of a variable row count: the planner's identity plan).
     """
-    if not getattr(state, 'dp_balance', False) or not lengths:
+    if not getattr(state, "dp_balance", False) or not lengths:
         return trajs, None, None
     if len(lengths) != len(trajs):
         raise ValueError(f'lane balancing needs one row length per trajectory ({len(lengths)} for {len(trajs)}).')
@@ -107,11 +125,13 @@ def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
 
     try:
         plan = plan_dp_balance_for_lengths(
-            lengths, state.model.device_mesh.data_world_size, padding_free=state.padding_free,
+            lengths,
+            state.model.device_mesh.data_world_size,
+            padding_free=state.padding_free,
             micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})),
             group_size=group_size, group_rows=rows)
     except ValueError as exc:
-        logger.warning('DP lane balancing skipped for this batch (%s); the forwards keep the caller order.', exc)
+        logger.warning("DP lane balancing skipped for this batch (%s); the forwards keep the caller order.", exc)
         return trajs, None, None
     restore = [0] * len(plan.order)
     for position, index in enumerate(plan.order):

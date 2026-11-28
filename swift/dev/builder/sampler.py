@@ -24,9 +24,8 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 #: Built-in engine names a ``--sampler`` resolves to with no external source; anything else is a
-#: custom sampler, reached by class or by source (see :func:`_resolve_sampler`). 'twinkle' is the
-#: client-side sampler over a twinkle-server (mode='remote'); it resolves in :func:`build_sampler`
-#: before the engine table, because it is not an engine at all.
+#: custom sampler, reached by class or by source (see :func:`_resolve_sampler`). 'openai' is not an
+#: engine either: it resolves in :func:`build_sampler` before the engine table.
 SamplerBackend = Literal["vllm", "sglang", "transformers"]
 
 #: ModelConfig knobs the engines accept, under the name each uses for them; everything else an
@@ -70,13 +69,16 @@ def _resolve_sampler(spec: Any) -> Tuple[type, Optional[str]]:
     """
     if spec == "pt":
         spec = "transformers"
-    if spec in ("client", "no"):
-        # legacy's remote-generation sampler; without this guard it falls into plugin resolution
-        # and dies with an unrelated "plugin not found" error.
+    if spec in ("client", "no", "twinkle"):
+        # legacy's remote-generation sampler ('client'; 'twinkle' briefly replaced it in v5) and its
+        # preprocessing-only 'no'. A served model is reached through its OpenAI API (`--sampler
+        # openai --infer_url`), never a swift-side engine; without this guard the spec falls into
+        # plugin resolution and dies with an unrelated "plugin not found" error.
         raise ValueError(
             f"sampler={spec!r} (legacy remote generation) is not migrated: v5 samples with the local "
-            "vllm/sglang/transformers backends. Serve the remote side with `swift deploy` and point an "
-            "http(s) URL at it (an API-judge reward channel) instead of a client sampler."
+            "vllm/sglang/transformers backends. For a served model use `--sampler openai --infer_url "
+            "<base_url>` (the OpenAI-compatible /chat/completions API of `swift deploy` or any other "
+            "OpenAI server) instead of a client sampler."
         )
     kind = _sampler_kind()
     sampler_cls = resolve_plugin_class(spec, kind.base, kind.entries, kind="sampler")
@@ -209,11 +211,15 @@ def build_sampler(
     remote_group: Optional[str] = None,
     quantize_config: Optional[QuantizeConfig] = None,
     instance_id: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> Any:
     """ModelConfig -> a twinkle Sampler, with the template already set.
 
     Built-in backends map ModelConfig knobs + LoRA/pooling rules (custom samplers get engine_args
     verbatim); engine_args win over mapped knobs; adapters must arrive at construction time.
+    ``backend='openai'`` builds no engine: it is the chat-completions client over ``base_url`` (see
+    :func:`_build_openai_sampler`), so engine_args / device_mesh / remote_group do not apply.
     """
     if model_config.model is None:
         raise ValueError("ModelConfig.model is required to build a sampler (it is the model id/path).")
@@ -224,8 +230,8 @@ def build_sampler(
             f"build_sampler got task_type={task_type!r}; expected one of the generation tasks "
             f"{list(_GENERATIVE_TASK_TYPES)} or the pooling tasks {sorted(_POOLING_TASK_MAP)}."
         )
-    if backend == "twinkle":
-        return _build_client_sampler(model_config, adapters, is_pooling)
+    if backend == "openai":
+        return _build_openai_sampler(model_config, template, is_pooling, adapters, base_url=base_url, api_key=api_key)
     sampler_cls, engine = _resolve_sampler(backend)
     if is_pooling and engine == "transformers":
         raise ValueError(
@@ -314,32 +320,43 @@ def build_sampler(
     return sampler_cls(model_config.model, engine_args=kwargs, device_mesh=device_mesh, **extra)
 
 
-def _build_client_sampler(model_config: "ModelConfig", adapters: Optional[List[str]], is_pooling: bool) -> Any:
-    """backend='twinkle': a client-side vLLMSampler handle over a SERVED sampler.
+def _build_openai_sampler(model_config: "ModelConfig", template: Any, is_pooling: bool, adapters: Optional[List[str]], *,
+                          base_url: Optional[str], api_key: Optional[str]) -> Any:
+    """backend='openai': the chat-completions API of an already-served model.
 
-    The transport must already be bound (init_twinkle_client, done by the mode='remote'
-    initialization), and ``model`` names the server-side served model. The served sampler encodes
-    Trajectory inputs with the template ITS deployment pinned (``swift deploy`` pins the dev
-    TemplateSpec; a bare twinkle-server falls back to its own family map at startup), so no template
-    travels from here -- the local ``template`` is not sent. Pooling forwards ride the sampler's
-    ``encode`` face. Local adapters cannot attach to a remote engine -- a remote LoRA rides
-    ``adapter_uri`` (a twinkle:// checkpoint), whose infer wiring is future work.
+    No engine is built here. ``OpenAI`` posts the trajectory's messages to ``{base_url}/chat/completions``
+    and ``APISampler`` re-encodes the reply with the LOCAL ``template``, so the rollout's token account
+    stays the trainer's (logprobs are None: the API returns none). ``model`` is the user-typed
+    ``--model``: the request's model name AND the tokenizer/template source, so it must resolve locally.
+    Pooling and local LoRA have no OpenAI surface -- a served LoRA is the server's business.
     """
-    from twinkle_client.sampler import vLLMSampler as ClientSampler
+    from twinkle_agentic.protocol.api_sampler import APISampler
+    from twinkle_agentic.protocol.openai import OpenAI
 
     if is_pooling:
         raise ValueError(
-            'backend="twinkle" cannot serve the pooling task: the client sampler face is '
-            "sample()/encode() over a served generation engine. Run pooling locally, or serve it "
-            "through the gateway's OpenAI-compatible /embeddings route."
+            'backend="openai" cannot serve the pooling task_type='
+            f'{model_config.task_type!r}: the OpenAI API generates text only. Run pooling locally, or '
+            "serve it through the gateway's OpenAI-compatible /embeddings route."
         )
     if adapters:
         raise ValueError(
-            f'backend="twinkle" received local adapters {adapters!r}: a local adapter directory '
-            "cannot load into a remote engine. Merge the adapter first (`swift merge`), or wait "
-            "for the adapter_uri wiring (a twinkle:// checkpoint served as a sampler LoRA)."
+            f'backend="openai" received local adapters {adapters!r}: a local adapter directory cannot '
+            "load into a served model. Serve the merged or LoRA-loaded model with `swift deploy` and "
+            "point --infer_url at it, or run the local backends."
         )
-    return ClientSampler(model_config.model)
+    if template is None:
+        raise ValueError('backend="openai" needs the local template: the reply is re-encoded client-side.')
+    if not base_url:
+        raise ValueError(
+            'backend="openai" needs --infer_url: the OpenAI-compatible base_url of the served model '
+            '(e.g. http://127.0.0.1:8100/v1, a `swift deploy` or any OpenAI server).')
+    served_name = getattr(model_config, "_model_id_or_path", None) or model_config.model
+    # Local OpenAI-compatible servers ignore the key value but the client library refuses to
+    # construct without one -- the community placeholder keeps a local endpoint key-free (same as
+    # eval's --eval_url path).
+    api = OpenAI(model=served_name, api_key=api_key or "EMPTY", base_url=base_url)
+    return APISampler(api, template)
 
 
 def _enable_lora(kwargs: Dict[str, Any], backend: str, adapters: List[str]) -> None:

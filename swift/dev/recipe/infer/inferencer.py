@@ -120,11 +120,24 @@ class Inferencer(Recipe):
         infer_config = self.infer_config
         reward_config = self.reward_config
         distributed_config = self.distributed_config
+        if distributed_config is not None and distributed_config.mode == "remote":
+            # Every infer path samples or forwards through an engine built in this process; a served
+            # engine is reached through the server's OpenAI API instead, not through swift infer.
+            raise ValueError(
+                "--mode remote does not apply to swift infer: remote generation is an OpenAI call "
+                "against a `swift deploy` server (/chat/completions for text, /infer for token ids and "
+                "logprobs). Drop --mode remote and use a local sampler, or call the server directly."
+            )
 
         # A pooling task or a generative_reranker never samples: one plain forward pass, one value
         # per row (see _forward_pass). Split before the sampling-side validation below, which reads
         # knobs (num_return_sequences, output_format) a forward pass never uses.
         task_type = model_config.task_type or "causal_lm"
+        if self.backend == "openai" and (is_pooling_task(task_type) or task_type in ("generative_reranker", "decision")):
+            raise ValueError(
+                f"--sampler openai serves chat generation only, not task_type={task_type!r}: the forward "
+                "pass needs a local model. Use a local sampler for this task."
+            )
         if is_pooling_task(task_type) or task_type in ("generative_reranker", "decision"):
             return self._forward_pass(task_type)
 
@@ -132,12 +145,6 @@ class Inferencer(Recipe):
         output_format = infer_config.output_format
         multi_turn_enabled = bool(self.rollout_config and self.rollout_config.max_turns is not None)
         self._validate_sampling(num_return, output_format, multi_turn_enabled)
-        if self.backend == "twinkle" and (distributed_config is None or distributed_config.mode != "remote"):
-            raise ValueError(
-                'sampler="twinkle" (the client-side sampler over a twinkle-server) requires '
-                "--mode remote and --server_base_url: without it there is no transport to the "
-                "served sampler. The local backends are vllm/sglang/transformers."
-            )
         # The model's own generation_config.json is the sampling baseline: fill knobs the caller
         # left unset from it, so a model's declared temperature/top_k survives (legacy parity).
         apply_generation_baseline(self.generation_config, model_config.model)
@@ -153,6 +160,14 @@ class Inferencer(Recipe):
             for spec in plan.specs
             if spec.kind == "generative_reuse" and spec.adapter
         ]
+        if self.backend == "openai" and any(
+                spec.kind == "generative_reuse" for plan in (orm_plan, prm_plan) for spec in plan.specs):
+            # A judge reusing the sampler scores through a reward LoRA resident in the engine; a served
+            # model has no slot for one, and the API would silently score with the base model.
+            raise ValueError(
+                "--sampler openai cannot reuse the sampler as a generative judge: the served model "
+                "cannot load a reward LoRA. Point --orm at an http(s) judge endpoint instead."
+            )
         reward_groups = _reward_device_groups(orm_plan, prm_plan, distributed_config)
         if reward_groups and (distributed_config is None or distributed_config.mode != "ray"):
             raise ValueError(
@@ -204,7 +219,7 @@ class Inferencer(Recipe):
 
         cache = _CandidateCache(infer_config.cache_files)
         quant_method = getattr(self.quantize_config, "quant_method", None)
-        if self.backend == "no" and quant_method is not None:
+        if self.backend in ("no", "openai") and quant_method is not None:
             raise ValueError(
                 f"quant_method={quant_method!r} cannot affect sampler={self.backend!r}, which loads no "
                 "local model. Configure quantization on the remote server or omit --quant_method."
@@ -224,25 +239,36 @@ class Inferencer(Recipe):
             for reward_adapter in reuse_adapters:
                 if reward_adapter not in sampler_adapters:
                     sampler_adapters.append(reward_adapter)
-            sampler = build_sampler(
-                model_config,
-                backend=self.backend,
-                engine_args=self.engine_args,
-                # Under ray the sampler is a remote actor: twinkle's dispatch REQUIRES a
-                # DeviceMesh (there is no global fallback mesh here), so a dp=1 run must keep
-                # its real 1-rank mesh instead of collapsing to None. nproc_per_node is
-                # mandatory under ray (_initialize_for_sampling), so the mesh is always sized.
-                device_mesh=build_parallel_mesh(
-                    distributed_config,
-                    none_if_single_rank=(distributed_config is None or distributed_config.mode != "ray"),
-                ),
-                template=template,
-                adapters=sampler_adapters or None,
-                remote_group=(
-                    SAMPLER_GROUP if distributed_config is not None and distributed_config.mode == "ray" else None
-                ),
-                quantize_config=self.quantize_config,
-            )
+            if self.backend == "openai":
+                # No engine, no mesh, no LoRA: the chat-completions client over the served model; the
+                # local template is what re-encodes the replies.
+                sampler = build_sampler(
+                    model_config,
+                    backend="openai",
+                    template=template,
+                    base_url=infer_config.infer_url,
+                    api_key=infer_config.infer_api_key,
+                )
+            else:
+                sampler = build_sampler(
+                    model_config,
+                    backend=self.backend,
+                    engine_args=self.engine_args,
+                    # Under ray the sampler is a remote actor: twinkle's dispatch REQUIRES a
+                    # DeviceMesh (there is no global fallback mesh here), so a dp=1 run must keep
+                    # its real 1-rank mesh instead of collapsing to None. nproc_per_node is
+                    # mandatory under ray (_initialize_for_sampling), so the mesh is always sized.
+                    device_mesh=build_parallel_mesh(
+                        distributed_config,
+                        none_if_single_rank=(distributed_config is None or distributed_config.mode != "ray"),
+                    ),
+                    template=template,
+                    adapters=sampler_adapters or None,
+                    remote_group=(
+                        SAMPLER_GROUP if distributed_config is not None and distributed_config.mode == "ray" else None
+                    ),
+                    quantize_config=self.quantize_config,
+                )
 
         orm_funcs, prm_funcs = _build_scorers(
             infer_config,
@@ -334,11 +360,12 @@ class Inferencer(Recipe):
                     shutdown()
             if rollout is not None:
                 rollout.close()
-            # Teardown follows engine OWNERSHIP: backend='twinkle' builds a client handle over a
-            # SERVED engine owned by twinkle-server (build_sampler._build_client_sampler), so the
-            # driver must not -- and cannot -- shut it down; the client face has no shutdown().
-            if self.shutdown and sampler is not None and self.backend != "twinkle":
-                sampler.shutdown()
+            # Only an engine OWNS a shutdown; the OpenAI client sampler has none (the served engine
+            # belongs to its server), so the face is probed rather than assumed.
+            if self.shutdown and sampler is not None:
+                shutdown = getattr(sampler, "shutdown", None)
+                if shutdown is not None:
+                    shutdown()
 
         writer.finish(results)
         runtime = time.perf_counter() - start_time
@@ -777,16 +804,6 @@ def _initialize_for_sampling(
     import twinkle
     from twinkle import DeviceGroup, Platform
 
-    if distributed_config is not None and distributed_config.mode == "remote":
-        # No local twinkle runtime to initialize: this process is a single-process client and the
-        # sampler/model live in the twinkle-server. Only the client transport is bound (once; a
-        # re-init for a second component in the same process is a no-op on the session layer).
-        from twinkle_client import init_twinkle_client
-
-        if not distributed_config.server_base_url:
-            raise ValueError("--mode remote requires --server_base_url (the twinkle-server gateway root).")
-        init_twinkle_client(base_url=distributed_config.server_base_url, api_key=distributed_config.server_api_key)
-        return
     if distributed_config is None or distributed_config.mode != "ray":
         # None is the run-wide default (single process, no ray): the sampler builds plainly, and
         # the caller has already refused any GPU-resident reward channel that would need a group.
@@ -1558,9 +1575,7 @@ def _forward_sampler(
     try:
         yield sampler, processor, (adapters[0] if adapters else None)
     finally:
-        # Same ownership contract as the main infer teardown: a 'twinkle' client handle rides a
-        # server-owned engine and has no shutdown face; only locally-built engines are released.
-        if shutdown and backend != "twinkle":
+        if shutdown:
             sampler.shutdown()
 
 

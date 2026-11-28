@@ -431,21 +431,21 @@ def test_build_rl_sampler_placement_and_replay_knob(monkeypatch):
     # [('model', [0, 1]), ('sampler', [0])] -- not by dropping remote_group here).
     rollout = RolloutConfig(rollout_sampler='vllm', vllm_data_parallel_size=2)
     recipe_utils.build_rl_sampler(
-        model_config=model_config, rollout_config=rollout, template=template, tuner_config=None, colocate=True)
+        model_config=model_config, rollout_config=rollout, template=template, colocate=True)
     kw = calls[-1]
     assert kw['engine_args']['enable_sleep_mode'] is True
     assert kw['remote_group'] == 'sampler' and kw['device_mesh'].data_world_size == 2
 
     # disaggregated: its own DP-sized mesh in the sampler group
     recipe_utils.build_rl_sampler(
-        model_config=model_config, rollout_config=rollout, template=template, tuner_config=None)
+        model_config=model_config, rollout_config=rollout, template=template)
     kw = calls[-1]
     assert kw['remote_group'] == 'sampler' and kw['device_mesh'].data_world_size == 2
 
     # sglang reads its own replica knob and pins the memory saver instead of sleep mode
     sg = RolloutConfig(rollout_sampler='sglang', sglang_dp_size=3)
     recipe_utils.build_rl_sampler(
-        model_config=model_config, rollout_config=sg, template=template, tuner_config=None, colocate=True)
+        model_config=model_config, rollout_config=sg, template=template, colocate=True)
     kw = calls[-1]
     assert kw['engine_args']['enable_memory_saver'] is True and 'enable_sleep_mode' not in kw['engine_args']
 
@@ -453,17 +453,17 @@ def test_build_rl_sampler_placement_and_replay_knob(monkeypatch):
     # build_rl_sampler read rollout_config.enable_sampling_replay, a field RolloutConfig never had
     # (every online-RL assembly died with AttributeError before the sampler was built)
     recipe_utils.build_rl_sampler(
-        model_config=model_config, rollout_config=RolloutConfig(), template=template, tuner_config=None,
+        model_config=model_config, rollout_config=RolloutConfig(), template=template,
         enable_sampling_replay=True)
     assert calls[-1]['engine_args']['enable_sampling_replay'] is True
     recipe_utils.build_rl_sampler(
-        model_config=model_config, rollout_config=RolloutConfig(), template=template, tuner_config=None)
+        model_config=model_config, rollout_config=RolloutConfig(), template=template)
     assert 'enable_sampling_replay' not in calls[-1]['engine_args']
 
     # a resource plan sizes the replica pool and stamps the elastic instance id
     plan = SimpleNamespace(sampler=SimpleNamespace(replica_count=4))
     recipe_utils.build_rl_sampler(
-        model_config=model_config, rollout_config=RolloutConfig(), template=template, tuner_config=None,
+        model_config=model_config, rollout_config=RolloutConfig(), template=template,
         resource_plan=plan)
     kw = calls[-1]
     assert kw['instance_id'] == 'adaptive-sampler' and kw['device_mesh'].data_world_size == 4

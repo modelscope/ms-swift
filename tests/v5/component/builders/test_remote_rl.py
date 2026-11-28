@@ -297,12 +297,12 @@ def test_build_rl_sampler_remote_needs_vllm_and_a_template_config():
     with pytest.raises(ValueError, match="rollout_sampler='vllm'"):
         build_rl_sampler(
             model_config=ModelConfig(model='m'), rollout_config=RolloutConfig(rollout_sampler='sglang'),
-            template=None, tuner_config=None, distributed_config=_remote_dist(),
+            template=None, distributed_config=_remote_dist(),
             template_config=TemplateConfig())
     with pytest.raises(ValueError, match='template_config'):
         build_rl_sampler(
             model_config=ModelConfig(model='m'), rollout_config=RolloutConfig(), template=None,
-            tuner_config=None, distributed_config=_remote_dist(), template_config=None)
+            distributed_config=_remote_dist(), template_config=None)
 
 
 def test_frozen_reward_model_remote_loads_a_pretrained_lora_head(monkeypatch):

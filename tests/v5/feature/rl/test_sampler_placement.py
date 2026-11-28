@@ -20,7 +20,7 @@ def check_replica(colocate, tp, pp, dp):
 
     with patch.object(builders, 'build_sampler', capture):
         build_rl_sampler(model_config=ModelConfig(model='unused'), rollout_config=config,
-                         template=None, tuner_config=None, colocate=colocate)
+                         template=None, colocate=colocate)
     groups, _ = plan_device_groups(8, 'colocate' if colocate else 'disaggregated', tp * pp * dp, [])
     ranks = dict(groups)[captured['remote_group']]
     assert captured['remote_group'] == 'sampler'
@@ -47,7 +47,7 @@ def check_planned():
         result = build_rl_sampler(
             model_config=ModelConfig(model='unused'),
             rollout_config=RolloutConfig(vllm_tensor_parallel_size=2, vllm_data_parallel_size=4),
-            template=None, tuner_config=None,
+            template=None,
             resource_plan=SimpleNamespace(sampler=SimpleNamespace(replica_count=4)))
     assert result['remote_group'] == 'sampler'
     assert result['device_mesh'].data_world_size == 4

@@ -1,8 +1,8 @@
 """S8c — the plugin registry: kind declaration, singletons, external sources (L1).
 
-Two builtin kinds exist now -- ``reward`` (base ORM, 9 entries) and ``prm_scorer`` (base
+Two builtin kinds exist now -- ``reward`` (base RewardRule, 9 entries) and ``prm_scorer`` (base
 PRMSegmentScorer, the PRM step-segmentation plugins) -- declared when the rewards package
-imports. The registry checks shape at REGISTRATION time (a reward not subclassing ORM is rejected
+imports. The registry checks shape at REGISTRATION time (a reward not subclassing RewardRule is rejected
 there, not halfway through a rollout), adopts an existing entries dict by reference, and loads
 external plugin sources from a file, a folder, or a hub id. The fixtures snapshot and restore global
 state; builtin kinds are never cleared (re-declaring them is a no-op once cached, so clearing would
@@ -23,9 +23,9 @@ from swift.dev.utils.plugin import PluginRegistry
 
 _PLUGIN_SOURCE = (
     "from swift.dev.utils.plugin import PluginRegistry\n"
-    "from swift.dev.reward.reward import ORM\n"
+    "from swift.dev.reward.reward import RewardRule\n"
     "@PluginRegistry.register('reward', '{name}')\n"
-    "class {cls}(ORM):\n"
+    "class {cls}(RewardRule):\n"
     "    def __call__(self, completions, **kw): return [0.0 for _ in completions]\n"
 )
 
@@ -34,7 +34,7 @@ _PLUGIN_SOURCE = (
 def clean_env(tmp_path):
     """Snapshot KINDS/entries; restore after. Builtin kinds are never removed -- only kinds and
     entries THIS test creates are torn down."""
-    import swift.dev.reward.orm  # noqa: F401 -- declares the builtin kinds
+    import swift.dev.reward.rules  # noqa: F401 -- declares the builtin kinds
 
     kinds_snapshot = dict(PluginRegistry.KINDS)
     entries_snapshot = {name: dict(kind.entries) for name, kind in kinds_snapshot.items()}
@@ -57,13 +57,13 @@ class TestBuiltinKinds:
     external plugin can register into them -- an external source hitting an undeclared kind crashes."""
 
     def test_builtin_kinds_declared_with_expected_shape(self):
-        import swift.dev.reward.orm  # noqa: F401
+        import swift.dev.reward.rules  # noqa: F401
 
         assert set(PluginRegistry.KINDS) >= {'reward'}
         reward = PluginRegistry.kind('reward')
-        from swift.dev.reward.reward import ORM
+        from swift.dev.reward.reward import RewardRule
 
-        assert reward.base is ORM  # the base flipped to ORM (SwiftPlugin is long gone)
+        assert reward.base is RewardRule
         assert 'accuracy' in reward.entries and 'format' in reward.entries
 
 
@@ -82,18 +82,18 @@ class TestRegistrySingleton:
         assert after.name == 'reward'
 
     def test_duplicate_entry_name_rejected(self, clean_env):
-        from swift.dev.reward.reward import ORM
+        from swift.dev.reward.reward import RewardRule
 
         with pytest.raises(ValueError, match='accuracy.*is already registered by MathAccuracy'):
             @PluginRegistry.register('reward', 'accuracy')
-            class Dup(ORM):
+            class Dup(RewardRule):
                 def __call__(self, completions, **kw):
                     return [0.0 for _ in completions]
 
     def test_registration_checks_base_at_registration_time(self, clean_env):
         """A class that does not subclass the kind's base is rejected AT REGISTRATION -- never
         halfway through a rollout when the plugin is first instantiated."""
-        with pytest.raises(TypeError, match='must subclass ORM'):
+        with pytest.raises(TypeError, match='must subclass RewardRule'):
             @PluginRegistry.register('reward', 'bad_base_rule')
             class NotAPlugin:
                 pass
@@ -116,7 +116,7 @@ class TestResolve:
         assert type(PluginRegistry.resolve('reward', 'accuracy')).__name__ == 'MathAccuracy'
 
     def test_resolve_class_instantiates_no_arg(self, clean_env):
-        from swift.dev.reward.orm import MathAccuracy
+        from swift.dev.reward.rules import MathAccuracy
 
         assert isinstance(PluginRegistry.resolve('reward', MathAccuracy), MathAccuracy)
 

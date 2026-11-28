@@ -79,7 +79,13 @@ def parse_infer_configs(argv: Optional[List[str]] = None) -> Dict[str, Any]:
                            "shape the best-of-n ranking under output_format='dpo'. Switch to 'dpo' to apply them.")
     has_dataset = bool(result['dataset_config'].dataset or result['dataset_config'].val_dataset)
     if result['generation_config'].stream is None:
-        result['generation_config'].stream = not has_dataset
+        # An API sampler answers a whole turn per request: nothing to stream, so the interactive default
+        # is single-shot there and an explicit --stream true is refused rather than ignored.
+        result['generation_config'].stream = not has_dataset and infer_config.sampler != 'openai'
+    if infer_config.sampler == 'openai' and result['generation_config'].stream:
+        raise ValueError(
+            "--sampler openai answers one request per turn and cannot --stream true; drop --stream (or pass "
+            "--stream false).")
     if result['generation_config'].stream and result['generation_config'].num_beams != 1:
         result['generation_config'].stream = False
     return result
@@ -202,6 +208,8 @@ def _infer_main(argv: Optional[List[str]] = None):
             quantize_config=configs['quantize_config'],
             multi_round=cli_config.multi_round,
             rollout_config=configs['rollout_config'],
+            base_url=infer_config.infer_url,
+            api_key=infer_config.infer_api_key,
         )
 
     # result_path is the single output truth: run_infer splits a 'dpo'/resumed run's path into

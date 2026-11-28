@@ -1,48 +1,55 @@
 ---
 title: 命令行参数
-description: SWIFT v5 命令、参数分组、默认值与示例入口。
+description: SWIFT 的命令，参数分组，默认值与环境变量。
 ---
 
 ## 命令
 
-SWIFT v5 的命令行参数对应 `swift.dev.config` 中的 Config 字段。不同命令组合所需的 Config，再完成参数处理、校验和组件组装。
+每个命令对应一组 Config，命令行参数就是这些 Config 的字段；SWIFT 负责解析，校验并组装组件。
 
 | 命令 | 用途 | 完整示例 |
 | --- | --- | --- |
 | `swift pt` | 预训练 | [预训练示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
-| `swift sft` | 指令微调与监督任务 | [SFT](../get-started/quick-start.mdx)、[训练示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
-| `swift rl` | 偏好学习、在线 RL、蒸馏 | [GRPO 示例](../get-started/quick-start.mdx)、[RL 示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl) |
-| `swift infer` | 交互推理、批量推理与候选数据合成 | [推理示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer) |
-| `swift deploy` | 部署模型推理接口 | [部署示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/deploy) |
+| `swift sft` | 指令微调与监督任务 | [SFT](../get-started/quick-start.mdx)，[训练示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/train) |
+| `swift rl` | 偏好学习，在线 RL，蒸馏 | [GRPO 示例](../get-started/quick-start.mdx)，[RL 示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/rl) |
+| `swift infer` | 交互推理，批量推理与候选数据合成 | [推理示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/infer) |
+| `swift deploy` | 部署 OpenAI 兼容接口 | [部署示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/deploy) |
 | `swift eval` | 模型评测 | [评测示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/eval) |
 | `swift export` | 模型导出与量化 | [导出示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
 | `swift merge` | 合并 LoRA | [合并示例](https://github.com/modelscope/ms-swift/tree/main/examples/v5/export) |
 
-`swift rlhf` 是 `swift rl` 的兼容命令名。新脚本使用上表命令。WebUI 的安装启动见 [WebUI 快速启动](/zh/webui/quick-start)。
+`swift rlhf` 是 `swift rl` 的兼容命令名。WebUI 的安装启动见 [WebUI 快速启动](/zh/webui/quick-start)。
 
 完整参数列表可通过对应命令的帮助查看：
 
 ```bash
+swift pt --help
 swift sft --help
 swift rl --help
 swift infer --help
+swift deploy --help
+swift eval --help
+swift export --help
+swift merge --help
 ```
-
-下面的默认值指 Config 声明值。标注“自动”的字段由模型、任务或执行环境处理；推理等命令还可以从 checkpoint 的 `args.json` 恢复设置。
 
 ## 参数写法
 
 - 列表传多个值，例如 `--dataset train.jsonl extra.jsonl`。
-- 布尔值显式传入，例如 `--packing true`、`--gradient_checkpointing false`。
-- 字典使用 JSON 字符串或字段支持的 JSON 文件；JSON 字符串应加 shell 引号。
-- Config 字段使用下划线，例如 `--max_length`。不认识的参数会被拒绝，不会静默忽略。
+- 布尔值显式传入，例如 `--packing true`，`--gradient_checkpointing false`。
+- 字典使用 JSON 字符串，并加 shell 引号。不认识的参数会被拒绝，不会静默忽略。
 
 ```bash
 --columns '{"question":"query","answer":"response"}'
 --model_kwargs '{"trust_remote_code":true}'
 ```
 
-也可以将参数放入 YAML，再传给命令：
+- 带🔥的参数为重要参数
+- 带"[v5]"的参数是 v5 新引入的，没有旧版本中的对应参数；改名或合并的参数见[v5 快速迁移](../get-started/migration.mdx)。
+- 下文的默认值是 Config 的声明值；写"自动"的字段由模型，任务或执行环境推导。
+- `swift infer/deploy/eval/export/merge` 默认从 `--model`，`--adapters` 目录的 `args.json` 恢复模型，模板与量化设置，见 `load_args`。
+
+也可以将参数放入 YAML 或 JSON 文件，再传给命令：
 
 ```yaml
 model: Qwen/Qwen3.5-4B
@@ -55,114 +62,970 @@ dataset:
 tuner: lora
 num_train_epochs: 3
 output_dir: output/sft
+ENV:
+  MAX_PIXELS: '1003520'
 ```
 
-保存为 `sft.yaml` 后运行 `swift sft sft.yaml`。
+保存为 `sft.yaml` 后运行 `swift sft sft.yaml`。`ENV` 段写入环境变量（已存在的环境变量优先）。yaml/json 与命令行可以混用：yaml 放不常改的参数，命令行放常改的参数。
 
 ## 模型参数
 
-- `model`: 默认为 `None`。模型 ID 或本地目录；远程模式下是服务端模型 ID。
-- `model_type`、`model_revision`: 默认为 `None`。家族标识与模型版本。
-- `task_type`: 默认为自动；支持 `causal_lm`、`seq_cls`、`embedding`、`reranker`、`generative_reranker`、`decision`。
-- `torch_dtype`: 默认为自动；可选 `bfloat16`、`float16`、`float32`。
-- `attn_impl`: attention 实现，如 `flash_attention_2`、`sdpa`、`eager`；可用值由模型与硬件决定。
-- `vit_attn_impl`: 视觉塔单独的 attention 实现。
-- `model_kwargs`: 额外模型加载参数。
-- `language_model_only`: 默认 `false`；只构建多模态 checkpoint 的语言部分。
-
-更多模型、量化和低精度字段见 [ModelConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/model_config.py) 与 [QuantizeConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/quantize_config.py)。
+- 🔥model: 模型 id 或模型本地路径。默认为None。`--mode remote` 时填服务端提供的模型名。
+- 🔥model_type: 模型类型。**相同的模型架构，模型加载过程和模板定义为一个 `model_type`**。默认为None，根据 `--model` 的后缀和 config.json 中的 architectures 自动选择。
+  - 注意：这里的 model_type 与 config.json 中的 model_type 不同。
+- model_revision: 模型版本。默认为None。
+- task_type: 任务类型，可选为 `causal_lm`，`seq_cls`，`embedding`，`reranker`，`generative_reranker`，`decision`。默认为None，根据模型自动选择。
+  - 若设置为 `seq_cls`，通常需要额外设置 `--num_labels` 和 `--problem_type`。
+- 🔥torch_dtype: 模型权重数据类型，支持 `bfloat16`，`float16`，`float32`。默认为None，从 config.json 读取。
+- attn_impl: attention 实现，可选为 `sdpa`，`eager`，`flash_attention_2`，`flash_attention_3` 等。默认为None，从 config.json 读取。
+  - 注意：可用实现取决于模型和硬件。
+- vit_attn_impl: 多模态模型视觉塔的 attention 实现，可与语言塔不同。默认为None。
+- 🔥experts_impl: MoE 模型的专家实现类型，可选为 `grouped_mm`，`batched_mm`，`eager`。默认为None。
+- enable_kernel: 是否启用 twinkle kernel 优化：模型构建时调用 twinkle 的 `kernelize()`，替换其支持的算子实现。默认为False。
+- new_special_tokens: 需要新增的特殊 token。默认为 `[]`。
+- num_labels: 分类任务（`--task_type seq_cls`）的标签数量。默认为None。
+- problem_type: 分类任务（`--task_type seq_cls`）的问题类型，可选为 `regression`，`single_label_classification`，`multi_label_classification`。默认为None：reward model 或 num_labels 为 1 时为 `regression`，其他情况为 `single_label_classification`。
+- rope_scaling: rope 类型。传入字符串（`linear`，`dynamic`，`yarn`）并结合 `max_model_len` 自动设置，或传入 json 字符串（例如 `'{"factor":2.0, "type":"yarn"}'`）直接覆盖 config.json 中的 rope_scaling。默认为None。
+- max_model_len: 使用 `rope_scaling` 字符串时用于计算 rope 的 factor 倍数。默认为None；非 None 时**覆盖** config.json 中的 max_position_embeddings。
+- max_memory: 按 device_map 分配权重时各设备的最大显存，例如 `'{0: "20GB", 1: "20GB"}'`，透传入 `from_pretrained`。默认为None。
+- local_repo_path: 部分模型加载依赖 github repo（例如 deepseek-vl2），可传入本地 repo 路径避免 `git clone` 的网络问题。默认为None。
+- model_kwargs: 额外模型加载参数（json 字符串或 json 文件），透传入 `from_pretrained`。默认为None。特定模型的参数（例如 `'{"fps_max_frames": 12}'`）含义见模型官方 repo；**训练时指定的参数，推理时也请设置**。
+- vision_process_kwargs: [v5] 多模态视觉预处理参数（min_pixels，max_pixels，fps 等），key 为模型 vision_process 模块中的常量名（小写），优先级高于同名环境变量。默认为None。
+- language_model_only: 只构建多模态 checkpoint 的语言塔，用于纯文本训练。默认为False。
+- init_strategy: 加载模型时初始化所有未初始化的参数（自定义模型架构时）的方法，可选为 `zero`，`uniform`，`normal`，`xavier_uniform`，`xavier_normal`，`kaiming_uniform`，`kaiming_normal`，`orthogonal`。默认为None。
+- mtp_num_layers: Megatron 的 MTP（多 token 预测）层数，从 checkpoint 读取；不设置则加载时丢弃 MTP 权重。默认为None。
+- mtp_loss_scaling_factor: MTP 损失权重（mcore 0.1，RL 常用 0.2），仅 `enable_mtp_training` 时读取。默认为None。
+- enable_mtp_training: [v5] 是否与主模型一起训练 MTP 头；每个深度额外增加一层 transformer 与全词表投影。默认为False。
+- mtp_freeze: [v5] 将 MTP 头排除出优化器（随导出保留，不产生 Adam 状态，不受 weight decay 影响）。默认为False。
+- mtp_decoder_input_detach: 在主 hidden states 处截断 MTP 梯度，只训练 MTP 头，策略模型不受影响，RL 更安全。默认为False。
+- mtp_allow_random_init: 基座模型不含 MTP 权重时，允许随机初始化 MTP 头训练。默认为False。
+- mtp_shared_weights: MTP 头的输出权重与主输出 embedding 共享。默认为False。
+- fp4_format: Megatron FP4 训练格式，仅 `e2m1`；需要 Blackwell 与 TransformerEngine>=2.7。默认为None。
+- fp4_recipe: FP4 缩放方案，仅 `nvfp4`。默认为 `nvfp4`。
+- fp4_param_gather: 参数也以 FP4 存储并以 FP4 all-gather；需要 fp4_format 与分布式优化器。默认为False。
+- fp8_format: Megatron FP8 训练格式，`e4m3` 全程，或 `hybrid`（前向 e4m3，反向 e5m2）；与 FP4 互斥。默认为None。
+- fp8_recipe: FP8 缩放方案，可选为 `tensorwise`，`delayed`（amax 历史），`blockwise`（DeepSeek FP8 checkpoint），`mxfp8`（仅 Blackwell）。默认为 `delayed`。
+- fp8_param_gather: 参数以 FP8 存储并以 FP8 all-gather；需要分布式优化器。默认为False。
+- fp8_amax_history_len: `delayed` 方案的 amax 历史长度。默认为1024。
+- fp8_amax_compute_algo: amax 的计算方式，可选为 `most_recent`，`max`。默认为 `max`。
 
 ## 数据参数
 
-- `dataset`、`val_dataset`: 默认空列表。训练与验证数据来源。
-- `split_dataset_ratio`: 默认 `0.0`。从训练数据划分验证集的比例。
-- `data_seed`: 默认 `42`；`dataset_shuffle`: 默认 `true`；`val_dataset_shuffle`: 默认 `false`。
-- `dataset_num_proc`: 默认 `1`。数据预处理并行数。
-- `columns`: 默认 `None`。原列名到标准列名的映射。
-- `custom_dataset_info`: 默认空列表。外接数据集元信息 JSON。
-- `use_hf`: 默认 `false`。选择 Hugging Face，否则使用 ModelScope。
-- `streaming`: 默认 `false`；`shuffle_buffer_size`: 默认 `1000`。
-- `packing`: 默认 `false`；`packing_length`: 默认为自动；`packing_strategy`: 默认 `binpack`。
-- `cached_dataset`、`cached_val_dataset`: 已缓存数据来源，不能与原始文本数据的预处理过程混为一谈。
-
-格式与接入方式见[自定义数据集](./custom-dataset.mdx)。
+- 🔥dataset: 数据集 id 或路径的 list。默认为 `[]`。每个数据集的格式为 `'数据集id或路径:子数据集#采样数量'`，其中子数据集和采样数量可选。本地数据集支持 jsonl，csv，json，文件夹等；hub 上的开源数据集可以 `git clone` 到本地后离线使用。自定义数据集格式见[自定义数据集](./custom-dataset.mdx)。
+  - 子数据集: 仅当 dataset 为 id 或文件夹时生效。默认为注册时指定的唯一子数据集，否则为 `default`；用 `/` 选择多个（`id:subset1/subset2`），用 `all` 选择全部。
+  - 采样数量: 默认使用完整数据集，`路径#1000` 表示采样 1000 条。采样数少于样本总数时随机不重复采样；多于样本总数时按 `采样数//样本总数` 整倍重复并额外随机采样。流式数据集只顺序采样；`--dataset_shuffle false` 时非流式数据集也顺序采样。
+- 🔥val_dataset: 验证集 id 或路径的 list。默认为 `[]`。
+- 🔥cached_dataset: 使用 `swift export --to_cached_dataset true` 产生的缓存数据集文件夹路径的 list，避免 tokenize 占用 GPU 时间。默认为 `[]`。
+  - 提示：缓存只额外存储 length 字段并过滤掉会报错的样本；实际预处理在训练时同步进行。`--truncation_strategy split` 会存储 input_ids，此时导出和训练要设置相同的 `max_length` 和 `truncation_strategy`。
+  - 支持采样，语法为 `路径#采样数`；按 `--template_mode` 区分训练类型，按 `--task_type` 区分任务类型。
+- cached_val_dataset: 缓存验证集文件夹路径的 list。默认为 `[]`。
+- 🔥split_dataset_ratio: 不指定 val_dataset 时从训练集划分验证集的比例。默认为0.0，即不划分。
+- data_seed: 数据集随机种子。默认为42。
+- 🔥dataset_num_proc: 数据集预处理的进程数。默认为1。
+  - 提示：纯文本模型建议开大加速预处理；多模态模型不建议开太大，若 CPU 利用率 100% 但处理极慢，可设置 `OMP_NUM_THREADS`。
+- 🔥load_from_cache_file: 是否从缓存中加载数据集。默认为False，**实际训练时建议设置为True**，debug 时设置为False。缓存路径由 `MODELSCOPE_CACHE` 控制。
+- dataset_shuffle: 是否对 dataset 进行随机操作。默认为True。
+  - 注意：CPT/SFT 的随机包含两部分：数据集的随机（`dataset_shuffle`）和 dataloader 的随机（`train_dataloader_shuffle`）。
+- val_dataset_shuffle: 是否对 val_dataset 进行随机操作。默认为False。
+- streaming: 流式读取并处理数据集。默认为False。
+  - 注意：流式数据集无法获得长度，需要设置 `--max_steps`。
+  - 注意：流式数据集的预处理只在 rank0 进行并分发到其他进程，world_size 较大时预处理会成为瓶颈。
+- interleave_prob: 组合多个数据集时的采样概率 list；设置后使用 `interleave_datasets`，默认使用 `concatenate_datasets`。不对 `--val_dataset` 生效。默认为None。
+- stopping_strategy: `interleave_datasets` 的停止策略，可选为 `first_exhausted`，`all_exhausted`。默认为 `first_exhausted`。
+- shuffle_buffer_size: 流式数据集的随机 buffer 大小，仅 `dataset_shuffle` 为 True 时有效。默认为1000。
+- download_mode: 数据集下载模式，可选为 `reuse_dataset_if_exists`，`force_redownload`。默认为 `reuse_dataset_if_exists`；hub 数据集报错时可设置为 `force_redownload`。
+- columns: 列映射，json 字符串，例如 `'{"text1": "query", "text2": "response"}'`，映射后由 AutoPreprocessor 处理。默认为None。
+- strict: 为 True 时数据集某一行有问题直接抛错，否则丢弃出错样本。默认为False，通常用于排查错误。
+- 🔥remove_unused_columns: 是否删除数据集中不被使用的列。默认为True；设置为 False 时额外列会传给 `compute_loss`，方便自定义损失函数使用。
+- disable_auto_column_mapping: 关闭列名自动映射（`columns` 依旧生效）。默认为False。自动映射规则：
+  - images: image, images；videos: video, videos；audios: audio, audios。
+  - system: system, system_prompt；query: query, prompt, input, instruction, question, problem；response: response, answer, output, targets, target, answer_key, answers, solution, text, completion, content。
+- 🔥model_name: 仅用于自我认知任务，只对 `swift/self-cognition` 数据集生效，替换 `{{NAME}}`。传入模型中文名和英文名，例如 `--model_name 小黄 'Xiao Huang'`。默认为None。
+- 🔥model_author: 仅用于自我认知任务，只对 `swift/self-cognition` 数据集生效，替换 `{{AUTHOR}}`。例如 `--model_author '魔搭' 'ModelScope'`。默认为None。
+- custom_dataset_info: 自定义数据集注册的 json 文件路径的 list。默认为 `[]`。
+- decision_drop_instructions: decision 任务的数据增强：以该概率把样本的 instructions 文本置空。默认为0.0。
+- decision_subsample_options: decision 任务的数据增强：选择题只保留正确答案和 N 个干扰项。默认为0，不采样。
+- decision_state_as_text: decision 任务的数据增强：以该概率把 dict 形式的 state 展平为纯文本。默认为0.0。
+- decision_shuffle_fields: decision 任务的数据增强：随机打乱 state 字段顺序与题目顺序。默认为False。
+- use_hf: 控制模型下载，数据集下载和模型推送使用 ModelScope 还是 Hugging Face。默认为False，使用 ModelScope。
+  - 提示：国外访问 ModelScope 可设置环境变量 `MODELSCOPE_DOMAIN='www.modelscope.ai'`。
+- hub_token: hub token。默认为None。
+- trust_remote_code: [v5] 数据集加载时是否执行仓库内的 .py 脚本（dataset script），每个数据集打印一次警告。默认为True。
+- 🔥packing: 以 `padding_free` 方式把不同长度的样本打包成**近似**等长的样本（不切分完整序列），使各节点与进程负载均衡。需要 `--attn_impl flash_attention_2` 保证 pack 内序列互不可见。默认为False，支持 CPT/SFT/DPO/KTO/GKD 与 embedding/reranker/seq_cls。
+  - 注意：**packing 会使样本数减少，请自行调节梯度累加数和学习率**。
+- packing_length: packing 的长度。默认为None，即 `max_length`。
+- packing_num_proc: packing 的进程数。默认为1；不同进程数得到的 packed 数据集不同，通常无需修改。
+- packing_strategy: packing 算法，可选为 `binpack`（best-fit-decreasing，按长度重排）和 `sequential`（保序贪心，next-fit）。默认为 `binpack`；`sequential` 建议配合 `packing_num_proc=1` 保证全局顺序。
+- lazy_tokenize: 是否在训练时才 tokenize。默认为None，自动选择；多模态模型默认为 True 以节约内存。
+  - 注意：若要做图像数据增强，需将 lazy_tokenize（或 streaming）设置为 True 并修改 Template 的 encode 方法。
+- train_dataloader_shuffle: 训练 dataloader 是否随机。默认为True；对 IterableDataset（流式数据集）无效。
+- group_by_length: 将长度相近的样本分到一组以减少 padding，使各节点负载均衡。默认为False。
+- data_sharding: 是否按 rank 分片读取数据集。默认为False，仅 Megatron 生效。
+- dataloader_num_workers: dataloader 的工作进程数。默认为None，自动选择。
+- dataloader_pin_memory: 默认为True。
+- dataloader_persistent_workers: 是否在 epoch 间保持工作进程。默认为True；`dataloader_num_workers=0` 时自动为 False。
+- dataloader_multiprocessing_context: 工作进程的启动方式。默认为None，保持平台默认；packing 在 fork 会死锁时自动使用 spawn。
+- dataloader_prefetch_factor: 每个工作进程预加载的批次数。默认为None，自动选择。
+- dataloader_drop_last: 是否丢弃最后一个不完整的 batch。默认为False。
 
 ## 模板参数
 
-- `template`: 默认自动；`system`: 默认使用数据或模板提供的设置。
-- `max_length`: 默认自动。编码后序列上限。
-- `truncation_strategy`: `delete`、`left`、`right`、`split`，默认自动。
-- `padding_side`: 默认 `right`；`padding_free`: 默认 `false`。
-- `loss_scale`: 默认 `default`。按模板策略设置监督 token 的权重。
-- `enable_thinking`、`preserve_thinking`: 默认自动。控制模型支持的 thinking 行为及保留策略。
-- `agent_template`: 工具调用的模型格式适配。
-- `max_pixels`: 多模态输入的像素限制。
-
 这些参数作用于编码，不等于采样器配置。详见[模板](./template.mdx)。
+
+- 🔥template: 对话模板类型。默认为None，自动选择对应 model_type 的模板。
+- 🔥system: 自定义 system 字段，可传入字符串或 txt 文件路径。默认为None，使用模板的 default_system。
+  - 注意：数据集中的 system **优先级**最高，其次 `--system`，最后模板的 default_system。
+- 🔥max_length: 单条样本 encode 后的最大 token 数，超出的样本按 `truncation_strategy` 处理。默认为None，即模型支持的最大长度。PPO，GRPO，GKD 和推理时代表 max_prompt_length。
+- truncation_strategy: 样本超过 `max_length` 时的处理，可选为 `delete`，`left`，`right`，`split`（删除，左侧裁剪，右侧裁剪，切成多条样本）。默认为None，自动选择。
+  - 注意：`split` 只支持预训练的纯文本数据集。
+  - 注意：多模态模型使用 `left` 或 `right` 时会保留全部 image_token 等多模态 token，可能导致 OOM。
+- 🔥max_pixels: 多模态输入图片的最大像素数（H\*W），超过则缩放。默认为None，不限制。适用于所有多模态模型。
+- 🔥agent_template: Agent 模板：如何把 tools 列表转换成 system，如何从回复中提取 toolcall，以及 tool_call/tool_response 消息的格式。可选为 `react_en`，`hermes`，`glm4`，`qwen_en`，`toolbench` 等。默认为None，根据模型自动选择。
+- norm_bbox: 边界框坐标的缩放方式，可选为 `norm1000`（缩放到千分位坐标）和 `none`。默认为None，根据模型自动选择。
+- use_chat_template: 使用 chat 模板还是 generation 模板（预训练用）。默认为None，即 True；`swift pt` 默认为 False。
+- padding_side: `batch_size>=2` 时的 padding 方向，可选为 `left`，`right`。默认为 `right`；推理默认为 `left`。
+- 🔥padding_free: 将一个 batch 的数据展平避免 padding，降低显存并加速（batch 内序列互不可见）。默认为False。
+  - 注意：需要 `--attn_impl flash_attn`。与 packing 相比不需要预处理时间，但 packing 训练更快，显存更稳定。
+- 🔥loss_scale: 训练 token 的 loss 权重策略。默认为 `default`，RL 默认为 `last_round`，`swift pt` 默认为 `all`。
+  - `default`: 所有 response（含 history）以权重 1 计算损失，system/user/多模态 token 与 tool_response 不计算（SFT 默认）。
+  - `last_round`: 只计算最后一轮 response 的损失（RL 默认）。
+  - `all`: 计算所有 token 的损失（预训练默认）。
+  - 其他策略：`ignore_empty_think`，`ignore_think_prefix`，agent 的 `react`/`hermes`/`qwen`（tool_call 权重为 2）等，可与基本策略混用，例如 `'last_round+hermes+ignore_empty_think'`。
+- disable_ignore_empty_think: 是否禁用对混合思考模型自动追加 `ignore_empty_think`。默认为False，即自动追加，使空的 `'<think>\n\n</think>\n\n'` 不参与损失。
+- is_binary_loss_scale: loss_scale 只为 0/1 时改用 labels（-100）表达，兼容 liger_kernel。默认为None，自动设置。
+- sequence_parallel_size: 序列并行（Ulysses）大小。默认为1。
+  - 提示：本地 SFT 支持 FSDP2 + Ulysses SP，例如 `--mode ray --nproc_per_node 2 --fsdp <配置文件> --parallel_spec dp1fsdp2ul2 --sequence_parallel_size 2`；FSDP 与 SP 复用同一组卡，要求 right padding，packing/padding-free 需要受支持的 FlashAttention 后端。
+- template_backend: 模板后端，可选为 `swift`，`jinja`（transformers 的 `apply_chat_template`）。默认为 `swift`。
+  - 注意：jinja 后端只支持推理，不支持训练。
+- response_prefix: response 的前缀字符，仅推理时生效。默认为None，由 `enable_thinking` 和模板决定。
+- enable_thinking: 是否开启 thinking 模式，仅推理时生效。默认为None，由模板决定（混合思考/非思考模板为 False，思考模板为 True）。为 False 时增加非思考前缀（例如 Qwen3-8B 的 `'<think>\n\n</think>\n\n'`），为 True 时增加思考前缀 `'<think>\n'`。优先级低于 `response_prefix`。
+- preserve_thinking: 是否保留历史轮次的思考内容。默认为None：思考模型推理和训练时为 False，只保留最后一轮；训练时 `loss_scale` 基本策略不为 `last_round` 则为 True。
+- add_non_thinking_prefix: 训练时是否为不以 `'<think>'` 开头的 assistant 回复增加非思考前缀，使内置数据集可以训练混合思考模型。默认为True。
 
 ## 微调参数
 
-- `tuner`: 默认 `lora`，可选 `full`、`lora`、`trainable_tokens`。
-- `adapters`: 默认空列表。加载 adapter checkpoint。
-- `target_modules`: 默认 `all-linear`；也可指定模块列表或使用 `target_regex`。
-- `lora_rank`: 默认 `8`；`lora_alpha`: 默认 `32`；`lora_dropout`: 默认 `0.05`。
-- `use_dora`、`use_rslora`: 默认 `false`。LoRA 的变体开关，不是不同的 tuner 名称。
-- `freeze_llm`: 默认 `false`；`freeze_vit`、`freeze_aligner`: 默认 `true`。
-- `modules_to_save`: 需额外训练并保存的模块。
-- `trainable_token_indices`: `trainable_tokens` 训练的 embedding 行。
-
-QLoRA 由 LoRA 和量化配置共同实现；不要将它写成 `tuner=qlora`。
+- 🔥tuner: 可选为 `lora`，`full`，`trainable_tokens`。默认为 `lora`。QLoRA，DoRA，rsLoRA 是 LoRA 的开关，不是独立的 tuner。
+- 🔥adapters: adapter 的 id/path 的 list。默认为 `[]`。通常用于推理/部署命令：`swift infer --model <model_id_or_path> --adapters <adapter_id_or_path>`；也用于继续训练，与 `resume_from_checkpoint` 的区别是**只读取 adapter 权重**，不加载优化器和随机种子，不跳过已训练的数据。
+  - `--model` 后接完整权重目录（含 model.safetensors，tokenizer，config），`--adapters` 后接增量 adapter 目录（含 adapter_model.safetensors）。
+  - `swift deploy` 支持 `--adapters name=path` 为每个 adapter 指定服务名。
+- 🔥freeze_llm: 只对多模态模型生效。全参数训练时冻结 LLM；LoRA 且 `target_modules` 为 `all-linear` 时不在 LLM 上添加 LoRA。默认为False。
+- 🔥freeze_vit: 只对多模态模型生效。全参数训练时冻结 vit；LoRA 时不添加 LoRA。默认为True。
+  - 注意：这里的 vit 也包括 audio_tower。
+- 🔥freeze_aligner: 只对多模态模型生效。全参数训练时冻结 aligner（projector）；LoRA 时不添加 LoRA。默认为True。
+- 🔥target_modules: 指定 tuner 附加的模块，默认为 `['all-linear']`；也可传模块后缀，例如 `--target_modules q_proj k_proj v_proj`。
+  - 注意：LLM 的 `all-linear` 自动寻找除 lm_head 外的 linear；多模态 LLM 默认只在 LLM 上附加，由 `freeze_llm`，`freeze_vit`，`freeze_aligner` 控制。
+- 🔥target_regex: 用正则表达式指定 tuner 附加的模块，传入后 `target_modules` 失效。默认为None。
+- target_parameters: 要替换为 LoRA 的参数名 list，与 `target_modules` 类似但传入参数名。MoE 层未使用 nn.Linear 时适用，需要 `lora_dropout` 为 0。默认为None。
+- 🔥modules_to_save: 附加 tuner 后额外参与训练并保存的原模型模块。默认为 `[]`，例如 `--modules_to_save embed_tokens lm_head`，权重保存在 `adapter_model.safetensors` 中。
+- 🔥lora_rank: 默认为 `8`。
+- 🔥lora_alpha: 默认为 `32`。
+- lora_dropout: 默认为 `0.05`。
+- lora_bias: 可选为 `none`，`all`；`all` 表示 bias 全部可训练。默认为 `none`。
+- use_rslora: 是否使用 RS-LoRA。默认为False。
+- 🔥use_dora: 是否使用 DoRA。默认为False。
+- init_weights: peft 的 init_lora_weights，可选为 `true`，`false` 或策略名（`gaussian`，`pissa`，`olora` 等）；`loftq`，`lora-ga` 会被拒绝。默认为 `true`。
+- 🔥lorap_lr_ratio: LoRA+ 的学习率比例（lora_B 与 embedding），建议 10~16。默认为None，即不启用。
+- lorap_emb_lr: [v5] LoRA+ 中 embedding 的学习率。默认为1e-6。
+- trainable_token_indices: [v5] `trainable_tokens` 训练的 embedding 行，是学习新特殊 token 的常用方式。默认为None。
 
 ## 训练参数
 
-- `learning_rate`: 默认 `1e-5`；`lr_scheduler`: 默认 `cosine`。
-- `warmup_ratio`: 默认 `0.0`；`warmup_steps`: 默认 `0`。
-- `num_train_epochs`: 默认 `3.0`；`max_steps`: 默认 `-1`。显式最大步数用于限制训练更新次数。
-- `per_device_train_batch_size`、`per_device_eval_batch_size`: 默认 `1`。
-- `gradient_accumulation_steps`: 默认 `1`。
-- `max_grad_norm`: 默认 `1.0`；`gradient_checkpointing`: 默认 `true`。
-- `optim`: 默认 `adamw_torch_fused`，用于 Transformers 优化器；Megatron 的优化器选择使用 `optimizer`。
-- `weight_decay`: 默认 `0.1`；`adam_beta1=0.9`、`adam_beta2=0.95`、`adam_epsilon=1e-8`。
-- `dynamic_batching`: 默认 `false`；`max_tokens_per_micro_batch`: token 预算；`micro_batch_order`: 默认 `none`。
+- 🔥learning_rate: 学习率。默认为1e-5；LoRA 训练通常设置为1e-4。
+  - 提示：设置 `min_lr` 需配合 `--lr_scheduler cosine_with_min_lr`（transformers）或 Megatron 的 `min_lr`。
+- lr_scheduler: 学习率调度器，由命名解析，也可传入外部类或源码；常见选择 `linear`，`constant`，`cosine_with_min_lr`。默认为 `cosine`。
+- lr_scheduler_kwargs: 调度器的其他参数，json 字符串。默认为None。
+- 🔥warmup_ratio: 默认为0.0。
+- warmup_steps: 默认为0。
+- 🔥per_device_train_batch_size: 默认为1。
+- 🔥per_device_eval_batch_size: 默认为1。
+- 🔥gradient_accumulation_steps: 梯度累加步数。默认为1；Megatron 设置 `global_batch_size` 时由其推导。
+  - 提示：CPT/SFT 中梯度累加等价于更大的 batch_size，RLHF 中并不等价。
+- dynamic_batching: [v5] 是否由 twinkle 按 token 预算动态规划 micro-batch（更新量仍为 batch_size × DP × 梯度累加）。默认为False。
+- max_tokens_per_micro_batch: [v5] 动态批处理时每个 micro-batch 的 token 预算。默认为None。
+- packing_algorithm: [v5] 动态批处理的装箱算法，可选为 `ffd`，`kk`。默认为 `ffd`。
+- micro_batch_order: [v5] 动态批处理产出的 micro-batch 执行顺序，可选为 `none`，`descending`，`ends_small`。默认为 `none`。
+- max_steps: 最大训练 steps，流式数据集时必须设置。默认为-1。
+- 🔥num_train_epochs: 训练的 epoch 数。默认为3.0。
+- max_grad_norm: 梯度裁剪，两个后端共用。默认为1.0。
+  - 注意：日志中的 grad_norm 是裁剪前的值。
+- clip_grad: `max_grad_norm` 的别名。默认为None。
+- 🔥gradient_checkpointing: 是否使用 gradient checkpointing，显著降低显存占用但降低速度。默认为True。
+- gradient_checkpointing_kwargs: 传入 `torch.utils.checkpoint` 的参数，例如 `'{"use_reentrant": false}'`。默认为None。
+- vit_gradient_checkpointing: 多模态模型是否对 vit 开启 gradient checkpointing。默认为None。
+- vit_gradient_checkpointing_kwargs: vit 的 gradient checkpointing 参数。默认为None。
+- optim: transformers 后端的优化器，默认为 `adamw_torch_fused`；完整列表见 transformers 的 `OptimizerNames`。Megatron 后端使用 `optimizer`。
+- optim_args: 传给优化器的额外参数。默认为None。
+- weight_decay: weight 衰减系数。默认为0.1。
+- adam_beta1: Adam 一阶矩的指数衰减率。默认为0.9。
+- adam_beta2: Adam 二阶矩的指数衰减率。默认为0.95。
+- adam_epsilon: Adam 的 epsilon。默认为1e-8。
+- use_galore: 是否使用 GaLore（全参数低秩梯度投影，transformers 后端）。默认为False。
+- galore_target_modules: 应用 GaLore 的模块。默认为None，即 attention 和 mlp。
+- galore_rank: GaLore 的 rank。默认为128。
+- galore_update_proj_gap: 分解矩阵的更新间隔。默认为50。
+- galore_scale: 矩阵权重系数。默认为1.0。
+- galore_proj_type: GaLore 矩阵分解类型。默认为 `std`。
+- galore_optim_per_parameter: 是否为每个 GaLore 目标参数单独设置优化器（transformers 后端拒绝该参数）。默认为False。
+- galore_with_embedding: 是否对 embedding 应用 GaLore。默认为False。
+- galore_quantization: 是否使用 Q-GaLore。默认为False。
+- galore_proj_quant: 是否对 SVD 分解矩阵量化。默认为False。
+- galore_proj_bits: SVD 量化 bit 数。默认为4。
+- galore_proj_group_size: SVD 量化分组数。默认为256。
+- galore_cos_threshold: 投影矩阵更新的 cos 相似度阈值。默认为0.4。
+- galore_gamma_proj: 投影矩阵相似后拉长更新间隔的系数。默认为2。
+- galore_queue_size: 计算投影矩阵相似度的队列长度。默认为5。
+- weight_decay_incr_style: weight decay 随训练的变化方式，可选为 `constant`，`linear`，`cosine`。默认为 `constant`。Megatron 专用。
+- start_weight_decay: weight decay 的起始值。默认为None。
+- end_weight_decay: weight decay 的终止值。默认为None。
+- min_lr: 学习率下限，`cosine` 调度加 `min_lr` 等价于 `cosine_with_min_lr`。默认为0.0。Megatron 专用。
+- optimizer: Megatron 的优化器，可选为 `adam`，`sgd`，`muon`，`dist_muon`（分片，可与通信重叠的 muon）。默认为 `adam`。
+- muon_momentum: Muon 的动量。默认为0.9。
+- muon_split_qkv: 对 q/k/v 分别正交化。默认为True。Megatron 专用。
+- muon_use_nesterov: 是否使用 Nesterov 动量。默认为False。
+- muon_scale_mode: Muon 的缩放方式，可选为 `spectral`，`unit_rms_norm`，`shape_scaling`。默认为 `spectral`。
+- muon_fp32_matmul_prec: Newton-Schulz 矩阵乘的精度，可选为 `low`，`medium`，`high`。默认为 `medium`。Megatron 专用。
+- muon_coefficient_type: Newton-Schulz 的系数类型。默认为 `quintic`。
+- muon_num_ns_steps: Newton-Schulz 迭代次数，越大正交化越精确。默认为5。
+- muon_tp_mode: Muon 的 TP 模式，可选为 `blockwise`（依赖 TP 宽度），`duplicated`，`distributed`。默认为 `blockwise`。Megatron 专用。
+- muon_extra_scale_factor: Muon 的额外缩放系数。默认为1.0。
+- muon_scalar_optimizer: 处理 muon 不覆盖的参数（标量，bias，norm）的优化器。默认为 `adam`。
+- qk_clip_enabled: [v5] 是否启用 QK-Clip（attention logit 峰值超过 tau 时缩放 Q/K 权重，Kimi K2）。默认为False；预训练模型请勿随意开启，较小的 tau 会破坏 Q/K。
+- qk_clip_tau: [v5] attention logit 上限。默认为10000.0。
+- sgd_momentum: `optimizer=sgd` 的动量。默认为0.9。
+- use_precision_aware_optimizer: 是否用低于 fp32 的精度保存优化器状态，节省显存但可能改变收敛。默认为False。Megatron 专用。
+- main_params_dtype: 主参数精度，可选为 `fp32`，`fp16`。默认为 `fp32`。
+- main_grads_dtype: 主梯度精度，可选为 `fp32`，`bf16`。默认为 `fp32`。
+- exp_avg_dtype: Adam 一阶矩精度，可选为 `fp32`，`fp16`，`bf16`，`fp8`。默认为 `fp32`。
+- exp_avg_sq_dtype: Adam 二阶矩精度，可选为 `fp32`，`fp16`，`bf16`，`fp8`。默认为 `fp32`。
+- accumulate_allreduce_grads_in_fp32: bf16 训练时以 fp32 all-reduce 梯度，消耗带宽但消除漂移。默认为False。
+- optimizer_cpu_offload: 将优化器状态放在主机内存，按步搬运。默认为False。
+- optimizer_offload_fraction: 卸载到主机的比例。默认为1.0。
+- optimizer_cuda_graph: 用 CUDA graph 捕获优化器 step，要求形状不变。默认为False。
+- global_batch_size: Megatron 每步的样本数，由此推导梯度累加步数；需要能被 `per_device_train_batch_size × DP` 整除。默认为None。
+- eval_iters: 每次评估的迭代数。默认为-1，即整个验证集。
+- microbatch_group_size_per_vp_stage: 虚拟流水线阶段内分组的 micro-batch 数。默认为None，由 Megatron 选择。
+- lr_decay_style: Megatron 的学习率衰减方式，可选为 `constant`，`linear`，`cosine`，`inverse-square-root`，`WSD`。默认为 `cosine`；未显式传入时由 `lr_scheduler` 推导。
+- lr_decay_iters: 衰减的迭代数。默认为None，即整个训练过程。
+- lr_warmup_init: warmup 的起始学习率。默认为0.0。
+- lr_wsd_decay_iters: WSD 衰减段的迭代数，仅 `lr_decay_style=WSD` 时读取。默认为None。
+- lr_wsd_decay_style: WSD 衰减段的风格，可选为 `exponential`，`linear`，`cosine`，`minus_sqrt`。默认为 `exponential`。
+- seed: 全局随机种子。默认为42。
+  - 注意：与控制数据集随机的 `data_seed` 互不影响。
+- full_determinism: 确保训练结果可复现，会降低性能。默认为False。
+- use_liger_kernel: 是否启用 [Liger](https://github.com/linkedin/Liger-Kernel) kernel 加速训练并减少显存。默认为False。
+  - 注意：liger_kernel 不支持 device_map，只支持 `task_type='causal_lm'`。
+- neftune_noise_alpha: neftune 的噪声系数。默认为0，通常可设置为 5，10，15。
+- dp_balance: [v5] 是否重排 rollout 后的 batch 以及 ref/teacher/old-logps 的前向，使各 DP rank 负载均衡（在线 RL，蒸馏，RFT）。默认为True。
+- router_aux_loss_coef: MoE 训练时 aux_loss 的权重。默认为0.0。
+- enable_dft_loss: SFT 中是否使用 [DFT](https://arxiv.org/abs/2508.05629) loss。默认为False。
+- enable_channel_loss: 启用 channel loss，按数据集的 channel 字段分组统计 loss（无该字段归为默认 channel），兼容 packing/padding_free/loss_scale。默认为False。
+- loss: 监督损失名称，预训练/SFT，embedding，reranker，decision 任务下生效；取各任务的内置名，或 `@register_loss` 注册的自定义 loss 名，内置名与自定义写法见[插件](./plugins.mdx#loss)。默认为None，使用各任务默认损失。
+- mrl_dims: embedding 训练的 [MRL](https://arxiv.org/abs/2205.13147) 维度配置，key 为截断的 embedding 维度，value 为 loss 权重，例如 `'{"32": 1.0, "64": 1.0, "128": 1.0}'`；超过 hidden_size 的 key 被忽略。仅在 `task_type='embedding'` 下生效。默认为None。
+- acc_strategy: 训练和验证时计算 acc 的级别，可选为 `token`，`seq`。默认为 `token`。
+- 🔥vit_lr: 多模态模型 vit 的学习率。默认为None，等于 learning_rate。通常与 `--freeze_vit`，`--freeze_aligner` 配合。
+  - 提示：日志中的 learning_rate 是 `param_groups[0]` 的学习率，param_groups 顺序为 vit，aligner，llm。
+- 🔥aligner_lr: 多模态模型 aligner 的学习率。默认为None，等于 learning_rate。
+- param_groups_plugins: [v5] 额外的 param_groups 插件，追加在内置的分组（vit/aligner/llm，LoRA+）之后。默认为 `[]`。
+- freeze_parameters: 需要冻结的参数前缀。默认为 `[]`。仅全参数训练。
+- freeze_parameters_regex: 需要冻结的参数正则。默认为None。
+- freeze_parameters_ratio: 从下往上冻结的参数比例。默认为0；可设置为 1 冻结全部，再用 `trainable_parameters` 打开部分参数。
+- trainable_parameters: 额外可训练参数的前缀。默认为 `[]`。
+- trainable_parameters_regex: 额外可训练参数的正则。默认为None。
+  - 注意：`trainable_parameters`，`trainable_parameters_regex` 的优先级高于 `freeze_parameters`，`freeze_parameters_regex`，`freeze_parameters_ratio`。
+- tf32: 是否允许 matmul/conv 使用 tf32。默认为None，保持 torch 默认。
+- torch_empty_cache_steps: 每隔多少步清空一次 CUDA cache，缓解显存碎片。默认为None。
+- use_cache: 模型的 KV cache，训练时关闭。默认为False。
+- label_smoothing_factor: 标签平滑系数，0 为关闭。默认为0.0。
+- calculate_per_token_loss: 是否按整个 global batch 的真实 token 数求平均（而非按 micro-batch），对 packing/padding_free 有影响。默认为None，取 Megatron 默认。
+- apply_wd_to_qk_layernorm: 是否对 q/k layernorm 参数也施加 weight decay。默认为False。
+- liger_kernel_config: 传给 liger 的 kernel 开关，json 对象。默认为None。
+- 🔥eval_strategy: 训练中评估策略。默认为None，跟随 `save_strategy`；没有验证集时为 `no`。
+- 🔥eval_steps: 评估间隔，整数或 (0, 1) 内的比例。默认为None，跟随 `save_steps`。
+- eval_on_start: 训练前先评估一次，确保评估流程正常。默认为False。
+- eval_delay: 跳过前多少 steps（或 epochs）的评估。默认为0。
+- load_best_model_at_end: 训练结束时重新加载最优 checkpoint。默认为False。
+- metric_for_best_model: 最优模型指标。默认为None：`predict_with_generate` 为 False 时为 `loss`，否则为 `rouge-l`（GRPO 为 `reward`）。
+- greater_is_better: 指标是否越大越好。默认为None，指标含 loss 时为 False，否则为 True。
+- predict_with_generate: 验证时使用生成方式。默认为False。
+- eval_dataset: 训练中评估的数据集。默认为 `[]`。
+- eval_dataset_args: 评估数据集参数，json 字符串。默认为None。
+- eval_limit: 评估数据集的采样数。默认为None。
+- eval_generation_config: 评估时的生成配置，json 字符串。默认为None。
+- extra_eval_args: 额外评测参数，json 字符串。默认为None。
+- eval_sampler_backend: [v5] `predict_with_generate` 使用的引擎，可选为 `transformers`（进程内），`vllm`，`sglang`（部署同卡引擎并同步权重，仅 ray 模式）。默认为 `transformers`。
+- early_stop_interval: 早停间隔：`metric_for_best_model` 在这么多个周期（基于 `save_steps`）内没有提升则终止训练。默认为None。
+- callbacks: 自定义 trainer callback 的名称。默认为 `[]`。
 
-训练、验证、优化器和调度器的其余字段见 [TrainConfig](https://github.com/modelscope/ms-swift/blob/main/swift/dev/config/train_config.py)。
+## 分布式参数
 
-## 分布式与服务参数
+- 🔥mode: 运行方式，可选为 `local`，`ray`，`remote`。默认为 `local`。
+  - `remote`：训练/推理进程运行在 twinkle-server 中，本进程是单进程的 twinkle_client 驱动，`--model` 填服务端模型名，`--backend` 指定服务端引擎。
+  - 注意：`swift rl` 要求 `ray` 模式。
+- nproc_per_node: [v5] 每个节点的进程数。默认为None，由启动器决定。
+- ray_exp_name: Ray 实验名，作为 cluster 与 worker 名称的前缀。默认为None，仅 `mode='ray'` 读取。
+- server_base_url: [v5] `mode='remote'` 时 twinkle-server 的网关根地址（必填，不带 `/api/v1`，客户端会自动拼接）。默认为None。
+- server_api_key: [v5] `mode='remote'` 时网关的 Bearer token。默认为None，即不鉴权。
+- 🔥backend: [v5] 训练与推理后端，可选为 `hf`（transformers），`megatron`，`unsloth`。默认为None，即 transformers。
+- bridge_backend: Megatron checkpoint 的转换桥，可选为 `mcore-bridge`，`megatron-bridge`。默认为 `mcore-bridge`。
+- 🔥parallel_spec: [v5] DeviceMesh 并行布局，例如 `dp4tp2pp2`，支持 dp/fsdp/tp/pp/cp/ep/etp/epfsdp/vpp/sp，transformers 与 Megatron 共用。默认为None。
+- 🔥deepspeed: DeepSpeed 配置，可设为 `zero0`，`zero1`，`zero2`，`zero3`，`zero2_offload`，`zero3_offload` 使用内置配置，或传入自定义配置文件路径。默认为None。
+- zero_hpz_partition_size: ZeRO++ 的节点内模型分片大小。默认为None；出现 grad_norm NaN 时可尝试 `--torch_dtype float16`。
+- deepspeed_autotp_size: DeepSpeed AutoTP 的张量并行大小，需 `--deepspeed` 为 zero0/1/2，仅全参数训练。默认为None。
+- 🔥fsdp: FSDP2 配置，可设为 `fsdp2` 使用内置配置，或传入自定义配置文件路径；与 DeepSpeed 二选一。默认为None。
+- fsdp_config: FSDP 自身的配置（wrap 策略，分片，offload），json 对象或文件。默认为None。
+- ddp_timeout: 集合通信超时（transformers 后端），单位为秒。默认为None。
+- ddp_find_unused_parameters: 默认为None。
+- ddp_broadcast_buffers: 每次前向从 rank 0 广播 buffer；没有 buffer 时关闭可提升吞吐。默认为None。
+- ddp_bucket_cap_mb: all-reduce 的 bucket 大小；越大通信重叠越好，但首次归约更晚。默认为None。
+- ddp_static_graph: 固定归约顺序，更快，但参数集每步变化时会出错。默认为None。
+- local_rank: 本进程的 rank，由启动器设置。默认为-1。
+- tensor_model_parallel_size: Megatron TP 大小。默认为1。
+- pipeline_model_parallel_size: Megatron PP 大小。默认为1。
+- context_parallel_size: Megatron CP 大小。默认为1。
+- expert_model_parallel_size: Megatron EP 大小。默认为1。
+- expert_tensor_parallel_size: MoE 专家层内部的 TP 大小，可与稠密层不同。默认为1。
+- sequence_parallel: Megatron TP 内的序列并行，仅 tp 大于 1 时生效；与模板参数的 `sequence_parallel_size`（Ulysses）不同。默认为False。
+- use_distributed_optimizer: 是否使用 Megatron 分布式优化器。默认为True。
+- use_megatron_fsdp: 用 Megatron-FSDP 分片参数，需要分布式优化器，与 CP 不兼容。默认为False。
+- recompute_granularity: Megatron 重计算的粒度，可选为 `selective`，`full`，`none`。默认为 `selective`。
+- recompute_method: `full` 的重计算方式，可选为 `uniform`，`block`。默认为None。
+- recompute_num_layers: 每个重计算块的层数。默认为None。
+- recompute_modules: 重计算的子模块，可选为 `core_attn`，`mlp`，`moe`。默认为 `['core_attn']`。
+- cp_comm_type: CP rank 间交换 k/v 的方式，`p2p`，`a2a`，`allgather` 或按层的 list。默认为None。
+- cp_partition_mode: CP 的序列切分方式，`zigzag` 让每个 rank 都有靠前和靠后的位置（因果注意力负载均衡），`contiguous` 每个 rank 一段。默认为 `zigzag`。
+- data_parallel_sharding_strategy: Megatron DP 优化器的分片内容，`optim_grads_params` 等价于 ZeRO-3。默认为 `optim_grads_params`。
+- virtual_pipeline_model_parallel_size: 每个 rank 的交错（虚拟）流水线阶段数，减小流水线气泡，每个阶段多一份激活。默认为None。
+- pipeline_model_parallel_layout: 显式的层到流水线阶段的分配。默认为None。
+- decoder_first_pipeline_num_layers: 第一个流水线阶段的层数。默认为None。
+- decoder_last_pipeline_num_layers: 最后一个流水线阶段的层数。默认为None。
+- account_for_embedding_in_pipeline_split: 切分时把 embedding 计为一层。默认为False。
+- account_for_loss_in_pipeline_split: 切分时把 loss 计为一层。默认为False。
+- overlap_grad_reduce: 梯度归约与反向重叠；`optimizer=muon` 时拒绝，`dist_muon` 接受。默认为False。
+- overlap_param_gather: 参数聚合与前向重叠。默认为False。
+- overlap_param_gather_with_optimizer_step: 参数聚合与优化器 step 重叠，需要 `overlap_param_gather`。默认为False。
+- overlap_p2p_comm: 流水线 p2p 通信重叠。默认为True。
+- batch_p2p_comm: 把流水线的发送与接收合并为一次调用。默认为None，取 Megatron 默认。
+- align_grad_reduce: 对齐 bucket 使每个 rank 在相同偏移归约，否则通信不再重叠。默认为True。
+- align_param_gather: 同 `align_grad_reduce`，作用于参数聚合。默认为True。
+- tp_comm_overlap: TP 通信与 GEMM 重叠，需要 Transformer Engine 与 userbuffer 配置。默认为False。
+- nccl_comm_warmup: 对每个 NCCL 通信器做预热集合通信。默认为False。
 
-- `mode`: 默认 `local`；可选 `local`、`ray`、`remote`。本机 RL 入口要求 Ray，不能将默认本地 SFT 形态套在 RL 上。
-- `backend`: 默认为 Transformers，可选 `hf`、`megatron`、`unsloth`。
-- `nproc_per_node`: Ray 训练组的进程数；本地 torchrun 的启动进程数由启动器指定。
-- `parallel_spec`: DeviceMesh 并行布局，如 `dp2`。
-- `deepspeed`、`fsdp`、`fsdp_config`: 对应后端的训练分片配置。
-- `tensor_model_parallel_size`、`pipeline_model_parallel_size`、`context_parallel_size`、`expert_model_parallel_size`: Megatron TP/PP/CP/EP，默认均为 `1`。
-- `server_base_url`、`server_api_key`: 远程服务网关根地址与鉴权。
+本地多进程训练通过启动器运行，例如 `NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft sft.yaml`；Ray 模式通过 `--mode ray --nproc_per_node 2` 配置训练组。远程部署见[服务端与客户端](./server-client.mdx)。
 
-本地多进程监督训练通过启动器运行，例如 `NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 swift sft sft.yaml`；Ray 模式通过 `--mode ray --nproc_per_node 2` 配置训练组。远程部署见[服务端与客户端](./server-client.mdx)。
+## Megatron 参数
 
-## 在线学习与生成参数
+仅 `--backend megatron` 生效。
 
-- `rl_type`: 默认 `dpo`，可选 `dpo`、`orpo`、`simpo`、`kto`、`cpo`、`rm`、`ppo`、`grpo`、`gkd`、`opsd`、`mopd`、`rft`。
-- `rollout_sampler`: 默认 `vllm`，可选 `vllm`、`sglang`。
-- `sampler_mode`: 默认处理为 `disaggregated`；`colocate` 为共卡放置。
-- `generation_batch_size`: 一轮采样的 prompt 数，默认按训练 batch 推导。
-- `num_generations`: GRPO 每个 prompt 的回答数；与 prompt 数不同。
-- `orm`、`prm`: 奖励规则、插件或模型；`orm_weights`、`prm_weights` 与各通道逐项对应。
-- `async_mode`: 默认 `none`；可选 `one_step_off`、`fully_async`。
-- `max_turns`、`max_trajectory_tokens`: 多轮轨迹的轮数与总 token 上限。
-- `tools`、`sandbox_kind`: 工具与环境选择，见 [Agentic 训练](../training/agentic.mdx)。
+- apply_rope_fusion: 融合 RoPE 算子。默认为False。
+- bias_activation_fusion: 融合 bias 与激活。默认为True。
+- bias_dropout_fusion: 融合 bias 与 dropout。默认为True。
+- cross_entropy_loss_fusion: 融合交叉熵。默认为True。
+- cross_entropy_fusion_impl: 交叉熵融合的实现，`native` 或 `te`（需要 Transformer Engine，更快）。默认为 `native`。
+- gradient_accumulation_fusion: 把梯度累加折叠进权重梯度 GEMM。默认为True。
+- masked_softmax_fusion: 融合 masked softmax。默认为True。
+- apply_dsa_kernel_fusion: 融合 DeepSeek 稀疏注意力的 indexer kernel，仅含该 indexer 的模型。默认为False。
+- attention_softmax_in_fp32: softmax 使用 fp32，长序列 logits 不易溢出。默认为True。
+- apply_query_key_layer_scaling: 是否按层数额外缩放 q·k（Megatron fp16 稳定性）。默认为None，由 Megatron 决定。
+- linear_decoupled_in_proj: q/k/v 投影保持为独立矩阵而非一个融合权重。默认为False。
+- dsa_indexer_loss_coeff: DSA indexer 的辅助损失权重，0 则不训练 indexer。默认为0.0。
+- dsa_indexer_use_sparse_loss: 损失只在稀疏选择的部分上计算。默认为False。
+- use_fused_mhc: 使用融合的多头压缩（MHC）kernel。默认为False。
+- mhc_recompute_layer_num: 反向时重计算的 MHC 层数。默认为None，即不重计算。
+- csa_dense_mode: 以稠密方式运行 CSA 层，用于衡量稀疏化的代价。默认为False。
+- perform_initialization: 是否初始化模型参数；加载预训练 checkpoint 时关闭，从头训练时开启。默认为False。
+- use_cpu_initialization: 在 CPU 上构建初始权重，更慢但节省显存。默认为False。
+- data_parallel_random_init: 每个 DP rank 使用不同的初始化种子，仅在没有 checkpoint 时有意义。默认为False。
+- te_rng_tracker: 通过 Transformer Engine 跟踪随机数，使 dropout 可复现。默认为False。
+- manual_gc: 按固定步数手动垃圾回收，避免计划外的回收阻塞集合通信。默认为False。
+- manual_gc_eval: 评估时是否手动垃圾回收。默认为True。
+- manual_gc_steps: 手动垃圾回收的间隔步数，0 表示训练中禁用。默认为0。
+- mlp_padding_free: `padding_free` 时 MLP 也跳过 padding。默认为False。
+- sequence_packing_scheduler: `dp_balanced` 平衡各 DP rank 的 token 数，`default_dynamic_cp` 按 batch 动态调整 CP 切分。默认为None，保持 Megatron 静态行为。
+- megatron_extra_kwargs: 直接传给 Megatron 参数命名空间的额外参数，json 对象或文件。默认为None。
 
-离线推理使用 `sampler`，默认 `transformers`。`temperature`、`top_k`、`top_p`、`repetition_penalty`、`max_new_tokens` 为解码参数；`vllm_*`、`sglang_*` 为引擎参数。例如 `--vllm_tensor_parallel_size 2` 只配置采样引擎，不改变训练模型的 TP。
+## MoE 参数
 
-`--output_format all|dpo|grpo` 控制离线结果格式；`--num_return_sequences` 默认 `1`；`--result_path` 指定结果文件。奖励插件见[插件](./plugins.mdx)。
+仅 Megatron 后端的 MoE 模型生效；并行大小见分布式参数。
 
-## 保存与日志
+- moe_aux_loss_coeff: 负载均衡损失权重，可传 list 按层设置；0 有路由坍缩到少数专家的风险。默认为0.0。
+- moe_z_loss_coeff: z-loss 权重，使 router logits 保持较小，路由稳定。默认为None，即关闭。
+- moe_router_load_balancing_type: 每层的负载均衡策略（`aux_loss`，`seq_aux_loss`，`sinkhorn`，`none`）。默认为None，取 Megatron 默认。
+- moe_router_dtype: router 的精度，可选为 `none`，`fp32`，`fp64`；bf16 舍入会翻转离散路由决策。默认为 `fp32`。
+- moe_token_dispatcher_type: token 分发方式，`alltoall` 随 EP 扩展，`allgather` 仅适合小 EP，`flex` 按情况选择。默认为 `alltoall`。
+- moe_token_drop_policy: 超出专家容量时丢弃 token 的依据，可选为 `probs`，`position`。默认为 `probs`。
+- moe_expert_capacity_factor: 专家容量相对于均匀分配的倍数。默认为None，即不设上限，显存由最忙的专家决定。
+- moe_pad_expert_input_to_capacity: 把每个专家的输入补齐到容量以获得静态形状。默认为False。
+- moe_grouped_gemm: 用一个 grouped GEMM 代替逐专家的小 GEMM。默认为True。
+- moe_permute_fusion: 把专家分组的置换融合进分发。默认为False。
+- moe_shared_expert_overlap: 共享专家的计算与路由专家的通信重叠（需要共享专家）。默认为False。
+- moe_layer_recompute: [v5] 反向时重计算整个 MoE 层。默认为False。
+- moe_enable_deepep: 启用 DeepEP（需单独安装）。默认为False。
 
-- `output_dir`: 默认 `output`；`add_version`: 默认 `true`，为每次运行创建版本目录。
-- `save_strategy`: 默认 `steps`；`save_steps`: 默认 `500`；`save_total_limit`: 默认不限制。
-- `resume_from_checkpoint`: 恢复训练；`resume_only_model`: 默认 `false`，启用时只加载权重。
-- `save_only_model`: 默认 `false`；恢复训练还需要优化器、调度器和训练进度状态。
-- `load_args`: 训练默认 `false`；推理及产物命令默认启用，用于恢复 checkpoint 的模型和模板设置。
-- `external_plugins`: 显式加载插件。恢复 checkpoint 所声明的插件代码需信任授权，不会仅因读取 `args.json` 就自动执行。
-- `report_to`: 默认 `tensorboard`；`logging_steps`: 默认 `5`；`logging_nan_inf_filter`: 默认 `false`。
+## 量化参数
 
-程序化调用与组件级训练见[组件与 MP 分离](./mp-separation.mdx)。
+加载模型时的量化参数，含义见 [transformers 量化文档](https://huggingface.co/docs/transformers/main/en/main_classes/quantization)。`swift export` 的 gptq/awq 量化见导出参数。
+
+- 🔥quant_method: 加载模型时的量化方法，可选为 `bnb`，`hqq`，`eetq`，`quanto`，`fp8`。默认为None。
+  - 注意：对 awq/gptq 量化模型做 QLoRA 训练，不需要设置量化参数。
+- 🔥quant_bits: 量化 bit 数，可选为 1，2，3，4，8，`float8`。默认为None。
+- hqq_axis: hqq 量化的 axis。默认为None。
+- bnb_4bit_compute_dtype: bnb 的计算类型，可选为 `float16`，`bfloat16`，`float32`。默认为None，等于 `torch_dtype`。
+- bnb_4bit_quant_type: bnb 的量化类型，可选为 `fp4`，`nf4`。默认为 `nf4`。
+- bnb_4bit_use_double_quant: 是否使用双重量化。默认为True。
+- bnb_4bit_quant_storage: bnb 的量化存储类型。默认为None。
+
+## 生成参数
+
+参考 [generation_config](https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig)。
+
+- 🔥max_new_tokens: 推理最大生成 token 数。默认为None，无限制。
+- temperature: 温度，越高随机性越大。默认为None，读取 generation_config.json；设置 `--temperature 0` 或 `--top_k 1` 可取消随机性。
+- top_k: 保留概率最高的 top_k 个 token。默认为None，读取 generation_config.json。
+- top_p: 保留累计概率达到 top_p 的 token。默认为None，读取 generation_config.json。
+- repetition_penalty: 重复惩罚，1.0 表示不惩罚。默认为None，读取 generation_config.json。
+- num_beams: beam search 的保留数量。默认为1。
+- 🔥stream: 流式输出。默认为None，交互式推理为 True，数据集批量推理为 False。
+- stop_words: eos_token 之外的停止词。默认为 `[]`。
+  - 注意：eos_token 会从输出中删除，额外停止词会保留。
+- logprobs: 是否输出 logprobs。默认为False。
+- top_logprobs: 输出 top_logprobs 的数量。默认为None。
+- structured_outputs_regex: 结构化输出（引导解码）的正则表达式，仅在 vLLM/SGLang 采样器下生效。默认为None。
+- generation_config: [v5] generation_config.json 的路径或目录，作为基线配置，上面的字段会覆盖它。默认为None。
+
+## 强化学习参数
+
+`swift rl` 使用。除本节外还接受训练，采样，奖励参数。
+
+- 🔥rl_type: 算法类型，可选为'dpo'，'orpo'，'simpo'，'kto'，'cpo'，'rm'，'ppo'，'grpo'，'gkd'，'opsd'，'mopd'，'rft'。默认为'dpo'。
+- ref_model: 参考模型的id或路径。使用dpo，kto，ppo，grpo等算法且全参数训练时需要传入。默认为None，设置为`--model`。
+- ref_adapters: 参考模型的adapter路径列表。使用 SFT 产生的 LoRA 权重进行 DPO/KTO/GRPO 时，设置`--adapters <sft_ckpt> --ref_adapters <sft_ckpt>`；该场景断点续训时设置`--resume_from_checkpoint <rl_ckpt> --ref_adapters <sft_ckpt>`。默认为`[]`。
+- ref_model_type: 同model_type，作用于参考模型。默认为None。
+- ref_model_revision: 同model_revision，作用于参考模型。默认为None。
+- ref_parallel_spec: [v5] 参考模型的并行规格（同parallel_spec）。默认为None。
+- 🔥beta: 控制与参考模型偏差程度的参数，值越高表示与参考模型的偏差越小。默认为None，按算法取默认值：simpo为2.0，grpo为0.04，gkd为0.5，opsd，mopd，rft为0.0，其他算法为0.1。grpo下设置为0时不加载参考模型。
+- max_completion_length: 生成的最大token数，默认为512。命令行的`--response_length`是它的别名。多轮训练时每轮的生成长度由`max_new_tokens`控制，二者独立。
+- label_smoothing: DPO的标签平滑系数，默认为0。
+- rpo_alpha: 来自[RPO论文](https://arxiv.org/abs/2404.19733)，控制损失中NLL项（即SFT损失）的权重，`loss = dpo_loss + rpo_alpha * sft_loss`，论文推荐1.0。默认为None，不引入SFT损失。
+- ld_alpha: 来自[LD-DPO论文](https://arxiv.org/abs/2409.06411)，对超出公共前缀部分的logps加权以抑制长度偏好。默认为None。
+- discopop_tau: 来自[DiscoPOP论文](https://arxiv.org/abs/2406.08414)的温度参数，用于缩放log-ratio。默认为0.05，在loss_type为discopop时生效。
+- loss_type: 损失类型。默认为None，按算法取默认值。
+  - DPO: 可选项参考[文档](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions)，支持传入多个值实现混合训练（[MPO](https://arxiv.org/abs/2411.10442)），传入多个值时需要设置loss_weights。默认为sigmoid。
+  - GRPO: loss归一化类型，可选为'grpo'，'bnpo'，'dr_grpo'，'dapo'，'cispo'，'sapo'，'real'，'fipo'，'dro'，'dis'。默认为'grpo'。
+- loss_weights: DPO训练中设置多个loss_type时，各个损失项的权重。
+- cpo_alpha: CPO/SimPO损失中nll loss的系数，默认为1.0。
+- simpo_gamma: SimPO算法中的reward margin项，论文建议0.5到1.5，默认为1.0。
+- desirable_weight: KTO算法中对desirable损失的加权系数，用于抵消desirable和undesirable数量不均衡的影响，默认为1.0。
+- undesirable_weight: KTO算法中对undesirable损失的加权系数，默认为1.0。
+- center_rewards_coefficient: RM训练中激励奖励模型输出均值为零的奖励的系数，具体查看[论文](https://huggingface.co/papers/2312.09244)，推荐值0.01。默认为None。
+- calculate_KL: 是否计算当前模型与参考模型之间的KL散度并记录到日志。默认为None，按算法自动决定。
+- f_divergence_type: KL散度的类型，可选值参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/dev/loss/typing.py)。默认为'reverse_kl'。
+- f_alpha_divergence_coef: [v5] alpha散度的系数，默认为0.5。
+- reference_free: 是否不使用参考模型（reference-free训练）。默认为False。
+- real_tau: loss_type为real时的温度参数。默认为0.5。
+- sync_ref_model: 是否定期同步参考模型。默认为False。
+  - ref_model_sync_steps: 同步频率，默认为512。
+  - ref_model_mixup_alpha: 更新时模型与先前参考模型的混合系数，更新公式为`ref = mixup_alpha * model + (1 - mixup_alpha) * ref_prev`，默认为0.6。
+- reference_parallel_spec: [v5] 参考模型的并行规格。默认为None。
+
+### PPO参数
+
+参数含义可以参考[这里](https://huggingface.co/docs/trl/main/en/ppo_trainer)。
+
+- num_ppo_epochs: 默认为4。
+- whiten_rewards: 默认为False。
+- kl_coef: 默认为0.05。
+- cliprange: 默认为0.2。
+- vf_coef: 默认为0.1。
+- cliprange_value: 默认为0.2。
+- gamma: 默认为1.0。
+- lam: 默认为0.95。
+- lam_alpha: [v5] 默认为None。
+
+### GRPO参数
+
+- num_generations: 每个prompt采样的数量，论文中的G值，generation_batch_size必须能被num_generations整除。默认为8。
+- generation_batch_size: 每轮rollout的prompt数量，见采样参数。
+- num_iterations: 每条数据的更新次数，[论文](https://arxiv.org/abs/2402.03300)中的 $\mu$ 值，默认为1。
+- epsilon: clip系数，默认为0.2。
+- epsilon_high: upper clip系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
+- delta: [INTELLECT-2](https://huggingface.co/papers/2505.07291)中双侧GRPO的上界裁剪值。若设置，建议大于1 + epsilon。默认为None。
+- advantage_estimator: 优势计算函数，可选为'grpo'，'rloo'，'reinforce_plus_plus'，'reinforce_plus_plus_baseline'，'remax'，'opo'，'gpg'，'grpo_passk'。默认为'grpo'，即计算组内相对优势。
+- f_norm: [v5] 优势归一化的系数，默认为1.0。
+- segment_discount: [v5] 多轮训练中跨轮的折扣系数，默认为1.0。
+- kl_in_reward: 控制KL散度正则项的处理位置；False表示作为损失函数的独立正则项，True表示将KL直接并入奖励。默认与advantage_estimator绑定：grpo下默认为False，rloo和reinforce_plus_plus下默认为True。
+- scale_rewards: 奖励的缩放策略，可选为'group'（按组内标准差缩放），'batch'（按整个批次的标准差缩放），'none'（不缩放），'gdpo'（对每个奖励函数分别做组内归一化后加权聚合，参考[论文](https://arxiv.org/abs/2601.05242)）。默认与advantage_estimator绑定：grpo对应group，rloo对应none，reinforce_plus_plus对应batch。
+  - 注意：gdpo模式不支持kl_in_reward=True，同时设置时kl_in_reward自动设为False。
+- importance_sampling_level: 重要性采样比的计算粒度，可选为'token'，'sequence'，'sequence_token'。'token'保留每个token的对数概率比，'sequence'对序列中所有有效token的对数概率比取平均（[GSPO论文](https://arxiv.org/abs/2507.18071)）。默认为'token'。
+- dynamic_sample: 筛除组内奖励标准差为0的数据并额外采样新数据，默认为False。
+- max_resample_times: dynamic_sample下的重采样次数上限，默认为3。
+- overlong_filter: 跳过超长截断的样本，不参与loss计算，默认为False。
+- dro_beta: [v5] dro损失的系数，默认为0.1。
+- clip_ratio_c: [v5] 默认为20.0。
+- clip_cov_ratio: [v5] 默认为0.0002。
+- clip_cov_lb: [v5] 默认为1.0。
+- clip_cov_ub: [v5] 默认为5.0。
+- kl_cov_ratio: [v5] 默认为0.0002。
+- ppo_kl_coef: [v5] 默认为1.0。
+- dis_detach_importance_weight: [v5] dis损失中是否对重要性权重做detach，默认为True。
+- log_completions: 是否记录训练中的模型生成内容，搭配`--report_to wandb/swanlab`使用。默认为False。
+  - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint目录中创建completions.jsonl来存储生成内容。
+- log_entropy: 记录训练中的熵值变化，默认为False。
+- top_entropy_quantile: 仅对熵值处于前指定分位的token参与损失计算，默认为1.0，即不过滤低熵token。
+- tau_pos: [SAPO](https://arxiv.org/abs/2511.20347)算法中正优势的温度参数，控制软门控函数的锐度。较大值使门控更锐利，较小值使门控更平滑。默认为1.0。
+- tau_neg: SAPO算法中负优势的温度参数。通常设置tau_neg大于tau_pos以对负优势施加更强约束。默认为1.05。
+- fipo_decay_rate: FIPO Future-KL折扣半衰参数，实际折扣为`2 ** (-1 / fipo_decay_rate)`，默认为32.0。
+- fipo_clip_range: FIPO influence weight的裁剪范围，默认为0.2；设置为None或0时不裁剪。
+- fipo_clip_high_only: 是否只将FIPO influence weight裁剪到[1.0, 1.0 + fipo_clip_range]，默认为True。
+- fipo_safety_threshold: 当负advantage token的IS ratio超过该阈值时，将FIPO influence weight限制到[0.8, 1.0]，默认为4.0。
+- teacher_kl_coef: OPD-RL中teacher KL的系数，即`adv_t = base_adv + teacher_kl_coef * teacher_kl`。默认为1.0。
+- advantage_reweight: 优势重加权算法，可选为'rlsd'（[RLSD](https://arxiv.org/abs/2604.03128)）：利用teacher与student在相同采样token上的对数概率差异，将GRPO的序列级优势在token维度重新分配，即`delta_t = logP_T(y_t) - logP_S(y_t)`，`w_t = exp(sign(A) * delta_t)`，`reweight = (1 - λ) + λ * clip(w_t)`，`A_hat_t = A * reweight`；reweight恒为正，不会翻转环境奖励的符号。默认为None，不启用。
+  - 启用后需要已设置orm（reweight方向依赖优势符号），且数据集包含teacher_prompt列（特权prompt，如问题加参考解答）；与use_liger_kernel，loss_type为real或fipo，off_policy_sequence_mask_delta不兼容。不设置teacher_model时为动态自蒸馏（teacher为当前策略在特权prompt上打分）；设置`--teacher_model`后为冻结的本地teacher。
+- rlsd_lambda: RLSD混合权重。0退化为普通GRPO，1为完整重加权，取值范围[0, 1]。默认为0.5。
+- rlsd_reweight_clip_range: 证据权重裁剪范围，将`w_t`裁剪到[1 - eps_w, 1 + eps_w]。默认为0.2。
+- rlsd_lambda_warmup_steps: 将λ从0线性warmup到rlsd_lambda的步数，默认为0，不warmup。
+- rlsd_lambda_decay_steps: warmup之后将λ从rlsd_lambda线性衰减到0的步数，默认为0，不衰减。
+- rlsd_negative_only: 是否仅对优势为负的序列进行重加权；优势非负的序列保留普通GRPO优势。默认为False。
+- sdar_loss_coef: SDAR（[论文](https://arxiv.org/abs/2605.15155)）置信度门控teacher蒸馏辅助损失的系数，叠加到GRPO策略损失上：`loss = policy_loss + sdar_loss_coef * L_SDAR`，其中`L_SDAR = token-mean(sigmoid(sdar_gate_beta * delta_t) * delta_t)`。大于0时启用；与use_liger_kernel，advantage_reweight=rlsd不兼容。默认为0.0，不启用。
+- sdar_gate_beta: SDAR sigmoid门控的温度系数，值越大门控越尖锐。默认为5.0。
+- rollout_importance_sampling_mode: 训推不一致校正模式，可选为'token_truncate'，'token_mask'，'sequence_truncate'，'sequence_mask'。默认为None，不启用校正。
+- rollout_importance_sampling_threshold: 重要性采样权重的阈值，用于截断或屏蔽极端权重，默认为2.0。
+- log_rollout_offpolicy_metrics: 未设置rollout_importance_sampling_mode时，是否记录训推不一致诊断指标（KL，PPL等）；设置了该模式时指标自动记录。默认为False。
+- off_policy_sequence_mask_delta: Off-Policy Sequence Masking阈值，来自[论文](https://arxiv.org/abs/2512.02556)。设置后计算每个序列的`mean(old_policy_logps - policy_logps)`，若该值大于阈值且该序列的优势为负，则该序列不参与损失计算。默认为None。
+- router_replay_mode: MoE模型训练时路由器的回放模式，可选为'disabled'，'R2'，'R3'。默认为'disabled'。
+- enable_sampling_replay: [v5] 是否启用采样回放。默认为False。
+
+### CHORD参数
+
+- chord_sft_dataset: CHORD使用的SFT数据集列表，格式同dataset。默认为`[]`。
+- chord_sft_per_device_train_batch_size: CHORD中SFT数据的每设备批次大小。默认为None，与per_device_train_batch_size相同。
+- chord_enable_phi_function: 是否启用phi函数。默认为False。
+- chord_mu_warmup_steps: mu的warmup步数。默认为None。
+- chord_mu_decay_steps: mu的decay步数。默认为None。
+- chord_mu_peak: mu的峰值。默认为None。
+- chord_mu_valley: mu的谷值。默认为None。
+
+### GKD参数
+
+- lmbda: 控制学生数据比例的参数（即策略内学生生成输出所占的比例）。若为0，则不使用学生生成数据。默认为0.5。
+- sft_alpha: GKD中加入sft_loss的权重，最后的loss为`gkd_loss + sft_alpha * sft_loss`。默认为0。
+- gkd_logits_topk: 使用Top-K logits计算KL散度，可有效降低训练显存峰值。默认为None，使用完整词表计算。
+- distill_temperature: [v5] 蒸馏温度，默认为0.9。
+- sampling_temperature: [v5] 学生采样的温度。默认为None。
+
+### 教师模型参数
+
+teacher模型参数在gkd，opsd，mopd，rft与grpo（rlsd，sdar）中使用。
+
+- teacher_model: 教师模型的id或路径列表，多个教师按列表顺序与teacher_weights对应。默认为None。
+- teacher_adapters: teacher_model加载的LoRA权重路径列表。默认为`[]`。与teacher_model一起显式指定时，即使teacher_model与model相同，也会加载独立的冻结教师模型，而不使用禁用adapter的方式复用。
+- teacher_model_type: 同model_type，作用于教师模型。默认为None。
+- teacher_model_revision: 同model_revision，作用于教师模型。默认为None。
+- teacher_deepspeed: 同deepspeed，作用于教师模型。默认为None，使用训练模型的deepspeed配置。
+- offload_teacher_model: 卸载教师模型以节约显存，在采样或计算logps时加载。仅在设置teacher_model时生效。默认为False。
+- teacher_weights: [v5] 多教师的权重列表。默认为None，各教师权重相等。
+- teacher_parallel_spec: [v5] 教师模型的并行规格。默认为None。
+- auxiliary_placement: [v5] 辅助模型（参考模型，教师模型，奖励模型）的放置方式：'pack'将多个辅助模型放到同一组GPU上，'spread'将它们分散到不同GPU上。默认为'pack'。
+- opsd_reverse: [v5] opsd算法中是否反转教师与学生的角色。默认为True。
+
+### RFT参数
+
+- rft_num_samples: [v5] 每个prompt采样的数量。默认为None，使用num_generations。
+- rft_select: [v5] 筛选策略，可选为'best_of_n'（保留奖励最高的样本），'threshold'（保留奖励高于阈值的样本），'top_k'（保留奖励最高的k个样本）。默认为'best_of_n'。
+- rft_threshold: [v5] rft_select为threshold时的阈值。默认为0.0。
+- rft_top_k: [v5] rft_select为top_k时的k值。默认为1。
+- rft_iterations: [v5] 迭代次数，每次迭代用上一轮筛选出的样本训练后再采样。默认为1。
+- rft_max_samples_per_prompt: [v5] 每个prompt最终保留的样本数上限。默认为None，不限制。
+
+## 奖励参数
+
+`swift rl` 使用。orm（结果奖励模型）和prm（过程奖励模型）两组参数结构相同。
+
+- 🔥orm: 结果奖励来源列表，每项可以是内置规则名，模型id或路径，plugin中注册的奖励函数名。内置规则可选为'accuracy'，'format'，'cosine'，'repetition'，'soft_overlong'，'code_execution'；自定义奖励函数通过`--external_plugins`注册。默认为`[]`。
+- orm_weights: 各orm的权重，数量需与orm一致。默认为None，各奖励权重相等。
+- orm_adapters: [v5] 各orm加载的adapter路径列表。默认为None。
+- orm_model_type: [v5] 各orm的model_type列表。默认为None。
+- orm_task_type: [v5] 各orm的task_type列表，可选为'seq_cls'，'reward_model'等，默认为None。
+- orm_model_revision: [v5] 各orm的模型版本列表。默认为None。
+- orm_template: [v5] 各orm使用的template列表。默认为None。
+- orm_parallel_spec: [v5] 奖励模型的并行规格。默认为None。
+- prm: 过程奖励来源列表，格式同orm。默认为`[]`。
+- prm_weights: [v5] 各prm的权重。默认为None。
+- prm_adapters: [v5] 各prm加载的adapter路径列表。默认为None。
+- prm_model_type: [v5] 各prm的model_type列表。默认为None。
+- prm_task_type: [v5] 各prm的task_type列表。默认为None。
+- prm_model_revision: [v5] 各prm的模型版本列表。默认为None。
+- prm_template: [v5] 各prm使用的template列表。默认为None。
+- prm_parallel_spec: [v5] 过程奖励模型的并行规格。默认为None。
+- prm_scorer: [v5] 过程奖励的打分方式：'turn'按对话轮次打分，'delimiter'按分隔符切分步骤打分。默认为None。
+- prm_step_delimiter: [v5] prm_scorer为delimiter时切分步骤的分隔符。默认为None。
+- prm_orm_mix: [v5] 过程奖励与结果奖励的混合比例，最终奖励为`prm_orm_mix * prm + (1 - prm_orm_mix) * orm`。默认为0.5。
+- env_reward_weight: [v5] 环境奖励（多轮交互中沙箱返回的奖励）的权重。默认为1.0。
+- judge_template: [v5] 使用模型作为裁判（LLM-as-a-judge）时的template。默认为None。
+
+### cosine奖励参数
+
+- cosine_min_len_value_wrong: 生成错误答案时，最小长度对应的奖励值。默认为-0.5。
+- cosine_max_len_value_wrong: 生成错误答案时，最大长度对应的奖励值。默认为0.0。
+- cosine_min_len_value_correct: 生成正确答案时，最小长度对应的奖励值。默认为1.0。
+- cosine_max_len_value_correct: 生成正确答案时，最大长度对应的奖励值。默认为0.5。
+- cosine_max_len: 生成文本的最大长度，默认等于max_completion_length。
+
+### repetition奖励参数
+
+- repetition_n_grams: 用于检测重复的n-gram大小。默认为3。
+- repetition_max_penalty: 最大惩罚值，用于控制惩罚的强度。默认为-1.0。
+
+### soft overlong奖励参数
+
+- soft_max_length: 论文中的L_max，模型的最大生成长度，默认等于max_completion_length。
+- soft_cache_length: 论文中的L_cache，控制长度惩罚区间，区间为[soft_max_length - soft_cache_length, soft_max_length]。默认为None。
+
+### code_execution奖励参数
+
+- code_language: [v5] 代码语言，默认为'python'。
+- code_timeout: [v5] 代码执行超时时间，单位为秒。默认为10。
+- code_max_concurrency: [v5] 并发执行的最大数量。默认为8。
+- code_memory_limit_gb: [v5] 每次执行的内存上限（GB）。默认为2.0。
+- code_sandbox_template: [v5] 执行代码使用的沙箱模板。默认为None。
+
+## 采样参数
+
+`swift rl`，`swift infer`，`swift deploy`，`swift eval` 使用。vLLM参数含义可以查看[vLLM文档](https://docs.vllm.ai/en/latest/serving/engine_args.html)，SGLang参数含义可以查看[SGLang文档](https://docs.sglang.ai/backend/server_arguments.html)。
+
+### vLLM参数
+
+- 🔥vllm_gpu_memory_utilization: GPU内存比例，取值范围为0到1。默认为0.9。
+- 🔥vllm_tensor_parallel_size: tp并行数。默认为1。
+- vllm_pipeline_parallel_size: pp并行数。默认为1。
+- vllm_data_parallel_size: dp并行数。默认为1。
+- vllm_enable_expert_parallel: 开启MoE模型的专家并行。默认为False。
+- vllm_max_num_seqs: 单次迭代中处理的最大序列数。默认为None，取vLLM默认值。
+- 🔥vllm_max_model_len: 模型支持的最大长度。默认为None，从config.json中读取。
+- vllm_disable_custom_all_reduce: 禁用自定义的all-reduce内核，回退到NCCL。为了稳定性，默认为True。
+- vllm_enforce_eager: 使用pytorch eager模式还是建立cuda graph。默认为False。设置为True可以节约显存，但会影响效率。
+- vllm_mm_processor_cache_gb: 多模态处理器缓存大小（GiB），用于缓存已处理的多模态输入（如图像，视频）避免重复处理。设置为0可禁用缓存但会降低性能。仅对多模态模型生效。默认为None，取vLLM默认值。
+- vllm_speculative_config: 推测解码配置，传入json字符串。默认为None。
+- vllm_disable_cascade_attn: 是否强制关闭V1引擎的cascade attention实现以防止潜在数值误差。默认为False，由vLLM内部逻辑决定是否使用。
+- 🔥vllm_limit_mm_per_prompt: 控制单个请求中多模态输入的数量，例如`--vllm_limit_mm_per_prompt '{"image": 5, "video": 2}'`。默认为None。
+- vllm_quantization: vLLM在内部量化模型，可选值查看vLLM文档。默认为None。
+- 🔥vllm_enable_prefix_caching: 开启vLLM的自动前缀缓存，节约重复查询前缀的处理时间。默认为True。
+- vllm_reasoning_parser: 推理解析器类型，用于思考模型的思维链内容解析，仅用于`swift deploy`。可选的种类参考[vLLM文档](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions)。默认为None。
+- vllm_engine_kwargs: vLLM的额外参数，json字符串。默认为None。
+
+### SGLang参数
+
+- 🔥sglang_tp_size: tp数。默认为1。
+- sglang_pp_size: pp数。默认为1。
+- sglang_dp_size: dp数。默认为1。
+- sglang_ep_size: ep数。默认为1。
+- sglang_enable_ep_moe: 是否启用ep moe。默认为False。
+- sglang_enable_dp_attention: 为注意力机制启用数据并行，为前馈网络启用张量并行，dp数应等于tp数。目前支持DeepSeek-V2/V3以及Qwen2/Q3 MoE模型。默认为False。
+- sglang_mem_fraction_static: 用于静态分配模型权重和KV缓存内存池的GPU内存比例。GPU 内存不足时可降低该值。默认为None，取SGLang默认值。
+- sglang_context_length: 模型的最大上下文长度。默认为None，使用模型config.json中的值。
+- sglang_disable_cuda_graph: 禁用CUDA图。默认为False。
+- sglang_quantization: 量化方法。默认为None。
+- sglang_kv_cache_dtype: 用于k/v缓存存储的数据类型。'auto'表示使用模型的数据类型；'fp8_e5m2'和'fp8_e4m3'适用于CUDA 11.8及以上版本。默认为'auto'。
+- sglang_disable_custom_all_reduce: 禁用自定义的all-reduce内核，回退到NCCL。为了稳定性，默认为True。
+- sglang_speculative_algorithm: 推测算法，可选为None，'EAGLE'，'EAGLE3'，'NEXTN'，'STANDALONE'，'NGRAM'。默认为None。
+- sglang_speculative_num_steps: 推测解码中从草稿模型采样的步数。默认为None。
+- sglang_speculative_eagle_topk: EAGLE2算法中每步从草稿模型采样的token数量。默认为None。
+- sglang_speculative_num_draft_tokens: 推测解码中从草稿模型采样的token数量。默认为None。
+
+### 调度与资源参数
+
+- sampler_mode: 训练进程与采样进程的GPU放置方式：'colocate'共用同一组GPU，'disaggregated'使用不相交的GPU。默认为None，即disaggregated。
+- rollout_sampler: [v5] 独立采样进程使用的推理引擎，可选为'vllm'，'sglang'。默认为'vllm'。
+- async_mode: [v5] rollout相对训练的异步程度：'none'同步采样；'one_step_off'采样使用上一轮更新后的模型，提升训练速度，不支持多轮场景；'fully_async'采样与训练完全异步，由max_staleness限制落后的策略版本数。默认为'none'。
+- async_generate: 等价于`--async_mode one_step_off`，与async_mode同时设置时二者需一致。默认为False。
+- max_staleness: [v5] fully_async模式下，进行中的轨迹最多落后训练策略多少个版本；one_step_off固定为1。默认为1。
+- weight_sync_backend: [v5] 权重同步的传输方式：'full'传输完整权重；'delta_sharded'只传输变化的元素，首次同步仍传输完整权重。delta_sharded需要disaggregated放置与vllm采样器。默认为'full'。
+- parameter_sync_step: [v5] 每隔多少步发布一次权重，1为每步同步。默认为1。
+- sleep_level: colocate模式下训练时释放vLLM显存：0不释放，1卸载权重并丢弃KV缓存，2二者都丢弃。resource_mode为adaptive时只接受0和1。默认为0。
+- offload_optimizer: colocate模式下rollout时是否卸载优化器状态。resource_mode为adaptive时必须开启offload_optimizer与offload_model中的至少一个。默认为False。
+- offload_model: colocate模式下rollout时是否卸载训练模型权重。默认为False。
+- resource_mode: [v5] 资源规划模式：'manual'使用下面参数手动指定；'estimate'按显存估算生成一份静态方案；'adaptive'在训练中动态调整采样副本数量。默认为'manual'。
+- resource_total_gpus: [v5] 整个任务可用的物理GPU总数。默认为None，从集群获取。
+- resource_gpu_memory_gib: [v5] 单卡显存（GiB）。默认为None，取Ray可见的最小GPU显存。
+- resource_flex_gpus: [v5] 初始化时为运行时角色切换预留的GPU数量。默认为0。
+- resource_window_steps: [v5] adaptive模式下评估各角色显存压力的滑动窗口步数。默认为3。
+- resource_min_hold_steps: [v5] adaptive模式下移动副本后等待的同步次数。默认为5。
+- resource_overrides: [v5] 显式覆盖估算结果，json字符串，key在构建actor前校验。默认为None。
+- rollout_num_workers: [v5] rollout使用的Ray CPU副本数，episode按id路由到各副本。默认为1。
+- generation_batch_size: 每轮rollout的prompt数量。默认为None，由训练批次推导，使每轮采样恰好填满整数个优化步。
+
+### 多轮与沙箱参数
+
+- tools: [v5] 多轮rollout可调用的工具列表，从'tool'插件中选择。默认为`[]`。
+- 🔥max_turns: 多轮训练的最大轮数。设置后开启多轮训练。默认为None，单轮。
+- max_trajectory_tokens: [v5] 整条轨迹（所有轮次）的最大token数。默认为None，不限制。
+- sandbox_kind: [v5] 沙箱类型：'local'进程内工作区；'agentenv'microVM，需要sandbox_template；'openenv'进程内嵌入OpenEnv环境包，需要sandbox_env_name；'openenv_client'连接运行中的OpenEnv服务，需要sandbox_env_name与sandbox_api_url（或环境变量OPENENV_BASE_URL）。默认为'local'。
+- sandbox_env_name: [v5] OpenEnv环境包名，例如'coding_env'（对应`pip install openenv-coding_env`）。默认为None。
+- sandbox_env_kwargs: [v5] OpenEnv环境类的构造参数，json字符串，例如`'{"game_name": "blackjack"}'`。默认为None，使用环境包默认值。
+- sandbox_template: [v5] AgentENV模板名或id。默认为None，使用本地LocalEnv。
+- sandbox_workspace_root: [v5] LocalEnv会话工作区的根目录。默认为None，使用临时目录。
+- sandbox_num_envs: [v5] 所有环境副本同时持有的会话总数上限。默认为1。
+- sandbox_num_workers: [v5] 沙箱环境使用的Ray CPU副本数，每个副本持有sandbox_num_envs / sandbox_num_workers个会话。默认为1。
+- sandbox_session_wait: [v5] 环境reset等待空闲会话的超时时间（秒），None一直等待，0不等待。默认为600。
+- sandbox_api_url: [v5] AgentENV 服务的地址。默认为None，由SDK读取E2B_API_URL。
+- sandbox_timeout: [v5] AgentENV沙箱的空闲超时时间（秒）。默认为None，使用AgentEnv默认值。
+- sandbox_command_timeout: [v5] 单条命令的执行超时时间（秒），LocalEnv与AgentEnv均生效。默认为60。
+- sandbox_memory_limit_gb: [v5] LocalEnv单次调用的地址空间上限（GB）。默认为2.0。
+- segment_policy: [v5] 上下文压缩边界的处理方式：'drop'只保留最后一段可训练，每个episode一行；'collect'把每一段都作为独立的训练行，同一episode的多行共享同一结果，优势按episode计算一次后广播。默认为'drop'。
+- harness: [v5] 运行外部agent程序的'harness'插件名（codex，ms_agent，或通过`--external_plugins`注册的自定义插件）。默认为None，使用内置的工具调用循环。
+
+## 推理参数
+
+`swift infer` 使用。除本节外还接受模型，数据，模板，微调，采样，生成，保存参数。
+
+- 🔥sampler: 推理引擎，可选为'transformers'，'vllm'，'sglang'，'openai'，'no'或已注册的采样器插件名。'pt'等价于'transformers'；'no'不进行推理，只做数据集预处理（配合`--to_cached_dataset`）；'openai'不加载本地模型，向`--infer_url`的OpenAI兼容服务（`swift deploy` 或任意 OpenAI 服务）发 `/chat/completions` 请求，回复由本地模板重新编码，与评测的`--eval_url`对称。默认为'transformers'。
+- infer_url: [v5] sampler为'openai'时的服务地址，例如`http://127.0.0.1:8000/v1`，必填。`--model`同时是请求中的模型名与本地模板/分词器来源。
+- infer_api_key: [v5] infer_url服务需要的api_key。默认为None，本地服务可省略。
+- 🔥max_batch_size: sampler为'transformers'时的批量推理大小，默认为1。设置为-1则不受限制。
+- val_dataset_sample: 推理数据集采样数，默认为None。
+- 🔥result_path: 推理结果存储路径（jsonl）。默认为None，保存到`result/<model>/infer_result/<时间戳>.jsonl`，最终路径会在命令行中打印。已存在的文件会追加写入。
+- output_format: [v5] 推理结果的格式，可选为'all'（输入与输出全部保存），'dpo'（保存为偏好数据格式），'grpo'（保存为GRPO格式）。默认为'all'。
+- store_format: [v5] 推理结果文件的格式，默认为'jsonl'。
+- store_fields: [v5] 结果中保存的字段白名单，默认为None，保存全部字段。
+- metric: 对推理结果进行评估，目前支持'acc'和'rouge'。默认为None，不进行评估。
+- reranker_use_activation: reranker推理时，是否在score之后使用sigmoid。默认为True。
+- engine_kwargs: 传给采样引擎的额外参数，json字符串。默认为None。
+- num_samples: [v5] 每条数据生成的候选数量，用于后续奖励打分筛选。默认为1。
+- num_return_sequences: 同num_samples。
+- n_best_to_keep: 打分后每条数据保留的最佳候选数量。默认为5。
+- reward_threshold: 奖励低于该值的候选被过滤。默认为None，不过滤。
+- easy_query_threshold: 单个query的所有候选中，orm评估正确的比例高于该值时，该query被丢弃，防止过于简单的query出现在结果中。默认为None，不过滤。
+- normalize_rewards: [v5] 是否对奖励做归一化。默认为False。
+- score_ground_truth: [v5] 是否对数据集中的标准答案一并打分。默认为False。
+- orm_channel_weight: [v5] 奖励通道的权重。默认为1.0。
+- batch_size: [v5] 奖励打分时的批次大小。默认为1。
+- max_batches: [v5] 最多处理的批次数，用于调试。默认为None，不限制。
+- num_sampling_batch_size: 每次采样的batch_size。默认为None。
+- num_sampling_batches: 共采样多少个batch。默认为None。
+- save_rollout_tokens: [v5] 是否保存rollout的token（input_ids与logprobs）供训练复用。默认为False。
+- resume: 是否从已有的result_path续跑，跳过已处理的数据。默认为False。
+- override_exist_file: result_path已存在时是否覆盖。默认为False。
+- cache_files: 上一步采样输出的jsonl文件列表。传入后sampler自动设为'no'，直接读取这些文件做奖励打分与筛选；`--dataset`仍需传入，cache_files中的记录靠原始数据的md5与数据集对齐。默认为`[]`。
+- generation_strict: [v5] 推理失败时是否直接报错。默认为True。
+- eval_human: [v5] 进入交互式命令行对话。默认为False。
+- multi_round: [v5] 交互式对话中是否保留多轮历史。默认为True。
+- merge_lora: 推理前将LoRA权重合并进基座模型。默认为False。
+
+## 部署参数
+
+`swift deploy` 使用。除本节外还接受模型，数据，模板，微调，采样，生成，推理参数。
+
+- merge_lora: 部署前将LoRA权重合并进基座模型。默认为False。
+- host: 服务host，默认为'0.0.0.0'。
+- port: 端口号，默认为8000。
+- api_key: 访问服务需要的api_key。默认为None，不校验。
+- ssl_keyfile: SSL私钥文件路径。默认为None。
+- ssl_certfile: SSL证书文件路径。默认为None。
+- 🔥served_model_name: 提供服务的模型名称，默认使用model的后缀。
+- owned_by: 返回体中的owned_by字段，默认为'swift'。
+- max_logprobs: 最多返回客户端的logprobs数量，默认为20。
+- max_concurrency: [v5] 服务端同时处理的最大请求数，默认为64。
+- ray_address: [v5] 连接的Ray集群地址。默认为None，使用本地Ray。
+- ray_namespace: [v5] Ray命名空间，默认为'swift'。
+- route_prefix: [v5] 服务路由前缀，默认为'/v1'。twinkle_client要求'/api/v1'。
+- sampler_type: 部署使用的采样器，可选为'mock'，'vllm'，'sglang'，'torch'。默认为None，由backend推导：vllm对应vllm，sglang对应sglang，其他对应torch。
+- num_replicas: [v5] 采样器副本数。默认为None，每个模型一个副本。
+- autoscaling: [v5] 是否根据负载自动扩缩采样器副本。默认为False。
+- detach: [v5] 启动服务后在后台运行。默认为False。
+- stop: [v5] 停止由`swift deploy`启动的后台服务。默认为False。
+
+## 评测参数
+
+`swift eval` 使用。除本节外还接受模型，数据，模板，微调，采样，生成，推理参数。
+
+- 🔥eval_dataset: 评测数据集id或路径的列表，格式同dataset。
+- eval_limit: 每个评测集的采样数，默认为None。
+- eval_dataset_args: 评测数据集参数，json字符串，可按数据集名设置参数。默认为空。
+- eval_generation_config: 评测时的模型推理配置，json字符串，例如`'{"max_new_tokens": 512}'`。默认为空。
+- eval_output_dir: 评测结果的存储目录，默认为'eval_output'。
+- eval_num_proc: 评测时客户端的最大并发数，默认为16。
+- extra_eval_args: 额外的评测参数，json字符串，透传给评测后端。默认为空。
+- result_jsonl: [v5] 评测明细（每条样本的输入，输出与得分）的存储路径。默认为None，保存到eval_output_dir。
+- eval_url: 评测的OpenAI兼容服务地址，例如`http://127.0.0.1:8100/v1`。设置后不启动本地推理服务，`--model`作为请求中的模型名。默认为None，本地部署评测。
+- eval_api_key: [v5] eval_url服务需要的api_key。默认为None。
+
+## 导出参数
+
+`swift export` 使用。除本节外还接受模型，数据，模板，微调，量化，分布式，Megatron，MoE参数。
+
+- 🔥output_dir: 导出结果存储路径，同时用于`--push_to_hub`。默认为'output'。
+- exist_ok: output_dir已存在时不抛出异常，直接覆盖。默认为False。
+- merge_lora: 将LoRA权重合并进基座权重，保存为完整模型。默认为False。
+- to_peft_format: 以PEFT的目录结构保存adapter，供只使用PEFT的下游使用，不做合并。默认为False。
+- 🔥quant_method: 量化方法，可选为'gptq'，'gptq_v2'，'awq'，'bnb'，'hqq'，'eetq'，'quanto'，'fp8'。默认为None，不量化。
+- to_cached_dataset: 提前对数据集进行tokenize并导出，供`--cached_dataset`使用。默认为False。
+  - 提示：可以通过`--split_dataset_ratio`或`--val_dataset`指定验证集内容。
+- template_mode: 导出缓存数据集时使用的训练类型，可选为'train'，'rlhf'，'kto'。pt/sft使用'train'，kto使用'kto'，其他rl算法使用'rlhf'。默认为'train'。
+- store_encoded: [v5] 导出缓存数据集时是否保存input_ids与labels，保存后训练时跳过编码。默认为False。
+- store_format: [v5] 缓存数据集的存储格式，默认为'arrow'，可选为'jsonl'及通过插件注册的格式。
+- store_fields: [v5] 缓存数据集中保留的列，默认为None，保留编码产生的全部列。
+- 🔥to_mcore: HF格式权重转成Megatron格式。设置mcore_model时表示对已有的Megatron权重重新切分或合并。默认为False。
+- 🔥to_hf: Megatron格式权重转成HF格式。默认为False。
+- mcore_model: Megatron格式模型路径。默认为None。
+- mcore_adapter: Megatron格式的LoRA权重路径，转换前合并进基座权重。默认为None。
+- thread_count: 转换为torch-dist格式时的写入线程数。默认为None，按模型大小自动设置（约每10GB一个线程，至少2个）。
+- 🔥test_convert_precision: 转换后对两个模型输入相同样本并比较输出，测试精度误差。默认为False。
+- test_convert_dtype: 精度测试使用的dtype，可选为'float16'，'bfloat16'，'float32'。默认为'float32'。
+- commit_message: `--push_to_hub`时的提交信息，默认为'update files'。
+
+## 合并参数
+
+`swift merge` 使用。除本节外还接受模型，数据，模板，微调，保存参数。
+
+- output_dir: 合并后模型的存储路径。默认为None，使用第一个adapter路径加后缀`-merged`。
+- replace_if_exists: [v5] output_dir已存在时是否覆盖。默认为False。
+- weight_transform_parallel_size: [v5] 见运行参数。
+
+## 保存参数
+
+`swift pt/sft/rl/export` 使用。
+
+- 🔥output_dir: 输出目录，checkpoint保存在该目录下。默认为'output'。
+- add_version: 在output_dir下额外创建`<版本号>-<时间戳>`子目录，防止权重覆盖。默认为True。
+- save_strategy: 保存策略，可选为'steps'（按步数），'epoch'（按轮次），'no'（不保存），'best'（只保存最优）。默认为'steps'。
+- save_steps: 每隔多少步保存一次，可以是浮点数（0.5表示每半个epoch）。默认为500。
+- save_total_limit: 最多保留的checkpoint数量，超出后删除最旧的。默认为None，不限制。
+- save_only_model: 只保存模型权重，不保存优化器状态与随机数状态（无法断点续训）。默认为False。
+- safe_serialization: 是否使用safetensors格式保存。默认为True。
+- save_safetensors: 同safe_serialization。
+- max_shard_size: 单个权重文件的最大大小，默认为'5GB'。
+- async_save: 异步保存checkpoint。默认为False。
+- no_save_optim: 不保存优化器状态。默认为False。
+- no_save_rng: 不保存随机数状态。默认为False。
+- no_load_optim: 加载checkpoint时不加载优化器状态。默认为False。
+- no_load_rng: 加载checkpoint时不加载随机数状态。默认为False。
+- 🔥resume_from_checkpoint: 断点续训的checkpoint目录。会加载模型权重，优化器状态与随机数状态，并跳过已训练的数据集部分。
+  - 注意：只想读取adapter权重而不续训时，使用`--adapters`。
+- resume_only_model: 断点续训时只加载模型权重。默认为False。
+- ignore_data_skip: 断点续训时不跳过已训练的数据集部分。默认为False。
+- 🔥push_to_hub: 是否将模型推送到hub。默认为False。
+- hub_model_id: 推送的model_id，格式为`'<用户名>/<模型名>'`。默认为None。
+- hub_private_repo: 是否是private repo。默认为False。
+- hub_strategy: 推送策略，可选为'end'（训练结束时），'every_save'（每次保存时），'checkpoint'（保存checkpoint时一并推送到checkpoint目录），'all_checkpoints'。默认为'every_save'。
+- hub_revision: 推送的分支。默认为None。
+- hub_always_push: 即使远程已有相同内容也强制推送。默认为False。
+- load_args: 从`--model`，`--adapters`或`--resume_from_checkpoint`目录的args.json中读取训练时的参数。默认为False。
+- load_data_args: 是否额外读取args.json中的数据参数，用于推理训练时切分的验证集，例如`swift infer --adapters <ckpt> --load_data_args true --stream true --max_new_tokens 512`。默认为False。
+- trust_remote_plugins: 是否允许加载不在白名单中的插件。默认为False。
+
+## 日志参数
+
+- report_to: 训练指标上报的后端列表，可选为'tensorboard'，'swanlab'，'wandb'，'none'。默认为`['tensorboard']`。
+- logging_dir: 日志目录。默认为None，使用output_dir下的runs目录。
+- run_name: 实验名。默认为None，使用output_dir。
+- logging_steps: 每隔多少步记录一次日志。默认为5。
+- logging_first_step: 是否在第一步记录日志。默认为True。
+- logging_nan_inf_filter: 过滤日志中的nan与inf。默认为False。
+- logging_strategy: 记录日志的策略，可选为'steps'，'epoch'，'no'。默认为'steps'。
+- tensorboard_dir: tensorboard日志目录。默认为None。
+- tensorboard_queue_size: tensorboard写入队列大小，默认为50。
+
+### SWANLAB
+
+- swanlab_token: SwanLab的api-key，也可以用环境变量SWANLAB_API_KEY指定。默认为None。
+- swanlab_project: swanlab的project，默认为'ms-swift'。
+- swanlab_workspace: 默认为None，使用api-key对应的用户名。
+- swanlab_exp_name: 实验名，默认为None，使用output_dir。
+- swanlab_mode: 可选'cloud'和'local'，云模式或者本地模式。默认为'cloud'。
+- swanlab_notification_method: 训练完成或发生错误时的通知方式，支持'dingtalk'，'lark'，'email'，'discord'，'wxwork'，'slack'，具体参考[这里](https://docs.swanlab.cn/plugin/notification-dingtalk.html)。默认为None。
+- swanlab_webhook_url: swanlab_notification_method对应的webhook url。默认为None。
+- swanlab_secret: swanlab_notification_method对应的secret。默认为None。
+- swanlab_smtp_server: 邮件通知的SMTP服务器。默认为None。
+- swanlab_smtp_port: 邮件通知的SMTP端口。默认为None。
+- swanlab_sender_email: 发件人邮箱。默认为None。
+- swanlab_receiver_email: 收件人邮箱。默认为None。
+- swanlab_email_language: 邮件语言。默认为'zh'。
+
+### WANDB
+
+- wandb_project: wandb的project，默认为'ms-swift'。
+- wandb_exp_name: 实验名，默认为None。
+- wandb_log_unique_prompts: 是否只记录不重复的prompt。默认为None。
+
+## 运行参数
+
+- seed: 全局随机种子，默认为42。与控制数据集随机的data_seed互不影响。
+- weight_transform_parallel_size: [v5] 权重转换（`--to_hf`/`--to_mcore`）时的并行数。默认为1。
+- external_plugins: 外部plugin.py文件列表，这些文件会被额外import。可以传入自定义模型，对话模板，数据集，奖励函数，harness注册的.py文件路径，参考[插件文档](./plugins.mdx)。默认为`[]`。
+
+## 环境变量
+
+环境变量可以在启动命令前设置，也可以写在YAML/JSON配置文件的ENV段中。
+
+### 启动与设备
+
+- CUDA_VISIBLE_DEVICES: 控制使用哪些GPU卡，默认使用所有卡。
+- ASCEND_RT_VISIBLE_DEVICES: 控制使用哪些NPU卡，只对昇腾卡生效，默认使用所有卡。
+- NPROC_PER_NODE: 单机进程数。设置了NPROC_PER_NODE或NNODES后，pt/sft/rl/infer/export命令会以torchrun重新启动。默认为1。
+- NNODES: 多机训练的节点数。
+- NODE_RANK: 多机训练中当前节点的编号。
+- MASTER_ADDR: 多机训练的主节点地址。
+- MASTER_PORT: torchrun的通信端口，默认为29500。
+- RAY_ADDRESS: Ray集群地址。设置了该变量后，`--mode ray`直接连接该集群。
+- PYTORCH_CUDA_ALLOC_CONF: 推荐设置为`'expandable_segments:True'`，减少GPU内存碎片，具体参考[torch文档](https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-memory-management)。
+- OMP_NUM_THREADS: 每个进程的CPU线程数，多进程训练时建议设置为1，避免线程争用。
+- SWIFT_SINGLE_DEVICE_MODE: 单设备模式，可选为'0'或'1'。设置为'1'时每个进程只能看到一个设备。默认为'0'。
+
+### 下载与缓存
+
+- USE_HF: 模型与数据集从HuggingFace下载，可选为'0'或'1'。默认为'0'，使用ModelScope。
+- USE_HF_TRANSFER: 使用hf_transfer加速HuggingFace下载，需要安装hf_transfer。默认为'0'。
+- HF_ENDPOINT: HuggingFace镜像地址，例如`https://hf-mirror.com`。
+- HF_DATASETS_OFFLINE / HF_HUB_OFFLINE: 设置为'1'时不访问HuggingFace网络，只使用本地缓存。
+- MODELSCOPE_CACHE: ModelScope的缓存路径。多机训练时建议设置，确保不同节点使用相同的数据集缓存。
+- MODELSCOPE_DOMAIN: ModelScope域名。在国外访问时可以设置为'www.modelscope.ai'使用国际版。
+- MODELSCOPE_API_TOKEN: ModelScope的访问令牌，用于下载私有模型或推送模型，查看[这里](https://modelscope.cn/my/myaccesstoken)。
+- SWIFT_TIMEOUT: 多模态数据集中图像，视频，音频URL的下载超时时间，单位为秒，默认为20。
+
+### 日志与调试
+
+- LOG_LEVEL: 日志级别，默认为'INFO'，可设置为'WARNING'，'ERROR'等。
+- LOG_ONLY_MASTER: 只在主进程输出日志，其他进程只输出ERROR，便于排查只在非主进程出现的问题。默认为True。
+- SWIFT_DEBUG: 设置为'1'时，transformers采样器打印input_ids与generate_ids的内容，便于调试与对齐。默认为'0'。
+- SWIFT_ENABLE_NPU_MODEL_PATCH: 是否启用昇腾模型层patch，默认在昇腾环境下自动开启。排查transformers原生行为时可以设置为'0'。
+- TWINKLE_PERF: 设置为'1'时输出twinkle各阶段的耗时统计。默认为'0'。
+- OPENAI_API_KEY: 调用OpenAI兼容的模型服务（例如LLM-as-a-judge）时使用的api_key。
+
+### 安全
+
+- SWIFT_TRUST_REMOTE_PLUGINS: 设置为'1'时允许加载不在白名单中的插件，等价于`--trust_remote_plugins true`。默认为'0'。
+
+### 模型特定
+
+多模态输入的分辨率与帧数优先通过`--vision_process_kwargs`设置，下面的环境变量用于覆盖模型预处理的全局默认值。
+
+- MAX_PIXELS / MIN_PIXELS: Qwen-VL系列图像的最大/最小分辨率，建议设置为28*28的倍数。MAX_PIXELS默认为16384 * 28 * 28，调小可避免OOM。
+- VIDEO_MAX_PIXELS / VIDEO_MIN_PIXELS / VIDEO_TOTAL_PIXELS: Qwen-VL系列视频单帧的最大/最小分辨率与整段视频的总分辨率。默认分别为768 * 28 * 28，128 * 28 * 28，24576 * 28 * 28。
+- IMAGE_MAX_TOKEN_NUM / IMAGE_MIN_TOKEN_NUM / VIDEO_MAX_TOKEN_NUM / VIDEO_MIN_TOKEN_NUM: Qwen3-VL系列按token数控制分辨率与帧数，设置PIXELS变量时会自动换算为TOKEN_NUM变量。
+- SPATIAL_MERGE_SIZE: Qwen3-VL系列的相邻token合并数，默认为2。
+- ENABLE_AUDIO_OUTPUT: Qwen-Omni系列是否创建与加载音频输出（talker）部分，默认使用config.json中的值。只微调thinker部分时建议设置为False，降低显存占用。
+- THINKING_BUDGET / SEED_USE_THINKING / SEED_USE_BUDGET_INTERVAL: Seed系列思考模型的思考token预算，是否开启思考，预算区间。
+- GENERATIVE_RERANKER_POSITIVE_TOKEN / GENERATIVE_RERANKER_NEGATIVE_TOKEN: 生成式reranker输出Yes/No verdict使用的token，默认为'Yes'与'No'。
+
+### twinkle
+
+twinkle服务端与客户端的连接配置，使用方式见[服务端与客户端](./server-client.mdx)。
+
+- TWINKLE_SERVER_URL: twinkle服务地址，默认为'http://127.0.0.1:8000'。
+- TWINKLE_SERVER_TOKEN: 访问twinkle服务的token。默认为None。
+- TWINKLE_SERVER_CONFIG: twinkle服务端启动时读取的YAML配置文件路径。默认为None。
+- TWINKLE_RAY_NAMESPACE: twinkle使用的Ray命名空间。默认为None。
+- TWINKLE_TRUST_REMOTE_CODE: twinkle是否信任远端代码。默认为'0'。
+- TWINKLE_DEFAULT_SAVE_DIR: 通过twinkle提交训练时的默认输出目录，默认为'./outputs'。
+- TWINKLE_PER_USER_PROCESSOR_LIMIT: twinkle服务端单个用户的最大processor数。默认为20。
+- TWINKLE_POLL_INTERVAL: 客户端轮询任务状态的间隔，单位为秒，默认为0.5。
+- TWINKLE_LONG_POLL_TIMEOUT: 客户端长轮询的超时时间，单位为秒，默认为30。
+- TWINKLE_AUTO_VISIBLE_DEVICES_FROM_ENV: twinkle自动训练是否使用CUDA_VISIBLE_DEVICES指定的设备。默认为'1'。
+- TWINKLE_PERSISTENCE_MODE: 服务端状态的存储方式，可选为'memory'或'redis'。默认为'memory'。
+- TWINKLE_PERSISTENCE_REDIS_URL / TWINKLE_PERSISTENCE_KEY_PREFIX: TWINKLE_PERSISTENCE_MODE为redis时的Redis地址与key前缀。
+- TWINKLE_SERVER_STATE_EXPIRATION_TIMEOUT: 服务端状态的过期时间，单位为秒。
+- TWINKLE_SERVER_STATE_CLEANUP_INTERVAL: 过期状态的清理间隔，单位为秒。
+- TWINKLE_SERVER_STATE_PER_TOKEN_MODEL_LIMIT: 单个token（用户）可创建的模型数上限。
+- TWINKLE_SERVER_STATE_METRICS_UPDATE_INTERVAL: 指标的更新间隔，单位为秒。
+- TWINKLE_RUN_ID: 当前训练run的id，由启动器自动设置。
+- TWINKLE_PRINT_FORMAT: twinkle命令行输出的格式，可选为'yaml'或'json'。默认为'yaml'。
+- TWINKLE_DIST_TIMEOUT_SECONDS: twinkle本地启动器初始化进程组的超时时间，单位为秒。

@@ -206,12 +206,12 @@ GRPO can additionally use the process reward channel `--prm`. It scores intermed
 Save the following as `my_reward.py`:
 
 ```python
-from swift.dev.reward.reward import ORM
+from swift.dev.reward.reward import RewardRule
 from swift.dev.utils.plugin import PluginRegistry
 
 
 @PluginRegistry.register('reward', 'length_bonus')
-class LengthBonus(ORM):
+class LengthBonus(RewardRule):
     def __call__(self, trajectories, **kwargs):
         return [min(len(self.completion(t)) / 100.0, 1.0) for t in trajectories]
 ```

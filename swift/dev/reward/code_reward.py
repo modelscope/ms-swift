@@ -11,7 +11,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 
 from swift.dev.utils import get_logger
 from twinkle.data_format import ground_truth, last_assistant_text
-from .reward import ORM
+from .reward import RewardRule
 
 logger = get_logger()
 
@@ -246,7 +246,7 @@ def _execute_one(env: Any, episode_id: str, code: str, test_input: str, language
     return _extract_stdout(merged)
 
 
-class CodeExecutionReward(ORM):
+class CodeExecutionReward(RewardRule):
     """Score generated code by executing it against per-sample test cases.
 
     Registered as ``code_execution``; knobs read off the run's RLConfig (``self.args``, each with a

@@ -11,7 +11,7 @@ The CLI imports `external_plugins`, registration executes, Config selects names,
 
 | Kind | Contract | Selection parameter | Purpose |
 |---|---|---|---|
-| `reward` | `ORM` | `orm` | Per-trajectory rewards reading the completion and dataset columns |
+| `reward` | `RewardRule` | `orm` | Per-trajectory rewards reading the completion and dataset columns |
 | `prm_scorer` | `PRMSegmentScorer` | `prm_scorer` | Segment boundaries for process rewards |
 | `callback` | `TrainCallback` | `callbacks` | Training, logging, saving and evaluation events |
 | `param_groups` | `ParamGroupsPlugin` | `param_groups_plugins` | Declarative optimizer parameter-group rules |
@@ -27,12 +27,12 @@ Loss, metric and optimizer classes belong to twinkle kernel namespaces, selected
 Save as `my_plugin.py`:
 
 ```python
-from swift.dev.reward.reward import ORM
+from swift.dev.reward import RewardRule
 from swift.dev.utils.plugin import PluginRegistry
 
 
 @PluginRegistry.register('reward', 'length_bonus')
-class LengthBonus(ORM):
+class LengthBonus(RewardRule):
     def __call__(self, trajectories, **kwargs):
         return [1.0 if len(self.completion(t)) > 100 else 0.0 for t in trajectories]
 ```

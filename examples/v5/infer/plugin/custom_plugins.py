@@ -13,7 +13,7 @@ implementation by name. One file therefore carries all six kinds; a real project
 
 The kinds demonstrated here, and the field that selects each:
 
-  * reward (sync)   -- ``ORM.__call__(trajectories, **kwargs)``        -> ``--orm`` / ``--prm`` by name
+  * reward (sync)   -- ``RewardRule.__call__(trajectories, **kwargs)``        -> ``--orm`` / ``--prm`` by name
   * reward (async)  -- the SAME base, ``async def __call__``           -> ``--orm`` / ``--prm`` by name
   * tool            -- ``ToolPlugin.build()``                          -> ``--tools`` by name
   * model loader    -- ``ModelLoader`` + ``@register_model``           -> ``--model_type`` by name
@@ -42,7 +42,7 @@ from datasets import Dataset as HfDataset
 
 from swift.dev.dataset.loader import DatasetLoader, register_dataset
 from swift.dev.model.loader import ModelLoader, register_model
-from swift.dev.reward.reward import ORM
+from swift.dev.reward.reward import RewardRule
 from swift.dev.utils.plugin import PluginRegistry, ToolPlugin
 # The v5 dev stack resolves --template against swift.dev.template's registry, not legacy
 # swift.template's; registering into the legacy table would leave the name unresolvable.
@@ -52,12 +52,12 @@ from twinkle.data_format.message import Tool as ToolInfo
 
 # --- reward: a sync rule and an async rule, one extension point ---------------------------
 # A reward rule scores trajectory rows: each row IS a trajectory dict (the conversation plus the
-# sample's flat extras), ORM.completion(row) is the newest assistant turn's text, and __call__ returns
+# sample's flat extras), RewardRule.completion(row) is the newest assistant turn's text, and __call__ returns
 # one float per trajectory, in order. Returning None for an item records it as NaN, not a guessed 0.
 
 
 @PluginRegistry.register('reward', 'length_bonus')
-class LengthBonus(ORM):
+class LengthBonus(RewardRule):
     """A synchronous reward: longer answers score higher, capped at 1.0. Selected with ``--orm length_bonus``."""
 
     def __call__(self, trajectories: List[Any], **kwargs: Any) -> List[float]:
@@ -65,7 +65,7 @@ class LengthBonus(ORM):
 
 
 @PluginRegistry.register('reward', 'async_length_bonus')
-class AsyncLengthBonus(ORM):
+class AsyncLengthBonus(RewardRule):
     """The SAME contract written ``async`` -- there is no separate async base to choose.
 
     Reward resolution wraps the rule so the scoring loop can invoke it synchronously: the returned

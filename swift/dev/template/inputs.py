@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Union, cast
 
 import json
 from PIL import Image
-from twinkle.data_format import user_data_get
 
 from twinkle.template.contract import ConversationSample, KTOSample, PreferenceSample
 from .runtime import get_logger
@@ -91,14 +90,6 @@ class StdTemplateInputs:
         chat_template_kwargs = inputs.get("chat_template_kwargs") or {}
         mm_processor_kwargs = inputs.get("mm_processor_kwargs") or {}
 
-        metadata = {**(inputs.get('extra_kwargs') or {}), **inputs}
-        key_rounds = user_data_get(metadata.get('user_data'), 'key_rounds')
-        if isinstance(key_rounds, list) and key_rounds:
-            leading = 0
-            while leading < len(messages) and messages[leading].get('role') == 'system':
-                leading += 1
-            for index, message in enumerate(messages[leading:]):
-                message.setdefault('_swift_turn_index', index)
         messages = normalize_messages(messages)
 
         for message in messages:

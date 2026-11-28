@@ -59,16 +59,13 @@ DATASET = D('dataset', '数据集', 'Resource', '原始数据分布与预处理�
 
 SAMPLER = D('sampler', '采样器', 'Resource', '常驻生成引擎；权重初始来源与编码配置是参数，同步由 weight_sync 表达。',
     ports_out=(P('sampler', 'SAMPLER', '生成引擎'),),
-    params=(Q('model', '模型来源（id/路径，remote 资源下为 server 侧 served id）', '', required=True),
-            Q('engine', '引擎', 'vllm', options=('vllm', 'sglang', 'torch', 'twinkle'),
-              doc='vllm/sglang/torch=本地引擎（占本地卡）；twinkle=remote 资源下的 '
-                  'twinkle-server 客户端句柄（served 引擎，免占卡）'),
+    params=(Q('model', '模型来源（id/路径）', '', required=True),
+            Q('engine', '引擎', 'vllm', options=('vllm', 'sglang', 'torch'),
+              doc='本地生成引擎（占本地卡）；remote 资源下不提供采样器，生成走 server 的 OpenAI API'),
             Q('parallel_spec', '并行规格', '',
-              doc='tp/pp/dp 显式规格；缺省由占卡数单维推导（tp=卡数）；remote 资源下引擎 '
-                  '布局归 server，设置即拒绝'),
+              doc='tp/pp/dp 显式规格；缺省由占卡数单维推导（tp=卡数）'),
             *GPU_PARAMS,
-            Q('engine_args', '引擎参数', {}, type='dict',
-              doc='本地引擎的启动参数；remote 资源下 served 引擎布局归 server，设置即拒绝'),
+            Q('engine_args', '引擎参数', {}, type='dict', doc='本地引擎的启动参数'),
             Q('model_config', '模型加载配置', {}, type='dict'),
             Q('template_config', '编码配置', {}, type='dict')), owner_kind='SAMPLER', surface='resource')
 
@@ -103,7 +100,7 @@ LOSS_COMP = D('loss', '损失函数', 'Resource', 'L(theta)：策略更新目标
 SCORER_COMP = D('scorer', '评分函数', 'Resource', 'r(tau)：规则评分函数；注册名或自定义代码的评分器。',
     ports_out=(P('scorer', 'SCORER', '评分器对象'),),
     params=(Q('kind', '注册评分函数名', 'math',
-              doc='orms 插件注册表中的名字（math/format/accuracy 等；插件可运行时扩充，故不静态枚举）'),
+              doc='reward_rules 插件注册表中的名字（math/format/accuracy 等；插件可运行时扩充，故不静态枚举）'),
             Q('scorer_kwargs', '评分构造参数', {}, type='dict'),
             Q('code', '自定义评分代码', '',
               doc='用户代码 def score(rows)->list[float]；设置时忽略注册名')),

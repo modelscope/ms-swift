@@ -1,11 +1,11 @@
 ---
 title: 在线学习
-description: 使用 GRPO 完成采样、奖励与策略更新，配置共卡、分离式采样和异步训练。
+description: 使用 GRPO 完成采样，奖励与策略更新，配置共卡，分离式采样和异步训练。
 ---
 
-在线学习在训练过程中使用当前模型生成回答，再根据奖励或教师反馈更新模型。与直接拟合固定回答的 SFT、使用固定偏好对的 DPO 不同，训练数据会随模型更新而变化。
+在线学习在训练过程中使用当前模型生成回答，再根据奖励或教师反馈更新模型。与直接拟合固定回答的 SFT，使用固定偏好对的 DPO 不同，训练数据会随模型更新而变化。
 
-SWIFT v5 提供 GRPO、PPO、RFT 及 GKD/OPSD/MOPD 等在线训练流程。本文以 GRPO 数学任务为例，介绍数据准备、奖励函数、训练命令和采样调度。
+SWIFT v5 提供 GRPO，PPO，RFT 及 GKD/OPSD/MOPD 等在线训练流程。本文以 GRPO 数学任务为例，介绍数据准备，奖励函数，训练命令和采样调度。
 
 ## GRPO 原理
 
@@ -24,14 +24,14 @@ prompt → 采样多个回答 → 奖励打分 → 组相对 advantage
 A_i = (R_i - mean(R)) / (std(R) + ε)
 ```
 
-`R_i` 是第 i 个回答的奖励，`R` 是同一 prompt 下所有回答的奖励。`A_i` 表示该回答相对其他回答的好坏；这里的 `ε` 是数值稳定项，不是裁剪参数 `--epsilon`。
+`R_i` 是第 i 个回答的奖励，`R` 是同一 prompt 下所有回答的奖励。`A_i` 表示该回答相对其他回答的优势；这里的 `ε` 是数值稳定项，不是裁剪参数 `--epsilon`。
 
 训练时使用新旧策略的概率比构造裁剪目标，限制单次更新幅度。`--epsilon` 控制裁剪范围，`--beta` 控制可选的参考模型 KL 项。`--beta 0` 关闭该项，但会改变训练目标，不应仅作为省显存的等价配置。
 
 下面是流程示意，并非框架实现的逐行代码：
 
 ```text
-初始化训练模型、采样器和奖励函数
+初始化训练模型，采样器和奖励函数
 同步初始权重
 重复：
     对每个 prompt 采样 G 个回答
@@ -40,7 +40,7 @@ A_i = (R_i - mean(R)) / (std(R) + ε)
     按配置将更新后的权重发布到采样器
 ```
 
-如果同组回答奖励完全相同，组相对 advantage 为零，这组数据没有奖励区分带来的学习信号。因此，奖励设计、问题难度和回答多样性会直接影响训练效果。
+如果同组回答奖励完全相同，组相对 advantage 为零，这组数据没有奖励区分带来的学习信号。因此，奖励设计，问题难度和回答多样性会直接影响训练效果。
 
 ## 环境安装
 
@@ -50,13 +50,13 @@ A_i = (R_i - mean(R)) / (std(R) + ε)
 pip install vllm math-verify
 ```
 
-vLLM 负责在线生成采样，Ray 随 twinkle 自动安装；math-verify 用于下文的数学奖励。即使选择 `async_mode=none`，当前 GRPO 也可能通过流式调度组件执行，不应把“同步训练”理解成不需要调度依赖。
+vLLM 负责在线生成采样，Ray 随 twinkle 自动安装；math-verify 用于下文的数学奖励。即使选择 `async_mode=none`，当前 GRPO 也可能通过流式调度组件执行，不应把"同步训练"理解成不需要调度依赖。
 
 本地在线训练使用 Ray 管理训练器与采样器。`--mode remote` 则连接已部署的 twinkle-server，由服务端管理模型资源；本文命令使用本地 Ray，不需要单独启动旧版 v4 rollout server。
 
 ## 数据准备
 
-GRPO 至少需要 prompt；奖励函数需要的参考答案、测试用例等字段应随数据一起提供。数学正确性奖励 `accuracy` 默认读取 `solution`。
+GRPO 至少需要 prompt；奖励函数需要的参考答案，测试用例等字段应随数据一起提供。数学正确性奖励 `accuracy` 默认读取 `solution`。
 
 自定义数据可保存为 `prompts.jsonl`：
 
@@ -66,7 +66,7 @@ GRPO 至少需要 prompt；奖励函数需要的参考答案、测试用例等�
 ```
 
 - `messages` 提供模型生成前的对话，不需要预先写好 assistant 回答。
-- `solution` 用于奖励打分，不应把参考答案拼进发给模型的 prompt。
+- `solution` 用于奖励计算，参考答案不应拼入发送给模型的 prompt。
 - `accuracy` 使用 math-verify 解析和比较数学答案；建议让模型用 `\boxed{...}` 明确最终答案，但它并非只接受这一种格式。
 - 上面的两条数据用于说明格式，实际训练应准备足够多且有难度差异的问题。
 
@@ -137,9 +137,9 @@ swift rl \
     --output_dir output/grpo
 ```
 
-`nproc_per_node` 是训练器的 GPU 数，不是整个 RL 任务的总卡数。在本例的手动资源布局下，训练器占 GPU 0，采样器占 GPU 1。这里的 GPU 编号是 `CUDA_VISIBLE_DEVICES` 对应的可见顺序。
+`nproc_per_node` 是训练器的 GPU 数，不是整个 RL 任务的总卡数。在本例的手动资源布局下，训练器占 GPU 0，采样器占 GPU 1。GPU 编号对应 `CUDA_VISIBLE_DEVICES` 的可见顺序。
 
-对于同一基座的普通 LoRA 参考策略，可通过禁用 adapter 复用训练模型的基座，不额外分配参考模型 GPU；全参数训练、独立参考策略、教师或模型奖励通道可能需要额外的资源。不要只根据 `nproc_per_node` 判断总资源需求。
+对于同一基座的普通 LoRA 参考策略，可通过禁用 adapter 复用训练模型的基座，不额外分配参考模型 GPU；全参数训练，独立参考策略，教师或模型奖励通道可能需要额外的资源。不要只根据 `nproc_per_node` 判断总资源需求。
 
 主要参数：
 
@@ -149,7 +149,7 @@ swift rl \
 | `num_generations` | 每个 prompt 的回答数量，GRPO 需要同组多个回答。 |
 | `generation_batch_size` | 一个生成 batch 的 prompt 数量，不是回答数量。 |
 | `max_completion_length` | 单个回答的最大生成 token 数。 |
-| `orm` | 结果奖励通道，可指定注册奖励名、插件或奖励模型 ID。 |
+| `orm` | 结果奖励通道，可指定注册奖励名，插件或奖励模型 ID。 |
 | `beta` / `epsilon` | 参考模型 KL 项系数与策略目标裁剪范围。 |
 | `sampler_mode` | 训练与采样的 GPU 放置方式。 |
 | `rollout_sampler` | 在线采样引擎，本地可选择 `vllm` 或 `sglang`；训练后端另行配置。 |
@@ -162,7 +162,7 @@ swift rl \
 训练更新：每卡 1 条 × DP 1 × 累积 8 次 = 8 条回答
 ```
 
-一个生成 batch 可以供多次优化器更新使用，不能把 `generation_batch_size` 当成训练 batch size。省略它时，框架根据训练 batch、梯度累积、`num_generations` 和 `num_iterations` 推导生成批量；初次调整资源时建议显式设置。
+一个生成 batch 可以供多次优化器更新使用，`generation_batch_size` 不等于训练 batch size。省略它时，框架根据训练 batch，梯度累积，`num_generations` 和 `num_iterations` 推导生成批量；初次调整资源时建议显式设置。
 
 ### 单卡共卡
 
@@ -182,7 +182,7 @@ CUDA_VISIBLE_DEVICES=0
 --offload_optimizer true
 ```
 
-这里第一行用于替换原命令的环境变量设置，后面的参数用于替换或补充原命令，不是独立执行的命令。共卡模式在生成和训练之间切换，无法通过异步采样让两者同时使用同一张 GPU。
+这里第一行用于替换原命令的环境变量设置，后面的参数用于替换或补充原命令，不是独立执行的命令。共卡模式在生成和训练之间切换，异步采样不能使二者同时使用同一张 GPU。
 
 - `sleep_level` 控制采样器：`0` 保持驻留；`1` 卸载权重并丢弃 KV cache；`2` 丢弃权重与 KV cache。
 - `offload_model` 和 `offload_optimizer` 分别控制训练模型与优化器状态的卸载，可以独立设置。
@@ -195,7 +195,7 @@ CUDA_VISIBLE_DEVICES=0
 
 ### 内置奖励与模型奖励
 
-`--orm accuracy` 适用于有参考答案的数学任务。其他注册奖励包括 `repetition`、`soft_overlong` 和 `code_execution`；它们各有数据和参数要求，不能仅替换奖励名称就认为任务已经配置完成。例如代码执行奖励需要数据中的测试用例以及相应的执行环境。
+`--orm accuracy` 适用于有参考答案的数学任务。其他注册奖励包括 `repetition`，`soft_overlong` 和 `code_execution`；它们各有数据和参数要求，仅替换奖励名称不等于完成配置。例如代码执行奖励需要数据中的测试用例以及相应的执行环境。
 
 也可以通过 `--orm` 指定奖励模型 ID。模型 ID 路径会加载冻结的打分模型；如果使用标量奖励模型，应确保 checkpoint 有经过训练的评分头和匹配的模板。`--orm_task_type seq_cls` 可以指定标量任务头，但不会自动把一个普通语言模型训练成可靠的奖励模型。
 
@@ -206,12 +206,12 @@ GRPO 还可使用 `--prm` 过程奖励通道。它对回答的中间步骤打分
 将以下代码保存为 `my_reward.py`：
 
 ```python
-from swift.dev.reward.reward import ORM
+from swift.dev.reward.reward import RewardRule
 from swift.dev.utils.plugin import PluginRegistry
 
 
 @PluginRegistry.register('reward', 'length_bonus')
-class LengthBonus(ORM):
+class LengthBonus(RewardRule):
     def __call__(self, trajectories, **kwargs):
         return [min(len(self.completion(t)) / 100.0, 1.0) for t in trajectories]
 ```
@@ -228,7 +228,7 @@ class LengthBonus(ORM):
 
 插件在组件构建前加载。同步奖励使用普通 `def __call__`，异步 I/O 奖励可以使用 `async def __call__`，不需要另一种 `AsyncORM` 基类。
 
-上面的长度奖励仅用于演示接口，长度不等于正确性。使用多个奖励时，应检查各通道的量纲、权重和实际输出，防止模型通过无意义的冗长回答获取高分。插件是可执行 Python 代码，只加载可信文件。
+上面的长度奖励仅用于演示接口，长度不等于正确性。使用多个奖励时，应检查各通道的量纲，权重和实际输出，防止模型通过无意义的冗长回答获取高分。插件是可执行 Python 代码，只加载可信文件。
 
 ## 同步与异步训练
 
@@ -255,27 +255,27 @@ GPU 放置与同步程度分别由 `sampler_mode` 和 `async_mode` 控制：
 --rollout_importance_sampling_mode token_truncate
 ```
 
-异步 GRPO 使用相对滞后的采样数据，需要 `rollout_importance_sampling_mode` 进行 off-policy 校正。异步程度越高，并不必然收敛得越快；还应检查策略滞后、奖励和裁剪指标。
+异步 GRPO 使用相对滞后的采样数据，需要 `rollout_importance_sampling_mode` 进行 off-policy 校正。异步程度越高，并不必然收敛得越快；还应检查策略滞后，奖励和裁剪指标。
 
 注意：
 
-- 异步不能与 `colocate`、`dynamic_sample` 或 ReMax advantage estimator 组合。
+- 异步不能与 `colocate`，`dynamic_sample` 或 ReMax advantage estimator 组合。
 - 共卡模式要求 `parameter_sync_step=1`，每个训练 step 都发布权重。
 - GKD/OPSD/MOPD 的异步训练要求 `lmbda=1`，并使用 `one_step_off`；RFT 不使用这套异步设置。
-- `--async_generate` 是旧拼法，新配置请使用 `--async_mode`。
+- `--async_generate` 为旧参数名，新配置使用 `--async_mode`。
 
 ## 观察结果与保存
 
 重点观察：
 
 - `train/total_reward` 和各奖励通道：奖励是否提高，以及是否被某个辅助奖励主导。
-- `train/completion_length`：回答是否持续变长、频繁达到长度上限。
-- `train/clip_ratio`、`train/approx_kl`：更新幅度和策略偏移是否异常。
+- `train/completion_length`：回答是否持续变长，频繁达到长度上限。
+- `train/clip_ratio`，`train/approx_kl`：更新幅度和策略偏移是否异常。
 - 独立验证集上的正确率与实际回答：避免仅提高训练集奖励。
 
 策略梯度 loss 不需要持续下降，也不保证围绕零震荡；单看 loss 无法判断 GRPO 是否有效。训练奖励提高同样不能代替独立评估。
 
-checkpoint 由 `save_steps`、`save_total_limit` 控制，正常结束时保存 `checkpoint-final`。LoRA 推理使用 `swift infer --adapters`；恢复训练使用 `--resume_from_checkpoint` 并保留训练状态，具体见[快速启动](../get-started/quick-start.mdx)。
+checkpoint 由 `save_steps`，`save_total_limit` 控制，正常结束时保存 `checkpoint-final`。LoRA 推理使用 `swift infer --adapters`；恢复训练使用 `--resume_from_checkpoint` 并保留训练状态，具体见[快速启动](../get-started/quick-start.mdx)。
 
 常见问题：
 
@@ -283,7 +283,7 @@ checkpoint 由 `save_steps`、`save_total_limit` 控制，正常结束时保存 
 |---|---|
 | 奖励始终为零 | 是否保留 `solution`，答案格式是否可解析，奖励函数是否适用于该任务。 |
 | 奖励有值但更新效果弱 | 同组回答是否全对或全错，问题是否过于简单，采样是否缺少多样性。 |
-| 启动时等待 GPU 资源 | 可见 GPU 数是否覆盖训练器、采样器和辅助模型，而不只是 `nproc_per_node`。 |
+| 启动时等待 GPU 资源 | 可见 GPU 数是否覆盖训练器，采样器和辅助模型，而不只是 `nproc_per_node`。 |
 | 训练或生成显存不足 | 分别检查训练 micro-batch/编码长度和采样并发/生成长度/KV cache 预算。 |
 | 异步配置被拒绝 | 是否为分离式采样，GRPO 是否配置 off-policy 校正，是否启用互斥功能。 |
 
@@ -319,4 +319,4 @@ client 与 server 必须使用包含该协议支持的版本，并在已有 twin
 | `rft` | 生成候选回答，根据奖励选择样本，再进行监督式更新。 |
 | `gkd` / `opsd` / `mopd` | 使用教师分布或反馈进行在线蒸馏；具体采样与蒸馏目标由算法配置决定。 |
 
-不同流程需要不同的奖励、教师或 value 配置，不是只替换 `rl_type` 就能得到相同实验。源码中的 `examples/v5/rl/` 提供各流程的命令与 Python 组装示例；组件复用方式见[组件与 MP 分离](../interfaces/mp-separation.mdx)。
+不同流程需要不同的奖励，教师或 value 配置，仅替换 `rl_type` 不能复现相同实验。源码中的 `examples/v5/rl/` 提供各流程的命令与 Python 组装示例；组件复用方式见[组件与 MP 分离](../interfaces/mp-separation.mdx)。
