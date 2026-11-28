@@ -1015,10 +1015,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
             seq_level_log_weights = ((log_ratio * completion_mask).sum(-1)
                                      / completion_mask.sum(-1).clamp(min=1.0)).unsqueeze(-1)
-            if self.importance_sampling_level == 'sequence':
+            if self.importance_sampling_level == 'sequence' and entropy_mask is None:
                 log_importance_weights = seq_level_log_weights
             else:
                 # GSPO-token: sg[si(θ)] * πθ(yi,t)/sg[πθ(yi,t)]
+                # Entropy masking also needs token-local gradients while retaining the sequence ratio.
                 seq_level_log_weight = seq_level_log_weights.detach()
                 log_importance_weights = per_token_logps - per_token_logps.detach() + seq_level_log_weight
         else:
