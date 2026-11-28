@@ -381,7 +381,12 @@ def load_dataset(
             remove_unused_columns=remove_unused_columns,
             disable_auto_column_mapping=disable_auto_column_mapping,
         )
-        init_decision_augment(dataset_meta, decision_augment_config, get_seed(seed))
+        # Draw the augment seed only when augmentation will actually run: `get_seed` consumes one
+        # draw from the shared RandomState, while `init_decision_augment` returns early when the
+        # config is None. Evaluating eagerly would shift every downstream consumer (train/val
+        # split, dataset shuffle) by one draw even with decision augmentation disabled.
+        init_decision_augment(dataset_meta, decision_augment_config,
+                              get_seed(seed) if decision_augment_config is not None else None)
         train_dataset = loader.load(dataset_syntax, dataset_meta, use_hf=use_hf)
         # Inject dataset_syntax.dataset as routing tag for multi-teacher.
         # Tag before post_process: sampling/splitting go through select(), and add_column() on a
