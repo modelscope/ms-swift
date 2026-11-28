@@ -901,3 +901,13 @@ python -c "import importlib.util, megatron_adaptor, megatron.core, transformer_e
 ## NPU微信群
 
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/npu.png" width="250">
+
+### 独立 FSDPTurbo 后端的主线兼容
+
+`swift fsdpturbo sft` 的 `ep_dispatcher=eager/fused` 分别映射到当前 FSDPTurbo 的 `all2all` 调度与 `use_fused_ops=false/true`。原生 DeepSeek V4.1 保留独立的 `custom_native_eager_forward` 调度；其模型构造复用 `fsdp_turbo.models.deepseek.deepseek_v41.adapter.build_deepseek_v41_model`，并在 EP/FSDP 分片后调用原生 `from_pretrained` 加载权重。Host Engram 优化器通过后端注册工厂在 Swift trainer 中组装。更新时须同时更新 Swift 与 FSDPTurbo 兼容分支，历史性能结果仍以实验记录的提交为准。
+
+当前后端模型计划保留 Qwen3.5 MoE 和原生 DeepSeek V4.1，旧 DeepSeek V4.0 入口已移除。V4.1 仅接收纯文本、右 padding 的 Swift batch；CPU collator 校验文本类型与连续位置后转换为原生输入，实际图像会明确拒绝。V4.1 的 `resume_from_checkpoint` 和 `save_only_model` 在参数初始化时拒绝，Qwen HF 路线的恢复能力不变。loss 日志复用后端的 FP32 data/CP 归约。`cp_implementation=auto` 对 V4.1 选择原生 KV-AllGather；共享专家 TP 复用上游 w1/w3 列切分及 w2 行切分。原生 CP 保留完整未移位 labels，并支持上游的 Block 重计算；注意力头 TP 和 TP+原生 CP 组合仍受上游限制。
+
+后端默认使用 `adamw_torch`，保留 Swift 的 bias/norm 免衰减参数组，拒绝未实现的 fused/8-bit 变体。恢复训练要求优化器参数组结构一致；旧 Swift 单组 AdamW checkpoint 不能直接恢复到修正后的双组实现。旧 checkpoint 元数据兼容不包含优化器分组转换。
+
+梯度累积按完整优化器更新窗口内的有效next-token标签数归一化，并汇总data组的计数。CP保留完整labels，因此不重复计算CP或TP副本。归一化同时作用于日志loss、普通梯度和Host稀疏梯度，并在梯度裁剪前完成。

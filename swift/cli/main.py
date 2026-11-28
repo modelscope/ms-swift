@@ -24,6 +24,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'export': 'swift.cli.export',
     'eval': 'swift.cli.eval',
     'app': 'swift.cli.app',
+    'fsdpturbo': 'swift.cli.fsdpturbo',
 }
 
 
@@ -83,7 +84,9 @@ def get_torchrun_args() -> Optional[List[str]]:
     return torchrun_args
 
 
-def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
+def cli_main(route_mapping: Optional[Dict[str, str]] = None,
+             is_megatron: bool = False,
+             torchrun_all_methods: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
     method_name = argv[0].replace('_', '-')
@@ -92,7 +95,8 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     parse_yaml_args(argv)
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
-    if torchrun_args is None or (not is_megatron and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
+    if torchrun_args is None or (not (is_megatron or torchrun_all_methods)
+                                 and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
         args = [python_cmd, file_path, *argv]
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
