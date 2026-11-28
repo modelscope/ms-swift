@@ -40,11 +40,25 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
 
         logps = self.get_logps(output_tensor, labels, packed_seq_params)
         ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params)
+        if args.loss_type == 'ipo':
+            # IPO uses mean completion log-probabilities for both policy and reference.
+            loss_mask = labels != -100
+            if args.padding_free:
+                cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
+                token_counts = torch.stack(
+                    [loss_mask[:, cu_seqlens[i]:cu_seqlens[i + 1]].sum() for i in range(num_samples)])
+            else:
+                token_counts = loss_mask.sum(-1)
+            if args.context_parallel_size > 1:
+                token_counts = all_reduce(token_counts, group=mpu.get_context_parallel_group())
+            logps = self.dummy_dpo_trainer._get_ipo_sequence_logps(logps, token_counts)
+            ref_logps = self.dummy_dpo_trainer._get_ipo_sequence_logps(ref_logps, token_counts)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
             logps[:num_samples // 2],
             logps[num_samples // 2:],
             ref_logps[:num_samples // 2],
             ref_logps[num_samples // 2:],
+            loss_type=args.loss_type,
         )
         if args.rpo_alpha:
             loss_mask = labels != -100
