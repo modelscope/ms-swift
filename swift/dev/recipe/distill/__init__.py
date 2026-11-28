@@ -3,14 +3,29 @@
 from __future__ import annotations
 
 from swift.dev.recipe.distill.assembly import (
-    DISTILL_SIGNALS, Cluster, build_distill_driver, distill_dataset_rows, distill_group_requests,
-    distill_sampling_params, initialize_distill_cluster)
+    DISTILL_SIGNALS,
+    build_distill_driver,
+    distill_dataset_rows,
+    distill_group_requests,
+    distill_sampling_params,
+    initialize_distill_cluster,
+)
 from swift.dev.recipe.distill.run_distill import run_distill, run_gkd, run_mopd, run_opsd
 from swift.dev.recipe.distill.worker import DistillWorker, response_ids_from_feature
+from swift.dev.recipe.resources import DistillResources
 
 __all__ = [
-    'DISTILL_SIGNALS', 'Cluster', 'DistillWorker', 'build_distill_driver',
-    'distill_dataset_rows', 'distill_group_requests', 'distill_sampling_params',
-    'initialize_distill_cluster', 'response_ids_from_feature', 'run_distill', 'run_gkd', 'run_mopd',
-    'run_opsd',
+    "DISTILL_SIGNALS",
+    "DistillResources",
+    "DistillWorker",
+    "build_distill_driver",
+    "distill_dataset_rows",
+    "distill_group_requests",
+    "distill_sampling_params",
+    "initialize_distill_cluster",
+    "response_ids_from_feature",
+    "run_distill",
+    "run_gkd",
+    "run_mopd",
+    "run_opsd",
 ]

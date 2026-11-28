@@ -1,36 +1,24 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # The offline RLHF family's assembly: the preference config -> object stages + the reference.
 from __future__ import annotations
-import copy
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional
+from typing import TYPE_CHECKING, Optional
 
 from swift.dev.config.adapter_config import has_adapter
-from swift.dev.recipe.utils import (
-    REF_GROUP,
-    initialize_supervised_twinkle,
-    plan_supervised_steps,
-    process_and_validate,
-    resolve_step_intervals,
-    write_ckpt_args_json,
-)
+from swift.dev.recipe.utils import REF_GROUP
 from swift.dev.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from swift.dev.config import (
-        CheckpointConfig,
-        DatasetConfig,
         DistributedConfig,
-        LoggingConfig,
-        MegatronConfig,
         ModelConfig,
-        MoEConfig,
-        QuantizeConfig,
-        RewardConfig,
         RLConfig,
         TemplateConfig,
-        TrainConfig,
         TunerConfig,
     )
+    from swift.dev.recipe.configs import RecipeConfigs
+    from swift.dev.recipe.preparation import TrainingModel
+    from swift.dev.recipe.resources import OfflineResources
+    from swift.dev.template import Template
 
 logger = get_logger()
 
@@ -51,16 +39,16 @@ def _reference_needs_group(rl_config: "RLConfig", tuner_config: Optional["TunerC
 
 
 def _build_reference(
-    template: Any,
+    template: "Template",
     model_config: "ModelConfig",
     rl_config: "RLConfig",
     tuner_config: Optional["TunerConfig"],
     distributed_config: "DistributedConfig",
-    model: Any,
+    model: TrainingModel,
     *,
     remote_group: Optional[str],
     template_config: Optional["TemplateConfig"] = None,
-) -> Optional[Any]:
+) -> Optional[TrainingModel]:
     """The frozen reference the encoder probes for ref-logps, or None for the reference-free types.
 
     LoRA without a reference adapter returns the POLICY itself -- the encoder derives
@@ -82,7 +70,7 @@ def _build_reference(
             "normally defaulted to the policy model by process.py::_derive_rl_ref_model; pass "
             "--ref_model explicitly if you bypassed config processing."
         )
-    if remote_group is None and distributed_config.mode != 'remote':
+    if remote_group is None and distributed_config.mode != "remote":
         raise ValueError(
             "A full-parameter frozen reference must be built on its own DeviceGroup, but "
             "remote_group is None: _reference_needs_group planned no group for it -- the "
@@ -102,42 +90,12 @@ def _build_reference(
     )
 
 
-class PreferenceCluster(NamedTuple):
-    """The supervised cluster's handles plus the one preference-specific field: the reference.
-
-    ``reference`` is a separate frozen model, the POLICY itself (the shared-weights LoRA view), or
-    None for the reference-free types -- the encoder switches on that shape.
-    """
-
-    model: Any
-    processor: Any
-    template: Any
-    dataloader: Any
-    eval_dataloader: Any
-    total_opt_steps: int
-    task_type: Optional[str]
-    forward_task: str
-    reference: Optional[Any]
-
-
 def build_preference_objects(
+    configs: RecipeConfigs,
     *,
     recipe: str,
-    model_config: "ModelConfig",
-    template_config: "TemplateConfig",
-    dataset_config: "DatasetConfig",
-    train_config: "TrainConfig",
-    distributed_config: "DistributedConfig",
-    checkpoint_config: Optional["CheckpointConfig"],
-    rl_config: "RLConfig",
-    reward_config: Optional["RewardConfig"],
-    tuner_config: Optional["TunerConfig"],
-    logging_config: Optional["LoggingConfig"],
-    quantize_config: Optional["QuantizeConfig"],
-    megatron_config: Optional["MegatronConfig"],
-    moe_config: Optional["MoEConfig"],
     output_dir: str = "output",
-) -> PreferenceCluster:
+) -> tuple[OfflineResources, Optional[TrainingModel]]:
     """Run the preference config -> object stages in the locked order, up to (not including) the loop.
 
     Same stage order as the supervised family, with the preference differences inline: the full-
@@ -145,151 +103,32 @@ def build_preference_objects(
     encode mode, the dataset stays RAW (``encode=False``; the encoder encodes each batch), and the
     loss / metric are the rlhf ones. The reference build shares the group-planning predicate.
     """
-    from swift.dev.builder import (
-        apply_full_param_freeze,
-        build_dataset,
-        build_dp_mesh,
-        build_model,
-        build_template,
-        load_model_processor,
-    )
-    from swift.dev.builder.adapter import apply_tuner
-    from swift.dev.builder.optimizer import configure_optimizer
     from swift.dev.loss import configure_rl_loss, configure_rl_metrics
-    from swift.dev.processor import InputProcessor, input_processor_kwargs
+    from swift.dev.recipe.offline import build_offline_objects
 
-    rl_type = rl_config.rl_type
+    model_config, template_config, distributed_config = configs.model, configs.template, configs.distributed
+    rl_config, tuner_config = configs.rl, configs.tuner
+    assert rl_config is not None
     ref_remote_group = REF_GROUP if _reference_needs_group(rl_config, tuner_config) else None
-    initialize_supervised_twinkle(
-        distributed_config,
-        seed=train_config.seed,
-        full_determinism=train_config.full_determinism,
-        tf32=train_config.tf32,
-        auxiliary_groups=([] if ref_remote_group is None else [(ref_remote_group, 1)]),
-    )
-    process_and_validate(
-        model_config,
-        template_config,
-        dataset_config,
-        train_config,
-        distributed_config,
-        checkpoint_config,
-        tuner_config,
-        logging_config,
-        quantize_config,
-        megatron_config,
-        moe_config,
-        rl_config=rl_config,
-        reward_config=reward_config,
-    )
-    sp = template_config.sequence_parallel_size
-    # mode='remote' runs ONE client process: the policy AND the frozen reference are served-model
-    # handles (the sft assembly's remote shape for the model).
-    remote_run = distributed_config.mode == 'remote'
-    # build_dp_mesh is the only seam that reads and validates parallel_spec on the local path, so
-    # it must not be gated behind SP>1; ray keeps the gate (see its docstring) so no ray chain moves.
-    sp_mesh = (None if remote_run or (distributed_config.mode == 'ray' and sp <= 1)
-               else build_dp_mesh(distributed_config, sp))
-    # rm rides task_type='seq_cls' (process.py set it before the loss defaults read it), which also
-    # threads the score head into LoRA's modules_to_save; the other types keep the Config's value.
-    task_type = model_config.task_type
-    _, processor = load_model_processor(model_config)
-    kwargs = {"task_type": task_type} if task_type else {}
-    template = build_template(template_config, processor, **kwargs)
-    # The preference encode mode: 'kto' allows a missing rejected turn, 'rlhf' pairs chosen/rejected.
-    template.set_mode("kto" if rl_type == "kto" else "rlhf")
-    write_ckpt_args_json(
-        output_dir, processor, model_config, template_config, tuner_config, quantize_config,
-        dataset_config=dataset_config, task_type=task_type
-    )
-    # RAW rows: encode=False keeps the chosen/rejected columns intact; the encoder encodes each
-    # batch itself (the SFT encode path only knows single-sequence causal_lm).
-    dataloader, eval_dataloader = build_dataset(
-        dataset_config,
-        template,
-        train_config,
-        distributed_config,
-        template_config=template_config,
-        device_mesh=sp_mesh,
+    cluster = build_offline_objects(
+        configs,
+        recipe=recipe,
+        output_dir=output_dir,
         encode=False,
-    )
-    total_opt_steps = plan_supervised_steps(recipe, train_config, dataloader)
-    resolve_step_intervals(train_config, checkpoint_config, total_opt_steps)
-    resume_dir = checkpoint_config.resume_from_checkpoint if checkpoint_config is not None else None
-    build_config = model_config
-    if resume_dir and not has_adapter(tuner_config) and not remote_run:
-        build_config = copy.copy(model_config)
-        build_config.model = resume_dir
-    if remote_run:
-        from swift.dev.builder.remote import (
-            apply_remote_tuner,
-            build_remote_model,
-            configure_remote_processor,
-        )
-
-        model = build_remote_model(model_config, distributed_config)
-        if has_adapter(tuner_config):
-            # rm rides the seq_cls score head through the adapter channel (the same task kwargs
-            # the local path threads into modules_to_save).
-            apply_remote_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=task_type,
-                model_config=model_config,
-            )
-        configure_remote_processor(model, template_config, model_config, distributed_config)
-    else:
-        model = build_model(
-            build_config,
-            distributed_config,
-            train_config,
-            tuner_config,
-            device_mesh=sp_mesh,
-            quantize_config=quantize_config,
-            megatron_config=megatron_config,
-            moe_config=moe_config,
-        )
-        if has_adapter(tuner_config):
-            apply_tuner(
-                model,
-                tuner_config,
-                gradient_accumulation_steps=1,
-                task_type=task_type,
-            )
-        else:
-            apply_full_param_freeze(model, train_config)
-        model.set_processor(
-            InputProcessor,
-            **input_processor_kwargs(template, template_config, distributed_config, model_config),
-        )
-        model.set_template(template)
-    # The loss rides set_loss by CLASS NAME + kwargs -- one wire form for every transport
-    # (local model, Ray proxy, remote served-model handle): see configure_rl_loss.
-    configure_rl_loss(model, rl_config)
-    configure_optimizer(
-        model,
-        train_config,
-        num_training_steps=total_opt_steps,
-        distributed_config=distributed_config,
-        tuner_config=tuner_config,
-        plugin_config=None,
-    )
-    # AFTER the optimizer group exists (twinkle's add_metric contract): the DPO metric accumulates
-    # inside forward_backward from the ref_logps the loop forwards, so margins/accuracies ride out.
-    configure_rl_metrics(model, rl_config)
-    reference = _build_reference(
-        template, model_config, rl_config, tuner_config, distributed_config, model,
-        remote_group=ref_remote_group, template_config=template_config,
-    )
-    return PreferenceCluster(
-        model=model,
-        processor=processor,
-        template=template,
-        dataloader=dataloader,
-        eval_dataloader=eval_dataloader,
-        total_opt_steps=total_opt_steps,
-        task_type=task_type,
+        template_mode=("kto" if rl_config.rl_type == "kto" else "rlhf"),
+        auxiliary_groups=(() if ref_remote_group is None else ((ref_remote_group, 1),)),
         forward_task="causal_lm",
-        reference=reference,
+        configure_loss=lambda model: configure_rl_loss(model, rl_config),
+        configure_metric=lambda model: configure_rl_metrics(model, rl_config),
     )
+    reference = _build_reference(
+        cluster.template,
+        model_config,
+        rl_config,
+        tuner_config,
+        distributed_config,
+        cluster.model,
+        remote_group=ref_remote_group,
+        template_config=template_config,
+    )
+    return cluster, reference

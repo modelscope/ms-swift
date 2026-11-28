@@ -4,7 +4,14 @@ from typing import TYPE_CHECKING, Optional, get_args
 
 from swift.dev.utils.logger import get_logger
 from .adapter_config import has_adapter
-from .rl_config import F_DIVERGENCE_TYPE
+from .rl_config import (
+    DISTILL_RL_TYPES,
+    F_DIVERGENCE_TYPE,
+    ONLINE_RL_TYPES,
+    POLICY_RL_TYPES,
+    PREFERENCE_RL_TYPES,
+    STREAMING_RL_TYPES,
+)
 
 if TYPE_CHECKING:
     from swift.dev.config import (
@@ -30,20 +37,20 @@ logger = get_logger()
 
 
 def validate_configs(
-    model_config: 'ModelConfig',
-    template_config: 'TemplateConfig',
-    dataset_config: 'DatasetConfig',
-    train_config: 'TrainConfig',
-    distributed_config: 'DistributedConfig',
-    checkpoint_config: Optional['CheckpointConfig'] = None,
-    tuner_config: Optional['TunerConfig'] = None,
-    rl_config: Optional['RLConfig'] = None,
-    reward_config: Optional['RewardConfig'] = None,
-    rollout_config: Optional['RolloutConfig'] = None,
-    logging_config: Optional['LoggingConfig'] = None,
-    quantize_config: Optional['QuantizeConfig'] = None,
-    megatron_config: Optional['MegatronConfig'] = None,
-    moe_config: Optional['MoEConfig'] = None,
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    dataset_config: "DatasetConfig",
+    train_config: "TrainConfig",
+    distributed_config: "DistributedConfig",
+    checkpoint_config: Optional["CheckpointConfig"] = None,
+    tuner_config: Optional["TunerConfig"] = None,
+    rl_config: Optional["RLConfig"] = None,
+    reward_config: Optional["RewardConfig"] = None,
+    rollout_config: Optional["RolloutConfig"] = None,
+    logging_config: Optional["LoggingConfig"] = None,
+    quantize_config: Optional["QuantizeConfig"] = None,
+    megatron_config: Optional["MegatronConfig"] = None,
+    moe_config: Optional["MoEConfig"] = None,
     *,
     training: bool = True,
 ) -> None:
@@ -51,10 +58,24 @@ def validate_configs(
     from swift.dev.builder import is_megatron_backend
     is_megatron = is_megatron_backend(distributed_config)
 
-    _check_remote_mode(distributed_config, is_megatron, rl_config,
-                       train_config=train_config, tuner_config=tuner_config,
-                       quantize_config=quantize_config, rollout_config=rollout_config,
-                       checkpoint_config=checkpoint_config)
+    is_megatron = is_megatron_backend(distributed_config)
+    from .process import normalize_rl_type
+
+    normalize_rl_type(rl_config)
+    if rl_config is not None and rl_config.rl_type == "real":
+        # REAL is its own rl_type; only its group geometry needs the extra check here.
+        _check_real_groups(rl_config, train_config, rollout_config)
+
+    _check_remote_mode(
+        distributed_config,
+        is_megatron,
+        rl_config,
+        train_config=train_config,
+        tuner_config=tuner_config,
+        quantize_config=quantize_config,
+        rollout_config=rollout_config,
+        checkpoint_config=checkpoint_config,
+    )
     _check_group_by_length(dataset_config, template_config)
     _check_lazy_tokenize(dataset_config)
     _check_data_sharding(dataset_config)
@@ -82,7 +103,8 @@ def validate_configs(
     _check_mtp(model_config, is_megatron, tuner_config)
     _check_quantization(model_config, distributed_config, is_megatron)
     _check_load_quantization(
-        model_config, distributed_config, tuner_config, quantize_config, is_megatron, training=training)
+        model_config, distributed_config, tuner_config, quantize_config, is_megatron, training=training
+    )
     _check_megatron_fsdp(distributed_config, is_megatron)
     _check_fsdp_config(distributed_config)
     _check_enable_kernel(model_config, distributed_config, is_megatron)
@@ -99,32 +121,54 @@ def validate_configs(
         rl_config,
         is_megatron,
         training=training,
-        logging_config=logging_config)
+        logging_config=logging_config,
+    )
     _check_save_total_limit(checkpoint_config, is_megatron)
     _check_logging(logging_config)
     _check_rl_ref_model(model_config, tuner_config, rl_config)
-    _check_rl_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config,
-                       model_config)
+    _check_rl_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config, model_config)
     _check_online_rl_val_dataset(dataset_config, rl_config)
     _check_grpo_truncation_strategy(template_config, rl_config)
     _check_grpo_cached_dataset(dataset_config, rl_config)
     _check_rl_padding_free(template_config, dataset_config, rl_config)
     _check_rl_padding_side(template_config, rl_config)
     _check_rl_sequence_parallel(
-        model_config, template_config, dataset_config, distributed_config, rl_config, is_megatron)
+        model_config, template_config, dataset_config, distributed_config, rl_config, is_megatron
+    )
     # Packing-derived padding_free has already been resolved by process_configs. RLHF SP is fully governed
     # by _check_rl_sequence_parallel above, so this early-returns for a non-None rl_config.
     _check_hf_sequence_parallel(
-        model_config, template_config, dataset_config, distributed_config, is_megatron, rl_config)
+        model_config, template_config, dataset_config, distributed_config, is_megatron, rl_config
+    )
+
+
+def _check_real_groups(cfg: "RLConfig", train_config: "TrainConfig", rollout_config: Optional["RolloutConfig"]) -> None:
+    """Keep every REAL objective group inside one fixed physical micro-batch."""
+    if cfg.loss_type not in (None, ["real"]):
+        raise ValueError(
+            f"rl_type=real selects the REAL objective and does not accept another loss_type, got {cfg.loss_type!r}."
+        )
+    if cfg.num_generations < 2:
+        raise ValueError("REAL requires num_generations >= 2.")
+    if train_config.per_device_train_batch_size % cfg.num_generations:
+        raise ValueError("REAL requires per_device_train_batch_size to contain complete generation groups.")
+    if train_config.dynamic_batching:
+        raise ValueError("REAL requires fixed micro-batches to preserve complete generation groups.")
+    if rollout_config is not None and rollout_config.segment_policy == "collect":
+        raise ValueError("REAL does not split generation groups into collected segment rows.")
 
 
 def _check_dynamic_batching(train_config: "TrainConfig", rl_config: Optional["RLConfig"], is_megatron: bool) -> None:
+    """HF/Unsloth only: Megatron's micro-batch count is fixed by GA/PP/VPP, not token-packed."""
     if not train_config.dynamic_batching:
         return
-    if rl_config is None or rl_config.rl_type != "grpo":
-        raise ValueError("dynamic_batching is currently connected only to the GRPO recipe.")
+    if rl_config is None or rl_config.rl_type not in POLICY_RL_TYPES:
+        raise ValueError("dynamic_batching requires the shared policy update path.")
     if is_megatron:
-        raise ValueError("dynamic_batching requires the HF/Unsloth backend; Megatron uses fixed micro-batches.")
+        raise ValueError(
+            "dynamic_batching requires the HF/Unsloth backend; Megatron uses a fixed "
+            "micro-batch schedule (gradient_accumulation_steps / PP / VPP)."
+        )
     if train_config.max_tokens_per_micro_batch is None or train_config.max_tokens_per_micro_batch <= 0:
         raise ValueError("max_tokens_per_micro_batch must be positive when dynamic_batching=True.")
     if train_config.packing_algorithm not in ("ffd", "kk"):
@@ -139,7 +183,7 @@ def _changed_fields(config) -> list:
 
     if config is None:
         return []
-    explicit = getattr(config, '_explicit_fields', None)
+    explicit = getattr(config, "_explicit_fields", None)
     if explicit is not None:
         return sorted(explicit)
     changed = []
@@ -155,56 +199,64 @@ def _changed_fields(config) -> list:
     return changed
 
 
-def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: bool,
-                       rl_config: Optional['RLConfig'],
-                       train_config: Optional['TrainConfig'] = None,
-                       tuner_config: Optional['TunerConfig'] = None,
-                       quantize_config: Optional['QuantizeConfig'] = None,
-                       rollout_config: Optional['RolloutConfig'] = None,
-                       reward_config: Optional['RewardConfig'] = None,
-                       checkpoint_config: Optional['CheckpointConfig'] = None) -> None:
+def _check_remote_mode(
+    distributed_config: "DistributedConfig",
+    is_megatron: bool,
+    rl_config: Optional["RLConfig"],
+    train_config: Optional["TrainConfig"] = None,
+    tuner_config: Optional["TunerConfig"] = None,
+    quantize_config: Optional["QuantizeConfig"] = None,
+    rollout_config: Optional["RolloutConfig"] = None,
+    reward_config: Optional["RewardConfig"] = None,
+    checkpoint_config: Optional["CheckpointConfig"] = None,
+) -> None:
     """mode='remote' preconditions: a server to talk to, and a path the client port covers.
 
     The remote mode drives a twinkle-server through twinkle_client, so everything that assumes
     local processes (torchrun ranks, DeviceMesh, in-process engines) is off the table; refuse
     loudly instead of letting the build fail somewhere deep with an unrelated error.
     """
-    if distributed_config.mode != 'remote':
+    if distributed_config.mode != "remote":
         return
     if checkpoint_config is not None:
         # The server-side checkpoint store is local-disk + twinkle:// URIs (the weight-sync
         # hand-off); an object-store output would have no consumer in the server's path.
         from swift.dev.utils.storage import is_remote_url
 
-        for label, path in (('output_dir', checkpoint_config.output_dir),
-                            ('resume_from_checkpoint', checkpoint_config.resume_from_checkpoint)):
+        for label, path in (
+            ("output_dir", checkpoint_config.output_dir),
+            ("resume_from_checkpoint", checkpoint_config.resume_from_checkpoint),
+        ):
             if path and is_remote_url(path):
                 raise ValueError(
-                    f'--mode remote does not support oss:// / s3:// {label}: server-side '
-                    'checkpoints are local-disk only (weight sync goes through the twinkle:// '
-                    'hand-off). Use mode=local/ray to checkpoint into object storage.')
+                    f"--mode remote does not support oss:// / s3:// {label}: server-side "
+                    "checkpoints are local-disk only (weight sync goes through the twinkle:// "
+                    "hand-off). Use mode=local/ray to checkpoint into object storage."
+                )
     if not distributed_config.server_base_url:
         raise ValueError(
             "--mode remote requires --server_base_url (the twinkle-server gateway root; "
-            "twinkle_client appends '/api/v1' itself).")
+            "twinkle_client appends '/api/v1' itself)."
+        )
     # twinkle_client unconditionally appends '/api/v1' to the base (unless it already ends with
     # it), so the gateway must be deployed with --route_prefix /api/v1 and the base URL carries
     # no path. Anything else (/v1, a doubled /v1/api/v1, ...) answers every request with 404.
     from urllib.parse import urlparse
 
-    _base_path = urlparse(distributed_config.server_base_url).path.rstrip('/')
-    if _base_path and _base_path != '/api/v1':
+    _base_path = urlparse(distributed_config.server_base_url).path.rstrip("/")
+    if _base_path and _base_path != "/api/v1":
         raise ValueError(
             f"--server_base_url {distributed_config.server_base_url!r} carries path {_base_path!r}: "
             "twinkle_client appends '/api/v1' to the base, so a remote gateway must be deployed "
             "with --route_prefix /api/v1 and the base URL should carry no path (or exactly "
-            "'/api/v1').")
+            "'/api/v1')."
+        )
     if rl_config is not None:
         _check_remote_rl(rl_config, rollout_config, checkpoint_config, tuner_config)
     # backend under remote names the SERVER-side model app's engine (hf or megatron): both are
     # legal, because configure_optimizer's two branches are already descriptions that cross HTTP
     # ('AdamW' for the transformers app, 'MegatronOptimizer' + its kwargs for the megatron one).
-    if has_adapter(tuner_config) and tuner_config.tuner != 'lora':
+    if has_adapter(tuner_config) and tuner_config.tuner != "lora":
         raise ValueError(
             f"--mode remote does not support tuner={tuner_config.tuner!r}: the server-side "
             "adapter mechanism is LoRA on the resident base. Use --tuner lora, or none for "
@@ -218,47 +270,62 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             raise ValueError(
                 f"--mode remote does not support the base-modifying LoRA init "
                 f"{tuner_config.init_weights!r}: its initial-adapter snapshot lives in-process. "
-                "Use a plain init remotely.")
-    if has_adapter(tuner_config) and tuner_config.tuner == 'lora':
+                "Use a plain init remotely."
+            )
+    if has_adapter(tuner_config) and tuner_config.tuner == "lora":
         # The freeze_llm/vit/aligner partitioning steers the LOCAL all-linear expansion against the
         # in-process module graph; the remote LoraConfig carries none of it, so an explicit freeze
         # would be silently dropped.
         changed = set(_changed_fields(tuner_config))
-        dropped = {'freeze_llm', 'freeze_vit', 'freeze_aligner'}.intersection(changed)
+        dropped = {"freeze_llm", "freeze_vit", "freeze_aligner"}.intersection(changed)
         if dropped:
             raise ValueError(
-                f'--mode remote does not support {sorted(dropped)}: they steer the local target-module '
-                'expansion against the in-process module graph, which cannot cross HTTP. Set the '
-                'targets explicitly with --target_modules, or run with mode=local/ray.')
+                f"--mode remote does not support {sorted(dropped)}: they steer the local target-module "
+                "expansion against the in-process module graph, which cannot cross HTTP. Set the "
+                "targets explicitly with --target_modules, or run with mode=local/ray."
+            )
     if quantize_config is not None and quantize_config.quant_method is not None:
         # build_remote_model loads nothing locally: the server owns the weights, so a load-time
         # quantization request has no consumer on this side.
         raise ValueError(
-            '--mode remote does not support quant_method: the server owns model loading, so the '
-            'client-side quantization request would be silently ignored. Quantize on the server, or '
-            'run with mode=local/ray.')
-    if train_config is not None and not has_adapter(tuner_config) and (
-            train_config.freeze_parameters or train_config.freeze_parameters_regex
-            or train_config.freeze_parameters_ratio or train_config.trainable_parameters
-            or train_config.trainable_parameters_regex):
+            "--mode remote does not support quant_method: the server owns model loading, so the "
+            "client-side quantization request would be silently ignored. Quantize on the server, or "
+            "run with mode=local/ray."
+        )
+    if (
+        train_config is not None
+        and not has_adapter(tuner_config)
+        and (
+            train_config.freeze_parameters
+            or train_config.freeze_parameters_regex
+            or train_config.freeze_parameters_ratio
+            or train_config.trainable_parameters
+            or train_config.trainable_parameters_regex
+        )
+    ):
         # The freeze knobs toggle requires_grad in-process, which cannot cross HTTP; a silently
         # ignored freeze would train more parameters than the user asked for.
         raise ValueError(
-            '--mode remote does not support the freeze/trainable_parameters knobs: they toggle '
-            'requires_grad in-process on the training side, which cannot cross HTTP. Keep the '
-            'remote run LoRA, or apply the freeze with mode=local/ray.')
+            "--mode remote does not support the freeze/trainable_parameters knobs: they toggle "
+            "requires_grad in-process on the training side, which cannot cross HTTP. Keep the "
+            "remote run LoRA, or apply the freeze with mode=local/ray."
+        )
     if train_config is not None and train_config.predict_with_generate:
         # Generative eval builds a LOCAL sampler; the remote client sampler for it is a separate
         # wiring (the infer 'twinkle' backend) not yet threaded through build_generative_eval.
         raise ValueError(
-            '--mode remote does not support --predict_with_generate yet: the generative-eval '
-            'sampler is built in-process. Evaluate the saved twinkle:// checkpoint with '
-            '`swift infer --sampler twinkle`, or use val-loss eval (the default) remotely.')
+            "--mode remote does not support --predict_with_generate yet: the generative-eval "
+            "sampler is built in-process. Evaluate the saved twinkle:// checkpoint with "
+            "`swift infer --sampler twinkle`, or use val-loss eval (the default) remotely."
+        )
 
 
-def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutConfig'],
-                     checkpoint_config: Optional['CheckpointConfig'] = None,
-                     tuner_config: Optional['TunerConfig'] = None) -> None:
+def _check_remote_rl(
+    rl_config: "RLConfig",
+    rollout_config: Optional["RolloutConfig"],
+    checkpoint_config: Optional["CheckpointConfig"] = None,
+    tuner_config: Optional["TunerConfig"] = None,
+) -> None:
     """mode='remote' + RL: the coverage of the client object sources, refused gap by gap.
 
     Every recipe algorithm runs remotely with the SAME loop code: the policy, the critic, the
@@ -272,53 +339,66 @@ def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutCon
     rollout / tools / harness need no refusal: the rollout, its sandbox env and the driver all
     run in-process in this client, sampling each turn through the HTTPSampler face.
     """
-    if rl_config.router_replay_mode == 'R2':
+    from .process import normalize_advantage_estimator
+
+    normalize_advantage_estimator(rl_config)
+    if rl_config.router_replay_mode == "R2":
         raise ValueError(
             "--mode remote does not support router_replay_mode='R2': "
-            'the training-model routing capture and collection workflow is not implemented remotely. '
+            "the training-model routing capture and collection workflow is not implemented remotely. "
             "Use 'R3' with a sampler that exports routed_experts and a replay-enabled server model, "
-            "use 'disabled', or run mode=ray for R2.")
+            "use 'disabled', or run mode=ray for R2."
+        )
     if rl_config.enable_sampling_replay:
         raise ValueError(
-            '--mode remote does not support --enable_sampling_replay (the replay engine is a '
-            'local sampler-construction flag; a served sampler is configured server-side). Drop '
-            'it, or run mode=ray.')
-    if (rl_config.rl_type == 'ppo' and checkpoint_config is not None
-            and checkpoint_config.resume_from_checkpoint):
+            "--mode remote does not support --enable_sampling_replay (the replay engine is a "
+            "local sampler-construction flag; a served sampler is configured server-side). Drop "
+            "it, or run mode=ray."
+        )
+    if (
+        rl_config.advantage_estimator == "gae"
+        and checkpoint_config is not None
+        and checkpoint_config.resume_from_checkpoint
+    ):
         # PPO's two-model save nests the critic at <policy-ckpt>/value_model locally; remotely the
         # critic checkpoint lives in its OWN server-side training run, and no protocol channel links
         # the two, so a remote PPO resume cannot find the step-aligned critic.
         raise ValueError(
-            '--mode remote does not support PPO resume yet: the critic checkpoint sits in its own '
-            'server-side training run and no policy->value checkpoint association crosses the '
-            'protocol. Restart the remote run, or resume with mode=ray.')
+            "--mode remote does not support PPO resume yet: the critic checkpoint sits in its own "
+            "server-side training run and no policy->value checkpoint association crosses the "
+            "protocol. Restart the remote run, or resume with mode=ray."
+        )
     if rl_config.sync_ref_model:
         # The EMA pair streams the policy's weights into the reference through a checkpoint-engine
         # channel; remotely the policy and the reference are separate served models, so the sync
         # would have to ride a server-side path that does not exist yet.
         raise ValueError(
             "--mode remote does not support --sync_ref_model (the EMA policy->reference weight stream "
-            'is a checkpoint-engine channel between local actors). Drop it, or run mode=ray.')
+            "is a checkpoint-engine channel between local actors). Drop it, or run mode=ray."
+        )
     if rollout_config is not None:
-        colocate = rollout_config.sampler_mode == 'colocate'
+        colocate = rollout_config.sampler_mode == "colocate"
         if colocate:
             # The colocate dance (sleep/wake, offload, KV release) time-shares ONE process's devices;
             # remotely the sampler is a separate served app that already owns its own.
             raise ValueError(
                 "--mode remote does not support sampler_mode='colocate' (the served sampler owns its "
                 "own devices; there is no borrow-and-return loop). Use the default disaggregated "
-                "placement, or run mode=ray.")
-        if rollout_config.resource_mode == 'adaptive':
+                "placement, or run mode=ray."
+            )
+        if rollout_config.resource_mode == "adaptive":
             raise ValueError(
                 "--mode remote does not support resource_mode='adaptive' (the elastic cluster adapter "
-                "grows sampler replicas on local ranks). Use the static layout, or run mode=ray.")
-        if rollout_config.weight_sync_backend != 'full':
+                "grows sampler replicas on local ranks). Use the static layout, or run mode=ray."
+            )
+        if rollout_config.weight_sync_backend != "full":
             # delta_{sharded,rpc} stream trainer-side deltas through in-process engines; the remote
             # sync channel IS the save -> adapter_uri checkpoint hand-off.
             raise ValueError(
                 f"--mode remote does not support weight_sync_backend={rollout_config.weight_sync_backend!r}: "
-                'the remote weight channel is the saved twinkle:// adapter_uri. Use the default '
-                "'full' (via save), or run mode=ray.")
+                "the remote weight channel is the saved twinkle:// adapter_uri. Use the default "
+                "'full' (via save), or run mode=ray."
+            )
         if not has_adapter(tuner_config):
             # RemoteWeightSync.sync_weights publishes by handing the served sampler a twinkle://
             # adapter_uri, which the server loads as an adapter on top of its own base weights. A
@@ -327,49 +407,56 @@ def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutCon
             # rollout at all: the offline preference family has no sampler and no weight ring, so
             # --tuner full stays legal there (as it does for remote supervised training).
             raise ValueError(
-                '--mode remote does not support --tuner full for online RL: the weight channel to '
-                'the served sampler is the save -> adapter_uri hand-off and the server loads that '
-                'URI as an adapter over its own base weights, so a full-parameter run would leave '
-                'the sampler serving stale weights. Use --tuner lora, or run mode=ray.')
+                "--mode remote does not support --tuner full for online RL: the weight channel to "
+                "the served sampler is the save -> adapter_uri hand-off and the server loads that "
+                "URI as an adapter over its own base weights, so a full-parameter run would leave "
+                "the sampler serving stale weights. Use --tuner lora, or run mode=ray."
+            )
 
 
-def _check_megatron_runtime_configs(megatron_config: Optional['MegatronConfig'], moe_config: Optional['MoEConfig'],
-                                     is_megatron: bool) -> None:
+def _check_megatron_runtime_configs(
+    megatron_config: Optional["MegatronConfig"], moe_config: Optional["MoEConfig"], is_megatron: bool
+) -> None:
     if not is_megatron:
         changed = _changed_fields(megatron_config) + _changed_fields(moe_config)
         if changed:
-            raise ValueError(f'Megatron-only options {changed} cannot be used with the transformers backend.')
+            raise ValueError(f"Megatron-only options {changed} cannot be used with the transformers backend.")
         return
     if megatron_config is None:
         return
     unsupported = {
-        'apply_dsa_kernel_fusion',
-        'csa_dense_mode',
-        'sequence_packing_scheduler',
-        'use_fused_mhc',
+        "apply_dsa_kernel_fusion",
+        "csa_dense_mode",
+        "sequence_packing_scheduler",
+        "use_fused_mhc",
     }
     requested = sorted(unsupported.intersection(_changed_fields(megatron_config)))
     if requested:
         raise NotImplementedError(
-            f'{requested} are not exposed by the installed mcore-bridge ModelConfig. '
-            'Upgrade mcore-bridge/Megatron-LM or remove these options.')
+            f"{requested} are not exposed by the installed mcore-bridge ModelConfig. "
+            "Upgrade mcore-bridge/Megatron-LM or remove these options."
+        )
     if megatron_config.manual_gc_steps < 0:
-        raise ValueError('manual_gc_steps must be >= 0.')
+        raise ValueError("manual_gc_steps must be >= 0.")
     # use_cpu_initialization is owned, not configured: the mcore-bridge backend always builds on CPU
     # and moves shards in create_model (its bridge pops the forwarded copy and forces True), and the
     # megatron-bridge path never reads it -- an explicit setting is dead on both.
-    if 'use_cpu_initialization' in _changed_fields(megatron_config):
+    if "use_cpu_initialization" in _changed_fields(megatron_config):
         raise ValueError(
-            'use_cpu_initialization is owned by the megatron backends (mcore-bridge always builds on '
-            'CPU and moves the shards to GPU itself), so an explicit setting would be silently '
-            'ignored. Remove the flag.')
+            "use_cpu_initialization is owned by the megatron backends (mcore-bridge always builds on "
+            "CPU and moves the shards to GPU itself), so an explicit setting would be silently "
+            "ignored. Remove the flag."
+        )
 
 
-def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfig'],
-                         reward_config: Optional['RewardConfig'] = None,
-                         rollout_config: Optional['RolloutConfig'] = None,
-                         distributed_config: Optional['DistributedConfig'] = None,
-                         model_config: Optional['ModelConfig'] = None) -> None:
+def _check_rl_advanced(
+    train_config: "TrainConfig",
+    rl_config: Optional["RLConfig"],
+    reward_config: Optional["RewardConfig"] = None,
+    rollout_config: Optional["RolloutConfig"] = None,
+    distributed_config: Optional["DistributedConfig"] = None,
+    model_config: Optional["ModelConfig"] = None,
+) -> None:
     """Validate online-RL features before models, teachers, or rollout workers are created.
 
     Reward-channel surface on reward_config, multi-turn on rollout_config; the multi-turn GRPO-only
@@ -377,37 +464,87 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
     """
     if rl_config is None:
         return
+    from .process import normalize_advantage_estimator
+
+    normalize_advantage_estimator(rl_config)
     cfg = rl_config
-    online_only = bool(cfg.chord_sft_dataset or cfg.advantage_reweight or cfg.sdar_loss_coef > 0
-                       or cfg.dynamic_sample)
-    if online_only and cfg.rl_type != 'grpo':
-        raise ValueError('CHORD, RLSD, SDAR, and dynamic sampling are GRPO-only.')
-    if cfg.sync_ref_model and cfg.rl_type not in ('grpo', 'ppo'):
-        raise ValueError('sync_ref_model requires rl_type grpo or ppo (only they have a reference model).')
-    # Without a reward channel there is nothing to reinforce: GRPO would fold NaN rows into every
-    # group's advantage, PPO would train on all-zero rewards. legacy fails this loudly too. The
-    # sandbox env counts as a channel: its session rewards and the dataset's terminal ``checks``
-    # column ride the rollout's own reward keys (rewards.env / rewards.check) into the same fold.
-    env_channel = bool(rollout_config is not None
-                        and 'sandbox' in (getattr(rollout_config, 'tools', None) or []))
-    if cfg.rl_type == 'grpo' and not env_channel \
-            and not (reward_config and (reward_config.orm or reward_config.prm)):
-        raise ValueError('rl_type=grpo needs at least one reward channel: pass --orm (models or rule '
-                         'plugins) or --prm, or wire the sandbox env (--tools sandbox: the env session '
-                         'rewards plus the dataset\'s terminal checks column). Without one every group '
-                         'folds NaN into its advantage.')
-    if cfg.rl_type == 'ppo' and not env_channel \
-            and not (reward_config and (reward_config.orm or reward_config.prm)):
-        raise ValueError('rl_type=ppo needs at least one reward channel: pass --orm (models or rule '
-                         'plugins) or --prm (the process reward fused into the GAE token rewards), or '
-                         'wire the sandbox env (--tools sandbox: the env session rewards plus the '
-                         'dataset\'s terminal checks column). Without rewards the GAE anchors are '
-                         'all zero.')
+    _check_policy_only_knobs(cfg)
     if reward_config is not None and reward_config.env_reward_weight < 0:
         raise ValueError(
-            f'env_reward_weight must be non-negative (1.0 folds the env-family rewards -- the env '
+            f"env_reward_weight must be non-negative (1.0 folds the env-family rewards -- the env "
             "session reward plus the terminal checks column -- into the reward fold; 0.0 keeps them "
-            f'recorded but out of training), got {reward_config.env_reward_weight}.')
+            f"recorded but out of training), got {reward_config.env_reward_weight}."
+        )
+    if cfg.rl_type in POLICY_RL_TYPES:
+        _check_policy_recipe(cfg, train_config, reward_config, rollout_config, distributed_config)
+    elif cfg.rl_type in DISTILL_RL_TYPES:
+        _check_distillation(cfg, model_config)
+    else:
+        _check_preference_reference(cfg)
+        _check_dpo_loss(cfg)
+    _check_auxiliary_adapters(cfg, reward_config)
+
+
+#: Knobs whose only implementation is the shared policy recipe.
+_POLICY_ONLY_KNOBS = (
+    "chord_sft_dataset",
+    "advantage_reweight",
+    "sdar_loss_coef",
+    "dynamic_sample",
+    "sync_ref_model",
+    "router_replay_mode",
+    "enable_sampling_replay",
+)
+
+
+def _field_default(config, name: str):
+    """The owning dataclass field's default (one source of truth for "off")."""
+    import dataclasses
+
+    for config_field in dataclasses.fields(config):
+        if config_field.name == name:
+            if config_field.default is not dataclasses.MISSING:
+                return config_field.default
+            return config_field.default_factory()
+    return None
+
+
+def _user_set(config, name: str) -> bool:
+    """Explicit and not the field's own default: an explicitly-off knob stays off."""
+    return name in _changed_fields(config) and getattr(config, name) != _field_default(config, name)
+
+
+def _check_policy_only_knobs(cfg: "RLConfig") -> None:
+    """Refuse policy-recipe knobs on other families."""
+    if cfg.rl_type in POLICY_RL_TYPES:
+        return
+    requested = sorted(name for name in _POLICY_ONLY_KNOBS if _user_set(cfg, name))
+    if requested:
+        raise ValueError(
+            f"{requested} are implemented only by the shared policy recipes "
+            f"{sorted(POLICY_RL_TYPES)}; got rl_type={cfg.rl_type!r}."
+        )
+
+
+def _check_policy_recipe(
+    cfg: "RLConfig",
+    train_config: "TrainConfig",
+    reward_config: Optional["RewardConfig"],
+    rollout_config: Optional["RolloutConfig"],
+    distributed_config: Optional["DistributedConfig"],
+) -> None:
+    """Every gate for POLICY_RL_TYPES; a new on-policy rl_type joins POLICY_RL_TYPES only."""
+    if cfg.advantage_estimator == "gae" and cfg.advantage_reweight == "rlsd":
+        raise ValueError(
+            "RLSD reweights sequence-scalar advantages; GAE produces token advantages. "
+            "Use teacher_kl_coef for additive teacher regularization with GAE."
+        )
+    if cfg.loss_type == ["real"] and cfg.rl_type != "real":
+        raise ValueError(
+            "loss_type='real' selects the REAL objective; pass rl_type='real' instead. "
+            "REAL is its own rl_type, not a GRPO loss variant."
+        )
+    _check_reward_channel(cfg, reward_config, rollout_config)
     _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
     _check_ppo_controls(cfg)
@@ -418,10 +555,25 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
     _check_segments(cfg, rollout_config, reward_config)
     _check_prm(cfg, reward_config)
     _check_self_distillation(cfg, train_config, reward_config)
-    _check_distillation(cfg, model_config)
-    _check_auxiliary_adapters(cfg, reward_config)
-    _check_preference_reference(cfg)
-    _check_dpo_loss(cfg)
+
+
+def _check_reward_channel(
+    cfg: "RLConfig", reward_config: Optional["RewardConfig"], rollout_config: Optional["RolloutConfig"]
+) -> None:
+    """A policy run needs a reward channel; the sandbox env counts as one."""
+    env_channel = bool(rollout_config is not None and "sandbox" in (getattr(rollout_config, "tools", None) or []))
+    if env_channel or (reward_config and (reward_config.orm or reward_config.prm)):
+        return
+    consequence = (
+        "the GAE anchors would all be zero"
+        if cfg.advantage_estimator == "gae"
+        else "every group folds NaN into its advantage"
+    )
+    raise ValueError(
+        f"rl_type={cfg.rl_type} needs at least one reward channel: pass --orm (models or "
+        "rule plugins) or --prm, or wire the sandbox env (--tools sandbox: the env session "
+        f"rewards plus the dataset's terminal checks column). Without one {consequence}."
+    )
 
 
 # The f-divergences DPO can stand in for the KL; derived from F_DIVERGENCE_TYPE so the runtime check and
@@ -429,46 +581,50 @@ def _check_rl_advanced(train_config: 'TrainConfig', rl_config: Optional['RLConfi
 _DPO_F_DIVERGENCE_TYPES = get_args(F_DIVERGENCE_TYPE)
 
 
-def _check_dpo_loss(cfg: 'RLConfig') -> None:
+def _check_dpo_loss(cfg: "RLConfig") -> None:
     """Validate the DPO f-divergence name and the multi-loss (MPO) weight alignment (dpo-only knobs)."""
-    if cfg.rl_type != 'dpo':
+    if cfg.rl_type != "dpo":
         return
     if cfg.f_divergence_type not in _DPO_F_DIVERGENCE_TYPES:
-        raise ValueError(f'--f_divergence_type must be one of {list(_DPO_F_DIVERGENCE_TYPES)}, '
-                         f'got {cfg.f_divergence_type!r}.')
-    loss_types = cfg.loss_type or ['sigmoid']
+        raise ValueError(
+            f"--f_divergence_type must be one of {list(_DPO_F_DIVERGENCE_TYPES)}, got {cfg.f_divergence_type!r}."
+        )
+    loss_types = cfg.loss_type or ["sigmoid"]
     if cfg.loss_weights is not None and len(cfg.loss_weights) != len(loss_types):
-        raise ValueError(f'--loss_weights must give one weight per --loss_type '
-                         f'({len(cfg.loss_weights)} weights for {len(loss_types)} loss types).')
+        raise ValueError(
+            f"--loss_weights must give one weight per --loss_type "
+            f"({len(cfg.loss_weights)} weights for {len(loss_types)} loss types)."
+        )
 
 
-def _check_preference_reference(cfg: 'RLConfig') -> None:
+def _check_preference_reference(cfg: "RLConfig") -> None:
     """Reject reference-free KTO: its implicit reward AND z_KL anchor are both log-ratios vs the reference."""
-    if cfg.rl_type == 'kto' and cfg.reference_free:
-        raise ValueError('KTO cannot be reference-free: its implicit reward is the log-ratio against a '
-                         'reference and z_KL is a KL against that reference. Remove --reference_free; '
-                         'under LoRA the adapter-disabled base serves as the reference automatically, and '
-                         'full fine-tuning derives one from the policy init.')
+    if cfg.rl_type == "kto" and cfg.reference_free:
+        raise ValueError(
+            "KTO cannot be reference-free: its implicit reward is the log-ratio against a "
+            "reference and z_KL is a KL against that reference. Remove --reference_free; "
+            "under LoRA the adapter-disabled base serves as the reference automatically, and "
+            "full fine-tuning derives one from the policy init."
+        )
 
 
-def validate_multi_turn_config(rollout_config: Optional['RolloutConfig']) -> None:
+def validate_multi_turn_config(rollout_config: Optional["RolloutConfig"]) -> None:
     """Validate the shared multi-turn surface without RL-training-only constraints."""
     _check_multi_turn(rollout_config)
 
 
-def _check_multi_turn(rollout_config: Optional['RolloutConfig']) -> None:
+def _check_multi_turn(rollout_config: Optional["RolloutConfig"]) -> None:
     # Multi-turn is on iff max_turns is set; per-turn length is sampling_params.max_tokens,
     # max_trajectory_tokens caps the whole trajectory. Both are independent, either may be None.
     if rollout_config is None or rollout_config.max_turns is None:
         return
     if rollout_config.max_turns < 1:
-        raise ValueError('max_turns must be >= 1.')
+        raise ValueError("max_turns must be >= 1.")
     if rollout_config.max_trajectory_tokens is not None and rollout_config.max_trajectory_tokens < 1:
-        raise ValueError('max_trajectory_tokens must be >= 1.')
+        raise ValueError("max_trajectory_tokens must be >= 1.")
 
 
-def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
-                            rl_config: Optional['RLConfig'] = None) -> None:
+def validate_rollout_config(rollout_config: Optional["RolloutConfig"], rl_config: Optional["RLConfig"] = None) -> None:
     """Validate the rollout tools/sandbox surface without RL-training-only constraints.
 
     max_turns lives on the rollout_config itself; its GRPO-only gate runs here too
@@ -485,37 +641,39 @@ def validate_rollout_config(rollout_config: Optional['RolloutConfig'],
 
 # Recipes whose training loop pushes the policy into the rollout sampler through a checkpoint
 # engine: only these read weight_sync_backend.
-_ROLLOUT_SYNC_TYPES = frozenset({'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'})
+_ROLLOUT_SYNC_TYPES = frozenset(ONLINE_RL_TYPES)
 
 
-def _check_weight_sync_backend(rollout_config: Optional['RolloutConfig'],
-                                rl_config: Optional['RLConfig']) -> None:
+def _check_weight_sync_backend(rollout_config: Optional["RolloutConfig"], rl_config: Optional["RLConfig"]) -> None:
     """Fail loudly on weight_sync_backend combinations that would not run or not be read."""
-    if rollout_config is None or rollout_config.weight_sync_backend == 'full':
+    if rollout_config is None or rollout_config.weight_sync_backend == "full":
         return
     rl_type = None if rl_config is None else rl_config.rl_type
     if rl_type not in _ROLLOUT_SYNC_TYPES:
         raise ValueError(
-            '--weight_sync_backend is read only by the online recipes that push trained weights into a '
-            f'rollout sampler (grpo/ppo/rft/gkd/opsd/mopd); got rl_type={rl_type!r}, which trains without a '
-            'checkpoint-engine weight sync, so the setting would silently do nothing.')
-    if rollout_config.sampler_mode == 'colocate':
+            "--weight_sync_backend is read only by the online recipes that push trained weights into a "
+            f"rollout sampler ({sorted(_ROLLOUT_SYNC_TYPES)}); got rl_type={rl_type!r}, which trains without a "
+            "checkpoint-engine weight sync, so the setting would silently do nothing."
+        )
+    if rollout_config.sampler_mode == "colocate":
         raise ValueError(
-            '--weight_sync_backend delta_sharded needs disjoint trainer/rollout GPUs: a colocated sampler '
-            'time-shares one device group with the trainer, while the delta transport addresses the rollout '
-            'ranks as their own worker set. Set --sampler_mode disaggregated (or server) instead.')
-    if rollout_config.rollout_sampler not in ('vllm', 'sglang'):
+            "--weight_sync_backend delta_sharded needs disjoint trainer/rollout GPUs: a colocated sampler "
+            "time-shares one device group with the trainer, while the delta transport addresses the rollout "
+            "ranks as their own worker set. Set --sampler_mode disaggregated (or server) instead."
+        )
+    if rollout_config.rollout_sampler not in ("vllm", "sglang"):
         raise ValueError(
             f"--weight_sync_backend delta_sharded currently reaches only vllm and sglang rollout samplers; "
-            f"got rollout_sampler={rollout_config.rollout_sampler!r}. Keep the full backend or switch.")
-    if rollout_config.resource_mode == 'adaptive':
+            f"got rollout_sampler={rollout_config.rollout_sampler!r}. Keep the full backend or switch."
+        )
+    if rollout_config.resource_mode == "adaptive":
         raise ValueError(
-            '--weight_sync_backend delta_sharded is not wired through the adaptive resource controller\'s '
-            'weight-sync channels; use resource_mode manual or estimate.')
+            "--weight_sync_backend delta_sharded is not wired through the adaptive resource controller's "
+            "weight-sync channels; use resource_mode manual or estimate."
+        )
 
 
-def _check_weight_sync_deepspeed(distributed_config: 'DistributedConfig',
-                                 rl_config: Optional['RLConfig']) -> None:
+def _check_weight_sync_deepspeed(distributed_config: "DistributedConfig", rl_config: Optional["RLConfig"]) -> None:
     """Reject checkpoint-engine weight sync on the DeepSpeed tier it cannot serve correctly.
 
     CPU offload (zero2_offload / zero3_offload): the fp32 master lives on the CPU and the bf16
@@ -531,103 +689,117 @@ def _check_weight_sync_deepspeed(distributed_config: 'DistributedConfig',
     ``strategy.gather_params_for_read``). Its end-to-end fidelity is verified separately.
     """
     from swift.dev.utils.utils import deepspeed_cpu_offload
+
     rl_type = None if rl_config is None else rl_config.rl_type
     if rl_type not in _ROLLOUT_SYNC_TYPES:
         return
     spec = distributed_config.deepspeed
-    alternatives = ('Use --deepspeed zero2, FSDP2 (--fsdp fsdp2), or the default strategy; '
-                    'all three are measured to sync weights correctly.')
+    alternatives = (
+        "Use --deepspeed zero2, FSDP2 (--fsdp fsdp2), or the default strategy; "
+        "all three are measured to sync weights correctly."
+    )
     if deepspeed_cpu_offload(spec):
         raise ValueError(
-            f'Weight sync into a rollout sampler is not supported with DeepSpeed CPU offload '
-            f'(--deepspeed {spec!r}, rl_type={rl_type!r}): the offload tier keeps the fp32 master on the '
-            'CPU and writes the bf16 parameters back asynchronously, so the sampler can be handed weights '
-            f'that lag the last update. {alternatives}')
+            f"Weight sync into a rollout sampler is not supported with DeepSpeed CPU offload "
+            f"(--deepspeed {spec!r}, rl_type={rl_type!r}): the offload tier keeps the fp32 master on the "
+            "CPU and writes the bf16 parameters back asynchronously, so the sampler can be handed weights "
+            f"that lag the last update. {alternatives}"
+        )
 
 
-def _check_resource_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
+def _check_resource_mode(rollout_config: Optional["RolloutConfig"], rl_config: Optional["RLConfig"]) -> None:
     """Validate static/adaptive resource planning before any Ray actor is created."""
     if rollout_config is None:
         return
     mode = rollout_config.resource_mode
-    if mode not in {'manual', 'estimate', 'adaptive'}:
-        raise ValueError(f'unknown resource_mode {mode!r}; expected manual, estimate, or adaptive.')
+    if mode not in {"manual", "estimate", "adaptive"}:
+        raise ValueError(f"unknown resource_mode {mode!r}; expected manual, estimate, or adaptive.")
     resource_fields = {
-        'resource_total_gpus', 'resource_gpu_memory_gib', 'resource_flex_gpus', 'resource_window_steps',
-        'resource_min_hold_steps', 'resource_overrides'
+        "resource_total_gpus",
+        "resource_gpu_memory_gib",
+        "resource_flex_gpus",
+        "resource_window_steps",
+        "resource_min_hold_steps",
+        "resource_overrides",
     }
     changed = _changed_fields(rollout_config)
-    if mode == 'manual':
+    if mode == "manual":
         # _changed_fields returns a list; intersection accepts any iterable while ``&`` needs a set.
         inert = sorted(resource_fields.intersection(changed))
         if inert:
-            raise ValueError(f'resource_mode="manual" does not read {inert}; select resource_mode="estimate" '
-                             'or "adaptive", or remove these resource settings.')
+            raise ValueError(
+                f'resource_mode="manual" does not read {inert}; select resource_mode="estimate" '
+                'or "adaptive", or remove these resource settings.'
+            )
         return
-    if rl_config is None or rl_config.rl_type not in {'grpo', 'ppo', 'gkd', 'opsd', 'mopd'}:
-        raise ValueError(f'resource_mode={mode!r} is implemented only by grpo/ppo/gkd/opsd/mopd online recipes.')
+    if rl_config is None or rl_config.rl_type not in STREAMING_RL_TYPES:
+        raise ValueError(
+            f"resource_mode={mode!r} is implemented only by the streaming online recipes {sorted(STREAMING_RL_TYPES)}."
+        )
     if rollout_config.resource_total_gpus is not None and rollout_config.resource_total_gpus < 1:
-        raise ValueError('resource_total_gpus must be >= 1 when set.')
+        raise ValueError("resource_total_gpus must be >= 1 when set.")
     if rollout_config.resource_gpu_memory_gib is not None and rollout_config.resource_gpu_memory_gib <= 0:
-        raise ValueError('resource_gpu_memory_gib must be > 0 when set.')
+        raise ValueError("resource_gpu_memory_gib must be > 0 when set.")
     if rollout_config.resource_flex_gpus < 0:
-        raise ValueError('resource_flex_gpus must be >= 0.')
+        raise ValueError("resource_flex_gpus must be >= 0.")
     if rollout_config.resource_window_steps < 1:
-        raise ValueError('resource_window_steps must be >= 1.')
+        raise ValueError("resource_window_steps must be >= 1.")
     if rollout_config.resource_min_hold_steps < 1:
-        raise ValueError('resource_min_hold_steps must be >= 1.')
+        raise ValueError("resource_min_hold_steps must be >= 1.")
     if rollout_config.resource_overrides is not None and not isinstance(rollout_config.resource_overrides, dict):
-        raise ValueError('resource_overrides must be a JSON object.')
-    if mode != 'adaptive':
+        raise ValueError("resource_overrides must be a JSON object.")
+    if mode != "adaptive":
         return
     if not rollout_config.offload_model and not rollout_config.offload_optimizer:
         raise ValueError(
             'resource_mode="adaptive" borrows the trainer GPUs for shared rollout engines and offloads '
-            'the trainer while those engines exist. Set --offload_model true or --offload_optimizer true; '
-            'both false leaves no room and is refused.')
-    if rollout_config.sampler_mode != 'disaggregated':
-        raise ValueError('resource_mode="adaptive" keeps dedicated sampler actors and optionally borrows the '
-                         'complete trainer world; set sampler_mode="disaggregated" instead of configuring the '
-                         'legacy exclusive colocate path.')
-    if rl_config.rl_type in {'gkd', 'opsd', 'mopd'} and rl_config.lmbda != 1.0:
-        raise ValueError('resource_mode="adaptive" requires lmbda=1 for distillation recipes: off-policy '
-                         'dataset rounds use the synchronous round loop and have no streaming publish boundary '
-                         'where the adaptive controller can move a complete replica. Set lmbda=1 or use '
-                         'resource_mode="estimate".')
+            "the trainer while those engines exist. Set --offload_model true or --offload_optimizer true; "
+            "both false leaves no room and is refused."
+        )
+    if rollout_config.sampler_mode != "disaggregated":
+        raise ValueError(
+            'resource_mode="adaptive" keeps dedicated sampler actors and optionally borrows the '
+            'complete trainer world; set sampler_mode="disaggregated" instead of configuring the '
+            "legacy exclusive colocate path."
+        )
+    if rl_config.rl_type in {"gkd", "opsd", "mopd"} and rl_config.lmbda != 1.0:
+        raise ValueError(
+            'resource_mode="adaptive" requires lmbda=1 for distillation recipes: off-policy '
+            "dataset rounds use the synchronous round loop and have no streaming publish boundary "
+            "where the adaptive controller can move a complete replica. Set lmbda=1 or use "
+            'resource_mode="estimate".'
+        )
 
 
 # Online recipes that roll out per prompt batch and train on the collected samples (overlap generation
 # with training on the shared streaming driver). RFT and the offline RLHF family are excluded.
-_ASYNC_RLHF_TYPES = frozenset({'grpo', 'ppo', 'gkd', 'opsd', 'mopd'})
+_ASYNC_RLHF_TYPES = frozenset(STREAMING_RL_TYPES)
 
 
 # Streaming knobs read ONLY by the streaming driver: both under an OVERLAPPING async_mode; staleness-0
 # streaming all but max_staleness; the round loops (RFT, sync-only distillation) and non-online none.
-_FULLY_ASYNC_ONLY_DEFAULTS = {
-    'max_staleness': 1,
-    'parameter_sync_step': 1
-}
+_FULLY_ASYNC_ONLY_DEFAULTS = {"max_staleness": 1, "parameter_sync_step": 1}
 
 # The subset inert even when async_mode='none' rides the streaming driver: the dispatch pins max_staleness
 # to 0, so it is not read on that path.
 _INERT_UNDER_NONE_STREAMING = {
-    'max_staleness': _FULLY_ASYNC_ONLY_DEFAULTS['max_staleness'],
+    "max_staleness": _FULLY_ASYNC_ONLY_DEFAULTS["max_staleness"],
 }
 
 
-def _sync_only_feature(rl_config: Optional['RLConfig']) -> bool:
+def _sync_only_feature(rl_config: Optional["RLConfig"]) -> bool:
     """Whether this config runs the synchronous round loop instead of the per-sample stream.
 
     Mirrors the run_* dispatch: only distillation with lmbda != 1.0 and a None rl_config are sync-only.
     """
     if rl_config is None:
         return True
-    if rl_config.rl_type in {'gkd', 'opsd', 'mopd'}:
+    if rl_config.rl_type in {"gkd", "opsd", "mopd"}:
         return rl_config.lmbda != 1.0
     return False
 
 
-def _streams_under_none(rl_config: Optional['RLConfig']) -> bool:
+def _streams_under_none(rl_config: Optional["RLConfig"]) -> bool:
     """Whether async_mode='none' routes this config to the streaming driver (staleness 0).
 
     True for an online loop with no sync-only feature; False for the off-policy mix and non-online.
@@ -637,7 +809,7 @@ def _streams_under_none(rl_config: Optional['RLConfig']) -> bool:
     return not _sync_only_feature(rl_config)
 
 
-def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Optional['RLConfig']) -> None:
+def _check_async_mode(rollout_config: Optional["RolloutConfig"], rl_config: Optional["RLConfig"]) -> None:
     """Reject async_mode combinations the online loops cannot honour (fail-loudly).
 
     Refused, not degraded: non-online recipes, no IS correction, colocate, remax, off-policy mix.
@@ -645,7 +817,7 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
     if rollout_config is None:
         return
     mode = rollout_config.async_mode
-    if mode == 'none':
+    if mode == "none":
         # An online loop with no sync-only feature rides the StreamingDriver at staleness 0; only the
         # distillation off-policy mix (lmbda != 1.0) runs its synchronous round loop instead.
         if _streams_under_none(rl_config):
@@ -659,57 +831,69 @@ def _check_async_mode(rollout_config: Optional['RolloutConfig'], rl_config: Opti
         return
     # The legacy bool is the old spelling of 'one_step_off'; process folds it in when async_mode is
     # unset, so reaching here with async_generate True AND a different explicit mode is ambiguous.
-    if rollout_config.async_generate and mode != 'one_step_off':
+    if rollout_config.async_generate and mode != "one_step_off":
         raise ValueError(
-            f'--async_generate is the legacy spelling of --async_mode one_step_off, but --async_mode '
-            f'{mode!r} was also set. Drop --async_generate and express the regime with --async_mode alone.')
-    flag = '--async_generate' if rollout_config.async_generate else f'--async_mode {mode}'
+            f"--async_generate is the legacy spelling of --async_mode one_step_off, but --async_mode "
+            f"{mode!r} was also set. Drop --async_generate and express the regime with --async_mode alone."
+        )
+    flag = "--async_generate" if rollout_config.async_generate else f"--async_mode {mode}"
     rl_type = None if rl_config is None else rl_config.rl_type
     if rl_type not in _ASYNC_RLHF_TYPES:
         raise ValueError(
-            f'{flag} is only implemented for the online loops that roll out per prompt batch and '
-            f'train on the collected samples (grpo/ppo/gkd/opsd/mopd); got rl_type={rl_type!r}. The '
-            'other recipes override the training loop (or never roll out) and would silently ignore it. '
-            'Remove the async setting.')
-    if rl_type == 'grpo' and rl_config.rollout_importance_sampling_mode is None:
+            f"{flag} is only implemented for the online loops that roll out per prompt batch and "
+            f"train on the collected samples (grpo/ppo/gkd/opsd/mopd); got rl_type={rl_type!r}. The "
+            "other recipes override the training loop (or never roll out) and would silently ignore it. "
+            "Remove the async setting."
+        )
+    if (
+        rl_type in POLICY_RL_TYPES
+        and rl_config.advantage_estimator != "gae"
+        and rl_config.rollout_importance_sampling_mode is None
+    ):
         raise ValueError(
-            f'{flag} trains GRPO on a rollout batch that is stale (off-policy), so it requires off-policy '
-            'correction: set --rollout_importance_sampling_mode (e.g. token_truncate or sequence_mask). '
-            'Use --async_mode none if you want a strictly on-policy loop.')
-    if rollout_config.sampler_mode != 'disaggregated':
+            f"{flag} trains GRPO on a rollout batch that is stale (off-policy), so it requires off-policy "
+            "correction: set --rollout_importance_sampling_mode (e.g. token_truncate or sequence_mask). "
+            "Use --async_mode none if you want a strictly on-policy loop."
+        )
+    if rollout_config.sampler_mode != "disaggregated":
         raise ValueError(
-            f'{flag} needs the sampler on its own GPUs to overlap generation with training, but '
+            f"{flag} needs the sampler on its own GPUs to overlap generation with training, but "
             f"sampler_mode={rollout_config.sampler_mode!r}. Set --sampler_mode disaggregated; 'colocate' time-shares "
-            'one DeviceGroup and cannot overlap.')
+            "one DeviceGroup and cannot overlap."
+        )
     if rl_config.dynamic_sample:
         raise ValueError(
-            f'{flag} cannot be combined with --dynamic_sample: dynamic sampling regenerates '
-            'zero-variance groups after rewards are seen, which cannot be pre-submitted ahead of training. '
-            'Disable one of them.')
-    if rl_config.advantage_estimator == 'remax':
+            f"{flag} cannot be combined with --dynamic_sample: dynamic sampling regenerates "
+            "zero-variance groups after rewards are seen, which cannot be pre-submitted ahead of training. "
+            "Disable one of them."
+        )
+    if rl_config.advantage_estimator == "remax":
         raise ValueError(
-            f'{flag} cannot be combined with --advantage_estimator remax: ReMax scores a greedy '
-            '(argmax) baseline completion per prompt AFTER the sampled rollout, and that extra synchronous '
-            'generation pass cannot be pre-submitted ahead. Remove the async setting or pick another '
-            'advantage_estimator.')
-    if rl_type in {'gkd', 'opsd', 'mopd'} and rl_config.lmbda != 1.0:
+            f"{flag} cannot be combined with --advantage_estimator remax: ReMax scores a greedy "
+            "(argmax) baseline completion per prompt AFTER the sampled rollout, and that extra synchronous "
+            "generation pass cannot be pre-submitted ahead. Remove the async setting or pick another "
+            "advantage_estimator."
+        )
+    if rl_type in {"gkd", "opsd", "mopd"} and rl_config.lmbda != 1.0:
         raise ValueError(
-            f'{flag} overlaps generation with training by pre-submitting the next prompt batch, '
-            f'which only purely on-policy distillation can do; rl_type={rl_type!r} with '
-            f'--lmbda={rl_config.lmbda} mixes in off-policy dataset rounds that generate nothing and '
-            'cannot be pre-submitted. Set --lmbda 1 for on-policy distillation, or remove the async setting.')
-    if mode == 'fully_async' and rl_type not in ('grpo', 'ppo'):
+            f"{flag} overlaps generation with training by pre-submitting the next prompt batch, "
+            f"which only purely on-policy distillation can do; rl_type={rl_type!r} with "
+            f"--lmbda={rl_config.lmbda} mixes in off-policy dataset rounds that generate nothing and "
+            "cannot be pre-submitted. Set --lmbda 1 for on-policy distillation, or remove the async setting."
+        )
+    if mode == "fully_async" and rl_type not in POLICY_RL_TYPES:
         # The distillation family overlaps a SINGLE step (staleness 1) on the same per-sample streaming
         # driver and has no deep-buffer regime, so fully_async (staleness > 1) stays GRPO/PPO-only.
         raise ValueError(
-            f'{flag} is only implemented for GRPO and PPO; got rl_type={rl_type!r}. The '
-            'distillation loops overlap a single step -- use --async_mode one_step_off for them.')
+            f"{flag} is only implemented for GRPO and PPO; got rl_type={rl_type!r}. The "
+            "distillation loops overlap a single step -- use --async_mode one_step_off for them."
+        )
     # Every surviving overlapping regime runs the SAME per-sample StreamingDriver (differing only in the
     # staleness knob), so all validate their publication identically below.
     _check_streaming_publication(rollout_config, mode)
 
 
-def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, inert_defaults: dict) -> None:
+def _reject_inert_streaming_knobs(rollout_config: "RolloutConfig", mode: str, inert_defaults: dict) -> None:
     """Refuse a streaming knob explicitly set to a value the selected driver never reads.
 
     inert_defaults maps each inert knob to its forced value (full set on the sync fallback).
@@ -718,40 +902,45 @@ def _reject_inert_streaming_knobs(rollout_config: 'RolloutConfig', mode: str, in
     for name, inert in inert_defaults.items():
         if name in changed and getattr(rollout_config, name) != inert:
             raise ValueError(
-                f'--{name}={getattr(rollout_config, name)!r} is inert on the driver this config selects '
-                f'(--async_mode {mode}): its value there is always {inert!r}, so setting it would silently do '
-                'nothing. Drop it, or use a regime that reads it.')
+                f"--{name}={getattr(rollout_config, name)!r} is inert on the driver this config selects "
+                f"(--async_mode {mode}): its value there is always {inert!r}, so setting it would silently do "
+                "nothing. Drop it, or use a regime that reads it."
+            )
 
 
-def _check_streaming_publication(rollout_config: 'RolloutConfig', mode: str) -> None:
+def _check_streaming_publication(rollout_config: "RolloutConfig", mode: str) -> None:
     """Publication guards for the streaming driver (every online regime that rides it).
 
     Checks sync_step>=1, staleness per regime, and colocate's one sync per step.
     """
     if rollout_config.parameter_sync_step < 1:
         raise ValueError(
-            f'--parameter_sync_step must be >= 1 (one weight publication every K recorded steps); got '
-            f'{rollout_config.parameter_sync_step}. 0 would never publish a trained policy to the sampler.')
-    if mode == 'one_step_off':
+            f"--parameter_sync_step must be >= 1 (one weight publication every K recorded steps); got "
+            f"{rollout_config.parameter_sync_step}. 0 would never publish a trained policy to the sampler."
+        )
+    if mode == "one_step_off":
         changed = _changed_fields(rollout_config)
-        if 'max_staleness' in changed and rollout_config.max_staleness != 1:
+        if "max_staleness" in changed and rollout_config.max_staleness != 1:
             raise ValueError(
-                f'--max_staleness={rollout_config.max_staleness!r} cannot be set under --async_mode '
-                'one_step_off: that regime pins the streaming driver to a single lookahead window '
-                '(staleness 1). Use --async_mode fully_async with --max_staleness N for a deeper buffer, '
-                'or drop --max_staleness.')
-    elif mode == 'fully_async' and rollout_config.max_staleness < 1:
+                f"--max_staleness={rollout_config.max_staleness!r} cannot be set under --async_mode "
+                "one_step_off: that regime pins the streaming driver to a single lookahead window "
+                "(staleness 1). Use --async_mode fully_async with --max_staleness N for a deeper buffer, "
+                "or drop --max_staleness."
+            )
+    elif mode == "fully_async" and rollout_config.max_staleness < 1:
         raise ValueError(
-            f'--max_staleness must be >= 1 under --async_mode fully_async (0 would admit nothing ahead of '
-            f'the oldest untrained window, i.e. the synchronous loop); got {rollout_config.max_staleness}.')
-    if rollout_config.sampler_mode == 'colocate' and rollout_config.parameter_sync_step != 1:
+            f"--max_staleness must be >= 1 under --async_mode fully_async (0 would admit nothing ahead of "
+            f"the oldest untrained window, i.e. the synchronous loop); got {rollout_config.max_staleness}."
+        )
+    if rollout_config.sampler_mode == "colocate" and rollout_config.parameter_sync_step != 1:
         raise ValueError(
-            f'--sampler_mode colocate needs --parameter_sync_step 1, got {rollout_config.parameter_sync_step}: '
-            'the sampler sleeps while the trainer holds the shared GPUs and only the weight sync after each '
-            'step wakes it, so every step must sync.')
+            f"--sampler_mode colocate needs --parameter_sync_step 1, got {rollout_config.parameter_sync_step}: "
+            "the sampler sleeps while the trainer holds the shared GPUs and only the weight sync after each "
+            "step wakes it, so every step must sync."
+        )
 
 
-def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
+def _check_offload_knobs(rollout_config: Optional["RolloutConfig"]) -> None:
     """Warn when offload/sleep knobs do not apply to this sampler placement (non-fatal).
 
     Colocate honours ``offload_model`` and ``offload_optimizer`` independently. A sampler on its
@@ -760,77 +949,89 @@ def _check_offload_knobs(rollout_config: Optional['RolloutConfig']) -> None:
     if rollout_config is None:
         return
     changed = _changed_fields(rollout_config)
-    if rollout_config.sampler_mode == 'colocate':
+    if rollout_config.sampler_mode == "colocate":
         if rollout_config.sleep_level not in (0, 1, 2):
             raise ValueError(
-                'sleep_level must be 0, 1, or 2. 0 leaves the vLLM engine resident, 1 offloads its '
-                'weights and discards the KV cache, 2 discards both. '
-                f'Got {rollout_config.sleep_level!r}.')
+                "sleep_level must be 0, 1, or 2. 0 leaves the vLLM engine resident, 1 offloads its "
+                "weights and discards the KV cache, 2 discards both. "
+                f"Got {rollout_config.sleep_level!r}."
+            )
         return
-    if ('offload_model' in changed and rollout_config.offload_model) or (
-            'offload_optimizer' in changed and rollout_config.offload_optimizer):
+    if ("offload_model" in changed and rollout_config.offload_model) or (
+        "offload_optimizer" in changed and rollout_config.offload_optimizer
+    ):
         logger.warning(
-            'sampler_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer '
-            'to make room for it does not apply: ignoring --offload_model/--offload_optimizer.',
-            rollout_config.sampler_mode)
-    if 'sleep_level' in changed:
+            "sampler_mode=%r places the sampler on its own GPUs, so offloading the trainer model/optimizer "
+            "to make room for it does not apply: ignoring --offload_model/--offload_optimizer.",
+            rollout_config.sampler_mode,
+        )
+    if "sleep_level" in changed:
         logger.warning(
-            'sampler_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put '
-            'to sleep between steps: --sleep_level is inert here (it only takes effect under '
-            "--sampler_mode colocate).", rollout_config.sampler_mode)
+            "sampler_mode=%r does not share GPUs between trainer and sampler, so the sampler is never put "
+            "to sleep between steps: --sleep_level is inert here (it only takes effect under "
+            "--sampler_mode colocate).",
+            rollout_config.sampler_mode,
+        )
 
 
-def _check_rollout_sampler(rollout_config: Optional['RolloutConfig']) -> None:
+def _check_rollout_sampler(rollout_config: Optional["RolloutConfig"]) -> None:
     """Reject a rollout engine dev cannot wire as a weight-synced sampler (vllm/sglang only).
 
     Weight sync needs a CheckpointEngineMixin engine; TransformersSampler has none by design.
     """
     if rollout_config is None:
         return
-    if rollout_config.rollout_sampler not in ('vllm', 'sglang'):
+    if rollout_config.rollout_sampler not in ("vllm", "sglang"):
         raise ValueError(
             f"rollout_sampler={rollout_config.rollout_sampler!r} cannot back an online-RL rollout: weight "
             "sync into the sampler needs a CheckpointEngineMixin engine, which only 'vllm' and 'sglang' "
-            "provide (TransformersSampler has none by design). Use rollout_sampler='vllm' or 'sglang'.")
+            "provide (TransformersSampler has none by design). Use rollout_sampler='vllm' or 'sglang'."
+        )
 
 
-def _check_rollout_tools(rollout_config: Optional['RolloutConfig'],
-                         rl_config: Optional['RLConfig'] = None) -> None:
+def _check_rollout_tools(rollout_config: Optional["RolloutConfig"], rl_config: Optional["RLConfig"] = None) -> None:
     if rollout_config is None:
         return
-    for name in ('sandbox_num_envs', 'sandbox_num_workers', 'rollout_num_workers'):
+    for name in ("sandbox_num_envs", "sandbox_num_workers", "rollout_num_workers"):
         if getattr(rollout_config, name) < 1:
-            raise ValueError(f'{name} must be >= 1, got {getattr(rollout_config, name)}.')
+            raise ValueError(f"{name} must be >= 1, got {getattr(rollout_config, name)}.")
     # Multi-turn rollout is assembled by the shared MultiTurnRollout/StreamingDriver mechanism, which
     # GRPO and PPO both build (PPO's GAE recurses continuously over the longer multi-turn sequence and
     # its cross-turn mask reuses the same turn_spans/loss_scale). Sampling (rl_config is None, TUI) exempt.
-    if rollout_config.max_turns is not None and rl_config is not None and rl_config.rl_type not in ('grpo', 'ppo'):
-        raise ValueError(f'multi-turn rollout (max_turns) is supported by rl_type grpo/ppo, but '
-                         f'rl_type={rl_config.rl_type!r}: use rl_type=grpo or ppo, or leave max_turns unset.')
+    if rollout_config.max_turns is not None and rl_config is not None and rl_config.rl_type not in POLICY_RL_TYPES:
+        raise ValueError(
+            f"multi-turn rollout (max_turns) is supported by the policy recipes "
+            f"{sorted(POLICY_RL_TYPES)}, but rl_type={rl_config.rl_type!r}: use one of them, "
+            "or leave max_turns unset."
+        )
     if not rollout_config.tools:
         return
     # Tools are injected per-turn by the multi-turn engine, so a single-turn rollout has no turn to
     # call them in -- requiring max_turns turns a silent no-op into a clear error.
     if rollout_config.max_turns is None:
         raise ValueError(
-            'RolloutConfig.tools requires a multi-turn rollout: set max_turns (>= 1) so the engine has '
-            'turns in which to call the tools. A single-turn rollout cannot invoke them.')
+            "RolloutConfig.tools requires a multi-turn rollout: set max_turns (>= 1) so the engine has "
+            "turns in which to call the tools. A single-turn rollout cannot invoke them."
+        )
     kind = rollout_config.sandbox_kind
-    if kind in ('openenv', 'openenv_client') and not rollout_config.sandbox_env_name:
+    if kind in ("openenv", "openenv_client") and not rollout_config.sandbox_env_name:
         raise ValueError(
             f"sandbox_kind='{kind}' needs sandbox_env_name (the OpenEnv environment package, e.g. "
-            "'coding_env'; pip install openenv-<name>).")
-    if kind == 'agentenv' and not rollout_config.sandbox_template:
+            "'coding_env'; pip install openenv-<name>)."
+        )
+    if kind == "agentenv" and not rollout_config.sandbox_template:
         raise ValueError(
             "sandbox_kind='agentenv' needs sandbox_template (the microVM template name/ID); pick "
-            'another sandbox_kind or name a template.')
-    if kind in ('openenv', 'openenv_client') and rollout_config.sandbox_template:
+            "another sandbox_kind or name a template."
+        )
+    if kind in ("openenv", "openenv_client") and rollout_config.sandbox_template:
         raise ValueError(
             f"sandbox_kind='{kind}' ignores sandbox_template={rollout_config.sandbox_template!r}: the "
-            'OpenEnv families are driven by sandbox_env_name, not a microVM template.')
+            "OpenEnv families are driven by sandbox_env_name, not a microVM template."
+        )
 
 
-def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
+def validate_infer_config(infer_config: Optional["InferConfig"]) -> None:
     """Validate the best-of-n synthesis surface without RL-training-only constraints."""
     if infer_config is None:
         return
@@ -843,21 +1044,24 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
         # would silently create a bogus local `oss:` tree. Refuse until a remote store
         # writer exists; point at a local path (upload afterwards) instead.
         raise ValueError(
-            f'--result_path does not support oss:// / s3:// yet: the infer output is appended '
-            'and resumed in place, which object storage cannot host. Write to a local path '
-            'and upload the result afterwards.')
+            "--result_path does not support oss:// / s3:// yet: the infer output is appended "
+            "and resumed in place, which object storage cannot host. Write to a local path "
+            "and upload the result afterwards."
+        )
     # A store format is an open registry key, so check the name resolves (and is writable) here -- after
     # --external_plugins is imported -- rather than after the run has generated rows it cannot write.
     validate_store_format(infer_config.store_format, writable=True)
     # Resume eligibility is the format's own incremental capability, not a hard-coded name -- a plugin
     # declaring incremental=True earns it the same way. Non-incremental formats write once at the end.
     if not STORAGE_MAPPING[infer_config.store_format].incremental and infer_config.resume:
-        raise ValueError(f"store_format={infer_config.store_format!r} writes the whole run once at the end "
-                         'and cannot checkpoint, so it cannot be combined with resume=True. Use an '
-                         'incremental store_format (jsonl) for a resumable run.')
+        raise ValueError(
+            f"store_format={infer_config.store_format!r} writes the whole run once at the end "
+            "and cannot checkpoint, so it cannot be combined with resume=True. Use an "
+            "incremental store_format (jsonl) for a resumable run."
+        )
 
 
-def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
+def validate_convert_config(convert_config: Optional["ConvertConfig"]) -> None:
     """Validate the export-side store choice, but only where a store is actually written.
 
     store_format is consumed solely by --to_cached_dataset; runs after --external_plugins is imported.
@@ -865,271 +1069,332 @@ def validate_convert_config(convert_config: Optional['ConvertConfig']) -> None:
     if convert_config is None or not convert_config.to_cached_dataset:
         return
     from swift.dev.dataset.storage import validate_store_format
+
     validate_store_format(convert_config.store_format, writable=True)
 
 
 # The GRPO-family loss_type values dev accepts (each maps onto a twinkle GRPOLoss subclass). One constant
 # so the GRPO-only gate in _check_grpo_controls and the support check in _check_grpo_loss_type cannot drift.
-_GRPO_LOSS_TYPES = frozenset({
-    'grpo', 'dapo', 'fipo', 'gspo', 'sapo', 'cispo', 'dis', 'bnpo', 'dr_grpo', 'real', 'gpg', 'dro', 'dppo_tv',
-    'dppo_kl', 'geo_mean', 'clip_cov', 'kl_cov'
-})
+_GRPO_LOSS_TYPES = frozenset(
+    {
+        "grpo",
+        "dapo",
+        "fipo",
+        "gspo",
+        "sapo",
+        "cispo",
+        "dis",
+        "bnpo",
+        "dr_grpo",
+        "real",
+        "gpg",
+        "dro",
+        "dppo_tv",
+        "dppo_kl",
+        "geo_mean",
+        "clip_cov",
+        "kl_cov",
+    }
+)
 
 
-def _check_online_rl_val_dataset(dataset_config: 'DatasetConfig', rl_config: Optional['RLConfig']) -> None:
+def _check_online_rl_val_dataset(dataset_config: "DatasetConfig", rl_config: Optional["RLConfig"]) -> None:
     """Refuse a val split for the online-RL recipes: they have no eval loop, so it would be dropped."""
     if rl_config is None or dataset_config is None:
         return
-    if rl_config.rl_type in {'grpo', 'ppo', 'rft', 'gkd', 'opsd', 'mopd'} and dataset_config.val_dataset:
+    if rl_config.rl_type in ONLINE_RL_TYPES and dataset_config.val_dataset:
         raise ValueError(
-            f'rl_type={rl_config.rl_type!r} has no in-training eval loop yet, so val_dataset would be '
-            'silently ignored. Drop --val_dataset, or evaluate the saved checkpoints with `swift eval` '
-            'after training.')
+            f"rl_type={rl_config.rl_type!r} has no in-training eval loop yet, so val_dataset would be "
+            "silently ignored. Drop --val_dataset, or evaluate the saved checkpoints with `swift eval` "
+            "after training."
+        )
 
 
-def _check_grpo_controls(cfg: 'RLConfig') -> None:
-    # cfg.loss_type is Optional[List[str]]; a GRPO run names at most one variant (enforced in
-    # _check_grpo_loss_type) and 'grpo' is the resolver's fallback when it is unset (loss/configure.py).
-    loss_type = cfg.loss_type[0] if cfg.loss_type else 'grpo'
+def _check_grpo_controls(cfg: "RLConfig") -> None:
+    from .process import normalize_advantage_estimator, policy_clip_range, policy_replay_count
+
+    normalize_advantage_estimator(cfg)
+    # REAL keeps the 'real' objective without a loss_type spelling.
+    loss_type = cfg.loss_type[0] if cfg.loss_type else ("real" if cfg.rl_type == "real" else "grpo")
     grpo_only = bool(
-        cfg.log_completions or cfg.num_iterations != 1 or cfg.delta is not None
-        or cfg.importance_sampling_level != 'token' or cfg.overlong_filter or cfg.log_entropy
-        or cfg.top_entropy_quantile != 1.0 or cfg.rollout_importance_sampling_mode
-        or cfg.log_rollout_offpolicy_metrics or cfg.off_policy_sequence_mask_delta is not None
+        cfg.log_completions
+        or cfg.num_iterations != 1
+        or cfg.delta is not None
+        or cfg.importance_sampling_level != "token"
+        or cfg.overlong_filter
+        or cfg.log_entropy
+        or cfg.top_entropy_quantile != 1.0
+        or cfg.rollout_importance_sampling_mode
+        or cfg.log_rollout_offpolicy_metrics
+        or cfg.off_policy_sequence_mask_delta is not None
         # A GRPO-SPECIFIC variant named on a non-GRPO run; the plain 'grpo' default is excluded on
         # purpose (the fallback for an UNSET loss_type -- counting it would flag every dpo/kto run).
-        or (loss_type in _GRPO_LOSS_TYPES and loss_type != 'grpo'))
-    if cfg.rl_type != 'grpo':
+        or (loss_type in _GRPO_LOSS_TYPES and loss_type != "grpo")
+    )
+    if cfg.rl_type not in POLICY_RL_TYPES:
         if grpo_only:
-            raise ValueError('GRPO clipping, replay, entropy, FIPO, and completion logging controls are GRPO-only.')
+            raise ValueError("GRPO clipping, replay, entropy, FIPO, and completion logging controls are GRPO-only.")
         return
     _check_grpo_loss_type(cfg, loss_type)
+    policy_clip_range(cfg)
     # GRPO's advantage is group-relative: one generation per prompt has no baseline and degenerates to
     # raw-reward REINFORCE (legacy rejects it too). A teacher (OPD-RL) is exempt.
     has_teacher = bool(cfg.teacher_model or cfg.teacher_adapters or cfg._teacher_use_disable_adapter)
-    if cfg.num_generations < 2 and not has_teacher:
-        raise ValueError(f'GRPO requires num_generations >= 2 (got {cfg.num_generations}): its advantage is '
-                         'group-relative, so one completion per prompt has no group baseline and degenerates '
-                         'to raw-reward REINFORCE. Raise --num_generations, or use a teacher (OPD-RL) / '
-                         '--rl_type rft for a single-sample objective.')
-    if cfg.num_generations < 2:
-        logger.warning('num_generations == 1 with a teacher (OPD-RL): the GRPO group-relative advantage is '
-                       'identically zero, so only the teacher-KL term drives the policy. This is the expected '
-                       'behaviour, not a fallback.')
+    if cfg.advantage_estimator != "gae" and cfg.num_generations < 2 and not has_teacher:
+        raise ValueError(
+            f"GRPO requires num_generations >= 2 (got {cfg.num_generations}): its advantage is "
+            "group-relative, so one completion per prompt has no group baseline and degenerates "
+            "to raw-reward REINFORCE. Raise --num_generations, or use a teacher (OPD-RL) / "
+            "--rl_type rft for a single-sample objective."
+        )
+    if cfg.advantage_estimator != "gae" and cfg.num_generations < 2:
+        logger.warning(
+            "num_generations == 1 with a teacher (OPD-RL): the GRPO group-relative advantage is "
+            "identically zero, so only the teacher-KL term drives the policy. This is the expected "
+            "behaviour, not a fallback."
+        )
     positive = {
-        'num_iterations': cfg.num_iterations,
-        'rollout_importance_sampling_threshold': cfg.rollout_importance_sampling_threshold,
-        'fipo_decay_rate': cfg.fipo_decay_rate,
+        "num_iterations": policy_replay_count(cfg),
+        "rollout_importance_sampling_threshold": cfg.rollout_importance_sampling_threshold,
+        "fipo_decay_rate": cfg.fipo_decay_rate,
     }
     invalid = [name for name, value in positive.items() if value <= 0]
     if invalid:
-        raise ValueError(f'GRPO controls must be > 0: {invalid}.')
+        raise ValueError(f"GRPO controls must be > 0: {invalid}.")
     optional_nonnegative = {
-        'delta': cfg.delta,
-        'off_policy_sequence_mask_delta': cfg.off_policy_sequence_mask_delta,
-        'fipo_clip_range': cfg.fipo_clip_range,
-        'fipo_safety_threshold': cfg.fipo_safety_threshold,
+        "delta": cfg.delta,
+        "off_policy_sequence_mask_delta": cfg.off_policy_sequence_mask_delta,
+        "fipo_clip_range": cfg.fipo_clip_range,
+        "fipo_safety_threshold": cfg.fipo_safety_threshold,
     }
     invalid = [name for name, value in optional_nonnegative.items() if value is not None and value < 0]
     if invalid:
-        raise ValueError(f'GRPO controls must be >= 0 when set: {invalid}.')
+        raise ValueError(f"GRPO controls must be >= 0 when set: {invalid}.")
     if not 0.0 < cfg.top_entropy_quantile <= 1.0:
-        raise ValueError('top_entropy_quantile must be in (0, 1].')
+        raise ValueError("top_entropy_quantile must be in (0, 1].")
 
 
-def _check_grpo_loss_type(cfg: 'RLConfig', loss_type: str) -> None:
+def _check_grpo_loss_type(cfg: "RLConfig", loss_type: str) -> None:
     supported = _GRPO_LOSS_TYPES
     if len(cfg.loss_type or []) > 1:
-        raise ValueError('GRPO supports exactly one loss_type.')
+        raise ValueError("GRPO supports exactly one loss_type.")
     if loss_type not in supported:
-        raise ValueError(f'Unsupported GRPO loss_type={loss_type!r}; expected one of {sorted(supported)}.')
+        raise ValueError(f"Unsupported GRPO loss_type={loss_type!r}; expected one of {sorted(supported)}.")
     # GSPO IS sequence-level importance sampling; an explicitly-set token-level request contradicts it
     # (the default 'token' is promoted to 'sequence', so only the explicit one is a real contradiction).
-    if (loss_type == 'gspo' and cfg.importance_sampling_level == 'token'
-            and 'importance_sampling_level' in _changed_fields(cfg)):
+    if (
+        loss_type == "gspo"
+        and cfg.importance_sampling_level == "token"
+        and "importance_sampling_level" in _changed_fields(cfg)
+    ):
         raise ValueError(
-            'loss_type=gspo IS sequence-level importance sampling; --importance_sampling_level token contradicts '
-            'it and would silently downgrade GSPO to token-level GRPO. Drop the flag (gspo defaults to '
-            'sequence-level), or use loss_type=grpo for token-level IS.')
+            "loss_type=gspo IS sequence-level importance sampling; --importance_sampling_level token contradicts "
+            "it and would silently downgrade GSPO to token-level GRPO. Drop the flag (gspo defaults to "
+            "sequence-level), or use loss_type=grpo for token-level IS."
+        )
     _check_grpo_loss_knobs(cfg, loss_type)
 
 
-def _check_grpo_loss_knobs(cfg: 'RLConfig', loss_type: str) -> None:
+def _check_grpo_loss_knobs(cfg: "RLConfig", loss_type: str) -> None:
     """Fail-loudly on the verl-ported loss variants' hyperparameters before training starts.
 
     The twinkle constructors re-validate; checking here surfaces a bad value in the argument pass.
     """
-    if loss_type == 'dro' and cfg.dro_beta <= 0:
-        raise ValueError(f'loss_type=dro requires dro_beta > 0, got {cfg.dro_beta}.')
-    if loss_type in ('dppo_tv', 'dppo_kl') and cfg.clip_ratio_c <= 0:
-        raise ValueError(f'loss_type={loss_type} requires clip_ratio_c > 0, got {cfg.clip_ratio_c}.')
-    if loss_type == 'clip_cov' and cfg.clip_cov_ratio <= 0:
-        raise ValueError(f'loss_type=clip_cov requires clip_cov_ratio > 0, got {cfg.clip_cov_ratio}.')
-    if loss_type == 'clip_cov' and not cfg.clip_cov_lb < cfg.clip_cov_ub:
-        raise ValueError(f'loss_type=clip_cov requires clip_cov_lb < clip_cov_ub, got '
-                         f'{cfg.clip_cov_lb} >= {cfg.clip_cov_ub}.')
-    if loss_type == 'kl_cov' and cfg.kl_cov_ratio <= 0:
-        raise ValueError(f'loss_type=kl_cov requires kl_cov_ratio > 0, got {cfg.kl_cov_ratio}.')
-    if loss_type == 'dis':
+    if loss_type == "dro" and cfg.dro_beta <= 0:
+        raise ValueError(f"loss_type=dro requires dro_beta > 0, got {cfg.dro_beta}.")
+    if loss_type in ("dppo_tv", "dppo_kl") and cfg.clip_ratio_c <= 0:
+        raise ValueError(f"loss_type={loss_type} requires clip_ratio_c > 0, got {cfg.clip_ratio_c}.")
+    if loss_type == "clip_cov" and cfg.clip_cov_ratio <= 0:
+        raise ValueError(f"loss_type=clip_cov requires clip_cov_ratio > 0, got {cfg.clip_cov_ratio}.")
+    if loss_type == "clip_cov" and not cfg.clip_cov_lb < cfg.clip_cov_ub:
+        raise ValueError(
+            f"loss_type=clip_cov requires clip_cov_lb < clip_cov_ub, got {cfg.clip_cov_lb} >= {cfg.clip_cov_ub}."
+        )
+    if loss_type == "kl_cov" and cfg.kl_cov_ratio <= 0:
+        raise ValueError(f"loss_type=kl_cov requires kl_cov_ratio > 0, got {cfg.kl_cov_ratio}.")
+    if loss_type == "dis":
         # DIS's trust interval reuses the shared clip knobs; the lower offset must stay below 1
         # (a bound of 1 would reject every token) and the upper offset non-negative.
         if not 0.0 <= cfg.epsilon < 1.0:
-            raise ValueError(f'loss_type=dis requires epsilon in [0, 1), got {cfg.epsilon}.')
+            raise ValueError(f"loss_type=dis requires epsilon in [0, 1), got {cfg.epsilon}.")
         if cfg.epsilon_high is not None and cfg.epsilon_high < 0:
-            raise ValueError(f'loss_type=dis requires epsilon_high >= 0, got {cfg.epsilon_high}.')
+            raise ValueError(f"loss_type=dis requires epsilon_high >= 0, got {cfg.epsilon_high}.")
 
 
-def _check_ppo_controls(cfg: 'RLConfig') -> None:
-    """PPO-only knob: the length-adaptive GAE lambda has no reader on other rl_types."""
-    if cfg.rl_type == 'ppo':
+def _check_ppo_controls(cfg: "RLConfig") -> None:
+    """Value-estimator controls are independent of the public recipe name."""
+    from .process import normalize_advantage_estimator
+
+    normalize_advantage_estimator(cfg)
+    if cfg.rl_type not in POLICY_RL_TYPES:
+        return
+    if cfg.num_ppo_epochs < 1:
+        raise ValueError("num_ppo_epochs must be positive.")
+    if cfg.advantage_estimator == "gae":
         if cfg.lam_alpha is not None and cfg.lam_alpha <= 0:
-            raise ValueError(f'lam_alpha must be positive, got {cfg.lam_alpha}.')
+            raise ValueError(f"lam_alpha must be positive, got {cfg.lam_alpha}.")
         return
     if cfg.lam_alpha is not None:
-        raise ValueError('lam_alpha is PPO-only: it shapes the GAE lambda, which no other rl_type runs.')
+        raise ValueError("lam_alpha requires advantage_estimator=gae.")
 
 
 #: The online RL family: every one rolls out from raw prompt messages via prompt_rows_from_dataset,
 #: which reads DatasetConfig.dataset only -- a cached_dataset has no consumer on these paths.
-_ONLINE_PROMPT_ROLLOUT_RL_TYPES = {'grpo', 'ppo', 'gkd', 'opsd', 'mopd', 'rft'}
+_ONLINE_PROMPT_ROLLOUT_RL_TYPES = frozenset(ONLINE_RL_TYPES)
 
 
-def _check_grpo_cached_dataset(dataset_config: 'DatasetConfig', rl_config: Optional['RLConfig']) -> None:
+def _check_grpo_cached_dataset(dataset_config: "DatasetConfig", rl_config: Optional["RLConfig"]) -> None:
     """Reject a pre-encoded cached_dataset for the online RL family, which rolls out from raw prompts.
 
     The shared prompt loader (prompt_rows_from_dataset) reads DatasetConfig.dataset only, so a
     cached_dataset would be silently ignored -- on every one of these rl_types, not just GRPO.
     """
-    if rl_config is None or getattr(rl_config, 'rl_type', None) not in _ONLINE_PROMPT_ROLLOUT_RL_TYPES:
+    if rl_config is None or getattr(rl_config, "rl_type", None) not in _ONLINE_PROMPT_ROLLOUT_RL_TYPES:
         return
     if dataset_config.cached_dataset or dataset_config.cached_val_dataset:
         raise ValueError(
             f"cached_dataset is not supported for {rl_config.rl_type} (the online RL family): these roll "
             "out completions from each prompt's raw `messages`, and the prompt loader reads "
             "DatasetConfig.dataset only, so a cached_dataset (pre-encoded input_ids/labels, no messages) "
-            'would be silently ignored. Pass the original prompts via --dataset, or pre-generate '
-            'completions offline and train with an offline objective (dpo/rm/...).')
+            "would be silently ignored. Pass the original prompts via --dataset, or pre-generate "
+            "completions offline and train with an offline objective (dpo/rm/...)."
+        )
 
 
-def _check_grpo_truncation_strategy(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
-    """GRPO truncates over-long prompts from the left or drops them; never 'right'/'split'.
+def _check_grpo_truncation_strategy(template_config: "TemplateConfig", rl_config: Optional["RLConfig"]) -> None:
+    """Policy rollouts truncate over-long prompts from the left or drop them; never 'right'/'split'.
 
     'right' cuts the prompt end the completion is conditioned on; 'split' breaks one prompt into two.
     """
-    if rl_config is None or getattr(rl_config, 'rl_type', None) != 'grpo':
+    if rl_config is None or getattr(rl_config, "rl_type", None) not in POLICY_RL_TYPES:
         return
     strategy = template_config.truncation_strategy
-    if strategy in (None, 'left', 'delete'):
+    if strategy in (None, "left", "delete"):
         return
-    raise ValueError(f"GRPO requires truncation_strategy 'left' or 'delete' (or None), got {strategy!r}: "
-                      "'right' cuts the end of the prompt -- the part the completion is conditioned on -- "
-                      "and 'split' would split one prompt row into two rollout prompts. "
-                      'Set --truncation_strategy left or delete.')
+    raise ValueError(
+        f"Policy rollouts require truncation_strategy 'left' or 'delete' (or None), got {strategy!r}: "
+        "'right' cuts the end of the prompt -- the part the completion is conditioned on -- "
+        "and 'split' would split one prompt row into two rollout prompts. "
+        "Set --truncation_strategy left or delete."
+    )
 
 
-def _check_dynamic_sampling(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
+def _check_dynamic_sampling(cfg: "RLConfig", reward_config: Optional["RewardConfig"] = None) -> None:
+    if cfg.rl_type not in POLICY_RL_TYPES:
+        return
     if not cfg.dynamic_sample:
         return
     if reward_config is None or not reward_config.orm:
         raise ValueError(
-            'dynamic_sample requires the orm channel (a rule or a reward model) because it filters groups '
-            'by reward variance.')
+            "dynamic_sample requires the orm channel (a rule or a reward model) because it filters groups "
+            "by reward variance."
+        )
     if cfg.num_generations < 2:
-        raise ValueError('dynamic_sample requires num_generations >= 2 to measure reward variance.')
+        raise ValueError("dynamic_sample requires num_generations >= 2 to measure reward variance.")
     if cfg.max_resample_times < 1:
-        raise ValueError('max_resample_times must be >= 1 when dynamic_sample is enabled.')
+        raise ValueError("max_resample_times must be >= 1 when dynamic_sample is enabled.")
 
 
-def _check_reference_sync(cfg: 'RLConfig', train_config: 'TrainConfig',
-                          distributed_config: Optional['DistributedConfig'] = None) -> None:
+def _check_reference_sync(
+    cfg: "RLConfig", train_config: "TrainConfig", distributed_config: Optional["DistributedConfig"] = None
+) -> None:
+    if cfg.rl_type not in POLICY_RL_TYPES:
+        return
     if not cfg.sync_ref_model:
         return
     if cfg.beta in (None, 0, 0.0):
-        raise ValueError('sync_ref_model requires beta > 0 and an active reference model.')
+        raise ValueError("sync_ref_model requires beta > 0 and an active reference model.")
     if cfg.ref_model_sync_steps < 1:
-        raise ValueError('ref_model_sync_steps must be >= 1.')
+        raise ValueError("ref_model_sync_steps must be >= 1.")
     if not 0.0 < cfg.ref_model_mixup_alpha <= 1.0:
-        raise ValueError('ref_model_mixup_alpha must be in (0, 1]; 0 would discard the reference entirely.')
+        raise ValueError("ref_model_mixup_alpha must be in (0, 1]; 0 would discard the reference entirely.")
     # Paired EMA requires both sides to have IDENTICAL sharding. When reference_parallel_spec is explicit it
     # must equal the policy's; None auto-inherits and is always valid.
     if cfg.reference_parallel_spec is not None and distributed_config is not None:
         policy_spec = distributed_config.parallel_spec
         if cfg.reference_parallel_spec != policy_spec:
             raise ValueError(
-                f'sync_ref_model paired EMA requires reference_parallel_spec to match the policy parallel_spec '
-                f'({policy_spec!r}), got {cfg.reference_parallel_spec!r}. Set reference_parallel_spec=None to '
-                f'auto-inherit, or use the same spec as the policy.')
+                f"sync_ref_model paired EMA requires reference_parallel_spec to match the policy parallel_spec "
+                f"({policy_spec!r}), got {cfg.reference_parallel_spec!r}. Set reference_parallel_spec=None to "
+                f"auto-inherit, or use the same spec as the policy."
+            )
     # LoRA's disable_adapter reference shares the policy actor -- EMA against itself is meaningless.
     if cfg.ref_adapters:
         pass  # explicit ref_adapters = a separate frozen copy, EMA is valid
     del train_config
 
 
-def _check_chord(cfg: 'RLConfig') -> None:
+def _check_chord(cfg: "RLConfig") -> None:
+    if cfg.rl_type not in POLICY_RL_TYPES:
+        return
     if not cfg.chord_sft_dataset:
         return
     required = {
-        'chord_sft_per_device_train_batch_size': cfg.chord_sft_per_device_train_batch_size,
-        'chord_mu_warmup_steps': cfg.chord_mu_warmup_steps,
-        'chord_mu_decay_steps': cfg.chord_mu_decay_steps,
-        'chord_mu_peak': cfg.chord_mu_peak,
-        'chord_mu_valley': cfg.chord_mu_valley,
+        "chord_sft_per_device_train_batch_size": cfg.chord_sft_per_device_train_batch_size,
+        "chord_mu_warmup_steps": cfg.chord_mu_warmup_steps,
+        "chord_mu_decay_steps": cfg.chord_mu_decay_steps,
+        "chord_mu_peak": cfg.chord_mu_peak,
+        "chord_mu_valley": cfg.chord_mu_valley,
     }
     missing = sorted(name for name, value in required.items() if value is None)
     if missing:
-        raise ValueError(f'chord_sft_dataset requires explicit CHORD schedule fields: {missing}.')
+        raise ValueError(f"chord_sft_dataset requires explicit CHORD schedule fields: {missing}.")
     if cfg.chord_sft_per_device_train_batch_size < 1:
-        raise ValueError('chord_sft_per_device_train_batch_size must be >= 1.')
+        raise ValueError("chord_sft_per_device_train_batch_size must be >= 1.")
     if cfg.chord_mu_warmup_steps < 0 or cfg.chord_mu_decay_steps < 0:
-        raise ValueError('CHORD warmup and decay steps must be non-negative.')
+        raise ValueError("CHORD warmup and decay steps must be non-negative.")
     if not 0.0 <= cfg.chord_mu_valley <= cfg.chord_mu_peak <= 1.0:
-        raise ValueError('CHORD requires 0 <= chord_mu_valley <= chord_mu_peak <= 1.')
+        raise ValueError("CHORD requires 0 <= chord_mu_valley <= chord_mu_peak <= 1.")
 
 
-def _check_router_replay(cfg: 'RLConfig') -> None:
-    """Reject routing-replay combinations dev cannot honour (GRPO-only, never silently dropped).
-
-    The RECORD/REPLAY driving lives in the GRPO assembler; MoE/sampler-export checks surface at runtime.
-    """
+def _check_router_replay(cfg: "RLConfig") -> None:
+    """Reject routing-replay combinations the shared policy forward path cannot honour."""
     mode = cfg.router_replay_mode
-    if mode == 'disabled':
+    if mode == "disabled":
         return
-    if cfg.rl_type != 'grpo':
-        raise ValueError(f'router_replay_mode={mode!r} is GRPO-only: R2/R3 routing replay is driven by '
-                         'the GRPO assembler, and the other recipes build their own forward_backward kwargs '
-                         'without it. Use rl_type=grpo, or router_replay_mode=disabled.')
+    if cfg.rl_type not in POLICY_RL_TYPES:
+        raise ValueError(f"router_replay_mode={mode!r} requires the shared policy forward path.")
     if cfg.chord_sft_dataset:
-        raise ValueError(f'router_replay_mode={mode!r} is incompatible with CHORD (--chord_sft_dataset): '
-                         'CHORD auxiliary SFT rows carry no expert routing and cannot share the replay '
-                         'forward. Use router_replay_mode=disabled with CHORD, or drop --chord_sft_dataset.')
+        raise ValueError(
+            f"router_replay_mode={mode!r} is incompatible with CHORD (--chord_sft_dataset): "
+            "CHORD auxiliary SFT rows carry no expert routing and cannot share the replay "
+            "forward. Use router_replay_mode=disabled with CHORD, or drop --chord_sft_dataset."
+        )
 
 
-def _check_sampling_replay(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'] = None) -> None:
+def _check_sampling_replay(cfg: "RLConfig", rollout_config: Optional["RolloutConfig"] = None) -> None:
     """Reject sampling-replay combinations dev cannot honour, so the knob is never silently dropped.
 
     GRPO-only, no loss-side KL (beta must be 0 unless folded into the reward), no multi-turn.
     """
     if not cfg.enable_sampling_replay:
         return
-    if cfg.rl_type != 'grpo':
-        raise ValueError(f'enable_sampling_replay is GRPO-only: the sampling_masks column is assembled by '
-                         f'the GRPO assembler, but rl_type={cfg.rl_type!r} builds its own forward_backward kwargs '
-                         'without it. Use rl_type=grpo, or disable enable_sampling_replay.')
+    if cfg.rl_type not in POLICY_RL_TYPES:
+        raise ValueError("enable_sampling_replay requires the shared policy forward path.")
     calculate_kl = cfg.calculate_KL is not False
-    loss_beta = cfg.beta if (cfg.beta is not None and not cfg.kl_in_reward and calculate_kl) else None
+    loss_beta = (
+        cfg.beta
+        if (cfg.advantage_estimator != "gae" and cfg.beta is not None and not cfg.kl_in_reward and calculate_kl)
+        else None
+    )
     if loss_beta:
-        raise ValueError(f'enable_sampling_replay forbids a GRPO KL penalty in the loss (beta must be 0), but '
-                         f'beta={loss_beta} would reach GRPOLoss. Set beta=0, or fold the KL into the reward '
-                         'with kl_in_reward=True, or disable enable_sampling_replay.')
+        raise ValueError(
+            f"enable_sampling_replay forbids a GRPO KL penalty in the loss (beta must be 0), but "
+            f"beta={loss_beta} would reach GRPOLoss. Set beta=0, or fold the KL into the reward "
+            "with kl_in_reward=True, or disable enable_sampling_replay."
+        )
     if rollout_config is not None and rollout_config.max_turns is not None:
-        raise ValueError('enable_sampling_replay does not support multi-turn rollouts: tool/observation turns '
-                         'are trainable but were not drawn from the sampled policy, so they have no sampling '
-                         'mask to replay against (GRPOLoss rejects the resulting loss_mask != trainable). Set '
-                         'max_turns=None, or disable enable_sampling_replay.')
+        raise ValueError(
+            "enable_sampling_replay does not support multi-turn rollouts: tool/observation turns "
+            "are trainable but were not drawn from the sampled policy, so they have no sampling "
+            "mask to replay against (GRPOLoss rejects the resulting loss_mask != trainable). Set "
+            "max_turns=None, or disable enable_sampling_replay."
+        )
 
 
-def _check_segments(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'],
-                    reward_config: Optional['RewardConfig'] = None) -> None:
+def _check_segments(
+    cfg: "RLConfig", rollout_config: Optional["RolloutConfig"], reward_config: Optional["RewardConfig"] = None
+) -> None:
     """Reject collected-segment combinations the loop cannot honour (no silently dead knob).
 
     ``segment_policy='collect'`` delivers one episode as several training rows; the PRM segment
@@ -1139,128 +1404,140 @@ def _check_segments(cfg: 'RLConfig', rollout_config: Optional['RolloutConfig'],
     """
     if rollout_config is None:
         return
-    collecting = rollout_config.segment_policy == 'collect'
+    collecting = rollout_config.segment_policy == "collect"
     if collecting and reward_config is not None and reward_config.prm:
         raise ValueError(
             "segment_policy='collect' does not accept --prm: the PRM segment accounting is episode-level "
-            'and is not mapped onto a compacted episode\'s several rows. Drop --prm, or keep the default '
-            "segment_policy='drop'.")
-    if getattr(cfg, 'segment_discount', 1.0) != 1.0 and not collecting:
+            "and is not mapped onto a compacted episode's several rows. Drop --prm, or keep the default "
+            "segment_policy='drop'."
+        )
+    if getattr(cfg, "segment_discount", 1.0) != 1.0 and not collecting:
         raise ValueError(
-            f'segment_discount={cfg.segment_discount} discounts the rows a compacted episode delivers, but '
+            f"segment_discount={cfg.segment_discount} discounts the rows a compacted episode delivers, but "
             "segment_policy is 'drop': every episode is one row and there is nothing to discount. Pass "
-            "--segment_policy collect, or leave segment_discount at 1.0.")
-    if collecting and getattr(cfg, 'advantage_estimator', 'grpo') == 'gae':
+            "--segment_policy collect, or leave segment_discount at 1.0."
+        )
+    if collecting and getattr(cfg, "advantage_estimator", "grpo") == "gae":
         raise ValueError(
             "segment_policy='collect' feeds the scalar advantage family (the episode's advantage is "
-            'computed once and broadcast onto its rows); the GAE token-level path has no episode fold. '
-            'Pick a GRPO-family estimator, or drop.')
+            "computed once and broadcast onto its rows); the GAE token-level path has no episode fold. "
+            "Pick a GRPO-family estimator, or drop."
+        )
     if collecting:
         from swift.dev.utils import get_logger
 
         get_logger().warning(
             "segment_policy='collect' trains every compacted segment; with the default sequence-mean loss a "
-            'multi-row episode weighs by its row count -- consider a token-level normalization '
-            "(loss_type='bnpo', token_mean_scope='global') as CompactionRL's ablation does.")
+            "multi-row episode weighs by its row count -- consider a token-level normalization "
+            "(loss_type='bnpo', token_mean_scope='global') as CompactionRL's ablation does."
+        )
 
 
-def _check_prm(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
+def _check_prm(cfg: "RLConfig", reward_config: Optional["RewardConfig"] = None) -> None:
     """Reject GRPO/PPO process-reward (PRM) combinations the loop cannot honour (no silently dead knob).
 
     Refuses RLSD/SDAR overlap, prm_orm_mix with no --prm channel or outside [0, 1], and the
     segmentation knobs (prm_scorer / prm_step_delimiter) with no channel either.
     The prm channel and its knobs all live on the RewardConfig; a missing one counts as "no channel".
     """
-    if cfg.rl_type not in ('grpo', 'ppo'):
+    if cfg.rl_type not in POLICY_RL_TYPES:
         return
-    scorer_knobs = sorted({'prm_scorer', 'prm_step_delimiter', 'prm_orm_mix'}.intersection(
-        _changed_fields(reward_config)))
+    scorer_knobs = sorted(
+        {"prm_scorer", "prm_step_delimiter", "prm_orm_mix"}.intersection(_changed_fields(reward_config))
+    )
     if reward_config is None or not reward_config.prm:
         if scorer_knobs:
-            details = ', '.join(f'--{name}' for name in scorer_knobs)
+            details = ", ".join(f"--{name}" for name in scorer_knobs)
             raise ValueError(
-                f'{details} shape the process reward but no --prm channel is set, so they would do '
-                'nothing. Add a --prm item (a rule name or a frozen PRM model id), or drop them.')
+                f"{details} shape the process reward but no --prm channel is set, so they would do "
+                "nothing. Add a --prm item (a rule name or a frozen PRM model id), or drop them."
+            )
         return
     if not 0.0 <= reward_config.prm_orm_mix <= 1.0:
         raise ValueError(
-            f'prm_orm_mix must be in [0, 1] (the PRM/ORM convex-combination ratio: 0 is the standard '
-            f'outcome-reward run, 1 is pure process reward), got {reward_config.prm_orm_mix}.')
+            f"prm_orm_mix must be in [0, 1] (the PRM/ORM convex-combination ratio: 0 is the standard "
+            f"outcome-reward run, 1 is pure process reward), got {reward_config.prm_orm_mix}."
+        )
     if not reward_config.orm and reward_config.prm_orm_mix < 1.0:
         raise ValueError(
-            f'prm_orm_mix={reward_config.prm_orm_mix} blends an --orm half, but no --orm channel is set: the '
-            'blend folds NaN into every group advantage. Set --orm alongside --prm, or pass --prm_orm_mix 1 '
-            'for the pure process reward.')
-    if cfg.advantage_reweight == 'rlsd' or cfg.sdar_loss_coef > 0:
+            f"prm_orm_mix={reward_config.prm_orm_mix} blends an --orm half, but no --orm channel is set: the "
+            "blend folds NaN into every group advantage. Set --orm alongside --prm, or pass --prm_orm_mix 1 "
+            "for the pure process reward."
+        )
+    if cfg.advantage_reweight == "rlsd" or cfg.sdar_loss_coef > 0:
         raise ValueError(
-            'The --prm process reward cannot be combined with RLSD/SDAR: both turn the scalar advantage into a '
-            'per-token one from different sources (process reward vs teacher-signal reweighting), and only one '
-            'can drive the loss. Drop --prm, or disable advantage_reweight=rlsd / sdar_loss_coef.')
+            "The --prm process reward cannot be combined with RLSD/SDAR: both turn the scalar advantage into a "
+            "per-token one from different sources (process reward vs teacher-signal reweighting), and only one "
+            "can drive the loss. Drop --prm, or disable advantage_reweight=rlsd / sdar_loss_coef."
+        )
 
 
-def _check_self_distillation(cfg: 'RLConfig', train_config: 'TrainConfig',
-                            reward_config: Optional['RewardConfig'] = None) -> None:
+def _check_self_distillation(
+    cfg: "RLConfig", train_config: "TrainConfig", reward_config: Optional["RewardConfig"] = None
+) -> None:
     _check_rlsd(cfg, reward_config)
     _check_sdar(cfg)
-    if (cfg.advantage_reweight == 'rlsd' or cfg.sdar_loss_coef > 0) and train_config.use_liger_kernel:
-        raise ValueError('RLSD and SDAR require the unfused per-token loss path; disable use_liger_kernel.')
+    if (cfg.advantage_reweight == "rlsd" or cfg.sdar_loss_coef > 0) and train_config.use_liger_kernel:
+        raise ValueError("RLSD and SDAR require the unfused per-token loss path; disable use_liger_kernel.")
 
 
-def _check_rlsd(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
-    if cfg.advantage_reweight != 'rlsd':
+def _check_rlsd(cfg: "RLConfig", reward_config: Optional["RewardConfig"] = None) -> None:
+    if cfg.advantage_reweight != "rlsd":
         return
     if not 0.0 <= cfg.rlsd_lambda <= 1.0:
-        raise ValueError('rlsd_lambda must be in [0, 1].')
+        raise ValueError("rlsd_lambda must be in [0, 1].")
     if cfg.rlsd_reweight_clip_range < 0:
-        raise ValueError('rlsd_reweight_clip_range must be >= 0.')
+        raise ValueError("rlsd_reweight_clip_range must be >= 0.")
     if cfg.rlsd_lambda_warmup_steps < 0 or cfg.rlsd_lambda_decay_steps < 0:
-        raise ValueError('RLSD warmup and decay steps must be non-negative.')
+        raise ValueError("RLSD warmup and decay steps must be non-negative.")
     if reward_config is None or not reward_config.orm:
-        raise ValueError('advantage_reweight=rlsd requires the orm channel (a rule or a reward model).')
+        raise ValueError("advantage_reweight=rlsd requires the orm channel (a rule or a reward model).")
 
 
-def _check_sdar(cfg: 'RLConfig') -> None:
+def _check_sdar(cfg: "RLConfig") -> None:
     if cfg.sdar_loss_coef <= 0:
         return
     if cfg.sdar_gate_beta <= 0:
-        raise ValueError('sdar_gate_beta must be > 0.')
-    if cfg.advantage_reweight == 'rlsd':
-        raise ValueError('SDAR and RLSD cannot be enabled together.')
+        raise ValueError("sdar_gate_beta must be > 0.")
+    if cfg.advantage_reweight == "rlsd":
+        raise ValueError("SDAR and RLSD cannot be enabled together.")
 
 
-def _check_distillation(cfg: 'RLConfig', model_config: Optional['ModelConfig'] = None) -> None:
+def _check_distillation(cfg: "RLConfig", model_config: Optional["ModelConfig"] = None) -> None:
     """Validate the on-policy distillation family (gkd / opsd / mopd).
 
     lmbda/distinct-teacher shared; JSD knobs GKD-only; OPSD/MOPD refuse non-zero beta (no KL term);
     MOPD's single-teacher and heterogeneous-teacher contradictions are refused HERE, before any
     model or teacher actor is built (the assembly keeps its own copy of the same contracts).
     """
-    if cfg.rl_type not in ('gkd', 'opsd', 'mopd'):
+    if cfg.rl_type not in ("gkd", "opsd", "mopd"):
         return
-    if cfg.rl_type == 'mopd':
+    if cfg.rl_type == "mopd":
         _check_mopd_teacher(cfg, model_config)
     if not 0.0 <= cfg.lmbda <= 1.0:
-        raise ValueError(f'{cfg.rl_type} lmbda must be in [0, 1].')
+        raise ValueError(f"{cfg.rl_type} lmbda must be in [0, 1].")
     if cfg.offload_teacher_model and cfg.teacher_model is None:
-        raise ValueError('offload_teacher_model requires a distinct local teacher_model.')
+        raise ValueError("offload_teacher_model requires a distinct local teacher_model.")
     if cfg.teacher_deepspeed and cfg.teacher_model is None:
-        raise ValueError('teacher_deepspeed requires a distinct local teacher_model.')
-    if cfg.rl_type in ('opsd', 'mopd'):
+        raise ValueError("teacher_deepspeed requires a distinct local teacher_model.")
+    if cfg.rl_type in ("opsd", "mopd"):
         if cfg.beta not in (None, 0, 0.0):
-            raise ValueError(f'{cfg.rl_type} v1 has no reference-KL term; beta={cfg.beta!r} would be ignored. '
-                             'Leave beta unset/0 -- self-distillation pulls the student toward the teacher directly.')
+            raise ValueError(
+                f"{cfg.rl_type} v1 has no reference-KL term; beta={cfg.beta!r} would be ignored. "
+                "Leave beta unset/0 -- self-distillation pulls the student toward the teacher directly."
+            )
         return
-    if cfg.rl_type != 'gkd':
+    if cfg.rl_type != "gkd":
         return
     if cfg.sft_alpha < 0:
-        raise ValueError('GKD sft_alpha must be >= 0.')
+        raise ValueError("GKD sft_alpha must be >= 0.")
     if cfg.distill_temperature <= 0:
-        raise ValueError('GKD distill_temperature must be > 0.')
+        raise ValueError("GKD distill_temperature must be > 0.")
     if cfg.gkd_logits_topk is not None and cfg.gkd_logits_topk < 1:
-        raise ValueError('GKD gkd_logits_topk must be >= 1 when set.')
+        raise ValueError("GKD gkd_logits_topk must be >= 1 when set.")
 
 
-def _check_mopd_teacher(cfg: 'RLConfig', model_config: Optional['ModelConfig']) -> None:
+def _check_mopd_teacher(cfg: "RLConfig", model_config: Optional["ModelConfig"]) -> None:
     """MOPD's teacher contradictions, at validate time instead of after the actors are built.
 
     Two cases: (1) the single teacher IS the policy (the self-distillation derivation that reuses the
@@ -1271,36 +1548,44 @@ def _check_mopd_teacher(cfg: 'RLConfig', model_config: Optional['ModelConfig']) 
     so a heterogeneous teacher is not supported yet. An unset ``teacher_model_type`` inherits the
     policy family (the same-family contract), which stays valid.
     """
-    self_teacher = getattr(cfg, '_teacher_use_disable_adapter', False) or (
-        cfg.teacher_model and len(cfg.teacher_model) == 1 and model_config is not None
-        and cfg.teacher_model[0] == model_config.model)
+    self_teacher = getattr(cfg, "_teacher_use_disable_adapter", False) or (
+        cfg.teacher_model
+        and len(cfg.teacher_model) == 1
+        and model_config is not None
+        and cfg.teacher_model[0] == model_config.model
+    )
     if self_teacher:
         raise ValueError(
-            'mopd distils from K separate domain teachers, so a single teacher equal to the policy '
-            'model (the self-distillation derivation that would reuse the policy actor) does not apply '
-            'here. List distinct teacher checkpoints in --teacher_model.')
-    if (cfg.teacher_model_type is not None and model_config is not None
-            and cfg.teacher_model_type != model_config.model_type):
+            "mopd distils from K separate domain teachers, so a single teacher equal to the policy "
+            "model (the self-distillation derivation that would reuse the policy actor) does not apply "
+            "here. List distinct teacher checkpoints in --teacher_model."
+        )
+    if (
+        cfg.teacher_model_type is not None
+        and model_config is not None
+        and cfg.teacher_model_type != model_config.model_type
+    ):
         raise ValueError(
-            f'heterogeneous teachers are not supported yet: teacher_model_type={cfg.teacher_model_type!r} '
-            f'differs from the policy family ({model_config.model_type!r}), and the teacher forward '
-            'assumes the policy-side batch layout, so it would crash on the packed 4D attention mask. '
-            'Use a same-family teacher checkpoint; teacher_model_type unset inherits the policy family.')
+            f"heterogeneous teachers are not supported yet: teacher_model_type={cfg.teacher_model_type!r} "
+            f"differs from the policy family ({model_config.model_type!r}), and the teacher forward "
+            "assumes the policy-side batch layout, so it would crash on the packed 4D attention mask. "
+            "Use a same-family teacher checkpoint; teacher_model_type unset inherits the policy family."
+        )
 
 
-def _check_auxiliary_adapters(cfg: 'RLConfig', reward_config: Optional['RewardConfig'] = None) -> None:
+def _check_auxiliary_adapters(cfg: "RLConfig", reward_config: Optional["RewardConfig"] = None) -> None:
     if len(cfg.ref_adapters) > 1:
-        raise ValueError('ref_adapters currently supports one frozen reference adapter.')
+        raise ValueError("ref_adapters currently supports one frozen reference adapter.")
     if len(cfg.teacher_adapters) > 1:
-        raise ValueError('teacher_adapters currently supports one frozen teacher adapter.')
+        raise ValueError("teacher_adapters currently supports one frozen teacher adapter.")
     if cfg.teacher_adapters and cfg.teacher_model is None:
-        raise ValueError('teacher_adapters requires a distinct local teacher_model.')
+        raise ValueError("teacher_adapters requires a distinct local teacher_model.")
     if reward_config is not None:
-        _check_channel_companions(reward_config, 'orm')
-        _check_channel_companions(reward_config, 'prm')
+        _check_channel_companions(reward_config, "orm")
+        _check_channel_companions(reward_config, "prm")
 
 
-def _check_channel_companions(reward_config: 'RewardConfig', channel: str) -> None:
+def _check_channel_companions(reward_config: "RewardConfig", channel: str) -> None:
     """Each channel's companion family aligns positionally with its MODEL subsequence.
 
     One entry per model id (rule items hold no model); the synthesis path's lone-adapter sampler-reuse
@@ -1311,35 +1596,36 @@ def _check_channel_companions(reward_config: 'RewardConfig', channel: str) -> No
     items = getattr(reward_config, channel) or []
     model_count = sum(1 for item in items if not is_registered_reward(item))
     companions = {
-        f'{channel}_adapters': getattr(reward_config, f'{channel}_adapters'),
-        f'{channel}_model_type': getattr(reward_config, f'{channel}_model_type'),
-        f'{channel}_model_revision': getattr(reward_config, f'{channel}_model_revision'),
-        f'{channel}_template': getattr(reward_config, f'{channel}_template'),
+        f"{channel}_adapters": getattr(reward_config, f"{channel}_adapters"),
+        f"{channel}_model_type": getattr(reward_config, f"{channel}_model_type"),
+        f"{channel}_model_revision": getattr(reward_config, f"{channel}_model_revision"),
+        f"{channel}_template": getattr(reward_config, f"{channel}_template"),
     }
     for field, values in companions.items():
         if not values:
             continue
         if model_count == 0:
-            raise ValueError(f'{field} requires a model id in the {channel} channel.')
+            raise ValueError(f"{field} requires a model id in the {channel} channel.")
         if len(values) != model_count:
             raise ValueError(
-                f'{field} must contain exactly one entry per model id in the {channel} channel '
-                f'({model_count} model id(s)), got {len(values)}.')
+                f"{field} must contain exactly one entry per model id in the {channel} channel "
+                f"({model_count} model id(s)), got {len(values)}."
+            )
 
 
-def _check_logging(logging_config: Optional['LoggingConfig']) -> None:
+def _check_logging(logging_config: Optional["LoggingConfig"]) -> None:
     if logging_config is None:
         return
     reporters = {name.lower() for name in logging_config.report_to}
-    supported = {'none', 'tensorboard', 'wandb', 'swanlab'}
+    supported = {"none", "tensorboard", "wandb", "swanlab"}
     unknown = reporters - supported
     if unknown:
-        raise ValueError(f'Unsupported LoggingConfig.report_to values: {sorted(unknown)}.')
-    if 'none' in reporters and len(reporters) > 1:
+        raise ValueError(f"Unsupported LoggingConfig.report_to values: {sorted(unknown)}.")
+    if "none" in reporters and len(reporters) > 1:
         raise ValueError('LoggingConfig.report_to cannot combine "none" with an active tracker.')
-    if logging_config.logging_strategy == 'steps' and logging_config.logging_steps <= 0:
+    if logging_config.logging_strategy == "steps" and logging_config.logging_steps <= 0:
         raise ValueError('LoggingConfig.logging_steps must be > 0 when logging_strategy="steps".')
-    if logging_config.swanlab_notification_method == 'email':
+    if logging_config.swanlab_notification_method == "email":
         required = (
             logging_config.swanlab_sender_email,
             logging_config.swanlab_receiver_email,
@@ -1347,17 +1633,18 @@ def _check_logging(logging_config: Optional['LoggingConfig']) -> None:
             logging_config.swanlab_smtp_port,
         )
         if not all(required):
-            raise ValueError('SwanLab email notification requires sender_email, receiver_email, smtp_server, and '
-                             'smtp_port.')
+            raise ValueError(
+                "SwanLab email notification requires sender_email, receiver_email, smtp_server, and smtp_port."
+            )
 
 
 _GALORE_UNSUPPORTED = (
-    'galore_optim_per_parameter',
-    'galore_with_embedding',
+    "galore_optim_per_parameter",
+    "galore_with_embedding",
 )
 
 
-def _check_galore(train_config: 'TrainConfig', tuner_config: Optional['TunerConfig']) -> None:
+def _check_galore(train_config: "TrainConfig", tuner_config: Optional["TunerConfig"]) -> None:
     """Refuse GaLore combinations that cannot train the way the user asked.
 
     Fatal: with an adapter, unsupported legacy knobs, or a base optim with no GaLore variant.
@@ -1366,71 +1653,79 @@ def _check_galore(train_config: 'TrainConfig', tuner_config: Optional['TunerConf
         return
     if has_adapter(tuner_config):
         raise ValueError(
-            f'use_galore cannot be combined with tuner={tuner_config.tuner!r}: GaLore projects the '
-            'full-parameter gradient into a low-rank subspace, a different low-rank approximation than '
-            'the adapter. Train full-param with GaLore (--tuner full --use_galore true, or '
-            'TunerConfig(tuner=\'full\') on the component API), or use the adapter without GaLore.')
+            f"use_galore cannot be combined with tuner={tuner_config.tuner!r}: GaLore projects the "
+            "full-parameter gradient into a low-rank subspace, a different low-rank approximation than "
+            "the adapter. Train full-param with GaLore (--tuner full --use_galore true, or "
+            "TunerConfig(tuner='full') on the component API), or use the adapter without GaLore."
+        )
     unsupported = [name for name in _GALORE_UNSUPPORTED if name in _changed_fields(train_config)]
     if unsupported:
         raise NotImplementedError(
-            f'{unsupported} are legacy GaLore extensions that twinkle\'s GaLoreConfig does not implement '
-            '(it projects the full-precision gradient with the rank / target_modules / update_proj_gap / '
-            'scale / proj_type knobs, plus QGaLore quantized projection via galore_quantization). Remove '
-            'them, or keep use_galore to the supported fields.')
+            f"{unsupported} are legacy GaLore extensions that twinkle's GaLoreConfig does not implement "
+            "(it projects the full-precision gradient with the rank / target_modules / update_proj_gap / "
+            "scale / proj_type knobs, plus QGaLore quantized projection via galore_quantization). Remove "
+            "them, or keep use_galore to the supported fields."
+        )
     from swift.dev.utils.naming import resolve_galore_target, resolve_optim_target
+
     try:
         resolve_galore_target(resolve_optim_target(train_config.optim)[0], quantize=train_config.galore_quantization)
     except NotImplementedError as exc:
         raise ValueError(str(exc)) from exc
 
 
-def _target_is_all_linear(tuner_config: 'TunerConfig') -> bool:
+def _target_is_all_linear(tuner_config: "TunerConfig") -> bool:
     """Whether the adapter target resolves to 'all-linear' (the worker-side MM expansion trigger).
 
     An explicit target_regex/module list bypasses the expansion, so freeze_* flags are inert there.
     """
     if tuner_config.target_regex:
-        return tuner_config.target_regex == 'all-linear'
-    return 'all-linear' in (tuner_config.target_modules or [])
+        return tuner_config.target_regex == "all-linear"
+    return "all-linear" in (tuner_config.target_modules or [])
 
 
-def _check_param_groups(tuner_config: Optional['TunerConfig']) -> None:
+def _check_param_groups(tuner_config: Optional["TunerConfig"]) -> None:
     """Fail loudly on param_groups knobs that cannot apply the way the user asked.
 
     LoRA+ needs a LoRA-family adapter; freeze_llm/aligner steer only the 'all-linear' MM expansion.
     """
     if not has_adapter(tuner_config):
         return
-    if tuner_config.lorap_lr_ratio is not None and tuner_config.tuner != 'lora':
+    if tuner_config.lorap_lr_ratio is not None and tuner_config.tuner != "lora":
         raise ValueError(
-            f'lorap_lr_ratio (LoRA+) scales the lora_B / embedding learning rate against lora_A, so it '
-            f'needs a LoRA-family adapter, but tuner={tuner_config.tuner!r} has no lora_B parameters. '
-            'Use tuner="lora", or drop lorap_lr_ratio / lorap_emb_lr.')
-    if set(_changed_fields(tuner_config)) & {'freeze_llm', 'freeze_aligner'} and not _target_is_all_linear(tuner_config):
+            f"lorap_lr_ratio (LoRA+) scales the lora_B / embedding learning rate against lora_A, so it "
+            f"needs a LoRA-family adapter, but tuner={tuner_config.tuner!r} has no lora_B parameters. "
+            'Use tuner="lora", or drop lorap_lr_ratio / lorap_emb_lr.'
+        )
+    if set(_changed_fields(tuner_config)) & {"freeze_llm", "freeze_aligner"} and not _target_is_all_linear(
+        tuner_config
+    ):
         logger.warning(
-            'freeze_llm / freeze_aligner were set but the adapter target is an explicit '
+            "freeze_llm / freeze_aligner were set but the adapter target is an explicit "
             'target_regex / module list, not "all-linear". These flags only steer the multimodal '
             '"all-linear" target expansion, so they are ignored here and the run trains exactly the '
-            'modules the explicit target names.')
+            "modules the explicit target names."
+        )
 
 
-
-def _check_trainable_tokens_head(tuner_config: Optional['TunerConfig'], model_config: 'ModelConfig') -> None:
+def _check_trainable_tokens_head(tuner_config: Optional["TunerConfig"], model_config: "ModelConfig") -> None:
     """tuner=trainable_tokens builds no adapter, so a fresh seq_cls/reranker head has no save lane.
 
     The head rides LoRA's modules_to_save on the lora path; trainable_tokens trains raw embedding
     slices and the checkpoint format has no slot for the classification head, so the reloaded model
     would score with a random head. Refuse the combination until the head-save closes.
     """
-    if not has_adapter(tuner_config) or tuner_config.tuner != 'trainable_tokens':
+    if not has_adapter(tuner_config) or tuner_config.tuner != "trainable_tokens":
         return
-    if model_config.task_type in ('seq_cls', 'reranker'):
+    if model_config.task_type in ("seq_cls", "reranker"):
         raise ValueError(
-            f'tuner=trainable_tokens does not save the fresh {model_config.task_type} head (the LoRA path '
+            f"tuner=trainable_tokens does not save the fresh {model_config.task_type} head (the LoRA path "
             "carries it via modules_to_save; trainable_tokens has no such lane), so the reloaded model "
-            'would score with a random head. Use --tuner lora for this task type.')
+            "would score with a random head. Use --tuner lora for this task type."
+        )
 
-def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+
+def _check_muon(train_config: "TrainConfig", distributed_config: "DistributedConfig", is_megatron: bool) -> None:
     """Reject muon pairings that Megatron itself refuses, or that would train something else.
 
     Break from legacy: raises on the distributed optimizer instead of silently turning it off.
@@ -1438,71 +1733,86 @@ def _check_muon(train_config: 'TrainConfig', distributed_config: 'DistributedCon
     if not is_megatron:
         # Point a Megatron `optimizer='muon'` mistake at the transformers spelling instead of letting
         # it be silently ignored (the Megatron branch is the only one that reads `optimizer`).
-        if 'muon' in train_config.optimizer:
+        if "muon" in train_config.optimizer:
             raise ValueError(
-                f'TrainConfig.optimizer={train_config.optimizer!r} is a Megatron optimizer, but the active '
-                'backend is transformers. Use TrainConfig.optim for the transformers path, or switch '
-                'DistributedConfig.backend.')
+                f"TrainConfig.optimizer={train_config.optimizer!r} is a Megatron optimizer, but the active "
+                "backend is transformers. Use TrainConfig.optim for the transformers path, or switch "
+                "DistributedConfig.backend."
+            )
         # muon_momentum/use_nesterov/num_ns_steps are dual-backend, qk_clip_* transformers-only; all are
         # read on this backend ONLY when optim='muon', so guard them against being silently ignored.
-        if train_config.optim.lower() != 'muon':
-            stray = [n for n in ('muon_momentum', 'muon_use_nesterov', 'muon_num_ns_steps',
-                                 'qk_clip_enabled', 'qk_clip_tau')
-                     if n in _changed_fields(train_config)]
+        if train_config.optim.lower() != "muon":
+            stray = [
+                n
+                for n in ("muon_momentum", "muon_use_nesterov", "muon_num_ns_steps", "qk_clip_enabled", "qk_clip_tau")
+                if n in _changed_fields(train_config)
+            ]
             if stray:
                 raise ValueError(
-                    f'{stray} configure the muon optimizer, but TrainConfig.optim={train_config.optim!r} '
+                    f"{stray} configure the muon optimizer, but TrainConfig.optim={train_config.optim!r} "
                     "on the transformers backend, so they would be ignored. Set optim='muon' to use "
-                    'them, or drop them.')
+                    "them, or drop them."
+                )
         return
 
-    if 'muon' not in train_config.optimizer:
+    if "muon" not in train_config.optimizer:
         return
 
     from swift.dev.utils.naming import mcore_version_at_least
-    if not mcore_version_at_least('0.16'):
-        raise ValueError(f'TrainConfig.optimizer={train_config.optimizer!r} requires megatron-core>=0.16, which is '
-                         'where the muon implementation lands.')
 
-    if train_config.optimizer == 'muon':
+    if not mcore_version_at_least("0.16"):
+        raise ValueError(
+            f"TrainConfig.optimizer={train_config.optimizer!r} requires megatron-core>=0.16, which is "
+            "where the muon implementation lands."
+        )
+
+    if train_config.optimizer == "muon":
         # Plain muon orthogonalises whole parameters, so it needs each one gathered before the step;
         # both overlaps hand it a shard instead. megatron asserts the same pairing.
-        for attr in ('overlap_grad_reduce', 'overlap_param_gather'):
+        for attr in ("overlap_grad_reduce", "overlap_param_gather"):
             if getattr(distributed_config, attr):
                 raise ValueError(
                     f"optimizer='muon' is incompatible with DistributedConfig.{attr}=True: muon computes its "
-                    'update from the whole parameter, which an overlapped reduce/gather has not finished '
-                    f"assembling. Use optimizer='dist_muon', which is sharded, or set {attr}=False.")
+                    "update from the whole parameter, which an overlapped reduce/gather has not finished "
+                    f"assembling. Use optimizer='dist_muon', which is sharded, or set {attr}=False."
+                )
 
     if distributed_config.use_distributed_optimizer:
-        raise ValueError(f'TrainConfig.optimizer={train_config.optimizer!r} does not support '
-                         'DistributedConfig.use_distributed_optimizer=True; muon maintains its own state layout. '
-                         'legacy turned the distributed optimizer off silently here -- set it to False explicitly, '
-                         'so the memory profile and checkpoint contents of the run are not a surprise.')
+        raise ValueError(
+            f"TrainConfig.optimizer={train_config.optimizer!r} does not support "
+            "DistributedConfig.use_distributed_optimizer=True; muon maintains its own state layout. "
+            "legacy turned the distributed optimizer off silently here -- set it to False explicitly, "
+            "so the memory profile and checkpoint contents of the run are not a surprise."
+        )
 
 
-def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
-                            template_config: 'TemplateConfig',
-                            tuner_config: Optional['TunerConfig'] = None) -> None:
+def _check_unsloth_strategy(
+    distributed_config: "DistributedConfig",
+    template_config: "TemplateConfig",
+    tuner_config: Optional["TunerConfig"] = None,
+) -> None:
     """Refuse the strategies unsloth (backend='unsloth') cannot co-exist with.
 
     It rebuilds the graph for whole, unsharded weights: ZeRO/FSDP and Ulysses SP are refused.
     """
-    if distributed_config.backend != 'unsloth':
+    if distributed_config.backend != "unsloth":
         return
     if distributed_config.deepspeed:
         raise NotImplementedError(
             'backend="unsloth" cannot run under DeepSpeed: unsloth installs its own kernels and module '
-            'graph and does not compose with a ZeRO strategy. Drop --deepspeed, or use the default backend.')
+            "graph and does not compose with a ZeRO strategy. Drop --deepspeed, or use the default backend."
+        )
     if distributed_config.fsdp:
         raise NotImplementedError(
             'backend="unsloth" cannot run under FSDP: unsloth installs its own kernels and module graph '
-            'and does not compose with parameter sharding. Drop --fsdp, or use the default backend.')
+            "and does not compose with parameter sharding. Drop --fsdp, or use the default backend."
+        )
     if template_config.sequence_parallel_size > 1:
         raise NotImplementedError(
             f'backend="unsloth" cannot run under sequence_parallel_size='
-            f'{template_config.sequence_parallel_size}: unsloth\'s fused kernels assume a whole sequence per '
-            'rank. Set sequence_parallel_size=1, or use the default backend.')
+            f"{template_config.sequence_parallel_size}: unsloth's fused kernels assume a whole sequence per "
+            "rank. Set sequence_parallel_size=1, or use the default backend."
+        )
     if has_adapter(tuner_config):
         from swift.dev.builder.adapter import is_base_modifying_init
 
@@ -1514,12 +1824,13 @@ def _check_unsloth_strategy(distributed_config: 'DistributedConfig',
             # merge time, for lack of initial_model. Fail here instead.
             raise NotImplementedError(
                 f'backend="unsloth" does not support base-modifying LoRA init ({tuner_config.init_weights!r}): '
-                'the initial-adapter snapshot that the post-training conversion folds against is not '
-                'wired for unsloth-injected LoRA (no peft PeftModel to snapshot). Use the default backend '
-                'for this init strategy.')
+                "the initial-adapter snapshot that the post-training conversion folds against is not "
+                "wired for unsloth-injected LoRA (no peft PeftModel to snapshot). Use the default backend "
+                "for this init strategy."
+            )
 
 
-def _check_unsloth_eval(train_config: 'TrainConfig', distributed_config: 'DistributedConfig') -> None:
+def _check_unsloth_eval(train_config: "TrainConfig", distributed_config: "DistributedConfig") -> None:
     """Refuse in-training evaluation on backend='unsloth' until the upstream recompute bug is fixed.
 
     Under a multi-rank run unsloth's gradient checkpointing uses torch's NON-reentrant checkpoint
@@ -1532,22 +1843,23 @@ def _check_unsloth_eval(train_config: 'TrainConfig', distributed_config: 'Distri
     unslothai/unsloth#14063; reproduced on unsloth 2026.11.2 with Qwen3.5-4B, multi-rank DDP and
     eval_on_start (single-rank runs take the reentrant path and are not verified either way).
     """
-    if distributed_config.backend != 'unsloth':
+    if distributed_config.backend != "unsloth":
         return
-    if train_config.eval_strategy not in (None, 'no') or train_config.eval_on_start:
+    if train_config.eval_strategy not in (None, "no") or train_config.eval_on_start:
         raise NotImplementedError(
             'backend="unsloth" does not support in-training evaluation: under multi-rank runs an eval '
-            'forward between training steps breaks unsloth\'s non-reentrant checkpoint recompute '
+            "forward between training steps breaks unsloth's non-reentrant checkpoint recompute "
             '(CheckpointError in the first post-eval backward, then DDP "Expected to have finished '
             'reduction" on every step while the loss silently drops to 0). This is an upstream unsloth '
-            'bug (unslothai/unsloth#14063 family, still present in 2026.11.2). Disable evaluation with '
-            '--eval_strategy no --eval_on_start false --split_dataset_ratio 0 --predict_with_generate false '
-            '(note eval_strategy is auto-derived from --save_strategy when a validation split exists, so '
-            'the explicit no is needed even without --eval_strategy on the command line), or use the '
-            'default backend for evaluation runs.')
+            "bug (unslothai/unsloth#14063 family, still present in 2026.11.2). Disable evaluation with "
+            "--eval_strategy no --eval_on_start false --split_dataset_ratio 0 --predict_with_generate false "
+            "(note eval_strategy is auto-derived from --save_strategy when a validation split exists, so "
+            "the explicit no is needed even without --eval_strategy on the command line), or use the "
+            "default backend for evaluation runs."
+        )
 
 
-def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:
+def _check_deepspeed_autotp(distributed_config: "DistributedConfig") -> None:
     """DeepSpeed AutoTP is not implemented on the twinkle strategy, so refuse the knob rather than drop it.
 
     AutoTP needs TP groups AND a TP-aware sampler; half-wiring it feeds TP peers different data.
@@ -1555,14 +1867,16 @@ def _check_deepspeed_autotp(distributed_config: 'DistributedConfig') -> None:
     if distributed_config.deepspeed_autotp_size is None:
         return
     raise NotImplementedError(
-        f'deepspeed_autotp_size={distributed_config.deepspeed_autotp_size} (DeepSpeed AutoTP) is not implemented '
-        'by the twinkle DeepSpeed strategy: AutoTP needs tensor-parallel groups plus a TP-aware data sampler, and '
-        'only the ZeRO config side exists here. Drop it and rely on ZeRO sharding (the deepspeed presets), or use '
-        'the megatron backend for tensor parallelism.')
+        f"deepspeed_autotp_size={distributed_config.deepspeed_autotp_size} (DeepSpeed AutoTP) is not implemented "
+        "by the twinkle DeepSpeed strategy: AutoTP needs tensor-parallel groups plus a TP-aware data sampler, and "
+        "only the ZeRO config side exists here. Drop it and rely on ZeRO sharding (the deepspeed presets), or use "
+        "the megatron backend for tensor parallelism."
+    )
 
 
-def _check_eval_generation(train_config: 'TrainConfig', template_config: 'TemplateConfig',
-                           distributed_config: 'DistributedConfig') -> None:
+def _check_eval_generation(
+    train_config: "TrainConfig", template_config: "TemplateConfig", distributed_config: "DistributedConfig"
+) -> None:
     """Guards for the in-training generative eval path (predict_with_generate -> EvalScope).
 
     Refuses no eval_dataset, SP transformers sampler, vllm/sglang outside ray, sharded multi-rank local.
@@ -1571,41 +1885,46 @@ def _check_eval_generation(train_config: 'TrainConfig', template_config: 'Templa
         return
     if not train_config.eval_dataset:
         raise ValueError(
-            'predict_with_generate=True runs an EvalScope benchmark inside training, so it needs '
-            'TrainConfig.eval_dataset; got none. Pass --eval_dataset <name>, or use the validation-loss path '
-            '(--predict_with_generate false) which evaluates the split-off validation set.')
+            "predict_with_generate=True runs an EvalScope benchmark inside training, so it needs "
+            "TrainConfig.eval_dataset; got none. Pass --eval_dataset <name>, or use the validation-loss path "
+            "(--predict_with_generate false) which evaluates the split-off validation set."
+        )
     backend = train_config.eval_sampler_backend
-    if backend == 'transformers' and template_config.sequence_parallel_size > 1:
+    if backend == "transformers" and template_config.sequence_parallel_size > 1:
         raise ValueError(
             f'predict_with_generate=True with eval_sampler_backend="transformers" cannot run under '
-            f'sequence_parallel_size={template_config.sequence_parallel_size}: HF .generate() runs the whole '
-            'sequence on one rank and is unaware of the ulysses/ring shard, so it would generate from a partial '
-            'sequence. Evaluate with the validation-loss path (--predict_with_generate false), or serve generation '
-            'from a co-resident engine (--eval_sampler_backend vllm|sglang, which needs --mode ray).')
-    if backend in ('vllm', 'sglang') and distributed_config.mode != 'ray':
+            f"sequence_parallel_size={template_config.sequence_parallel_size}: HF .generate() runs the whole "
+            "sequence on one rank and is unaware of the ulysses/ring shard, so it would generate from a partial "
+            "sequence. Evaluate with the validation-loss path (--predict_with_generate false), or serve generation "
+            "from a co-resident engine (--eval_sampler_backend vllm|sglang, which needs --mode ray)."
+        )
+    if backend in ("vllm", "sglang") and distributed_config.mode != "ray":
         raise NotImplementedError(
-            f'eval_sampler_backend={backend!r} weight-syncs the training weights into a co-resident engine through '
-            f'a Ray DeviceGroup (CheckpointEngineManager), which mode={distributed_config.mode!r} cannot place. Run '
-            'under --mode ray, or use --eval_sampler_backend transformers (which wraps the live training module).')
+            f"eval_sampler_backend={backend!r} weight-syncs the training weights into a co-resident engine through "
+            f"a Ray DeviceGroup (CheckpointEngineManager), which mode={distributed_config.mode!r} cannot place. Run "
+            "under --mode ray, or use --eval_sampler_backend transformers (which wraps the live training module)."
+        )
     # rank0-only generation is safe only while the model's forward is rank-local. Only ZeRO-3 shards params
     # (ZeRO-1/2 and DDP replicate them and stay rank-local), so those are allowed.
-    if backend == 'transformers' and distributed_config.mode == 'local':
+    if backend == "transformers" and distributed_config.mode == "local":
         from swift.dev.utils import deepspeed_zero_stage, get_dist_setting
+
         world_size = get_dist_setting()[2]
         shards_params = bool(distributed_config.fsdp) or deepspeed_zero_stage(distributed_config.deepspeed) == 3
         if shards_params and world_size > 1:
-            sharding = 'FSDP (--fsdp)' if distributed_config.fsdp else 'DeepSpeed ZeRO-3 (--deepspeed)'
+            sharding = "FSDP (--fsdp)" if distributed_config.fsdp else "DeepSpeed ZeRO-3 (--deepspeed)"
             raise ValueError(
                 f'predict_with_generate=True with eval_sampler_backend="transformers" drives generation from rank 0 '
-                f'only, but the transformers path shards parameters under {sharding} across {world_size} ranks: '
+                f"only, but the transformers path shards parameters under {sharding} across {world_size} ranks: "
                 "rank 0's .generate() all-gathers weights that its peers -- parked at the eval barrier -- never "
-                'join, so the run hangs at the first generative eval. Run it under --mode ray (the driver '
-                'dispatches generate across the group), or serve generation from a co-resident engine '
-                '(--eval_sampler_backend vllm|sglang, which needs --mode ray), or use a replicated strategy '
-                '(plain DDP, or DeepSpeed ZeRO-1/2), or the validation-loss path (--predict_with_generate false).')
+                "join, so the run hangs at the first generative eval. Run it under --mode ray (the driver "
+                "dispatches generate across the group), or serve generation from a co-resident engine "
+                "(--eval_sampler_backend vllm|sglang, which needs --mode ray), or use a replicated strategy "
+                "(plain DDP, or DeepSpeed ZeRO-1/2), or the validation-loss path (--predict_with_generate false)."
+            )
 
 
-def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+def _check_megatron_fsdp(distributed_config: "DistributedConfig", is_megatron: bool) -> None:
     """Reject Megatron-FSDP pairings that megatron itself rejects, or that silently do nothing.
 
     Duplicated with MegatronStrategy._check_fsdp (the authority) so a CLI typo fails on the driver.
@@ -1616,47 +1935,56 @@ def _check_megatron_fsdp(distributed_config: 'DistributedConfig', is_megatron: b
     if not is_megatron:
         # The transformers backend has its own FSDP, reached through DistributedConfig.fsdp. Silently
         # ignoring this flag there would leave a run that says "sharded" and replicates.
-        raise ValueError('DistributedConfig.use_megatron_fsdp only applies to the megatron backend, but the active '
-                         'backend is transformers. Use DistributedConfig.fsdp for the transformers path.')
+        raise ValueError(
+            "DistributedConfig.use_megatron_fsdp only applies to the megatron backend, but the active "
+            "backend is transformers. Use DistributedConfig.fsdp for the transformers path."
+        )
 
     if not distributed_config.use_distributed_optimizer:
-        raise ValueError('DistributedConfig.use_megatron_fsdp requires use_distributed_optimizer=True: FSDP shards '
-                         'the parameters, and only the distributed optimizer keeps the matching master-weight '
-                         'shards to update them from.')
+        raise ValueError(
+            "DistributedConfig.use_megatron_fsdp requires use_distributed_optimizer=True: FSDP shards "
+            "the parameters, and only the distributed optimizer keeps the matching master-weight "
+            "shards to update them from."
+        )
 
     if distributed_config.context_parallel_size > 1:
         # megatron asserts the same pairing on its own CLI ('Hybrid context parallelism not supported
         # with Megatron FSDP').
-        raise ValueError('DistributedConfig.use_megatron_fsdp is incompatible with context_parallel_size='
-                         f'{distributed_config.context_parallel_size}. Megatron-FSDP does not support context '
-                         'parallelism; use the default DDP wrapper for a CP run.')
+        raise ValueError(
+            "DistributedConfig.use_megatron_fsdp is incompatible with context_parallel_size="
+            f"{distributed_config.context_parallel_size}. Megatron-FSDP does not support context "
+            "parallelism; use the default DDP wrapper for a CP run."
+        )
 
-    model_parallel = max(distributed_config.tensor_model_parallel_size,
-                         distributed_config.pipeline_model_parallel_size)
+    model_parallel = max(distributed_config.tensor_model_parallel_size, distributed_config.pipeline_model_parallel_size)
     if model_parallel > 1:
-        raise ValueError('DistributedConfig.use_megatron_fsdp requires tensor_model_parallel_size=1 and '
-                         'pipeline_model_parallel_size=1: mcore 0.20 FSDP supports neither (its distributed '
-                         'index assumes world = dp*cp*ep*tp with no pipeline axis). Use the default DDP '
-                         'wrapper -- it composes with every parallel dimension and use_distributed_optimizer.')
+        raise ValueError(
+            "DistributedConfig.use_megatron_fsdp requires tensor_model_parallel_size=1 and "
+            "pipeline_model_parallel_size=1: mcore 0.20 FSDP supports neither (its distributed "
+            "index assumes world = dp*cp*ep*tp with no pipeline axis). Use the default DDP "
+            "wrapper -- it composes with every parallel dimension and use_distributed_optimizer."
+        )
 
 
-
-def _check_fsdp_config(distributed_config: 'DistributedConfig') -> None:
+def _check_fsdp_config(distributed_config: "DistributedConfig") -> None:
     """--fsdp/--fsdp_config only reach a strategy when they select one; refuse the dead combinations."""
     if distributed_config.fsdp and distributed_config.deepspeed:
         # The builder resolves deepspeed first, so FSDP under a ZeRO config is silently ignored.
         raise ValueError(
-            'DistributedConfig.fsdp is not compatible with --deepspeed: the model builder resolves the '
-            'DeepSpeed strategy first, so the FSDP request is silently ignored. Drop one of the two.')
+            "DistributedConfig.fsdp is not compatible with --deepspeed: the model builder resolves the "
+            "DeepSpeed strategy first, so the FSDP request is silently ignored. Drop one of the two."
+        )
     if distributed_config.fsdp_config and not distributed_config.fsdp:
         raise ValueError(
-            'DistributedConfig.fsdp_config is only consumed together with --fsdp (it selects the FSDP '
-            'strategy); without --fsdp the config is silently ignored. Add --fsdp fsdp2 (or a custom '
-            'config file path), or drop --fsdp_config.')
+            "DistributedConfig.fsdp_config is only consumed together with --fsdp (it selects the FSDP "
+            "strategy); without --fsdp the config is silently ignored. Add --fsdp fsdp2 (or a custom "
+            "config file path), or drop --fsdp_config."
+        )
 
 
-def _check_enable_kernel(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
-                         is_megatron: bool) -> None:
+def _check_enable_kernel(
+    model_config: "ModelConfig", distributed_config: "DistributedConfig", is_megatron: bool
+) -> None:
     """--enable_kernel kernelizes one local HF model; refuse every shape it silently no-ops on.
 
     The surgery patches module objects in place, so it needs the real model on THIS process: under
@@ -1668,24 +1996,30 @@ def _check_enable_kernel(model_config: 'ModelConfig', distributed_config: 'Distr
     if not model_config.enable_kernel:
         return
     if is_megatron:
-        raise ValueError('--enable_kernel is not supported on the Megatron backend: the kernel '
-                         'surgery patches HF module objects the megatron build never constructs. '
-                         'Use the transformers backend, or --use_liger_kernel.')
-    if distributed_config.mode == 'ray':
-        raise ValueError("--enable_kernel cannot run under mode='ray': the kernel surgery must touch "
-                         'the real model, but the driver only holds a Ray proxy stub. Run '
-                         "mode='local', or use --use_liger_kernel (applied worker-side).")
-    if distributed_config.backend == 'unsloth' or model_config.task_type == 'embedding':
-        raise ValueError('--enable_kernel is not supported on this build branch (unsloth backend or '
-                         'an embedding/sentence-transformer model): the kernelize call is never '
-                         'reached there. Use --use_liger_kernel, or drop --enable_kernel.')
+        raise ValueError(
+            "--enable_kernel is not supported on the Megatron backend: the kernel "
+            "surgery patches HF module objects the megatron build never constructs. "
+            "Use the transformers backend, or --use_liger_kernel."
+        )
+    if distributed_config.mode == "ray":
+        raise ValueError(
+            "--enable_kernel cannot run under mode='ray': the kernel surgery must touch "
+            "the real model, but the driver only holds a Ray proxy stub. Run "
+            "mode='local', or use --use_liger_kernel (applied worker-side)."
+        )
+    if distributed_config.backend == "unsloth" or model_config.task_type == "embedding":
+        raise ValueError(
+            "--enable_kernel is not supported on this build branch (unsloth backend or "
+            "an embedding/sentence-transformer model): the kernelize call is never "
+            "reached there. Use --use_liger_kernel, or drop --enable_kernel."
+        )
 
 
-def _check_cp_partition_mode(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+def _check_cp_partition_mode(distributed_config: "DistributedConfig", is_megatron: bool) -> None:
     """Reject a CP layout only the checkpoint-repartition path honours (training always splits zigzag)."""
     if not is_megatron or distributed_config.context_parallel_size <= 1:
         return
-    if distributed_config.cp_partition_mode != 'zigzag':
+    if distributed_config.cp_partition_mode != "zigzag":
         raise NotImplementedError(
             'DistributedConfig.cp_partition_mode="contiguous" is only honoured by the checkpoint '
             'repartition path (recipe/export); the training CP split and router replay are '
@@ -1694,56 +2028,72 @@ def _check_cp_partition_mode(distributed_config: 'DistributedConfig', is_megatro
 
 # (format field, param-gather field) per low-precision format. The amax knobs are absent on purpose:
 # non-None defaults make "did the user set this?" unanswerable, so a dependency check would fire always.
-_QUANT_FORMATS = (('fp4_format', 'fp4_param_gather'), ('fp8_format', 'fp8_param_gather'))
+_QUANT_FORMATS = (("fp4_format", "fp4_param_gather"), ("fp8_format", "fp8_param_gather"))
 
 
-def _check_quantization(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
-                        is_megatron: bool) -> None:
+def _check_quantization(
+    model_config: "ModelConfig", distributed_config: "DistributedConfig", is_megatron: bool
+) -> None:
     """Reject FP4/FP8 settings that cannot do what they say (errors, not warnings).
 
     Hardware/TE preconditions are NOT checked here (the driver is not the model-building process).
     """
     active = [fmt for fmt, _ in _QUANT_FORMATS if getattr(model_config, fmt) is not None]
-    explicit = getattr(model_config, '_explicit_fields', set())
+    explicit = getattr(model_config, "_explicit_fields", set())
     format_dependents = {
-        'fp4_format': ('fp4_recipe', 'fp4_param_gather'),
-        'fp8_format': ('fp8_recipe', 'fp8_amax_history_len', 'fp8_amax_compute_algo', 'fp8_param_gather'),
+        "fp4_format": ("fp4_recipe", "fp4_param_gather"),
+        "fp8_format": ("fp8_recipe", "fp8_amax_history_len", "fp8_amax_compute_algo", "fp8_param_gather"),
     }
 
     for fmt, param_gather in _QUANT_FORMATS:
         if getattr(model_config, fmt) is None:
             requested = [name for name in format_dependents[fmt] if name in explicit]
             if requested:
-                raise ValueError(f'ModelConfig fields {requested} need ModelConfig.{fmt} to be set. Without it the '
-                                 'model is built in its normal dtype, so these knobs would be ignored.')
+                raise ValueError(
+                    f"ModelConfig fields {requested} need ModelConfig.{fmt} to be set. Without it the "
+                    "model is built in its normal dtype, so these knobs would be ignored."
+                )
             if getattr(model_config, param_gather):
-                raise ValueError(f'ModelConfig.{param_gather} needs ModelConfig.{fmt} to be set. Without it the '
-                                 'model is built in its normal dtype, so this knob would be ignored.')
+                raise ValueError(
+                    f"ModelConfig.{param_gather} needs ModelConfig.{fmt} to be set. Without it the "
+                    "model is built in its normal dtype, so this knob would be ignored."
+                )
             continue
 
         if not is_megatron:
-            raise ValueError(f'ModelConfig.{fmt} is only implemented by the megatron backend, but the active '
-                             'backend is transformers. Low-precision training here is a Megatron/Transformer-'
-                             'Engine feature; the HF path has no equivalent.')
+            raise ValueError(
+                f"ModelConfig.{fmt} is only implemented by the megatron backend, but the active "
+                "backend is transformers. Low-precision training here is a Megatron/Transformer-"
+                "Engine feature; the HF path has no equivalent."
+            )
 
         if getattr(model_config, param_gather) and not distributed_config.use_distributed_optimizer:
             # Only the distributed optimizer re-quantizes the FP32 master shards back into the quantized
             # parameters; under any other optimizer they never change -- it neither errors nor learns.
             raise ValueError(
-                f'ModelConfig.{param_gather} requires DistributedConfig.use_distributed_optimizer=True: '
-                'quantized parameters are updated by re-quantizing the distributed optimizer\'s master shards, '
-                'and no other optimizer implements that step, so the model would never change.')
+                f"ModelConfig.{param_gather} requires DistributedConfig.use_distributed_optimizer=True: "
+                "quantized parameters are updated by re-quantizing the distributed optimizer's master shards, "
+                "and no other optimizer implements that step, so the model would never change."
+            )
 
     if len(active) > 1:
         # megatron enters exactly one quantization context per transformer layer (its own config raises
         # too); caught here so it fails on the driver, before a model is built on every rank.
-        raise ValueError(f'{" and ".join(f"ModelConfig.{fmt}" for fmt in active)} are mutually exclusive: megatron '
-                         'applies a single quantization recipe per transformer layer. Pick one.')
+        raise ValueError(
+            f"{' and '.join(f'ModelConfig.{fmt}' for fmt in active)} are mutually exclusive: megatron "
+            "applies a single quantization recipe per transformer layer. Pick one."
+        )
 
 
-def _check_load_quantization(model_config: 'ModelConfig', distributed_config: 'DistributedConfig',
-                             tuner_config: Optional['TunerConfig'], quantize_config: Optional['QuantizeConfig'],
-                             is_megatron: bool, *, training: bool) -> None:
+def _check_load_quantization(
+    model_config: "ModelConfig",
+    distributed_config: "DistributedConfig",
+    tuner_config: Optional["TunerConfig"],
+    quantize_config: Optional["QuantizeConfig"],
+    is_megatron: bool,
+    *,
+    training: bool,
+) -> None:
     """Validate training-time model loading quantization before a worker loads weights."""
     if quantize_config is None or quantize_config.quant_method is None:
         return
@@ -1754,52 +2104,60 @@ def _check_load_quantization(model_config: 'ModelConfig', distributed_config: 'D
     if method in CALIBRATION_QUANT_METHODS:
         if training:
             raise ValueError(
-                f'quant_method={method!r} calibrates and exports weights; it is not a training load-time method. '
-                'Train from an already quantized checkpoint, or use bnb/hqq/eetq/quanto/fp8 for loading.')
+                f"quant_method={method!r} calibrates and exports weights; it is not a training load-time method. "
+                "Train from an already quantized checkpoint, or use bnb/hqq/eetq/quanto/fp8 for loading."
+            )
         return
     if method not in LOAD_TIME_QUANT_METHODS:
-        raise ValueError(f'Unknown training load-time quant_method={method!r}.')
+        raise ValueError(f"Unknown training load-time quant_method={method!r}.")
     if is_megatron:
         raise ValueError(
-            f'quant_method={method!r} is a transformers load-time quantizer and is not supported by the Megatron '
-            'backend. Use ModelConfig.fp4_format/fp8_format for Transformer-Engine training quantization, or '
-            'convert a pre-quantized checkpoint to mcore first.')
+            f"quant_method={method!r} is a transformers load-time quantizer and is not supported by the Megatron "
+            "backend. Use ModelConfig.fp4_format/fp8_format for Transformer-Engine training quantization, or "
+            "convert a pre-quantized checkpoint to mcore first."
+        )
 
-    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    if training and tuner == 'full':
+    tuner = getattr(tuner_config, "tuner", "full") if tuner_config is not None else "full"
+    if training and tuner == "full":
         raise ValueError(
-            f'quant_method={method!r} cannot be combined with full-parameter training: load-time quantized base '
-            'weights are not trainable parameters. Select a trainable adapter such as --tuner lora.')
+            f"quant_method={method!r} cannot be combined with full-parameter training: load-time quantized base "
+            "weights are not trainable parameters. Select a trainable adapter such as --tuner lora."
+        )
 
     bits = quantize_config.quant_bits
     valid_bits = {
-        'bnb': {4, 8},
-        'hqq': {1, 2, 3, 4, 8},
-        'eetq': {8},
-        'quanto': {2, 4, 8, 'float8'},
-        'fp8': {None, 8, 'float8'},
+        "bnb": {4, 8},
+        "hqq": {1, 2, 3, 4, 8},
+        "eetq": {8},
+        "quanto": {2, 4, 8, "float8"},
+        "fp8": {None, 8, "float8"},
     }[method]
     if bits not in valid_bits:
-        raise ValueError(f'quant_method={method!r} does not support quant_bits={bits!r}; expected {sorted(valid_bits, key=str)}.')
-
-    if distributed_config.backend == 'unsloth' and method != 'bnb':
         raise ValueError(
-            f'Unsloth only exposes load_in_4bit/load_in_8bit for BNB, so quant_method={method!r} is unsupported. '
-            'Use --quant_method bnb or the default backend.')
+            f"quant_method={method!r} does not support quant_bits={bits!r}; expected {sorted(valid_bits, key=str)}."
+        )
 
-    if distributed_config.fsdp and method == 'bnb' and bits == 4:
+    if distributed_config.backend == "unsloth" and method != "bnb":
+        raise ValueError(
+            f"Unsloth only exposes load_in_4bit/load_in_8bit for BNB, so quant_method={method!r} is unsupported. "
+            "Use --quant_method bnb or the default backend."
+        )
+
+    if distributed_config.fsdp and method == "bnb" and bits == 4:
         storage = quantize_config.bnb_4bit_quant_storage
         if storage is None:
             raise ValueError(
-                'FSDP QLoRA requires --bnb_4bit_quant_storage to match the model parameter dtype '
-                f'(--torch_dtype {model_config.torch_dtype!r}); the bitsandbytes uint8 default cannot be sharded.')
+                "FSDP QLoRA requires --bnb_4bit_quant_storage to match the model parameter dtype "
+                f"(--torch_dtype {model_config.torch_dtype!r}); the bitsandbytes uint8 default cannot be sharded."
+            )
         if model_config.torch_dtype is not None and storage != model_config.torch_dtype:
             raise ValueError(
-                f'FSDP QLoRA requires bnb_4bit_quant_storage ({storage!r}) to match torch_dtype '
-                f'({model_config.torch_dtype!r}) so flattened FSDP parameters have one dtype.')
+                f"FSDP QLoRA requires bnb_4bit_quant_storage ({storage!r}) to match torch_dtype "
+                f"({model_config.torch_dtype!r}) so flattened FSDP parameters have one dtype."
+            )
 
 
-def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Optional['TunerConfig']) -> None:
+def _check_mtp(model_config: "ModelConfig", is_megatron: bool, tuner_config: Optional["TunerConfig"]) -> None:
     """Reject MTP settings that cannot do what they say.
 
     Failures would otherwise be silent; only LoRA (which can cover the MTP modules) warns instead.
@@ -1812,41 +2170,55 @@ def _check_mtp(model_config: 'ModelConfig', is_megatron: bool, tuner_config: Opt
         for attr in mtp_dependents:
             value = getattr(model_config, attr)
             if value:
-                raise ValueError(f'ModelConfig.{attr}={value!r} needs ModelConfig.mtp_num_layers to be set. '
-                                 'Without it no MTP block is built, so this knob would be ignored.')
+                raise ValueError(
+                    f"ModelConfig.{attr}={value!r} needs ModelConfig.mtp_num_layers to be set. "
+                    "Without it no MTP block is built, so this knob would be ignored."
+                )
         return
 
     if not is_megatron:
-        raise ValueError('ModelConfig.mtp_num_layers is only implemented by the megatron backend, but the active '
-                         'backend is transformers. MTP lives in mcore-bridge; the HF path has no equivalent.')
+        raise ValueError(
+            "ModelConfig.mtp_num_layers is only implemented by the megatron backend, but the active "
+            "backend is transformers. MTP lives in mcore-bridge; the HF path has no equivalent."
+        )
 
     if model_config.mtp_num_layers < 1:
-        raise ValueError(f'ModelConfig.mtp_num_layers={model_config.mtp_num_layers} must be >= 1, or None to '
-                         'disable MTP entirely.')
+        raise ValueError(
+            f"ModelConfig.mtp_num_layers={model_config.mtp_num_layers} must be >= 1, or None to disable MTP entirely."
+        )
 
     if model_config.mtp_freeze and model_config.enable_mtp_training:
-        raise ValueError('ModelConfig.mtp_freeze and ModelConfig.enable_mtp_training are contradictory: the first '
-                         'drops the MTP gradient, the second asks for it. Set exactly one.')
+        raise ValueError(
+            "ModelConfig.mtp_freeze and ModelConfig.enable_mtp_training are contradictory: the first "
+            "drops the MTP gradient, the second asks for it. Set exactly one."
+        )
 
     if model_config.mtp_loss_scaling_factor is not None and not model_config.enable_mtp_training:
-        raise ValueError('ModelConfig.mtp_loss_scaling_factor only has an effect with '
-                         'ModelConfig.enable_mtp_training=True; on its own the MTP loss is never computed, so the '
-                         'factor scales nothing.')
+        raise ValueError(
+            "ModelConfig.mtp_loss_scaling_factor only has an effect with "
+            "ModelConfig.enable_mtp_training=True; on its own the MTP loss is never computed, so the "
+            "factor scales nothing."
+        )
 
     if model_config.mtp_decoder_input_detach and not model_config.enable_mtp_training:
-        raise ValueError('ModelConfig.mtp_decoder_input_detach describes where the MTP gradient stops, so it needs '
-                         'ModelConfig.enable_mtp_training=True to mean anything.')
+        raise ValueError(
+            "ModelConfig.mtp_decoder_input_detach describes where the MTP gradient stops, so it needs "
+            "ModelConfig.enable_mtp_training=True to mean anything."
+        )
 
-    if (model_config.enable_mtp_training and has_adapter(tuner_config)):
+    if model_config.enable_mtp_training and has_adapter(tuner_config):
         # Not an error: trainable if the adapter targets the MTP modules, which target_modules alone
         # cannot decide. twinkle re-checks against the built model and warns if nothing ended up trainable.
-        logger.warning('enable_mtp_training with tuner=%r: the MTP layers are base parameters, so they only '
-                       'train if the adapter covers them. Otherwise the MTP loss is computed and discarded.',
-                       tuner_config.tuner)
+        logger.warning(
+            "enable_mtp_training with tuner=%r: the MTP layers are base parameters, so they only "
+            "train if the adapter covers them. Otherwise the MTP loss is computed and discarded.",
+            tuner_config.tuner,
+        )
 
 
-def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                                 is_megatron: bool) -> None:
+def _check_megatron_attn_backend(
+    model_config: "ModelConfig", template_config: "TemplateConfig", is_megatron: bool
+) -> None:
     """padding_free needs a variable-length (THD) attention kernel (megatron path).
 
     legacy silently downgrades here; dev raises deliberately (no softmax_type field, guard unreachable).
@@ -1860,40 +2232,43 @@ def _check_megatron_attn_backend(model_config: 'ModelConfig', template_config: '
     from megatron.core.transformer.enums import AttnBackend
 
     from swift.dev.utils.naming import resolve_megatron_attn_backend
+
     try:
         backend = resolve_megatron_attn_backend(model_config.attn_impl)
     except NotImplementedError:
         return
     if backend is AttnBackend.unfused:
-        raise ValueError(f'padding_free=True is incompatible with attn_impl={model_config.attn_impl!r} (the '
-                         'unfused attention kernel): it does not support the variable-length (THD) layout '
-                         'padding_free produces. legacy silently turns padding_free off here; dev refuses instead '
-                         'so the run does not quietly train a different shape. Choose attn_impl="flash"/"fused", '
-                         'or set padding_free=False.')
+        raise ValueError(
+            f"padding_free=True is incompatible with attn_impl={model_config.attn_impl!r} (the "
+            "unfused attention kernel): it does not support the variable-length (THD) layout "
+            "padding_free produces. legacy silently turns padding_free off here; dev refuses instead "
+            'so the run does not quietly train a different shape. Choose attn_impl="flash"/"fused", '
+            "or set padding_free=False."
+        )
 
 
 # attn_impl values whose kernel handles the variable-length (THD) layout padding_free produces, on the
 # transformers backend -- under Ulysses SP and (mirroring legacy sft_args) also without it.
-_SP_PADDING_FREE_ATTN_IMPLS = ('flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4')
+_SP_PADDING_FREE_ATTN_IMPLS = ("flash_attn", "flash_attention_2", "flash_attention_3", "flash_attention_4")
 
 # attn_impl -> the transformers availability probe (and the pip package that provides it),
 # so the user gets a one-line fix instead of an obscure failure deep inside the first forward.
 _FLASH_ATTN_AVAILABILITY = {
-    'flash_attn': ('flash_attention_2', 'flash-attn'),
-    'flash_attention_2': ('flash_attention_2', 'flash-attn'),
-    'flash_attention_3': ('flash_attention_3', 'flash-attn-3 (the flash_attn_interface package)'),
-    'flash_attention_4': ('flash_attention_4', 'flash-attn-4'),
+    "flash_attn": ("flash_attention_2", "flash-attn"),
+    "flash_attention_2": ("flash_attention_2", "flash-attn"),
+    "flash_attention_3": ("flash_attention_3", "flash-attn-3 (the flash_attn_interface package)"),
+    "flash_attention_4": ("flash_attention_4", "flash-attn-4"),
 }
 
 
-def _check_attn_impl_availability(model_config: 'ModelConfig') -> None:
+def _check_attn_impl_availability(model_config: "ModelConfig") -> None:
     """Fail fast (at validation, before the model loads) when the requested flash attention
     generation is not installed.
 
     transformers would also reject it, but only after the config/weights work and with a
     generic message; this points at the exact pip package instead.
     """
-    probe_name, package = _FLASH_ATTN_AVAILABILITY.get(model_config.attn_impl or '', (None, None))
+    probe_name, package = _FLASH_ATTN_AVAILABILITY.get(model_config.attn_impl or "", (None, None))
     if probe_name is None:
         return
     from transformers.utils import (
@@ -1902,64 +2277,78 @@ def _check_attn_impl_availability(model_config: 'ModelConfig') -> None:
     from transformers.utils import (
         is_torch_npu_available,
     )
-    if probe_name == 'flash_attention_2':
+
+    if probe_name == "flash_attention_2":
         available = is_torch_npu_available() or _fa2()
-    elif probe_name == 'flash_attention_3':
+    elif probe_name == "flash_attention_3":
         from transformers.utils import is_flash_attn_3_available as probe
+
         available = probe()
     else:
         from transformers.utils import is_flash_attn_4_available as probe
+
         available = probe()
     if not available:
         raise ValueError(
-            f'attn_impl={model_config.attn_impl!r} requires the matching flash attention build, which is '
-            f'not installed in this environment. Install it first: pip install {package!r} '
-            '(on a GPU the package ships prebuilt wheels; fa3/fa4 support Hopper/Blackwell). '
-            'Or switch to an installed implementation, e.g. --attn_impl flash_attention_2.')
+            f"attn_impl={model_config.attn_impl!r} requires the matching flash attention build, which is "
+            f"not installed in this environment. Install it first: pip install {package!r} "
+            "(on a GPU the package ships prebuilt wheels; fa3/fa4 support Hopper/Blackwell). "
+            "Or switch to an installed implementation, e.g. --attn_impl flash_attention_2."
+        )
 
 
-def _check_padding_free_attn(model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                             dataset_config: 'DatasetConfig', is_megatron: bool) -> None:
+def _check_padding_free_attn(
+    model_config: "ModelConfig", template_config: "TemplateConfig", dataset_config: "DatasetConfig", is_megatron: bool
+) -> None:
     """padding_free/packing requires a flash attention kernel on the transformers backend.
 
     Mirrors legacy sft_args._check_padding_free (dev dropped it); None is unsupported too.
     """
     if is_megatron or not (template_config.padding_free or dataset_config.packing):
         return
-    feature = 'packing' if dataset_config.packing else 'padding_free'
+    feature = "packing" if dataset_config.packing else "padding_free"
     if model_config.attn_impl not in _SP_PADDING_FREE_ATTN_IMPLS:
         raise ValueError(
             f'The "{feature}" feature requires a flash attention implementation, got '
-            f'attn_impl={model_config.attn_impl!r}. Please use one of: '
-            f'{", ".join(_SP_PADDING_FREE_ATTN_IMPLS)}.')
+            f"attn_impl={model_config.attn_impl!r}. Please use one of: "
+            f"{', '.join(_SP_PADDING_FREE_ATTN_IMPLS)}."
+        )
 
 
-def _check_group_by_length(dataset_config: 'DatasetConfig', template_config: 'TemplateConfig') -> None:
+def _check_group_by_length(dataset_config: "DatasetConfig", template_config: "TemplateConfig") -> None:
     if not dataset_config.group_by_length:
         return
     if template_config.padding_free:
-        raise ValueError('group_by_length is incompatible with padding_free: padding_free flattens each micro '
-                         'batch into a single variable-length sequence, so there is no padding left for length '
-                         'grouping to remove (and clustering long samples raises peak activation memory). '
-                         'Set one of them to False.')
+        raise ValueError(
+            "group_by_length is incompatible with padding_free: padding_free flattens each micro "
+            "batch into a single variable-length sequence, so there is no padding left for length "
+            "grouping to remove (and clustering long samples raises peak activation memory). "
+            "Set one of them to False."
+        )
     if dataset_config.packing:
-        raise ValueError('group_by_length is incompatible with packing: packing already bin-packs samples to '
-                         '~packing_length and implies padding_free, so length grouping cannot help. '
-                         'Use packing alone, or set group_by_length=False.')
+        raise ValueError(
+            "group_by_length is incompatible with packing: packing already bin-packs samples to "
+            "~packing_length and implies padding_free, so length grouping cannot help. "
+            "Use packing alone, or set group_by_length=False."
+        )
     # Streaming has no random access and no precomputed `lengths` column, so the sampler cannot group --
     # previously this died later as an opaque 'lengths must be provided'.
     if dataset_config.streaming:
-        raise ValueError('group_by_length requires a map-style dataset: streaming datasets have no `lengths` '
-                         'column and no random access, so samples cannot be reordered by length. '
-                         'Set streaming=False or group_by_length=False.')
+        raise ValueError(
+            "group_by_length requires a map-style dataset: streaming datasets have no `lengths` "
+            "column and no random access, so samples cannot be reordered by length. "
+            "Set streaming=False or group_by_length=False."
+        )
     # `lengths` only exists after an EAGER encode; lazy_tokenize=None is auto, and auto always backs off
     # to eager when group_by_length is on, so only an EXPLICIT opt-in to lazy is a conflict here.
     if dataset_config.lazy_tokenize:
-        raise ValueError('group_by_length requires lazy_tokenize=False: the per-sample `lengths` column it '
-                         'sorts on is only produced by eager encoding (AddLengthPreprocessor).')
+        raise ValueError(
+            "group_by_length requires lazy_tokenize=False: the per-sample `lengths` column it "
+            "sorts on is only produced by eager encoding (AddLengthPreprocessor)."
+        )
 
 
-def _check_lazy_tokenize(dataset_config: 'DatasetConfig') -> None:
+def _check_lazy_tokenize(dataset_config: "DatasetConfig") -> None:
     """Explicit lazy_tokenize=True conflicts with packing / streaming (legacy base_args.py:136-140).
 
     None is auto, and auto backs off to eager when either is on, so only the explicit opt-in conflicts.
@@ -1967,25 +2356,29 @@ def _check_lazy_tokenize(dataset_config: 'DatasetConfig') -> None:
     if not dataset_config.lazy_tokenize:
         return
     if dataset_config.packing:
-        raise ValueError('packing and lazy_tokenize are incompatible: PackingDataset reads the '
-                         '`lengths` column at construction (packing.py:78), which only eager '
-                         'encoding writes.')
+        raise ValueError(
+            "packing and lazy_tokenize are incompatible: PackingDataset reads the "
+            "`lengths` column at construction (packing.py:78), which only eager "
+            "encoding writes."
+        )
     if dataset_config.streaming:
-        raise ValueError('streaming and lazy_tokenize are incompatible.')
+        raise ValueError("streaming and lazy_tokenize are incompatible.")
 
 
-def _check_data_sharding(dataset_config: 'DatasetConfig') -> None:
+def _check_data_sharding(dataset_config: "DatasetConfig") -> None:
     """data_sharding needs a shuffled order to reshuffle; it is a no-op under sequential reads.
 
     The group_by_length conflict is NOT fatal here: build_dataset performs legacy's warning downgrade.
     """
     if dataset_config.data_sharding and not dataset_config.train_dataloader_shuffle:
-        raise ValueError('data_sharding requires train_dataloader_shuffle=True: it only changes the SCOPE of the '
-                         'per-epoch reshuffle (shuffle within a rank shard vs. globally), so with shuffling off '
-                         'it does nothing.')
+        raise ValueError(
+            "data_sharding requires train_dataloader_shuffle=True: it only changes the SCOPE of the "
+            "per-epoch reshuffle (shuffle within a rank shard vs. globally), so with shuffling off "
+            "it does nothing."
+        )
 
 
-def _check_streaming(dataset_config: 'DatasetConfig') -> None:
+def _check_streaming(dataset_config: "DatasetConfig") -> None:
     """Refuse the dataset combinations a stream cannot serve.
 
     Resume works (skip_consumed_samples); only the epoch count is unrestorable after a resume.
@@ -1993,12 +2386,13 @@ def _check_streaming(dataset_config: 'DatasetConfig') -> None:
     # A cached_dataset is a map-style Dataset written by save_to_disk, so it cannot participate in the
     # streaming pipeline. Legacy asserts the same in SwiftSft._prepare_dataset.
     if dataset_config.streaming and (dataset_config.cached_dataset or dataset_config.cached_val_dataset):
-        raise ValueError('cached_dataset does not support streaming=True: the exported cache is a map-style '
-                         'dataset loaded via load_from_disk. Set streaming=False, or drop cached_dataset.')
+        raise ValueError(
+            "cached_dataset does not support streaming=True: the exported cache is a map-style "
+            "dataset loaded via load_from_disk. Set streaming=False, or drop cached_dataset."
+        )
 
 
-
-def _check_train_mixing(dataset_config: 'DatasetConfig') -> None:
+def _check_train_mixing(dataset_config: "DatasetConfig") -> None:
     """The train-mixing knobs only act on a multi-dataset interleave; refuse the dead spellings.
 
     ``interleave_prob`` samples between the train parts, so a single dataset has nothing to mix and
@@ -2008,17 +2402,21 @@ def _check_train_mixing(dataset_config: 'DatasetConfig') -> None:
     datasets = dataset_config.dataset or []
     if dataset_config.interleave_prob is not None and len(datasets) < 2:
         raise ValueError(
-            f'interleave_prob={dataset_config.interleave_prob} needs at least two datasets in --dataset to '
-            'mix between; a single dataset has nothing to interleave, so the value would be silently '
-            'ignored.')
+            f"interleave_prob={dataset_config.interleave_prob} needs at least two datasets in --dataset to "
+            "mix between; a single dataset has nothing to interleave, so the value would be silently "
+            "ignored."
+        )
     changed = set(_changed_fields(dataset_config))
-    if 'stopping_strategy' in changed and dataset_config.interleave_prob is None:
+    if "stopping_strategy" in changed and dataset_config.interleave_prob is None:
         raise ValueError(
-            'stopping_strategy only applies to an interleaved train mix (--interleave_prob with 2+ '
-            'datasets); without one it changes nothing. Drop the flag, or set --interleave_prob.')
+            "stopping_strategy only applies to an interleaved train mix (--interleave_prob with 2+ "
+            "datasets); without one it changes nothing. Drop the flag, or set --interleave_prob."
+        )
 
-def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
-                              is_megatron: bool) -> None:
+
+def _check_megatron_recompute(
+    train_config: "TrainConfig", distributed_config: "DistributedConfig", is_megatron: bool
+) -> None:
     """gradient_checkpointing decides nothing on Megatron; recompute_granularity does.
 
     flag-off-yet-recompute-configured is fatal; gc=True with recompute explicitly off is the
@@ -2028,53 +2426,64 @@ def _check_megatron_recompute(train_config: 'TrainConfig', distributed_config: '
         return
     granularity = distributed_config.recompute_granularity
     if not train_config.gradient_checkpointing and granularity:
-        raise ValueError(f'gradient_checkpointing=False contradicts recompute_granularity={granularity!r}: on the '
-                         'Megatron backend recompute is driven by recompute_granularity alone, so the run WOULD '
-                         'recompute. Drop one of the two.')
+        raise ValueError(
+            f"gradient_checkpointing=False contradicts recompute_granularity={granularity!r}: on the "
+            "Megatron backend recompute is driven by recompute_granularity alone, so the run WOULD "
+            "recompute. Drop one of the two."
+        )
     if train_config.gradient_checkpointing and not granularity:
         # recompute_granularity defaults to 'selective'; an empty value here means the user turned it
         # off explicitly (or normalized 'none'), so confirm that is what they wanted rather than
         # silently running a no-recompute training with a gc flag that does nothing on this backend.
-        logger.warning('gradient_checkpointing=True has no effect on the Megatron backend, and this run will NOT '
-                       'recompute (recompute_granularity is off). If you wanted activation-memory savings, '
-                       "set --recompute_granularity selective (the default); if off is intended, pass "
-                       '--no-gradient_checkpointing too, so the two flags agree.')
+        logger.warning(
+            "gradient_checkpointing=True has no effect on the Megatron backend, and this run will NOT "
+            "recompute (recompute_granularity is off). If you wanted activation-memory savings, "
+            "set --recompute_granularity selective (the default); if off is intended, pass "
+            "--no-gradient_checkpointing too, so the two flags agree."
+        )
 
 
-def _check_eval_iters(train_config: 'TrainConfig') -> None:
+def _check_eval_iters(train_config: "TrainConfig") -> None:
     if train_config.eval_iters == -1 or train_config.eval_iters > 0:
         return
-    raise ValueError('TrainConfig.eval_iters must be -1 (evaluate the full dataset) or a positive batch count.')
+    raise ValueError("TrainConfig.eval_iters must be -1 (evaluate the full dataset) or a positive batch count.")
 
 
-def _check_megatron_microbatch_schedule(train_config: 'TrainConfig', distributed_config: 'DistributedConfig',
-                                         is_megatron: bool) -> None:
+def _check_megatron_microbatch_schedule(
+    train_config: "TrainConfig", distributed_config: "DistributedConfig", is_megatron: bool
+) -> None:
     """Validate the VPP micro-batch group against the loop's actual micro-batch count."""
     group = train_config.microbatch_group_size_per_vp_stage
     if group is None:
         return
     if not is_megatron:
-        raise ValueError('microbatch_group_size_per_vp_stage is only implemented by the megatron backend.')
+        raise ValueError("microbatch_group_size_per_vp_stage is only implemented by the megatron backend.")
 
     vpp = distributed_config.virtual_pipeline_model_parallel_size
     if vpp is None:
-        raise ValueError('microbatch_group_size_per_vp_stage requires virtual_pipeline_model_parallel_size or '
-                         'pipeline_model_parallel_layout; a non-interleaved pipeline does not consume this option.')
+        raise ValueError(
+            "microbatch_group_size_per_vp_stage requires virtual_pipeline_model_parallel_size or "
+            "pipeline_model_parallel_layout; a non-interleaved pipeline does not consume this option."
+        )
     if group <= 0:
-        raise ValueError('microbatch_group_size_per_vp_stage must be > 0.')
+        raise ValueError("microbatch_group_size_per_vp_stage must be > 0.")
 
     pp = distributed_config.pipeline_model_parallel_size
     num_microbatches = train_config.gradient_accumulation_steps
     if group < pp or group > num_microbatches:
-        raise ValueError(f'microbatch_group_size_per_vp_stage={group} must be in '
-                         f'[pipeline_model_parallel_size={pp}, gradient_accumulation_steps={num_microbatches}].')
+        raise ValueError(
+            f"microbatch_group_size_per_vp_stage={group} must be in "
+            f"[pipeline_model_parallel_size={pp}, gradient_accumulation_steps={num_microbatches}]."
+        )
     remainder = num_microbatches % group
     if 0 < remainder < pp:
-        raise ValueError(f'gradient_accumulation_steps % microbatch_group_size_per_vp_stage is {remainder}, which '
-                         f'must be 0 or at least pipeline_model_parallel_size={pp}.')
+        raise ValueError(
+            f"gradient_accumulation_steps % microbatch_group_size_per_vp_stage is {remainder}, which "
+            f"must be 0 or at least pipeline_model_parallel_size={pp}."
+        )
 
 
-def _check_megatron_optimizer(train_config: 'TrainConfig', is_megatron: bool) -> None:
+def _check_megatron_optimizer(train_config: "TrainConfig", is_megatron: bool) -> None:
     """Reject an inconsistent Megatron optimizer/scheduler config before the weights are loaded."""
     if not is_megatron:
         return
@@ -2083,82 +2492,93 @@ def _check_megatron_optimizer(train_config: 'TrainConfig', is_megatron: bool) ->
     # Delegates so the weight-decay rule has one definition (configure_optimizer uses the same).
     start_wd, end_wd = megatron_weight_decay_bounds(train_config)
     if start_wd < 0 or end_wd < start_wd:
-        raise ValueError(f'Megatron weight decay requires 0 <= start_weight_decay <= end_weight_decay; got '
-                         f'{start_wd} -> {end_wd}.')
+        raise ValueError(
+            f"Megatron weight decay requires 0 <= start_weight_decay <= end_weight_decay; got {start_wd} -> {end_wd}."
+        )
     if train_config.learning_rate <= 0:
-        raise ValueError('Megatron learning_rate must be > 0.')
+        raise ValueError("Megatron learning_rate must be > 0.")
     if not 0 <= train_config.min_lr <= train_config.learning_rate:
-        raise ValueError('Megatron min_lr must satisfy 0 <= min_lr <= learning_rate.')
+        raise ValueError("Megatron min_lr must satisfy 0 <= min_lr <= learning_rate.")
     if not 0 <= train_config.lr_warmup_init <= train_config.learning_rate:
-        raise ValueError('Megatron lr_warmup_init must satisfy 0 <= lr_warmup_init <= learning_rate.')
+        raise ValueError("Megatron lr_warmup_init must satisfy 0 <= lr_warmup_init <= learning_rate.")
 
     # 'cosine_with_min_lr' is Megatron's plain cosine plus a floor, so without min_lr it would run as
     # ordinary cosine -- the name silently not doing what it says.
-    if train_config.lr_scheduler.lower() == 'cosine_with_min_lr' and not train_config.min_lr:
-        raise ValueError("lr_scheduler='cosine_with_min_lr' needs TrainConfig.min_lr > 0 on the Megatron "
-                         'backend; with min_lr=0 it is just cosine. Set min_lr, or use '
-                         "lr_scheduler='cosine'.")
+    if train_config.lr_scheduler.lower() == "cosine_with_min_lr" and not train_config.min_lr:
+        raise ValueError(
+            "lr_scheduler='cosine_with_min_lr' needs TrainConfig.min_lr > 0 on the Megatron "
+            "backend; with min_lr=0 it is just cosine. Set min_lr, or use "
+            "lr_scheduler='cosine'."
+        )
 
     decay_steps = train_config.lr_decay_iters
     if decay_steps is not None and decay_steps <= 0:
-        raise ValueError('Megatron lr_decay_iters must be > 0 when set.')
+        raise ValueError("Megatron lr_decay_iters must be > 0 when set.")
     if decay_steps is None and train_config.max_steps > 0:
         decay_steps = train_config.max_steps
     if decay_steps is not None:
         warmup_steps = warmup_budget(train_config, decay_steps, is_megatron=True)
         if warmup_steps >= decay_steps:
             raise ValueError(
-                f'Megatron warmup ({warmup_steps} steps) must be shorter than lr decay ({decay_steps} steps).')
+                f"Megatron warmup ({warmup_steps} steps) must be shorter than lr decay ({decay_steps} steps)."
+            )
 
     style = train_config.lr_decay_style
-    explicit = getattr(train_config, '_explicit_fields', set())
-    wsd_style_explicit = 'lr_wsd_decay_style' in explicit
-    if style == 'WSD':
+    explicit = getattr(train_config, "_explicit_fields", set())
+    wsd_style_explicit = "lr_wsd_decay_style" in explicit
+    if style == "WSD":
         if train_config.lr_wsd_decay_iters is None or train_config.lr_wsd_decay_iters <= 0:
             raise ValueError("lr_decay_style='WSD' requires lr_wsd_decay_iters > 0.")
         if decay_steps is not None and train_config.lr_wsd_decay_iters > decay_steps:
-            raise ValueError('lr_wsd_decay_iters cannot exceed the effective lr decay horizon.')
+            raise ValueError("lr_wsd_decay_iters cannot exceed the effective lr decay horizon.")
     elif train_config.lr_wsd_decay_iters is not None or wsd_style_explicit:
         raise ValueError('lr_wsd_decay_iters/lr_wsd_decay_style only apply when lr_decay_style="WSD".')
 
     _check_optimizer_specific_fields(train_config)
 
 
-def _check_optimizer_specific_fields(train_config: 'TrainConfig') -> None:
+def _check_optimizer_specific_fields(train_config: "TrainConfig") -> None:
     """Reject optimizer options that the selected Megatron optimizer would ignore."""
     import dataclasses
 
-    explicit = getattr(train_config, '_explicit_fields', set())
+    explicit = getattr(train_config, "_explicit_fields", set())
     defaults = {field.name: field.default for field in dataclasses.fields(train_config)}
 
     def changed(name: str) -> bool:
         return name in explicit or getattr(train_config, name) != defaults[name]
 
     muon_fields = (
-        'muon_momentum', 'muon_split_qkv', 'muon_use_nesterov', 'muon_scale_mode',
-        'muon_fp32_matmul_prec', 'muon_coefficient_type', 'muon_num_ns_steps', 'muon_tp_mode',
-        'muon_extra_scale_factor', 'muon_scalar_optimizer')
-    if 'muon' not in train_config.optimizer:
+        "muon_momentum",
+        "muon_split_qkv",
+        "muon_use_nesterov",
+        "muon_scale_mode",
+        "muon_fp32_matmul_prec",
+        "muon_coefficient_type",
+        "muon_num_ns_steps",
+        "muon_tp_mode",
+        "muon_extra_scale_factor",
+        "muon_scalar_optimizer",
+    )
+    if "muon" not in train_config.optimizer:
         invalid = [name for name in muon_fields if changed(name)]
         if invalid:
             raise ValueError(f'Muon optimizer fields require optimizer="muon" or "dist_muon": {invalid}.')
-    if train_config.optimizer != 'sgd' and changed('sgd_momentum'):
+    if train_config.optimizer != "sgd" and changed("sgd_momentum"):
         raise ValueError('sgd_momentum only applies when optimizer="sgd".')
-    if train_config.optimizer != 'adam':
-        invalid = [name for name in ('adam_beta1', 'adam_beta2', 'adam_epsilon') if changed(name)]
+    if train_config.optimizer != "adam":
+        invalid = [name for name in ("adam_beta1", "adam_beta2", "adam_epsilon") if changed(name)]
         if invalid:
             raise ValueError(f'Adam optimizer fields only apply when optimizer="adam": {invalid}.')
 
-    precision_fields = ('main_params_dtype', 'main_grads_dtype', 'exp_avg_dtype', 'exp_avg_sq_dtype')
+    precision_fields = ("main_params_dtype", "main_grads_dtype", "exp_avg_dtype", "exp_avg_sq_dtype")
     if not train_config.use_precision_aware_optimizer:
         invalid = [name for name in precision_fields if changed(name)]
         if invalid:
-            raise ValueError(
-                f'Precision-aware optimizer dtypes require use_precision_aware_optimizer=True: {invalid}.')
+            raise ValueError(f"Precision-aware optimizer dtypes require use_precision_aware_optimizer=True: {invalid}.")
     if not 0 <= train_config.optimizer_offload_fraction <= 1:
-        raise ValueError('optimizer_offload_fraction must be in [0, 1].')
-    if not train_config.optimizer_cpu_offload and changed('optimizer_offload_fraction'):
-        raise ValueError('optimizer_offload_fraction only applies when optimizer_cpu_offload=True.')
+        raise ValueError("optimizer_offload_fraction must be in [0, 1].")
+    if not train_config.optimizer_cpu_offload and changed("optimizer_offload_fraction"):
+        raise ValueError("optimizer_offload_fraction only applies when optimizer_cpu_offload=True.")
 
 
 def _is_off(value, off_value) -> bool:
@@ -2176,127 +2596,129 @@ def _is_off(value, off_value) -> bool:
 # (holder, field, off-value) triples rejected on the transformers backend. clip_grad is NOT here (CLI
 # folds it into max_grad_norm); the dual-backend muon knobs are excluded too (_check_muon guards them).
 _MEGATRON_ONLY = (
-    ('model_config', 'vit_attn_impl', None),
-    ('model_config', 'language_model_only', False),
-    ('dataset_config', 'data_sharding', False),
-    ('train_config', 'weight_decay_incr_style', 'constant'),
-    ('train_config', 'start_weight_decay', None),
-    ('train_config', 'end_weight_decay', None),
-    ('train_config', 'min_lr', 0.0),
-    ('train_config', 'optimizer', 'adam'),
-    ('train_config', 'sgd_momentum', 0.9),
-    ('train_config', 'muon_split_qkv', True),
-    ('train_config', 'muon_scale_mode', 'spectral'),
-    ('train_config', 'muon_fp32_matmul_prec', 'medium'),
-    ('train_config', 'muon_coefficient_type', 'quintic'),
-    ('train_config', 'muon_tp_mode', 'blockwise'),
-    ('train_config', 'muon_extra_scale_factor', 1.0),
-    ('train_config', 'muon_scalar_optimizer', 'adam'),
-    ('train_config', 'use_precision_aware_optimizer', False),
-    ('train_config', 'main_params_dtype', 'fp32'),
-    ('train_config', 'main_grads_dtype', 'fp32'),
-    ('train_config', 'exp_avg_dtype', 'fp32'),
-    ('train_config', 'exp_avg_sq_dtype', 'fp32'),
-    ('train_config', 'optimizer_cpu_offload', False),
-    ('train_config', 'optimizer_offload_fraction', 1.0),
-    ('train_config', 'optimizer_cuda_graph', False),
-    ('train_config', 'accumulate_allreduce_grads_in_fp32', False),
-    ('train_config', 'apply_wd_to_qk_layernorm', False),
-    ('train_config', 'global_batch_size', None),
-    ('train_config', 'microbatch_group_size_per_vp_stage', None),
-    ('train_config', 'calculate_per_token_loss', None),
-    ('train_config', 'lr_decay_style', 'cosine'),
-    ('train_config', 'lr_decay_iters', None),
-    ('train_config', 'lr_warmup_init', 0.0),
-    ('train_config', 'lr_wsd_decay_iters', None),
-    ('train_config', 'lr_wsd_decay_style', 'exponential'),
-    ('distributed_config', 'bridge_backend', 'mcore-bridge'),
-    ('distributed_config', 'tensor_model_parallel_size', 1),
-    ('distributed_config', 'pipeline_model_parallel_size', 1),
-    ('distributed_config', 'context_parallel_size', 1),
-    ('distributed_config', 'expert_model_parallel_size', 1),
-    ('distributed_config', 'expert_tensor_parallel_size', 1),
-    ('distributed_config', 'sequence_parallel', False),
-    ('distributed_config', 'use_distributed_optimizer', True),
-    ('distributed_config', 'use_megatron_fsdp', False),
-    ('distributed_config', 'recompute_granularity', 'selective'),
-    ('distributed_config', 'recompute_method', None),
-    ('distributed_config', 'recompute_num_layers', None),
-    ('distributed_config', 'recompute_modules', ['core_attn']),
-    ('distributed_config', 'cp_comm_type', None),
-    ('distributed_config', 'cp_partition_mode', 'zigzag'),
-    ('distributed_config', 'data_parallel_sharding_strategy', 'optim_grads_params'),
-    ('distributed_config', 'virtual_pipeline_model_parallel_size', None),
-    ('distributed_config', 'pipeline_model_parallel_layout', None),
-    ('distributed_config', 'decoder_first_pipeline_num_layers', None),
-    ('distributed_config', 'decoder_last_pipeline_num_layers', None),
-    ('distributed_config', 'account_for_embedding_in_pipeline_split', False),
-    ('distributed_config', 'account_for_loss_in_pipeline_split', False),
-    ('distributed_config', 'overlap_grad_reduce', False),
-    ('distributed_config', 'overlap_param_gather', False),
-    ('distributed_config', 'overlap_param_gather_with_optimizer_step', False),
-    ('distributed_config', 'overlap_p2p_comm', True),
-    ('distributed_config', 'batch_p2p_comm', None),
-    ('distributed_config', 'align_grad_reduce', True),
-    ('distributed_config', 'align_param_gather', True),
-    ('distributed_config', 'tp_comm_overlap', False),
-    ('distributed_config', 'nccl_comm_warmup', False),
+    ("model_config", "vit_attn_impl", None),
+    ("model_config", "language_model_only", False),
+    ("dataset_config", "data_sharding", False),
+    ("train_config", "weight_decay_incr_style", "constant"),
+    ("train_config", "start_weight_decay", None),
+    ("train_config", "end_weight_decay", None),
+    ("train_config", "min_lr", 0.0),
+    ("train_config", "optimizer", "adam"),
+    ("train_config", "sgd_momentum", 0.9),
+    ("train_config", "muon_split_qkv", True),
+    ("train_config", "muon_scale_mode", "spectral"),
+    ("train_config", "muon_fp32_matmul_prec", "medium"),
+    ("train_config", "muon_coefficient_type", "quintic"),
+    ("train_config", "muon_tp_mode", "blockwise"),
+    ("train_config", "muon_extra_scale_factor", 1.0),
+    ("train_config", "muon_scalar_optimizer", "adam"),
+    ("train_config", "use_precision_aware_optimizer", False),
+    ("train_config", "main_params_dtype", "fp32"),
+    ("train_config", "main_grads_dtype", "fp32"),
+    ("train_config", "exp_avg_dtype", "fp32"),
+    ("train_config", "exp_avg_sq_dtype", "fp32"),
+    ("train_config", "optimizer_cpu_offload", False),
+    ("train_config", "optimizer_offload_fraction", 1.0),
+    ("train_config", "optimizer_cuda_graph", False),
+    ("train_config", "accumulate_allreduce_grads_in_fp32", False),
+    ("train_config", "apply_wd_to_qk_layernorm", False),
+    ("train_config", "global_batch_size", None),
+    ("train_config", "microbatch_group_size_per_vp_stage", None),
+    ("train_config", "calculate_per_token_loss", None),
+    ("train_config", "lr_decay_style", "cosine"),
+    ("train_config", "lr_decay_iters", None),
+    ("train_config", "lr_warmup_init", 0.0),
+    ("train_config", "lr_wsd_decay_iters", None),
+    ("train_config", "lr_wsd_decay_style", "exponential"),
+    ("distributed_config", "bridge_backend", "mcore-bridge"),
+    ("distributed_config", "tensor_model_parallel_size", 1),
+    ("distributed_config", "pipeline_model_parallel_size", 1),
+    ("distributed_config", "context_parallel_size", 1),
+    ("distributed_config", "expert_model_parallel_size", 1),
+    ("distributed_config", "expert_tensor_parallel_size", 1),
+    ("distributed_config", "sequence_parallel", False),
+    ("distributed_config", "use_distributed_optimizer", True),
+    ("distributed_config", "use_megatron_fsdp", False),
+    ("distributed_config", "recompute_granularity", "selective"),
+    ("distributed_config", "recompute_method", None),
+    ("distributed_config", "recompute_num_layers", None),
+    ("distributed_config", "recompute_modules", ["core_attn"]),
+    ("distributed_config", "cp_comm_type", None),
+    ("distributed_config", "cp_partition_mode", "zigzag"),
+    ("distributed_config", "data_parallel_sharding_strategy", "optim_grads_params"),
+    ("distributed_config", "virtual_pipeline_model_parallel_size", None),
+    ("distributed_config", "pipeline_model_parallel_layout", None),
+    ("distributed_config", "decoder_first_pipeline_num_layers", None),
+    ("distributed_config", "decoder_last_pipeline_num_layers", None),
+    ("distributed_config", "account_for_embedding_in_pipeline_split", False),
+    ("distributed_config", "account_for_loss_in_pipeline_split", False),
+    ("distributed_config", "overlap_grad_reduce", False),
+    ("distributed_config", "overlap_param_gather", False),
+    ("distributed_config", "overlap_param_gather_with_optimizer_step", False),
+    ("distributed_config", "overlap_p2p_comm", True),
+    ("distributed_config", "batch_p2p_comm", None),
+    ("distributed_config", "align_grad_reduce", True),
+    ("distributed_config", "align_param_gather", True),
+    ("distributed_config", "tp_comm_overlap", False),
+    ("distributed_config", "nccl_comm_warmup", False),
 )
 
 # Rejected on the megatron backend. qk_clip_* feed twinkle MuonClip's MuonConfig on the transformers
 # path only; off_value = the TrainConfig default, so an untouched field is not rejected.
 _HF_ONLY = (
-    ('model_config', 'experts_impl', None),
-    ('model_config', 'max_memory', None),
-    ('model_config', 'local_repo_path', None),
-    ('model_config', 'model_kwargs', None),
-    ('model_config', 'init_strategy', None),
-    ('distributed_config', 'deepspeed', None),
-    ('distributed_config', 'zero_hpz_partition_size', None),
-    ('distributed_config', 'fsdp', None),
-    ('distributed_config', 'ddp_find_unused_parameters', None),
-    ('distributed_config', 'ddp_broadcast_buffers', None),
-    ('distributed_config', 'ddp_bucket_cap_mb', None),
-    ('distributed_config', 'ddp_static_graph', None),
-    ('train_config', 'use_galore', False),
-    ('train_config', 'use_liger_kernel', False),
-    ('train_config', 'neftune_noise_alpha', None),
-    ('train_config', 'optim', 'adamw_torch_fused'),
-    ('train_config', 'optim_args', None),
-    ('train_config', 'gradient_checkpointing_kwargs', None),
-    ('train_config', 'router_aux_loss_coef', 0.0),
-    ('train_config', 'label_smoothing_factor', 0.0),
-    ('train_config', 'acc_strategy', 'token'),
-    ('train_config', 'predict_with_generate', False),
-    ('train_config', 'qk_clip_enabled', False),
-    ('train_config', 'qk_clip_tau', 10000.0),
+    ("model_config", "experts_impl", None),
+    ("model_config", "max_memory", None),
+    ("model_config", "local_repo_path", None),
+    ("model_config", "model_kwargs", None),
+    ("model_config", "init_strategy", None),
+    ("distributed_config", "deepspeed", None),
+    ("distributed_config", "zero_hpz_partition_size", None),
+    ("distributed_config", "fsdp", None),
+    ("distributed_config", "ddp_find_unused_parameters", None),
+    ("distributed_config", "ddp_broadcast_buffers", None),
+    ("distributed_config", "ddp_bucket_cap_mb", None),
+    ("distributed_config", "ddp_static_graph", None),
+    ("train_config", "use_galore", False),
+    ("train_config", "use_liger_kernel", False),
+    ("train_config", "neftune_noise_alpha", None),
+    ("train_config", "optim", "adamw_torch_fused"),
+    ("train_config", "optim_args", None),
+    ("train_config", "gradient_checkpointing_kwargs", None),
+    ("train_config", "router_aux_loss_coef", 0.0),
+    ("train_config", "label_smoothing_factor", 0.0),
+    ("train_config", "acc_strategy", "token"),
+    ("train_config", "predict_with_generate", False),
+    ("train_config", "qk_clip_enabled", False),
+    ("train_config", "qk_clip_tau", 10000.0),
 )
 
 _MEGATRON_PARALLEL_SIZES = (
-    'tensor_model_parallel_size',
-    'pipeline_model_parallel_size',
-    'context_parallel_size',
-    'expert_model_parallel_size',
+    "tensor_model_parallel_size",
+    "pipeline_model_parallel_size",
+    "context_parallel_size",
+    "expert_model_parallel_size",
 )
 
 
-def _check_backend_specific(model_config: 'ModelConfig',
-                            dataset_config: 'DatasetConfig',
-                            train_config: 'TrainConfig',
-                            distributed_config: 'DistributedConfig',
-                            is_megatron: bool,
-                            tuner_config: Optional['TunerConfig'] = None) -> None:
+def _check_backend_specific(
+    model_config: "ModelConfig",
+    dataset_config: "DatasetConfig",
+    train_config: "TrainConfig",
+    distributed_config: "DistributedConfig",
+    is_megatron: bool,
+    tuner_config: Optional["TunerConfig"] = None,
+) -> None:
     """Reject knobs the active backend does not implement, so they cannot be silently ignored."""
     holders = {
-        'model_config': model_config,
-        'dataset_config': dataset_config,
-        'train_config': train_config,
-        'distributed_config': distributed_config,
-        'tuner_config': tuner_config,
+        "model_config": model_config,
+        "dataset_config": dataset_config,
+        "train_config": train_config,
+        "distributed_config": distributed_config,
+        "tuner_config": tuner_config,
     }
     offending = _MEGATRON_ONLY if not is_megatron else _HF_ONLY
-    wrong_backend = 'transformers' if not is_megatron else 'megatron'
-    right_backend = 'megatron' if not is_megatron else 'transformers'
+    wrong_backend = "transformers" if not is_megatron else "megatron"
+    right_backend = "megatron" if not is_megatron else "transformers"
 
     for holder_name, attr, off_value in offending:
         holder = holders[holder_name]
@@ -2305,46 +2727,59 @@ def _check_backend_specific(model_config: 'ModelConfig',
         if holder is None:
             continue
         value = getattr(holder, attr)
-        explicit = attr in getattr(holder, '_explicit_fields', set())
+        explicit = attr in getattr(holder, "_explicit_fields", set())
         if not explicit and _is_off(value, off_value):
             continue
-        hint = (f'the {wrong_backend} backend runs with all Megatron parallel sizes == 1'
-                if attr in _MEGATRON_PARALLEL_SIZES else f'the active backend is {wrong_backend}')
-        raise ValueError(f'{attr}={value!r} is only implemented by the {right_backend} backend, but {hint}. '
-                         f'Remove it, or switch DistributedConfig.backend.')
+        hint = (
+            f"the {wrong_backend} backend runs with all Megatron parallel sizes == 1"
+            if attr in _MEGATRON_PARALLEL_SIZES
+            else f"the active backend is {wrong_backend}"
+        )
+        raise ValueError(
+            f"{attr}={value!r} is only implemented by the {right_backend} backend, but {hint}. "
+            f"Remove it, or switch DistributedConfig.backend."
+        )
 
 
-def _check_selective_recompute(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+def _check_selective_recompute(distributed_config: "DistributedConfig", is_megatron: bool) -> None:
     """'selective' recompute chooses WHAT to recompute; recompute_method chooses HOW MUCH of 'full'.
 
     Selective targets the attention ops with no layer partitioning, so a method beside it is refused.
     """
     if not is_megatron:
         return
-    if distributed_config.recompute_granularity == 'selective' and distributed_config.recompute_method is not None:
-        raise ValueError('DistributedConfig.recompute_method='
-                         f'{distributed_config.recompute_method!r} has no effect with '
-                         "recompute_granularity='selective': selective recompute always targets the attention "
-                         "ops and has nothing to partition. Use recompute_granularity='full' to configure a "
-                         'method, or drop recompute_method.')
+    if distributed_config.recompute_granularity == "selective" and distributed_config.recompute_method is not None:
+        raise ValueError(
+            "DistributedConfig.recompute_method="
+            f"{distributed_config.recompute_method!r} has no effect with "
+            "recompute_granularity='selective': selective recompute always targets the attention "
+            "ops and has nothing to partition. Use recompute_granularity='full' to configure a "
+            "method, or drop recompute_method."
+        )
 
 
-def _check_pipeline_decoder_layers(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+def _check_pipeline_decoder_layers(distributed_config: "DistributedConfig", is_megatron: bool) -> None:
     """The per-stage decoder layer overrides need a pipeline to distribute across (legacy :832-835).
 
     With pipeline_model_parallel_size == 1 both stages are the whole model, so there is nothing to move.
     """
     if not is_megatron or distributed_config.pipeline_model_parallel_size > 1:
         return
-    for attr in ('decoder_first_pipeline_num_layers', 'decoder_last_pipeline_num_layers'):
+    for attr in ("decoder_first_pipeline_num_layers", "decoder_last_pipeline_num_layers"):
         if getattr(distributed_config, attr) is not None:
-            raise ValueError(f'DistributedConfig.{attr} needs pipeline_model_parallel_size > 1: with a single '
-                             'pipeline stage there is no first/last stage to move layers onto. Set a pipeline '
-                             f'size, or drop {attr}.')
+            raise ValueError(
+                f"DistributedConfig.{attr} needs pipeline_model_parallel_size > 1: with a single "
+                "pipeline stage there is no first/last stage to move layers onto. Set a pipeline "
+                f"size, or drop {attr}."
+            )
 
 
-def _check_freeze_ratio_pp(train_config: 'TrainConfig', distributed_config: 'DistributedConfig', is_megatron: bool,
-                           tuner_config: Optional['TunerConfig']) -> None:
+def _check_freeze_ratio_pp(
+    train_config: "TrainConfig",
+    distributed_config: "DistributedConfig",
+    is_megatron: bool,
+    tuner_config: Optional["TunerConfig"],
+) -> None:
     """freeze_parameters_ratio cannot be combined with Megatron pipeline parallelism.
 
     Under PP>1 each rank holds different layers, so "the first N%" is a meaningless per-stage slice.
@@ -2353,14 +2788,15 @@ def _check_freeze_ratio_pp(train_config: 'TrainConfig', distributed_config: 'Dis
         return
     if train_config.freeze_parameters_ratio and distributed_config.pipeline_model_parallel_size > 1:
         raise ValueError(
-            'TrainConfig.freeze_parameters_ratio cannot be combined with Megatron '
-            f'pipeline_model_parallel_size={distributed_config.pipeline_model_parallel_size} > 1: each pipeline '
-            'rank holds different layers, so freezing a fraction by element count selects a different slice per '
-            'stage. Use freeze_parameters / freeze_parameters_regex (name-based, consistent across stages), or '
-            'drop pipeline parallelism.')
+            "TrainConfig.freeze_parameters_ratio cannot be combined with Megatron "
+            f"pipeline_model_parallel_size={distributed_config.pipeline_model_parallel_size} > 1: each pipeline "
+            "rank holds different layers, so freezing a fraction by element count selects a different slice per "
+            "stage. Use freeze_parameters / freeze_parameters_regex (name-based, consistent across stages), or "
+            "drop pipeline parallelism."
+        )
 
 
-def _check_tp_comm_overlap(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+def _check_tp_comm_overlap(distributed_config: "DistributedConfig", is_megatron: bool) -> None:
     """TP comm/GEMM overlap only exists when sequence parallelism splits the activations (legacy :896-898).
 
     The overlap hides the TP collectives behind the GEMM, and they only appear under sequence_parallel.
@@ -2368,12 +2804,14 @@ def _check_tp_comm_overlap(distributed_config: 'DistributedConfig', is_megatron:
     if not is_megatron:
         return
     if distributed_config.tp_comm_overlap and not distributed_config.sequence_parallel:
-        raise ValueError('DistributedConfig.tp_comm_overlap requires sequence_parallel=True: the overlap hides '
-                         'the tensor-parallel collectives that only exist under sequence parallelism, so with it '
-                         'off there is nothing to overlap.')
+        raise ValueError(
+            "DistributedConfig.tp_comm_overlap requires sequence_parallel=True: the overlap hides "
+            "the tensor-parallel collectives that only exist under sequence parallelism, so with it "
+            "off there is nothing to overlap."
+        )
 
 
-def _check_sequence_parallel_tp(distributed_config: 'DistributedConfig', is_megatron: bool) -> None:
+def _check_sequence_parallel_tp(distributed_config: "DistributedConfig", is_megatron: bool) -> None:
     """Sequence parallelism splits activations across the TP ranks, so it needs TP > 1.
 
     legacy silently turns it off here (:890-891); dev raises -- the memory profile must not be a surprise.
@@ -2381,99 +2819,123 @@ def _check_sequence_parallel_tp(distributed_config: 'DistributedConfig', is_mega
     if not is_megatron:
         return
     if distributed_config.sequence_parallel and distributed_config.tensor_model_parallel_size <= 1:
-        raise ValueError('DistributedConfig.sequence_parallel requires tensor_model_parallel_size > 1: it shards '
-                         'activations along the sequence across the tensor-parallel ranks, and with TP=1 there are '
-                         'none to shard across. legacy turned sequence_parallel off silently here; dev refuses so '
-                         'the activation-memory profile of the run is not a surprise. Set a TP size, or '
-                         'sequence_parallel=False.')
+        raise ValueError(
+            "DistributedConfig.sequence_parallel requires tensor_model_parallel_size > 1: it shards "
+            "activations along the sequence across the tensor-parallel ranks, and with TP=1 there are "
+            "none to shard across. legacy turned sequence_parallel off silently here; dev refuses so "
+            "the activation-memory profile of the run is not a surprise. Set a TP size, or "
+            "sequence_parallel=False."
+        )
 
 
-def _check_checkpoint_runtime(checkpoint_config: Optional['CheckpointConfig'],
-                              distributed_config: 'DistributedConfig',
-                              tuner_config: Optional['TunerConfig'],
-                              rl_config: Optional['RLConfig'],
-                              is_megatron: bool, *,
-                              training: bool,
-                              logging_config: Optional['LoggingConfig'] = None) -> None:
+def _check_checkpoint_runtime(
+    checkpoint_config: Optional["CheckpointConfig"],
+    distributed_config: "DistributedConfig",
+    tuner_config: Optional["TunerConfig"],
+    rl_config: Optional["RLConfig"],
+    is_megatron: bool,
+    *,
+    training: bool,
+    logging_config: Optional["LoggingConfig"] = None,
+) -> None:
     """Reject checkpoint semantics that the selected loop/backend cannot honor."""
     if not training or checkpoint_config is None:
         return
+    from .process import normalize_advantage_estimator
+
+    normalize_advantage_estimator(rl_config)
     changed = set(_changed_fields(checkpoint_config))
-    if checkpoint_config.save_strategy != 'steps':
+    if checkpoint_config.save_strategy != "steps":
         raise NotImplementedError(
-            f'save_strategy={checkpoint_config.save_strategy!r} is not implemented by the Twinkle training loop. '
-            'Use --save_strategy steps with --save_steps, or use the legacy CLI.')
+            f"save_strategy={checkpoint_config.save_strategy!r} is not implemented by the Twinkle training loop. "
+            "Use --save_strategy steps with --save_steps, or use the legacy CLI."
+        )
     # ``resume_only_model=False`` on the CLI is an explicit full-resume request (the legacy --finetune
     # false spelling folds onto it), so without a resume point the run would silently start from scratch.
-    if 'resume_only_model' in changed and not checkpoint_config.resume_only_model \
-            and not checkpoint_config.resume_from_checkpoint:
+    if (
+        "resume_only_model" in changed
+        and not checkpoint_config.resume_only_model
+        and not checkpoint_config.resume_from_checkpoint
+    ):
         raise ValueError(
-            '--resume_only_model false requests a full resume (optimizer, scheduler, step count), but no '
-            '--resume_from_checkpoint is set: the run would silently start from scratch. Point '
-            '--resume_from_checkpoint at a checkpoint, or drop the flag.')
+            "--resume_only_model false requests a full resume (optimizer, scheduler, step count), but no "
+            "--resume_from_checkpoint is set: the run would silently start from scratch. Point "
+            "--resume_from_checkpoint at a checkpoint, or drop the flag."
+        )
     # A per-save hub upload reads the checkpoint files right after save() returns, which is exactly the
     # window async_save leaves the write in flight; the two cannot compose. hub_strategy='end' is the
     # exception: save_final_checkpoint flushes the background writes (wait_async_saves) and the final
     # save itself is synchronous (async_save is disabled for it), so that upload reads landed files.
-    if checkpoint_config.async_save and checkpoint_config.push_to_hub \
-            and checkpoint_config.hub_strategy != 'end':
+    if checkpoint_config.async_save and checkpoint_config.push_to_hub and checkpoint_config.hub_strategy != "end":
         raise ValueError(
-            'async_save is incompatible with push_to_hub except hub_strategy=end: a per-save '
-            'upload reads the checkpoint files before the background write has landed, while the '
-            'final checkpoint is written synchronously and pushing it is safe. Set '
-            'hub_strategy=end, or drop one of the two.')
-    online = rl_config is not None and rl_config.rl_type in {'grpo', 'ppo', 'gkd', 'opsd', 'mopd', 'rft'}
+            "async_save is incompatible with push_to_hub except hub_strategy=end: a per-save "
+            "upload reads the checkpoint files before the background write has landed, while the "
+            "final checkpoint is written synchronously and pushing it is safe. Set "
+            "hub_strategy=end, or drop one of the two."
+        )
+    online = rl_config is not None and rl_config.rl_type in ONLINE_RL_TYPES
     # The online family has no epoch boundary (only fit_supervised passes epoch_end to should_log),
     # so logging_strategy='epoch' would never emit a line there.
-    if online and logging_config is not None and logging_config.logging_strategy == 'epoch':
+    if online and logging_config is not None and logging_config.logging_strategy == "epoch":
         raise ValueError(
             "logging_strategy='epoch' has no epoch boundary in the online RL family, so the run would "
-            'never log. Use logging_strategy steps (with logging_steps), or no.')
+            "never log. Use logging_strategy steps (with logging_steps), or no."
+        )
     # The online family reads save_steps as a raw step count (no total-steps ratio resolution like
     # the offline family's _resolve_step_interval): a fractional value makes ``step % save_steps``
     # hit every step (a checkpoint per update), and a non-integer one silently misaligns the cadence.
-    if online and checkpoint_config.save_steps and (
-            not float(checkpoint_config.save_steps).is_integer() or checkpoint_config.save_steps < 0):
+    if (
+        online
+        and checkpoint_config.save_steps
+        and (not float(checkpoint_config.save_steps).is_integer() or checkpoint_config.save_steps < 0)
+    ):
         raise ValueError(
-            f'save_steps={checkpoint_config.save_steps!r} must be a whole number of steps for the online RL '
-            'family (the ratio form 0<x<1 that the offline family resolves against total steps is not '
-            'resolved here: a fraction saves EVERY step and a non-integer silently misaligns the cadence). '
-            'Pass an integer step interval, or 0 to disable periodic saving.')
+            f"save_steps={checkpoint_config.save_steps!r} must be a whole number of steps for the online RL "
+            "family (the ratio form 0<x<1 that the offline family resolves against total steps is not "
+            "resolved here: a fraction saves EVERY step and a non-integer silently misaligns the cadence). "
+            "Pass an integer step interval, or 0 to disable periodic saving."
+        )
     # Both backends always emit HF-format safetensors (the checkpoint contract), so False is dead
     # config on either side -- reject it here rather than per-branch.
     if not checkpoint_config.save_safetensors:
         raise NotImplementedError(
-            'The dev runtime always writes HF-format safetensors checkpoints; use --save_safetensors true.')
+            "The dev runtime always writes HF-format safetensors checkpoints; use --save_safetensors true."
+        )
     if not is_megatron:
-        unsupported = {'no_save_rng', 'no_load_optim', 'no_load_rng'}.intersection(changed)
+        unsupported = {"no_save_rng", "no_load_optim", "no_load_rng"}.intersection(changed)
         if unsupported:
             raise NotImplementedError(
-                f'Transformers checkpoints cannot selectively omit or restore {sorted(unsupported)}. '
-                'Use --save_only_model/--resume_only_model, or switch to the Megatron backend.')
-        tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-        if tuner != 'full' and 'max_shard_size' in changed:
+                f"Transformers checkpoints cannot selectively omit or restore {sorted(unsupported)}. "
+                "Use --save_only_model/--resume_only_model, or switch to the Megatron backend."
+            )
+        tuner = getattr(tuner_config, "tuner", "full") if tuner_config is not None else "full"
+        if tuner != "full" and "max_shard_size" in changed:
             raise NotImplementedError(
-                'Transformers PEFT adapter checkpoints do not support max_shard_size. Remove the option or use '
-                'full-parameter training.')
+                "Transformers PEFT adapter checkpoints do not support max_shard_size. Remove the option or use "
+                "full-parameter training."
+            )
     else:
         if not checkpoint_config.safe_serialization:
-            raise NotImplementedError('Megatron HF-format checkpoints require --safe_serialization true.')
-        if distributed_config.bridge_backend == 'megatron-bridge' and 'max_shard_size' in changed:
+            raise NotImplementedError("Megatron HF-format checkpoints require --safe_serialization true.")
+        if distributed_config.bridge_backend == "megatron-bridge" and "max_shard_size" in changed:
             raise NotImplementedError(
-                'megatron-bridge AutoBridge does not expose max_shard_size. Use --bridge_backend mcore-bridge or '
-                'remove the option.')
-    if rl_config is not None and rl_config.rl_type in {'grpo', 'gkd', 'ppo', 'opsd', 'mopd', 'rft'}:
-        if 'ignore_data_skip' in changed:
+                "megatron-bridge AutoBridge does not expose max_shard_size. Use --bridge_backend mcore-bridge or "
+                "remove the option."
+            )
+    if rl_config is not None and rl_config.rl_type in ONLINE_RL_TYPES:
+        if "ignore_data_skip" in changed:
             raise NotImplementedError(
-                f'ignore_data_skip does not apply to {rl_config.rl_type} because its online loop has no resumable '
-                'dataset iterator. Remove the option.')
-        if rl_config.rl_type == 'ppo' and checkpoint_config.save_total_limit == 1:
+                f"ignore_data_skip does not apply to {rl_config.rl_type} because its online loop has no resumable "
+                "dataset iterator. Remove the option."
+            )
+        if rl_config.advantage_estimator == "gae" and checkpoint_config.save_total_limit == 1:
             raise ValueError(
-                'PPO requires save_total_limit >= 2 because the policy and value-model components are saved '
-                'sequentially; retaining one previous complete checkpoint avoids a no-valid-checkpoint window.')
+                "PPO requires save_total_limit >= 2 because the policy and value-model components are saved "
+                "sequentially; retaining one previous complete checkpoint avoids a no-valid-checkpoint window."
+            )
 
 
-def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_megatron: bool) -> None:
+def _check_save_total_limit(checkpoint_config: Optional["CheckpointConfig"], is_megatron: bool) -> None:
     """Validate the rolling checkpoint limit and preserve legacy Megatron's stricter lower bound.
 
     async_save's delete-oldest cannot tell whether a background save finished, so the two conflict.
@@ -2481,94 +2943,113 @@ def _check_save_total_limit(checkpoint_config: Optional['CheckpointConfig'], is_
     if checkpoint_config is None or checkpoint_config.save_total_limit is None:
         return
     if checkpoint_config.save_total_limit < 1:
-        raise ValueError('CheckpointConfig.save_total_limit must be >= 1.')
+        raise ValueError("CheckpointConfig.save_total_limit must be >= 1.")
     if checkpoint_config.async_save:
-        raise ValueError('CheckpointConfig.save_total_limit is incompatible with async_save=True: the rolling '
-                         'delete of old checkpoints cannot tell whether a background save has finished. Disable '
-                         'one of the two.')
+        raise ValueError(
+            "CheckpointConfig.save_total_limit is incompatible with async_save=True: the rolling "
+            "delete of old checkpoints cannot tell whether a background save has finished. Disable "
+            "one of the two."
+        )
     if not is_megatron:
         return
     if checkpoint_config.save_total_limit < 2:
         raise ValueError(
-            'CheckpointConfig.save_total_limit must be >= 2 on the Megatron backend, matching the legacy CLI.')
+            "CheckpointConfig.save_total_limit must be >= 2 on the Megatron backend, matching the legacy CLI."
+        )
 
 
 # rl_type -> whether it trains against a separate reference model. CPO/ORPO fold the reference into
 # their own loss and LoRA uses the adapter-disabled base as reference, so neither takes a ref_model
 # -- except LoRA under sync_ref_model, which builds a separate frozen reference (see assembly).
-_RL_USES_REF_MODEL = ('dpo', 'kto', 'ppo', 'grpo')
+_RL_USES_REF_MODEL = ("dpo", "kto", "ppo", "grpo")
 
 
-def _check_rl_ref_model(model_config: 'ModelConfig', tuner_config: Optional['TunerConfig'],
-                          rl_config: Optional['RLConfig']) -> None:
+def _check_rl_ref_model(
+    model_config: "ModelConfig", tuner_config: Optional["TunerConfig"], rl_config: Optional["RLConfig"]
+) -> None:
     """Reject a reference model passed to an algorithm that has none.
 
     The refusal half of process._derive_rl_ref_model: --ref_model on CPO/ORPO/LoRA would be ignored.
     """
     if rl_config is None:
         return
-    rl_type = getattr(rl_config, 'rl_type', None)
-    tuner = getattr(tuner_config, 'tuner', 'full') if tuner_config is not None else 'full'
-    uses_ref = rl_type in _RL_USES_REF_MODEL and (tuner == 'full' or bool(rl_config.ref_adapters)
-                                                  or rl_config.sync_ref_model)
+    rl_type = getattr(rl_config, "rl_type", None)
+    tuner = getattr(tuner_config, "tuner", "full") if tuner_config is not None else "full"
+    uses_ref = rl_type in _RL_USES_REF_MODEL and (
+        tuner == "full" or bool(rl_config.ref_adapters) or rl_config.sync_ref_model
+    )
     if rl_config.ref_model is None:
         if rl_config.ref_adapters:
-            raise ValueError('ref_adapters requires a reference model; call process_configs or set ref_model.')
+            raise ValueError("ref_adapters requires a reference model; call process_configs or set ref_model.")
         return
     # grpo with beta=0 drops the KL term, so even a ref-using algorithm needs no reference then.
-    if rl_type == 'grpo' and rl_config.beta == 0.0:
+    if rl_type == "grpo" and rl_config.beta == 0.0:
         uses_ref = False
     if not uses_ref:
-        raise ValueError(f'RLConfig.ref_model={rl_config.ref_model!r} is not used by rl_type={rl_type!r}'
-                         f' with tuner={tuner!r}: CPO/ORPO fold the reference into their loss and LoRA '
-                         'uses the adapter-disabled base as the reference, so no separate ref_model is loaded. '
-                         'Remove it.')
+        raise ValueError(
+            f"RLConfig.ref_model={rl_config.ref_model!r} is not used by rl_type={rl_type!r}"
+            f" with tuner={tuner!r}: CPO/ORPO fold the reference into their loss and LoRA "
+            "uses the adapter-disabled base as the reference, so no separate ref_model is loaded. "
+            "Remove it."
+        )
 
 
 # These recipes consume per-sequence outputs restored by the shared processor before loss or
 # response projection; critic values and teacher logps use the same unpacking as policy logps.
-_RL_PADDING_FREE_WIRED_TYPES = ('grpo', 'ppo', 'rft', 'dpo', 'kto', 'cpo', 'orpo', 'simpo', 'gkd', 'opsd', 'mopd', 'rm')
+_RL_PADDING_FREE_WIRED_TYPES = tuple(sorted(ONLINE_RL_TYPES | PREFERENCE_RL_TYPES))
 
 
-def _check_rl_padding_free(template_config: 'TemplateConfig', dataset_config: 'DatasetConfig',
-                            rl_config: Optional['RLConfig']) -> None:
+def _check_rl_padding_free(
+    template_config: "TemplateConfig", dataset_config: "DatasetConfig", rl_config: Optional["RLConfig"]
+) -> None:
     """Require a recipe wired to the processor's per-sequence padding-free/packing outputs."""
     if rl_config is None:
         return
     if not (template_config.padding_free or dataset_config.packing):
         return
-    rl_type = getattr(rl_config, 'rl_type', None)
+    rl_type = getattr(rl_config, "rl_type", None)
     if rl_type in _RL_PADDING_FREE_WIRED_TYPES:
         return
-    feature = 'packing' if dataset_config.packing else 'padding_free'
-    raise ValueError(f'rl_type={rl_type!r} does not support {feature}: only '
-                     f'{"/".join(_RL_PADDING_FREE_WIRED_TYPES)} implement the variable-length training path it '
-                     'produces. Set the corresponding flag to False.')
+    feature = "packing" if dataset_config.packing else "padding_free"
+    raise ValueError(
+        f"rl_type={rl_type!r} does not support {feature}: only "
+        f"{'/'.join(_RL_PADDING_FREE_WIRED_TYPES)} implement the variable-length training path it "
+        "produces. Set the corresponding flag to False."
+    )
 
 
-def _check_rl_padding_side(template_config: 'TemplateConfig', rl_config: Optional['RLConfig']) -> None:
+def _check_rl_padding_side(template_config: "TemplateConfig", rl_config: Optional["RLConfig"]) -> None:
     """RL logp extraction indexes each row's response positions and assumes right padding.
 
     Left padding silently mis-aligns every logp; dev refuses up front instead of corrupting the run.
     """
     if rl_config is None:
         return
-    if template_config.padding_side != 'right':
-        rl_type = getattr(rl_config, 'rl_type', None)
-        raise ValueError(f'RL training (rl_type={rl_type!r}) requires padding_side="right", got '
-                         f'{template_config.padding_side!r}: the logp extraction indexes each row\'s '
-                         'response positions in a right-padded forward frame, so left padding would '
-                         'silently mis-align every logp. Remove --padding_side left.')
+    if template_config.padding_side != "right":
+        rl_type = getattr(rl_config, "rl_type", None)
+        raise ValueError(
+            f'RL training (rl_type={rl_type!r}) requires padding_side="right", got '
+            f"{template_config.padding_side!r}: the logp extraction indexes each row's "
+            "response positions in a right-padded forward frame, so left padding would "
+            "silently mis-align every logp. Remove --padding_side left."
+        )
 
 
 # Recipes that propagate the policy SP mesh through their Ray training path.
 # PPO still needs matching critic data distribution before SP can be enabled.
-_RL_SP_WIRED_TYPES = ('dpo', 'grpo', 'rft')
+_RL_SP_WIRED_TYPES = tuple(sorted(POLICY_RL_TYPES | {"dpo", "rft"}))
 
 
-def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                            dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
-                            is_megatron: bool, sp: int, *, allow_fsdp: bool = False) -> None:
+def _check_sp_hf_feasibility(
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    dataset_config: "DatasetConfig",
+    distributed_config: "DistributedConfig",
+    is_megatron: bool,
+    sp: int,
+    *,
+    allow_fsdp: bool = False,
+) -> None:
     """Backend/layout feasibility guards shared by the SFT (local) and RL (ray) SP paths.
 
     Every branch raises rather than silently training with SP=1; only the world source differs.
@@ -2576,34 +3057,47 @@ def _check_sp_hf_feasibility(model_config: 'ModelConfig', template_config: 'Temp
     if is_megatron:
         # TemplateConfig.sequence_parallel_size is the HF Ulysses knob; Megatron's sequence parallelism
         # is DistributedConfig.sequence_parallel (TP-SP), a different feature.
-        raise ValueError(f'TemplateConfig.sequence_parallel_size={sp} only applies to the transformers backend, '
-                         'but the active backend is megatron. Megatron sequence parallelism is '
-                         'DistributedConfig.sequence_parallel (TP-SP over the tensor-parallel ranks) -- set that '
-                         'instead, or switch DistributedConfig.backend.')
+        raise ValueError(
+            f"TemplateConfig.sequence_parallel_size={sp} only applies to the transformers backend, "
+            "but the active backend is megatron. Megatron sequence parallelism is "
+            "DistributedConfig.sequence_parallel (TP-SP over the tensor-parallel ranks) -- set that "
+            "instead, or switch DistributedConfig.backend."
+        )
 
     if distributed_config.fsdp and not allow_fsdp:
-        raise NotImplementedError(f'sequence_parallel_size={sp} with DistributedConfig.fsdp is not supported yet: '
-                                  'this recipe has not wired an FSDP x Ulysses mesh. Use DDP/accelerate '
-                                  '(the default strategy), or set sequence_parallel_size=1.')
+        raise NotImplementedError(
+            f"sequence_parallel_size={sp} with DistributedConfig.fsdp is not supported yet: "
+            "this recipe has not wired an FSDP x Ulysses mesh. Use DDP/accelerate "
+            "(the default strategy), or set sequence_parallel_size=1."
+        )
 
     # Legacy asserts this at collate time (swift/template/base.py); dev fails fast at validation.
-    if template_config.padding_side != 'right':
-        raise ValueError(f'sequence_parallel_size={sp} requires padding_side="right" (got '
-                         f'{template_config.padding_side!r}): the SP collator injects per-row position_ids that '
-                         'assume right padding. legacy asserts the same at collate time; dev refuses up front.')
+    if template_config.padding_side != "right":
+        raise ValueError(
+            f'sequence_parallel_size={sp} requires padding_side="right" (got '
+            f"{template_config.padding_side!r}): the SP collator injects per-row position_ids that "
+            "assume right padding. legacy asserts the same at collate time; dev refuses up front."
+        )
 
     if template_config.padding_free or dataset_config.packing:
         if model_config.attn_impl not in _SP_PADDING_FREE_ATTN_IMPLS:
-            raise ValueError(f'sequence_parallel_size={sp} with padding_free requires a flash attention kernel: '
-                             f'twinkle\'s SP strategy rejects the variable-length layout under '
-                             f'attn_impl={model_config.attn_impl!r}. Use one of '
-                             f'{", ".join(repr(i) for i in _SP_PADDING_FREE_ATTN_IMPLS)}, or set padding_free=False '
-                             '(packing implies padding_free, so drop packing too).')
+            raise ValueError(
+                f"sequence_parallel_size={sp} with padding_free requires a flash attention kernel: "
+                f"twinkle's SP strategy rejects the variable-length layout under "
+                f"attn_impl={model_config.attn_impl!r}. Use one of "
+                f"{', '.join(repr(i) for i in _SP_PADDING_FREE_ATTN_IMPLS)}, or set padding_free=False "
+                "(packing implies padding_free, so drop packing too)."
+            )
 
 
-def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                                 dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
-                                 rl_config: Optional['RLConfig'], is_megatron: bool) -> None:
+def _check_rl_sequence_parallel(
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    dataset_config: "DatasetConfig",
+    distributed_config: "DistributedConfig",
+    rl_config: Optional["RLConfig"],
+    is_megatron: bool,
+) -> None:
     """Validate recipe-specific Ulysses SP support under Ray.
 
     The world is nproc_per_node, not the single driver process world size.
@@ -2611,33 +3105,54 @@ def _check_rl_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
     if rl_config is None or template_config.sequence_parallel_size <= 1:
         return
     sp = template_config.sequence_parallel_size
-    rl_type = getattr(rl_config, 'rl_type', None)
-    if rl_type == 'ppo':
-        raise ValueError(f'rl_type="ppo" does not support sequence_parallel_size={sp}: PPO\'s per-token '
-                         'value-head critic runs without sequence parallelism, so a SP policy '
-                         'and an SP=1 critic would slice_dp each forward_backward at a different '
-                         'data_world_size and starve the critic\'s ranks. Set sequence_parallel_size=1 for PPO.')
+    rl_type = getattr(rl_config, "rl_type", None)
+    from .process import normalize_advantage_estimator
+
+    normalize_advantage_estimator(rl_config)
+    if rl_config.advantage_estimator == "gae":
+        raise ValueError(
+            f"The value-head critic does not support sequence_parallel_size={sp}: "
+            "an SP policy and an SP=1 critic would have different data_world_size. "
+            "Set sequence_parallel_size=1 for estimators that require the critic."
+        )
     if rl_type not in _RL_SP_WIRED_TYPES:
-        raise ValueError(f'rl_type={rl_type!r} does not support sequence_parallel_size={sp} on the dev path: '
-                         f'only the recipes {"/".join(_RL_SP_WIRED_TYPES)} wire the Ulysses SP mesh '
-                         '(a Ray dp x ulysses device mesh). Set sequence_parallel_size=1.')
+        raise ValueError(
+            f"rl_type={rl_type!r} does not support sequence_parallel_size={sp} on the dev path: "
+            f"only the recipes {'/'.join(_RL_SP_WIRED_TYPES)} wire the Ulysses SP mesh "
+            "(a Ray dp x ulysses device mesh). Set sequence_parallel_size=1."
+        )
 
     _check_sp_hf_feasibility(
-        model_config, template_config, dataset_config, distributed_config, is_megatron, sp,
-        allow_fsdp=rl_type in ('dpo', 'grpo'))
+        model_config,
+        template_config,
+        dataset_config,
+        distributed_config,
+        is_megatron,
+        sp,
+        allow_fsdp=rl_type in POLICY_RL_TYPES or rl_type == "dpo",
+    )
     nproc = distributed_config.nproc_per_node
     if nproc is None or nproc < 2:
-        raise ValueError(f'sequence_parallel_size={sp} requires DistributedConfig.nproc_per_node>=2 (got '
-                         f'{nproc!r}): the ray \'model\' DeviceGroup needs at least two ranks to split a sequence '
-                         'across. Set sequence_parallel_size=1 for a single-rank run.')
+        raise ValueError(
+            f"sequence_parallel_size={sp} requires DistributedConfig.nproc_per_node>=2 (got "
+            f"{nproc!r}): the ray 'model' DeviceGroup needs at least two ranks to split a sequence "
+            "across. Set sequence_parallel_size=1 for a single-rank run."
+        )
     if nproc % sp != 0:
-        raise ValueError(f'nproc_per_node={nproc} is not divisible by sequence_parallel_size={sp}: the SP groups '
-                         'must tile the ray ranks exactly. Adjust nproc_per_node or sequence_parallel_size.')
+        raise ValueError(
+            f"nproc_per_node={nproc} is not divisible by sequence_parallel_size={sp}: the SP groups "
+            "must tile the ray ranks exactly. Adjust nproc_per_node or sequence_parallel_size."
+        )
 
 
-def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'TemplateConfig',
-                                dataset_config: 'DatasetConfig', distributed_config: 'DistributedConfig',
-                                is_megatron: bool, rl_config: Optional['RLConfig'] = None) -> None:
+def _check_hf_sequence_parallel(
+    model_config: "ModelConfig",
+    template_config: "TemplateConfig",
+    dataset_config: "DatasetConfig",
+    distributed_config: "DistributedConfig",
+    is_megatron: bool,
+    rl_config: Optional["RLConfig"] = None,
+) -> None:
     """Guards for Ulysses sequence parallelism (TemplateConfig.sequence_parallel_size) on the HF SFT path.
 
     Every check raises; streaming is allowed; RLHF is delegated (early return below).
@@ -2649,20 +3164,28 @@ def _check_hf_sequence_parallel(model_config: 'ModelConfig', template_config: 'T
         return
 
     _check_sp_hf_feasibility(
-        model_config, template_config, dataset_config, distributed_config, is_megatron, sp, allow_fsdp=True)
+        model_config, template_config, dataset_config, distributed_config, is_megatron, sp, allow_fsdp=True
+    )
 
-    if distributed_config.mode != 'local':
-        raise NotImplementedError(f'sequence_parallel_size={sp} is only wired for mode="local" (torchrun): under '
-                                  "mode='ray' the model gets a pure data-parallel mesh (_apply_ray_placement), so "
-                                  'SP would silently not apply. Run with torchrun, or set sequence_parallel_size=1.')
+    if distributed_config.mode != "local":
+        raise NotImplementedError(
+            f'sequence_parallel_size={sp} is only wired for mode="local" (torchrun): under '
+            "mode='ray' the model gets a pure data-parallel mesh (_apply_ray_placement), so "
+            "SP would silently not apply. Run with torchrun, or set sequence_parallel_size=1."
+        )
 
     # twinkle.initialize(mode='local') never calls dist.init_process_group -- world size comes from
     # Platform.get_world_size() (the WORLD_SIZE env torchrun sets), initialize's own source.
     from twinkle.utils import Platform
+
     world = Platform.get_world_size()
     if world < 2:
-        raise ValueError(f'sequence_parallel_size={sp} requires torchrun (WORLD_SIZE>=2): a single process has no '
-                         'ranks to split a sequence across. Set sequence_parallel_size=1 for a single-process run.')
+        raise ValueError(
+            f"sequence_parallel_size={sp} requires torchrun (WORLD_SIZE>=2): a single process has no "
+            "ranks to split a sequence across. Set sequence_parallel_size=1 for a single-process run."
+        )
     if world % sp != 0:
-        raise ValueError(f'world_size={world} is not divisible by sequence_parallel_size={sp}: the SP groups must '
-                         'tile the ranks exactly. Adjust the rank count or sequence_parallel_size.')
+        raise ValueError(
+            f"world_size={world} is not divisible by sequence_parallel_size={sp}: the SP groups must "
+            "tile the ranks exactly. Adjust the rank count or sequence_parallel_size."
+        )

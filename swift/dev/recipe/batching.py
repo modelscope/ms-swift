@@ -2,15 +2,24 @@
 """Controller-side DP balancing for post-rollout training batches."""
 
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from swift.dev.recipe.utils import StepState
 
 from swift.dev.utils.logger import get_logger
 
 logger = get_logger()
 
 
-def balance_update(state: Any, update: List[Any], lengths: Optional[List[int]],
-                   *, micro_batch_kwargs: Optional[Dict[str, Any]] = None) -> Tuple[List[Any], Dict[str, float]]:
+def balance_update(
+    state: StepState,
+    update: List[Any],
+    lengths: Optional[List[int]],
+    *,
+    micro_batch_kwargs: Optional[Dict[str, Any]] = None,
+    group_size: int = 1,
+) -> Tuple[List[Any], Dict[str, float]]:
     """Reorder one optimizer batch's trajectories so ``slice_dp`` splits the workload evenly.
 
     Every per-sample training signal rides the trajectories, so reordering the list is the
@@ -20,16 +29,20 @@ def balance_update(state: Any, update: List[Any], lengths: Optional[List[int]],
     materialised), or by the planner itself for DP=1 / uneven batches. The PPO value model
     is never reordered: its rank-local token mean is not permutation-invariant.
     """
-    if not getattr(state, 'dp_balance', False) or lengths is None:
+    if not getattr(state, "dp_balance", False) or lengths is None:
         return update, {}
     from twinkle.model import MicroBatchConfig
     from twinkle.model.dp_balance import plan_dp_balance_for_lengths
 
     if len(lengths) != len(update):
-        raise ValueError(f'batch balancing needs one row length per trajectory ({len(lengths)} for {len(update)}).')
+        raise ValueError(f"batch balancing needs one row length per trajectory ({len(lengths)} for {len(update)}).")
     plan = plan_dp_balance_for_lengths(
-        lengths, state.model.device_mesh.data_world_size, padding_free=state.padding_free,
-        micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})))
+        lengths,
+        state.model.device_mesh.data_world_size,
+        padding_free=state.padding_free,
+        micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})),
+        **({"group_size": group_size} if group_size > 1 else {}),
+    )
     return [update[index] for index in plan.order], dict(plan.metrics)
 
 
@@ -52,10 +65,15 @@ def _episodes_span_multiple_rows(episode_ids: List[Any]) -> bool:
     return len(episode_ids) != runs
 
 
-def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
-                  group_size: int, micro_batch_kwargs: Optional[Dict[str, Any]] = None,
-                  episode_ids: Optional[List[Any]] = None
-                  ) -> Tuple[List[Any], Optional[List[int]], Optional[List[int]]]:
+def balance_lanes(
+    state: StepState,
+    trajs: List[Any],
+    lengths: Optional[List[int]],
+    *,
+    group_size: int,
+    micro_batch_kwargs: Optional[Dict[str, Any]] = None,
+    episode_ids: Optional[List[Any]] = None,
+) -> Tuple[List[Any], Optional[List[int]], Optional[List[int]]]:
     """Plan the DP-balanced order for the whole-batch forwards (reference/teacher/old-logps lanes).
 
     Returns ``(permuted, order, restore)``: feed the lanes ``permuted``, permute every row-aligned
@@ -65,32 +83,38 @@ def balance_lanes(state: Any, trajs: List[Any], lengths: Optional[List[int]], *,
     ``(trajs, None, None)`` keeps the caller's order when balancing is off, when the batch has no
     row lengths, or when the shape cannot keep groups whole on equal ranks (warned, not raised).
     """
-    if not getattr(state, 'dp_balance', False) or not lengths:
+    if not getattr(state, "dp_balance", False) or not lengths:
         return trajs, None, None
     if len(lengths) != len(trajs):
-        raise ValueError(f'lane balancing needs one row length per trajectory ({len(lengths)} for {len(trajs)}).')
+        raise ValueError(f"lane balancing needs one row length per trajectory ({len(lengths)} for {len(trajs)}).")
     if group_size > 1:
-        ids = episode_ids if episode_ids is not None else [t.get('episode_id') for t in trajs]
+        ids = episode_ids if episode_ids is not None else [t.get("episode_id") for t in trajs]
         if _episodes_span_multiple_rows(ids):
             # The planner moves group_size consecutive ROWS as one block, but a prompt group is
             # num_generations EPISODES. With segment_policy='collect' an episode spans several rows, so a
             # group covers a variable row count and the fixed-stride blocks cut it mid-group, permuting the
             # pieces apart and breaking the contiguous-whole-group contract advantage._check_groups enforces
             # (defect76). Keep the caller's contiguous delivery order for such a batch instead.
-            logger.warning('DP lane balancing skipped: collected segments make prompt groups span a variable '
-                           'number of rows (not group_size=%d); keeping the contiguous delivery order so whole '
-                           'groups stay together (defect76).', group_size)
+            logger.warning(
+                "DP lane balancing skipped: collected segments make prompt groups span a variable "
+                "number of rows (not group_size=%d); keeping the contiguous delivery order so whole "
+                "groups stay together (defect76).",
+                group_size,
+            )
             return trajs, None, None
     from twinkle.model import MicroBatchConfig
     from twinkle.model.dp_balance import plan_dp_balance_for_lengths
 
     try:
         plan = plan_dp_balance_for_lengths(
-            lengths, state.model.device_mesh.data_world_size, padding_free=state.padding_free,
+            lengths,
+            state.model.device_mesh.data_world_size,
+            padding_free=state.padding_free,
             micro_batch_config=MicroBatchConfig.from_kwargs(dict(micro_batch_kwargs or {})),
-            group_size=group_size)
+            group_size=group_size,
+        )
     except ValueError as exc:
-        logger.warning('DP lane balancing skipped for this batch (%s); the forwards keep the caller order.', exc)
+        logger.warning("DP lane balancing skipped for this batch (%s); the forwards keep the caller order.", exc)
         return trajs, None, None
     restore = [0] * len(plan.order)
     for position, index in enumerate(plan.order):

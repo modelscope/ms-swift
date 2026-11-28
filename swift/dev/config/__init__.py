@@ -16,7 +16,14 @@ from .plugin_config import PluginConfig
 from .process import bootstrap_run, process_and_validate_configs, process_configs
 from .quantize_config import QuantizeConfig
 from .reward_config import RewardConfig
-from .rl_config import RLConfig
+from .rl_config import (
+    DISTILL_RL_TYPES,
+    ONLINE_RL_TYPES,
+    POLICY_RL_TYPES,
+    PREFERENCE_RL_TYPES,
+    STREAMING_RL_TYPES,
+    RLConfig,
+)
 from .rollout_config import RolloutConfig
 from .runtime_config import RuntimeConfig
 from .template_config import TemplateConfig
@@ -24,30 +31,35 @@ from .train_config import TrainConfig
 from .validate import validate_configs
 
 __all__ = [
-    'CheckpointConfig',
-    'ConvertConfig',
-    'DatasetConfig',
-    'DeployConfig',
-    'DistributedConfig',
-    'EvalConfig',
-    'GenerationConfig',
-    'InferConfig',
-    'LoggingConfig',
-    'MegatronConfig',
-    'ModelConfig',
-    'MoEConfig',
-    'PluginConfig',
-    'QuantizeConfig',
-    'RLConfig',
-    'RewardConfig',
-    'RolloutConfig',
-    'RuntimeConfig',
-    'TemplateConfig',
-    'TrainConfig',
-    'TunerConfig',
-    'has_adapter',
-    'bootstrap_run',
-    'process_and_validate_configs',
-    'process_configs',
-    'validate_configs',
+    "CheckpointConfig",
+    "ConvertConfig",
+    "DatasetConfig",
+    "DeployConfig",
+    "DistributedConfig",
+    "EvalConfig",
+    "GenerationConfig",
+    "InferConfig",
+    "LoggingConfig",
+    "MegatronConfig",
+    "ModelConfig",
+    "MoEConfig",
+    "PluginConfig",
+    "QuantizeConfig",
+    "RLConfig",
+    "POLICY_RL_TYPES",
+    "DISTILL_RL_TYPES",
+    "PREFERENCE_RL_TYPES",
+    "ONLINE_RL_TYPES",
+    "STREAMING_RL_TYPES",
+    "RewardConfig",
+    "RolloutConfig",
+    "RuntimeConfig",
+    "TemplateConfig",
+    "TrainConfig",
+    "TunerConfig",
+    "has_adapter",
+    "bootstrap_run",
+    "process_and_validate_configs",
+    "process_configs",
+    "validate_configs",
 ]
