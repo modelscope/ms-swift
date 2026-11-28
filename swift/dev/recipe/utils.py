@@ -142,7 +142,7 @@ _FALLBACK_LOGGING_STEPS = 1
 
 
 def rollout_metrics(
-    *, prompt_lengths, response_lengths, timings, num_devices, wall_seconds, truncated=(), turns=(), extra_values=None
+    *, prompt_lengths, response_lengths, timings, num_devices, wall_seconds, truncated=(), turns=()
 ):
     """Batch statistics as a pure function: twinkle's ThroughputMetric plus recipe-free extras."""
     from twinkle.metric import ThroughputMetric
@@ -152,7 +152,6 @@ def rollout_metrics(
         prompt_lengths=prompt_lengths, response_lengths=response_lengths, timings=timings, num_devices=num_devices
     )
     values = metric.calculate()
-    values.update(extra_values or {})
     values.update(
         {
             "perf/gpu_seconds": timings["step"] * num_devices,
@@ -1561,7 +1560,6 @@ def build_rl_sampler(
     model_config: "ModelConfig",
     rollout_config: "RolloutConfig",
     template: Any,  # noqa: C901
-    tuner_config: Optional["TunerConfig"],
     resource_plan: Any = None,
     colocate: bool = False,
     enable_sampling_replay: bool = False,

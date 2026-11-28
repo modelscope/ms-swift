@@ -224,7 +224,6 @@ def build_policy_objects(
         model_config=configs.model,
         rollout_config=rollout_config,
         template=template,
-        tuner_config=configs.tuner,
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl.enable_sampling_replay,

@@ -110,7 +110,6 @@ def initialize_rft_cluster(
         model_config=model_config,
         rollout_config=rollout_config,
         template=template,
-        tuner_config=tuner_config,
         resource_plan=resource_plan,
         colocate=colocate,
         enable_sampling_replay=rl_config.enable_sampling_replay,

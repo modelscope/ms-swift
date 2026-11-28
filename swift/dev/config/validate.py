@@ -56,6 +56,7 @@ def validate_configs(
 ) -> None:
     """Validate cross-Config constraints before anything heavy is built; raises ValueError."""
     from swift.dev.builder import is_megatron_backend
+
     is_megatron = is_megatron_backend(distributed_config)
 
     is_megatron = is_megatron_backend(distributed_config)
@@ -68,7 +69,6 @@ def validate_configs(
 
     _check_remote_mode(
         distributed_config,
-        is_megatron,
         rl_config,
         train_config=train_config,
         tuner_config=tuner_config,
@@ -125,7 +125,7 @@ def validate_configs(
     )
     _check_save_total_limit(checkpoint_config, is_megatron)
     _check_logging(logging_config)
-    _check_rl_ref_model(model_config, tuner_config, rl_config)
+    _check_rl_ref_model(tuner_config, rl_config)
     _check_rl_advanced(train_config, rl_config, reward_config, rollout_config, distributed_config, model_config)
     _check_online_rl_val_dataset(dataset_config, rl_config)
     _check_grpo_truncation_strategy(template_config, rl_config)
@@ -201,7 +201,6 @@ def _changed_fields(config) -> list:
 
 def _check_remote_mode(
     distributed_config: "DistributedConfig",
-    is_megatron: bool,
     rl_config: Optional["RLConfig"],
     train_config: Optional["TrainConfig"] = None,
     tuner_config: Optional["TunerConfig"] = None,
@@ -260,8 +259,9 @@ def _check_remote_mode(
         raise ValueError(
             f"--mode remote does not support tuner={tuner_config.tuner!r}: the server-side "
             "adapter mechanism is LoRA on the resident base. Use --tuner lora, or none for "
-            "full-parameter remote training.")
-    if has_adapter(tuner_config) and tuner_config.tuner == 'lora':
+            "full-parameter remote training."
+        )
+    if has_adapter(tuner_config) and tuner_config.tuner == "lora":
         from swift.dev.builder.adapter import is_base_modifying_init
 
         if is_base_modifying_init(tuner_config.init_weights):
@@ -549,7 +549,7 @@ def _check_policy_recipe(
     _check_dynamic_sampling(cfg, reward_config)
     _check_grpo_controls(cfg)
     _check_ppo_controls(cfg)
-    _check_reference_sync(cfg, train_config, distributed_config)
+    _check_reference_sync(cfg, distributed_config)
     _check_chord(cfg)
     _check_router_replay(cfg)
     _check_sampling_replay(cfg, rollout_config)
@@ -1298,7 +1298,7 @@ def _check_dynamic_sampling(cfg: "RLConfig", reward_config: Optional["RewardConf
 
 
 def _check_reference_sync(
-    cfg: "RLConfig", train_config: "TrainConfig", distributed_config: Optional["DistributedConfig"] = None
+    cfg: "RLConfig", distributed_config: Optional["DistributedConfig"] = None
 ) -> None:
     if cfg.rl_type not in POLICY_RL_TYPES:
         return
@@ -1320,10 +1320,6 @@ def _check_reference_sync(
                 f"({policy_spec!r}), got {cfg.reference_parallel_spec!r}. Set reference_parallel_spec=None to "
                 f"auto-inherit, or use the same spec as the policy."
             )
-    # LoRA's disable_adapter reference shares the policy actor -- EMA against itself is meaningless.
-    if cfg.ref_adapters:
-        pass  # explicit ref_adapters = a separate frozen copy, EMA is valid
-    del train_config
 
 
 def _check_chord(cfg: "RLConfig") -> None:
@@ -2056,8 +2052,9 @@ def _check_cp_partition_mode(distributed_config: "DistributedConfig", is_megatro
     if distributed_config.cp_partition_mode != "zigzag":
         raise NotImplementedError(
             'DistributedConfig.cp_partition_mode="contiguous" is only honoured by the checkpoint '
-            'repartition path (recipe/export); the training CP split and router replay are '
-            'load-balanced (zigzag) only. Keep the default zigzag for a CP training run.')
+            "repartition path (recipe/export); the training CP split and router replay are "
+            "load-balanced (zigzag) only. Keep the default zigzag for a CP training run."
+        )
 
 
 # (format field, param-gather field) per low-precision format. The amax knobs are absent on purpose:
@@ -2197,8 +2194,13 @@ def _check_mtp(model_config: "ModelConfig", is_megatron: bool, tuner_config: Opt
     Failures would otherwise be silent; only LoRA (which can cover the MTP modules) warns instead.
     """
     mtp_dependents = (
-        'mtp_loss_scaling_factor', 'enable_mtp_training', 'mtp_freeze', 'mtp_decoder_input_detach',
-        'mtp_shared_weights', 'mtp_allow_random_init')
+        "mtp_loss_scaling_factor",
+        "enable_mtp_training",
+        "mtp_freeze",
+        "mtp_decoder_input_detach",
+        "mtp_shared_weights",
+        "mtp_allow_random_init",
+    )
 
     if model_config.mtp_num_layers is None:
         for attr in mtp_dependents:
@@ -2999,7 +3001,7 @@ _RL_USES_REF_MODEL = ("dpo", "kto", "ppo", "grpo")
 
 
 def _check_rl_ref_model(
-    model_config: "ModelConfig", tuner_config: Optional["TunerConfig"], rl_config: Optional["RLConfig"]
+    tuner_config: Optional["TunerConfig"], rl_config: Optional["RLConfig"]
 ) -> None:
     """Reject a reference model passed to an algorithm that has none.
 
