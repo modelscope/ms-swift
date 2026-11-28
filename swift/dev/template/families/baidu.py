@@ -92,6 +92,8 @@ register_template(
         template_cls=ErnieThinkingTemplate,
         is_thinking=True,
         thinking_prefix="<think>\n",
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 
@@ -303,7 +305,12 @@ class ERNIE_VLTemplate(Template):
 
 register_template(
     ERNIETemplateMeta(
-        MLLMTemplateType.ernie_vl, template_cls=ERNIE_VLTemplate, is_thinking=True, thinking_prefix="<think>"
+        MLLMTemplateType.ernie_vl,
+        template_cls=ERNIE_VLTemplate,
+        is_thinking=True,
+        thinking_prefix="<think>",
+        non_thinking_prefix="<think>\n\n</think>\n\n",
+        default_enable_thinking=True,
     )
 )
 
@@ -318,6 +325,8 @@ register_template(
         is_thinking=True,
         thinking_prefix="\n<think>\n",
         default_system=ERNIE_VL_SYSTEM,
+        default_enable_thinking=True,
+        force_thinking=True,
     )
 )
 

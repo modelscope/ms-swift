@@ -15,11 +15,14 @@ from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate, Qwen3AgentT
 from .hy_v3 import HyV3AgentTemplate, HyV3PreviewAgentTemplate
 from .kimi_k3 import KimiK3AgentTemplate
 from .kimi_k25 import KimiK25AgentTemplate
+from .lfm3 import LFM3AgentTemplate
+from .ling3 import Ling3AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minicpm5 import MiniCPM5AgentTemplate
 from .minimax_m2 import MinimaxM2AgentTemplate
 from .minimax_m3 import MinimaxM3AgentTemplate
 from .mistral import MistralAgentTemplate
+from .nemotron import Nemotron3_5AgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .qwen3_coder import Qwen3_5AgentTemplate, Qwen3CoderAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
@@ -37,6 +40,9 @@ agent_template_map = {
     "qwen_en_parallel": QwenEnParallelAgentTemplate,
     "qwen_zh_parallel": QwenZhParallelAgentTemplate,
     "qwen3_coder": Qwen3CoderAgentTemplate,
+    "lfm3": LFM3AgentTemplate,
+    "ling3": Ling3AgentTemplate,
+    "nemotron3_5": Nemotron3_5AgentTemplate,
     "qwen3_5": Qwen3_5AgentTemplate,
     "qwen3": Qwen3AgentTemplate,
     "hermes": HermesAgentTemplate,

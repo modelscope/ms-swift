@@ -113,10 +113,18 @@ class Gemma3VisionTemplate(Gemma3Template):
         assert media_type == "image"
         return ["<start_of_image>"]
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    @staticmethod
+    def _get_images_kwargs(processor):
+        defaults = getattr(processor, 'images_kwargs', None)
+        if defaults is not None:
+            return defaults
         from transformers.models.gemma3.processing_gemma3 import Gemma3ProcessorKwargs
 
+        return Gemma3ProcessorKwargs._defaults.get('images_kwargs', {})
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
+        encoded['token_type_ids'] = [0] * len(encoded['input_ids'])
         if inputs.images:
             input_ids = encoded["input_ids"]
             labels = encoded["labels"]
@@ -128,7 +136,7 @@ class Gemma3VisionTemplate(Gemma3Template):
             )
 
             # TODO: customize
-            processor_kwargs = Gemma3ProcessorKwargs._defaults["images_kwargs"]
+            processor_kwargs = self._get_images_kwargs(self.processor)
             image_inputs = self.processor.image_processor(inputs.images, **processor_kwargs)
             image_inputs["pixel_values"] = torch.as_tensor(np.array(image_inputs["pixel_values"]))
             image_inputs.pop("num_crops")
@@ -183,8 +191,6 @@ class Gemma3nTemplate(Gemma3Template):
             raise ValueError(f"Unsupported media type: {media_type}. Supported types are: image, audio")
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.models.gemma3n.processing_gemma3n import Gemma3nProcessorKwargs
-
         # Input validation
         if not inputs.images and not inputs.audios and not inputs.messages:
             raise ValueError("Provide at least one of `images`, `audios`, or `messages`.")
@@ -208,7 +214,7 @@ class Gemma3nTemplate(Gemma3Template):
             )
 
             # Process images
-            processor_kwargs = Gemma3nProcessorKwargs._defaults.get("images_kwargs", {})
+            processor_kwargs = getattr(processor, 'images_kwargs', {})
             image_inputs = processor.image_processor(inputs.images, **processor_kwargs)
             image_inputs["pixel_values"] = torch.as_tensor(
                 np.array(image_inputs["pixel_values"]), dtype=self.model_info.torch_dtype
@@ -228,7 +234,7 @@ class Gemma3nTemplate(Gemma3Template):
                 )
 
                 # Process audios
-                processor_kwargs = Gemma3nProcessorKwargs._defaults.get("audio_kwargs", {})
+                processor_kwargs = getattr(processor, 'audio_kwargs', {})
                 audio_inputs = processor.feature_extractor(inputs.audios, **processor_kwargs)
 
                 if "input_features" in audio_inputs:
@@ -290,6 +296,35 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 
 class Gemma4Template(Template):
     placeholder_tokens = ["<|image|>", "<|audio|>", "<|video|>"]
+
+    # packing / padding_free: text-only data (checked in `packing_row`). Packed media inputs would need
+    # the bidirectional vision mask, which the packed (THD) attention path does not build.
+    support_padding_free = True
+    #: media a row can carry; a packed row carrying any of them is refused (see `packing_row`).
+    packing_media_keys = ("pixel_values", "pixel_values_videos", "input_features")
+
+    def _non_thinking_prefix_start(self, messages) -> int:
+        if not self.is_training or self.loss_scale.base_strategy == "last_round":
+            return self._get_last_user_index(messages)
+        return -1
+
+    def _is_add_non_thinking_round(self, messages, i, start_idx):
+        return (
+            super()._is_add_non_thinking_round(messages, i, start_idx)
+            and i > 0
+            and (messages[i - 1]["role"] == "user" or messages[i - 1].get("_tool_user_followup"))
+        )
+
+    def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not self.use_megatron:
+            # Gemma 4 full-attention layers use head_dim 512, which flash-attention does not support.
+            raise ValueError("Gemma 4 supports packing only with Megatron (`megatron pt/sft`).")
+        if any(r.get(key) is not None for r in row for key in self.packing_media_keys):
+            raise ValueError(
+                "Gemma 4 supports packing only for text-only data. "
+                "Please remove images/videos/audios or set `--packing false`."
+            )
+        return super().packing_row(row)
 
     def replace_tag(
         self, media_type: Literal["image", "video", "audio"], index: int, inputs: StdTemplateInputs
@@ -425,11 +460,14 @@ register_template(
         agent_template="gemma4",
         is_thinking=True,
         non_thinking_prefix="<|channel>thought\n<channel|>",
+        train_final_think_block="<|channel>thought\n<channel|>",
+        default_enable_thinking=False,
     )
 )
 
 
 class DiffusionGemmaTemplate(Gemma4Template):
+    support_padding_free = False
     is_encoder_decoder = True
     unsupported_capabilities = frozenset({TemplateCapability.CUSTOM_SFT_LOSS})
     skip_prompt = True
@@ -507,5 +545,7 @@ register_template(
         agent_template="gemma4",
         is_thinking=True,
         non_thinking_prefix="<|channel>thought\n<channel|>",
+        train_final_think_block="<|channel>thought\n<channel|>",
+        default_enable_thinking=False,
     )
 )

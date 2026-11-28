@@ -21,6 +21,7 @@ import pytest
 import torch
 
 from swift.dev.processor import InputProcessor
+from swift.dev.template.families.gemma import DiffusionGemmaTemplate, Gemma4Template
 
 
 def _packed_batch():
@@ -384,3 +385,47 @@ def test_non_embedding_micro_batch_still_counts_sequences():
     out = proc.collate_fn(rows, micro_batch_size=2)
     assert len(out) == 3  # ceil(5/2) sequence-counted micro-batches
     assert [_nrows(mb["input_ids"]) for mb in out] == [2, 2, 1]
+
+
+def _gemma4_row(input_ids, **kwargs):
+    return {
+        "input_ids": input_ids,
+        "labels": input_ids,
+        "length": len(input_ids),
+        "mm_token_type_ids": torch.zeros(len(input_ids), dtype=torch.long),
+        **kwargs,
+    }
+
+
+@pytest.mark.parametrize("cls, expected", [(Gemma4Template, True), (DiffusionGemmaTemplate, False)])
+def test_gemma4_padding_free_declaration(cls, expected):
+    # None would make the multimodal gate refuse packing for Gemma 4; True on the diffusion template
+    # would let packing reach a model that never declared it.
+    assert cls.support_padding_free is expected
+
+
+def test_gemma4_text_only_rows_are_packed():
+    # `packing_row` only reads the rows, so the processor is not needed.
+    template = object.__new__(Gemma4Template)
+    template.use_megatron = True
+    packed = template.packing_row([_gemma4_row([2, 10, 11]), _gemma4_row([2, 20])])
+    assert packed["input_ids"] == [2, 10, 11, 2, 20]
+    assert packed["position_ids"] == [0, 1, 2, 0, 1]
+    assert packed["mm_token_type_ids"].tolist() == [0, 0, 0, 0, 0]
+    assert "pixel_values" not in packed
+
+
+@pytest.mark.parametrize("key", ["pixel_values", "pixel_values_videos", "input_features"])
+def test_gemma4_media_rows_are_rejected(key):
+    template = object.__new__(Gemma4Template)
+    template.use_megatron = True
+    rows = [_gemma4_row([2, 10, 11]), _gemma4_row([2, 20], **{key: torch.zeros(1, 4)})]
+    with pytest.raises(ValueError, match="text-only"):
+        template.packing_row(rows)
+
+
+def test_gemma4_transformers_backend_is_rejected():
+    template = object.__new__(Gemma4Template)
+    template.use_megatron = False
+    with pytest.raises(ValueError, match="only with Megatron"):
+        template.packing_row([_gemma4_row([2, 10, 11]), _gemma4_row([2, 20])])

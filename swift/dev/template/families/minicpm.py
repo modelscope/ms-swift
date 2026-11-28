@@ -304,6 +304,7 @@ register_template(
         template_cls=MiniCPMV4_5Template,
         is_thinking=True,
         thinking_prefix="<think>\n",
+        default_enable_thinking=None,
     )
 )
 
@@ -605,9 +606,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
 
 register_template(
     Qwen3MixedTemplateMeta(
-        MLLMTemplateType.minicpmo4_5,
-        template_cls=MiniCPMO4_5Template,
-        is_thinking=True,
+        MLLMTemplateType.minicpmo4_5, template_cls=MiniCPMO4_5Template, is_thinking=True, default_enable_thinking=True
     )
 )
 
@@ -615,6 +614,9 @@ register_template(
 class MiniCPMV4_6Template(Template):
     support_padding_free = True
     placeholder_tokens = ["<|image_pad|>", "<|video_pad|>"]
+
+    def _non_thinking_prefix_start(self, messages) -> int:
+        return self._get_last_user_index(messages)
 
     def init_env_args(self):
         super().init_env_args()
@@ -713,6 +715,8 @@ register_template(
         is_thinking=True,
         thinking_prefix="<think>\n",
         non_thinking_prefix="<think>\n\n</think>\n\n",
+        train_final_think_block="<think>\n\n</think>\n\n",
+        default_enable_thinking=False,
     )
 )
 
@@ -726,5 +730,6 @@ register_template(
         thinking_prefix="<think>\n",
         non_thinking_prefix="<think>\n\n</think>\n\n",
         agent_template="minicpm5",
+        default_enable_thinking=None,
     )
 )

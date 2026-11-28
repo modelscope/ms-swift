@@ -66,7 +66,6 @@ from .utils import (
     StopWordsCriteria,
     fetch_one,
     findall,
-    get_last_user_round,
     merge_query_messages,
     split_rounds,
     split_str_parts_by,
@@ -220,15 +219,12 @@ class Template(ProcessorMixin, TwinkleTemplate):
             template_meta.default_system = default_system
         self._explicit_enable_thinking = enable_thinking is not None
         if enable_thinking is None:
-            # The computed default only drives decode-side heuristics; the rendering markers
-            # below require an explicit opt-in to match the official jinjas, which insert a
-            # think-block marker only when thinking is explicitly disabled.
-            enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
+            enable_thinking = template_meta.default_enable_thinking
         self.response_prefix = response_prefix
         self.template_meta: "TemplateMeta" = template_meta
         self.default_system = template_meta.default_system
         self.use_chat_template = use_chat_template
-        self.enable_thinking = enable_thinking
+        self.enable_thinking = self._normalize_enable_thinking(enable_thinking)
         self.preserve_thinking = preserve_thinking
         self.add_non_thinking_prefix = add_non_thinking_prefix
         self.chat_template_kwargs = {}
@@ -290,21 +286,42 @@ class Template(ProcessorMixin, TwinkleTemplate):
                 f"{self.template_meta.template_type} does not support multi-round chat; refusing to drop history."
             )
 
-    def _get_enable_thinking(self, inputs=None):
-        enable_thinking = None if inputs is None else inputs.chat_template_kwargs.get("enable_thinking")
-        if enable_thinking is None:
-            enable_thinking = self.enable_thinking
+    def _get_chat_template_arg(self, name, inputs=None, alias=None):
+        sources = (None if inputs is None else inputs.chat_template_kwargs, self.chat_template_kwargs)
+        for kwargs in sources:
+            if kwargs is None:
+                continue
+            value = kwargs.get(name)
+            if value is None and alias is not None:
+                value = kwargs.get(alias)
+            if value is not None:
+                return value
+        return None
+
+    def _normalize_enable_thinking(self, enable_thinking):
+        if self.template_meta.force_thinking:
+            if enable_thinking is False:
+                logger.warning_once(
+                    f"{self.template_meta.template_type} only supports thinking mode; ignoring enable_thinking=False."
+                )
+            return True
         return enable_thinking
 
-    def _explicit_non_thinking(self, inputs=None) -> bool:
-        """Whether thinking was explicitly disabled, the only case the official jinjas mark."""
-        enable_thinking = None if inputs is None else inputs.chat_template_kwargs.get("enable_thinking")
+    def _get_enable_thinking(self, inputs=None):
+        enable_thinking = self._get_chat_template_arg("enable_thinking", inputs, self.jinja_enable_thinking_key)
         if enable_thinking is None:
-            return self._explicit_enable_thinking and self.enable_thinking is False
-        return enable_thinking is False
+            enable_thinking = self.enable_thinking
+        return self._normalize_enable_thinking(enable_thinking)
+
+    def _explicit_non_thinking(self, inputs=None) -> bool:
+        """Whether thinking was explicitly disabled; defaults are not explicit requests."""
+        enable_thinking = self._get_chat_template_arg("enable_thinking", inputs, self.jinja_enable_thinking_key)
+        if enable_thinking is None:
+            return self._explicit_enable_thinking and self._get_enable_thinking(inputs) is False
+        return self._normalize_enable_thinking(enable_thinking) is False
 
     def _get_preserve_thinking(self, inputs=None):
-        preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get("preserve_thinking")
+        preserve_thinking = self._get_chat_template_arg("preserve_thinking", inputs)
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
         if preserve_thinking is None:
@@ -326,14 +343,11 @@ class Template(ProcessorMixin, TwinkleTemplate):
             return response_prefix
         elif not self.use_chat_template:
             return ""
-        if self.template_meta.non_thinking_prefix:
-            # mixed-thinking family: the official jinja marks the generation prompt only when
-            # thinking is explicitly disabled; the default render carries no marker.
-            if self._explicit_non_thinking(inputs):
-                return self.template_meta.non_thinking_prefix
+        enable_thinking = self._get_enable_thinking(inputs)
+        if enable_thinking is None:
             return None
-        # thinking-only family: the official jinja prefills the think opener at the generation prompt.
-        return self.template_meta.thinking_prefix or None
+        prefix = self.template_meta.thinking_prefix if enable_thinking else self.template_meta.non_thinking_prefix
+        return prefix or None
 
     @property
     def loss_scale(self):
@@ -2023,14 +2037,16 @@ class Template(ProcessorMixin, TwinkleTemplate):
         kwargs = {}
         if inputs.tools:
             kwargs["tools"] = inputs.tools
-        enable_thinking = None if inputs is None else inputs.chat_template_kwargs.get("enable_thinking")
-        explicit_thinking = enable_thinking is not None or self._explicit_enable_thinking
-        if explicit_thinking:
-            kwargs[self.jinja_enable_thinking_key] = self._get_enable_thinking(inputs)
-        if self.template_meta.is_thinking or enable_thinking:
-            kwargs["preserve_thinking"] = self._get_preserve_thinking(inputs)
         kwargs.update(self.chat_template_kwargs)
         kwargs.update(inputs.chat_template_kwargs)
+        enable_thinking = self._get_enable_thinking(inputs)
+        if enable_thinking is not None and (self.template_meta.is_thinking or enable_thinking):
+            kwargs[self.jinja_enable_thinking_key] = enable_thinking
+        explicit_preserve = "preserve_thinking" in inputs.chat_template_kwargs
+        if self.template_meta.is_thinking and (
+            enable_thinking is not None or explicit_preserve or self.preserve_thinking is not None
+        ):
+            kwargs["preserve_thinking"] = self._get_preserve_thinking(inputs)
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs
         )
@@ -2071,38 +2087,54 @@ class Template(ProcessorMixin, TwinkleTemplate):
             system = self.agent_template._format_tools(tools, system, inputs.messages[0])
         return system
 
+    def _non_thinking_prefix_start(self, messages) -> int:
+        last_assistant = next(
+            (i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "assistant"), -1
+        )
+        return max(self._get_last_user_index(messages), last_assistant)
+
+    def _is_add_non_thinking_round(self, messages, i, start_idx):
+        return i >= start_idx and messages[i]["role"] == "assistant"
+
     def _add_non_thinking_prefix(self, inputs, thinking_prefix="<think>") -> None:
         messages = inputs.messages
         non_thinking_prefix = self.template_meta.train_final_think_block
-        if not non_thinking_prefix or not messages or messages[-1]["role"] != "assistant":
+        if not non_thinking_prefix:
             return
-        # The official jinjas render the empty think block on the final response only: history
-        # turns render with their thinking already stripped, tool-call turns render bare.
-        message = messages[-1]
-        content = message["content"]
-        # After merge, content may be a list; only process the first element.
-        if isinstance(content, list):
-            if (
-                content
-                and isinstance(content[0], str)
-                and not content[0].startswith((thinking_prefix, non_thinking_prefix))
-            ):
-                content[0] = non_thinking_prefix + content[0]
-        elif isinstance(content, str):
-            if not content.startswith((thinking_prefix, non_thinking_prefix)):
-                message["content"] = non_thinking_prefix + content
+        start_idx = self._non_thinking_prefix_start(messages)
+        for i, message in enumerate(messages):
+            if not self._is_add_non_thinking_round(messages, i, start_idx):
+                continue
+            content = message["content"]
+            parts = content if isinstance(content, list) else [content]
+            if parts and isinstance(parts[0], str) and not parts[0].startswith((thinking_prefix, non_thinking_prefix)):
+                parts[0] = non_thinking_prefix + parts[0]
+                message["content"] = parts if isinstance(content, list) else parts[0]
 
     def _remove_thinking_content(self, content: str, thinking_suffix="</think>") -> str:
         content = content.split(thinking_suffix)[-1].strip()
         return self.template_meta.history_thinking_prefix + content
 
-    def _remove_history_thinking(self, inputs) -> None:
+    @staticmethod
+    def _get_last_user_index(messages) -> int:
+        for i in range(len(messages) - 1, -1, -1):
+            message = messages[i]
+            if message["role"] == "user" or (
+                message["role"] == "tool" and message.get("_tool_user_followup")
+            ):
+                return i
+        return -1
+
+    def _get_current_round_start(self, messages) -> int:
+        return self._get_last_user_index(messages)
+
+    def _remove_history_thinking(self, inputs, keep_tool_call_history: bool = False) -> None:
         messages = inputs.messages
-        # Delete the previous 'think' entries from the messages.
-        last_user_round = get_last_user_round(messages)
+        current_round_start = self._get_current_round_start(messages)
         for i, message in enumerate(messages):
-            # Delete the content before '</think>' in all assistant turns except the last round.
-            if message["role"] == "assistant" and i < last_user_round:
+            if message["role"] == "assistant" and i < current_round_start:
+                if keep_tool_call_history and i + 1 < len(messages) and messages[i + 1]["role"] == "tool":
+                    continue
                 content = message["content"]
                 # After merge, content may be a list; only process the first element.
                 if isinstance(content, list) and content and isinstance(content[0], str):

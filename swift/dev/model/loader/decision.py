@@ -562,7 +562,7 @@ def enable_noncausal_full_attention(language_model) -> None:
     from transformers.masking_utils import create_recurrent_attention_mask
 
     def mask_inputs(module, args, kwargs):
-        if kwargs.get("past_key_values") is not None or kwargs.get("use_cache"):
+        if any(kwargs.get(key) is not None for key in ('past_key_values', 'cache')) or kwargs.get('use_cache'):
             raise ValueError("Noncausal decision forward does not support a KV cache.")
         attention_mask = kwargs.get("attention_mask")
         if isinstance(attention_mask, dict):
