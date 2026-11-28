@@ -603,7 +603,7 @@ class TestExternalPluginReplayInWorkers(unittest.TestCase):
         # patch cannot reach them; the paths ride along in the job tuple instead.
         ipd = _run_iter_packing(None, _make_rows(4), template=CodecProbeTemplate())
         try:
-            self.assertEqual(ipd._worker_jobs()[0][-1], get_external_files())
+            self.assertEqual(ipd._worker_jobs()[0][4], get_external_files())
         finally:
             for worker in ipd.workers:
                 worker.terminate()
