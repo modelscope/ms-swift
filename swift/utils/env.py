@@ -24,10 +24,26 @@ def is_deepspeed_enabled():
     return deepspeed_config() is not None
 
 
+def get_int_env(name: str, default: int) -> int:
+    """Read an integer env var, falling back to `default` when it is unset, blank or unparsable.
+
+    A launcher script or a Dockerfile that exports `RANK=` before it knows the value leaves the
+    variable present but empty, and `int('')` raises from inside these readers.
+    """
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(f'Invalid `{name}`: `{value}`, falling back to `{default}`.')
+        return default
+
+
 def get_dist_setting() -> Tuple[int, int, int, int]:
     """return rank, local_rank, world_size, local_world_size"""
-    rank = int(os.getenv('RANK', -1))
-    local_rank = int(os.getenv('LOCAL_RANK', -1))
+    rank = get_int_env('RANK', -1)
+    local_rank = get_int_env('LOCAL_RANK', -1)
     world_size = int(os.getenv('WORLD_SIZE') or os.getenv('_PATCH_WORLD_SIZE') or 1)
     # compat deepspeed launch
     local_world_size = int(os.getenv('LOCAL_WORLD_SIZE', None) or os.getenv('LOCAL_SIZE', 1))
@@ -35,8 +51,8 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
 
 
 def get_node_setting():
-    node_rank = int(os.getenv('NODE_RANK', 0))
-    nnodes = int(os.getenv('NNODES', 1))
+    node_rank = get_int_env('NODE_RANK', 0)
+    nnodes = get_int_env('NNODES', 1)
     return node_rank, nnodes
 
 
