@@ -41,6 +41,7 @@ from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
                          is_master, ms_logger_context, update_last_checkpoint_symlink)
+from swift.dataloader.dispatcher import compute_streaming_skip_batches
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import TrainerState, build_streaming_dataloader, prepare_batch
 
@@ -1027,8 +1028,28 @@ class BaseMegatronTrainer(ABC):
         args = self.args
         val_dataloader = None
         if args.streaming:
-            train_dataloader = build_streaming_dataloader(args, train_dataset, self.data_collator)
+            consumed_samples = self.state.consumed_train_samples
+            dp_world_size = mpu.get_data_parallel_world_size()
+            # Checkpoints count generated samples for GRPO/GKD; the stream
+            # iterates unrepeated prompts, like the non-streaming path below.
+            num_generations = args.num_generations if args.rlhf_type in {'grpo', 'gkd'} else 1
+            samples_per_step = args.micro_batch_size * dp_world_size
+            skip_batches = compute_streaming_skip_batches(
+                consumed_samples, args.micro_batch_size, dp_world_size, num_generations=num_generations)
+            if skip_batches > 0:
+                prompt_samples = consumed_samples // num_generations
+                if prompt_samples % samples_per_step != 0:
+                    logger.warning(
+                        f'consumed_train_samples ({consumed_samples}) maps to {prompt_samples} prompt samples, '
+                        f'not divisible by micro_batch_size * dp_world_size ({samples_per_step}); '
+                        f'the remainder will be replayed.')
+                logger.info(
+                    f'Streaming resume: skipping {skip_batches} dispatcher batches '
+                    f'({consumed_samples} samples consumed before the checkpoint).')
+            train_dataloader = build_streaming_dataloader(
+                args, train_dataset, self.data_collator, skip_batches=skip_batches)
             if val_dataset is not None:
+                # The validation stream is independent of the training stream position.
                 val_dataloader = build_streaming_dataloader(args, val_dataset, self.data_collator)
             return train_dataloader, val_dataloader
         consumed_samples = self.state.consumed_train_samples
