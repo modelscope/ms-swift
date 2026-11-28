@@ -189,8 +189,12 @@ class DatasetMeta:
     tags: List[str] = field(default_factory=list)
     help: Optional[str] = None
     huge_dataset: bool = False
+    infonce_config: Optional[Dict] = None
 
     def __post_init__(self):
+        if self.infonce_config is not None:
+            from swift.loss.infonce_config import validate_infonce_config
+            self.infonce_config = validate_infonce_config(self.infonce_config)
         from .loader import DatasetLoader
         if self.loader is None:
             self.loader = DatasetLoader
