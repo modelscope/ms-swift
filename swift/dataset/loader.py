@@ -381,7 +381,8 @@ def load_dataset(
             remove_unused_columns=remove_unused_columns,
             disable_auto_column_mapping=disable_auto_column_mapping,
         )
-        init_decision_augment(dataset_meta, decision_augment_config, get_seed(seed))
+        if decision_augment_config is not None:
+            init_decision_augment(dataset_meta, decision_augment_config, get_seed(seed))
         train_dataset = loader.load(dataset_syntax, dataset_meta, use_hf=use_hf)
         # Inject dataset_syntax.dataset as routing tag for multi-teacher.
         # Tag before post_process: sampling/splitting go through select(), and add_column() on a
