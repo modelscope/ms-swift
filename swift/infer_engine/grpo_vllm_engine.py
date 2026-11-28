@@ -1,11 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import asyncio
 import inspect
 import os
+import pickle
 import torch
+from copy import deepcopy
+from dataclasses import asdict
 from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
 from typing import Any, Dict, List, Optional, Union
 
+from swift.loss_scale import LossScale
 from swift.metrics import Metric
 from swift.rlhf_trainers.utils import VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH
 from swift.template import Template
@@ -23,6 +28,33 @@ except Exception:
 
 
 class GRPOVllmEngine(VllmEngine):
+
+    def _get_encode_indices(self, infer_requests):
+        indices = {}
+        template = self.template
+        # Reuse only deterministic text encoding with the standard Swift template.
+        if (type(template) is not Template or template.template_backend != 'swift'
+                or template.template_meta.template_type == 'dummy' or type(template.loss_scale) is not LossScale):
+            return indices
+        tokenizer = template.tokenizer
+        if not tokenizer.is_fast or getattr(tokenizer.backend_tokenizer.model, 'dropout', None):
+            return indices
+
+        seen = {}
+        for i, request in enumerate(infer_requests):
+            if request.images or request.audios or request.videos or request.objects or request.tools:
+                continue
+            if any(message['role'] not in ('system', 'user', 'assistant')
+                   or not isinstance(message.get('content'), (str, type(None))) or message.get('tool_calls')
+                   for message in request.messages):
+                continue
+            # UUID and data_dict are passthrough metadata in the standard template.
+            data = {k: v for k, v in asdict(request).items() if k not in ('uuid', 'data_dict')}
+            key = (type(request), pickle.dumps(data))
+            first = seen.setdefault(key, i)
+            if first != i:
+                indices[i] = indices[first] = first
+        return indices
 
     def _get_grpo_lora_request(self, adapter_request: Optional[AdapterRequest] = None):
         if not adapter_request and self.enable_lora:
@@ -82,7 +114,31 @@ class GRPOVllmEngine(VllmEngine):
             request_config = RequestConfig()
         assert request_config.n == 1
 
-        tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
+        if not infer_requests:
+            return []
+        # Resolve once per batch, including when no adapter is loaded.
+        kwargs['adapter_request'] = await self._get_grpo_lora_request_async(kwargs.get('adapter_request'))
+        kwargs['_lora_request_resolved'] = True
+        indices = self._get_encode_indices(infer_requests)
+        encodings = {}
+
+        async def infer_shared(infer_request, index):
+            if index not in encodings:
+                self.template.set_mode('vllm')
+                loop = asyncio.get_running_loop()
+                encodings[index] = loop.run_in_executor(None, self.template.encode, infer_requests[index], True)
+            # Cancellation of one generation must not cancel its siblings' encoding.
+            inputs = deepcopy(await asyncio.shield(encodings[index]))
+            inputs['template_inputs'].extra_kwargs.update({
+                k: v
+                for k, v in asdict(infer_request).items() if k in ('uuid', 'data_dict')
+            })
+            return await self.infer_async(infer_request, request_config, _inputs=inputs, **kwargs)
+
+        tasks = [
+            infer_shared(request, indices[i]) if i in indices else self.infer_async(request, request_config, **kwargs)
+            for i, request in enumerate(infer_requests)
+        ]
         if use_tqdm is None:
             use_tqdm = len(infer_requests) > 1
         res = await self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
@@ -102,13 +158,17 @@ class GRPOVllmEngine(VllmEngine):
         *,
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
+        _lora_request_resolved: bool = False,
+        _inputs=None,
     ):
-        adapter_request = await self._get_grpo_lora_request_async(adapter_request)
+        if not _lora_request_resolved:
+            adapter_request = await self._get_grpo_lora_request_async(adapter_request)
         return await super().infer_async(
             infer_request,
             request_config,
             adapter_request=adapter_request,
             pre_infer_hook=pre_infer_hook,
+            _inputs=_inputs,
         )
 
     async def _batch_infer_stream(self,
