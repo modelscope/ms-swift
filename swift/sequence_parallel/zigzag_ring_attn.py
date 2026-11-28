@@ -18,7 +18,7 @@ def get_half_index(cu_seqlens, *, front: bool):
         front: The head part or the tail part
 
     Returns:
-        The slice or the tensor mask.
+        The slice, or a 1-D index tensor on ``cu_seqlens.device``.
     """
 
     if len(cu_seqlens) == 2:
@@ -27,15 +27,25 @@ def get_half_index(cu_seqlens, *, front: bool):
         else:
             return slice(cu_seqlens[-1] // 2, None)
 
-    index = torch.zeros((cu_seqlens[-1].item(), ), dtype=torch.bool)
-    for i in range(len(cu_seqlens) - 1):
-        start, end = cu_seqlens[i], cu_seqlens[i + 1]
-        if front:
-            end = (start + end) // 2
-        else:
-            start = (start + end) // 2
-        index[start:end] = True
-    return index
+    # Build the gather index on device in one shot. A per-document loop reads
+    # every boundary back to the host, and a bool mask would additionally make
+    # each consumer run `nonzero()`; both serialize the device queue.
+    cu_seqlens = cu_seqlens.to(dtype=torch.long)
+    lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+    front_lengths = lengths // 2
+    if front:
+        counts = front_lengths
+        source_starts = cu_seqlens[:-1]
+    else:
+        # Keep the tail of an odd length longer, as `start = (start + end) // 2` did.
+        counts = lengths - front_lengths
+        source_starts = cu_seqlens[:-1] + front_lengths
+    # The only host readback left, and it is independent of the document count.
+    total_len = int(counts.sum())
+    destination_starts = torch.cumsum(counts, dim=0) - counts
+    source_indices = torch.repeat_interleave(source_starts, counts, output_size=total_len)
+    destination_indices = torch.repeat_interleave(destination_starts, counts, output_size=total_len)
+    return source_indices + torch.arange(total_len, device=cu_seqlens.device) - destination_indices
 
 
 @torch.jit.script
