@@ -359,6 +359,7 @@ register_template(
         template_cls=InternvlhfTemplate,
         default_system=INTERNS1_DEFAULT_SYSTEM,
         is_thinking=True,
+        default_enable_thinking=True,
         thinking_prefix='<think>',
     ))
 

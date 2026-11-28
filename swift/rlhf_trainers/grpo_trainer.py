@@ -166,12 +166,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return identity_data_collator
 
     def _get_train_sampler(self, train_dataset=None):
-        if self.template.sequence_parallel_size > 1:
+        resample_mode = getattr(self, '_resample_mode', False)
+        if self.template.sequence_parallel_size > 1 or resample_mode:
+            repeat_count = (1 if resample_mode else self.num_iterations * self.args.steps_per_generation
+                            * sequence_parallel.world_size)
             return RepeatSampler(
                 data_source=train_dataset or self.train_dataset,
                 mini_repeat_count=self.num_generations,
                 batch_size=self.args.generation_batch_size // self.num_generations,
-                repeat_count=self.num_iterations * self.args.steps_per_generation * sequence_parallel.world_size,
+                repeat_count=repeat_count,
                 shuffle=self.shuffle_dataset,
                 seed=self.args.seed,
             )
@@ -2307,14 +2310,20 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     yield x
 
         @contextmanager
-        def seed_context():
-            # Use a different seed to ensure the resample dataset does not overlap with train_dataset
+        def resample_context():
+            # Use a different seed to ensure the resample dataset does not overlap with train_dataset,
+            # and disable RepeatSampler batch repetition when drawing resample batches.
             seed = self.args.seed
-            self.args.seed = seed + 1
-            yield
-            self.args.seed = seed
+            origin_resample_mode = getattr(self, '_resample_mode', False)
+            try:
+                self.args.seed = seed + 1
+                self._resample_mode = True
+                yield
+            finally:
+                self.args.seed = seed
+                self._resample_mode = origin_resample_mode
 
-        with seed_context():
+        with resample_context():
             if self.args.dynamic_sample:
                 self.dynamic_resample_iterator = cyclic_iter(self.get_train_dataloader())
 

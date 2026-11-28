@@ -322,6 +322,9 @@ def _patch_mcore_bridge():
                     else:
                         llm_config.num_nextn_predict_layers = mtp_config_layers
                 HfConfigFactory.del_config_attr(hf_config, 'quantization_config')
+                patch_export_config = getattr(self, 'patch_export_hf_config', None)
+                if patch_export_config is not None:
+                    patch_export_config(hf_config)
                 expert_dtype = None
                 if config.fp8 is not None and config.fp8_recipe == 'blockwise' and config.fp8_param:
                     from transformers.utils.quantization_config import FineGrainedFP8Config

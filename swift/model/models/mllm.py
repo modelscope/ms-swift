@@ -405,10 +405,13 @@ class MimoV2Loader(ModelLoader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.mimo_v2,
-        [ModelGroup([
-            Model('XiaomiMiMo/MiMo-V2.5', 'XiaomiMiMo/MiMo-V2.5'),
-        ], TemplateType.mimo_v2)],
+        MLLMModelType.mimo_v2, [
+            ModelGroup([
+                Model('XiaomiMiMo/MiMo-V2.5', 'XiaomiMiMo/MiMo-V2.5'),
+                Model('XiaomiMiMo/MiMo-V2.6-Flash-RL', 'XiaomiMiMo/MiMo-V2.6-Flash-RL'),
+                Model('XiaomiMiMo/MiMo-V2.6-Pro-RL', 'XiaomiMiMo/MiMo-V2.6-Pro-RL'),
+            ], TemplateType.mimo_v2)
+        ],
         MimoV2Loader,
         model_arch=ModelArch.mimo_v2,
         architectures=['MiMoV2ForCausalLM'],

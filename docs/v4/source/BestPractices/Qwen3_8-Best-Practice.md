@@ -318,13 +318,12 @@ swift infer \
 
 Megatron-SWIFT训练Qwen3.5的提示：
 - 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/packing.sh)。
-- 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练。请安装对应版本。
-- CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练，需安装megatron-core [main分支](https://github.com/NVIDIA/Megatron-LM)。
+- CP支持：支持 GDN 的 CP 训练，需安装 megatron-core [dev分支](https://github.com/NVIDIA/Megatron-LM/tree/dev)。
 - Transformers/FSDP packing 验证：Qwen3.5-4B 已在 8 卡 Atlas 900 A2 上使用 LoRA、BF16、`alpaca-gpt4-data-zh`、`packing=true`、`max_length=512`、每卡 batch size 1、梯度累积 1 完成 300 steps 训练；loss/grad_norm 全程为有限值，并成功保存 checkpoint。在相同配置下，NPU 与 GPU 对照实验的 loss 变化趋势对齐。
 - padding_free/packing的支持：packing可以提升训练速度。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
-  - Qwen3-Next的Megatron GatedDeltaNet支持参考[这个PR](https://github.com/modelscope/mcore-bridge/pull/76)，需要"mcore-bridge>=1.4.0"。
+  - Qwen3-Next 的 Megatron GatedDeltaNet 支持来源参考[这个 PR](https://github.com/modelscope/mcore-bridge/pull/76)。
 - apply_wd_to_qk_layernorm: 对 qk layernorm 应用权重衰减。默认为False。
-- 关于FP8训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh)。你需要安装"mcore-bridge>=1.2.0"，并设置参数`--linear_decoupled_in_proj true`，将`in_proj`解耦为`in_proj_qkvz`, `in_proj_ba`，其中`in_proj_ba`仍使用原始精度训练。
+- 关于FP8训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh)，并设置参数`--linear_decoupled_in_proj true`，将`in_proj`解耦为`in_proj_qkvz`, `in_proj_ba`，其中`in_proj_ba`仍使用原始精度训练。
 
 
 ## 强化学习（RL）

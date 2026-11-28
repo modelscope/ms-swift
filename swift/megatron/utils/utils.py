@@ -85,13 +85,21 @@ def get_multimodal_target_regex(
         sub_module = deep_getattr(model, module)
         if sub_module is None:
             continue
+        if not isinstance(sub_module, nn.Module):
+            logger.debug(f'Skip non-module LoRA target path: {module} ({type(sub_module).__name__}).')
+            continue
         target_modules = find_all_linears(sub_module, extra_layers)
         if not target_modules:
             continue
-        target_modules = [tm for tm in target_modules if tm]
-        target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
         rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
-        res.append(rf'{rejected_pattern}{re.escape(module)}(?=\.){target_pattern}')
+        module_pattern = rf'{rejected_pattern}{re.escape(module)}'
+        # An empty relative name denotes the module itself, e.g. a Linear aligner.
+        if '' in target_modules:
+            res.append(module_pattern)
+        target_modules = [tm for tm in target_modules if tm]
+        if target_modules:
+            target_pattern = rf'.*\.({"|".join(target_modules)})'
+            res.append(rf'{module_pattern}(?=\.){target_pattern}')
 
     return rf'^({"|".join(res)})$'
 

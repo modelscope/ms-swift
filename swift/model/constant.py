@@ -129,6 +129,8 @@ class LLMModelType:
     generic_decision = 'generic_decision'
     laya = 'laya'
 
+    lfm3 = 'lfm3'
+
 
 class BertModelType:
     modern_bert = 'modern_bert'
@@ -172,6 +174,7 @@ class MLLMModelType:
     kev = 'kev'
     thx02 = 'thx02'
     startlux = 'startlux'
+    h2o = 'h2o'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
@@ -300,6 +303,8 @@ class MLLMModelType:
 
     nemotron_h_omni = 'nemotron_h_omni'
     nemo_speechlm = 'nemo_speechlm'
+
+    lfm3_vl = 'lfm3_vl'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):

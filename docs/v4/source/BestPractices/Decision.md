@@ -15,9 +15,9 @@ pip install "ms-swift>=4.6.0"
 
 ## 支持模型
 
-1. JEV：Qwen3.5 骨干 + PEFT adapter（verbalizer 打分头；JEV-27B-VL 为多模态布局，JEV-27B / JEV-9B 为纯文本布局，JEV-35B 为多模态 MoE 布局，决策头已并入权重、无 LoRA adapter）
+1. JEV：Qwen3.5 骨干 + PEFT adapter（verbalizer 打分头；JEV-27B-VL 为多模态布局，JEV-27B / JEV-9B 为纯文本布局，JEV-35B 为多模态 MoE 布局）
   - [JEV-35B](https://www.modelscope.cn/models/autotrust/JEV-35B) / [JEV-27B-VL](https://www.modelscope.cn/models/autotrust/JEV-27B-VL) / [JEV-27B](https://www.modelscope.cn/models/autotrust/JEV-27B) / [JEV-9B](https://www.modelscope.cn/models/autotrust/JEV-9B)
-2. Clef：已合并 LoRA 的完整 Qwen3.5 多模态
+2. Clef：已合并 LoRA 的完整 Qwen3-VL
   - [ModelScope](https://www.modelscope.cn/models/Cloudflare/clef)
 3. OmniJev：Qwen3.5-4B（hybrid gated-deltanet + VL）+ PEFT adapter
   - [ModelScope](https://modelscope.cn/models/AI-ModelScope/OmniJev)
@@ -29,18 +29,21 @@ pip install "ms-swift>=4.6.0"
   - [ModelScope](https://modelscope.cn/models/convaiinnovations/laya) / [HuggingFace](https://huggingface.co/convaiinnovations/laya)
 7. StartLux-Decision v1.1 AutoThink：已合并的 Qwen3.5 hybrid（视觉 + 因果注意力），字母 read-out
   - [ModelScope 4B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink) / [9B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink) / [27B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink)
+8. H2O-4B：已合并发布版 LoRA 的 Qwen3.5-4B hybrid + 固定 255 行 label readout，单题单序列
+  - [ModelScope](https://modelscope.cn/models/h2oai/h2o-lightning-4b) / [HuggingFace](https://huggingface.co/h2oai/h2o-lightning-4b)
 
 
 | 模型         | `--model_type` | 底座                               | 头制品                                                                            | `--loss_type`  |
 | ---------- | -------------- | -------------------------------- | ------------------------------------------------------------------------------ | -------------- |
-| JEV-27B-VL | `jev`          | Qwen3.5 多模态 + PEFT adapter     | `decision_head.json` + `calibration.json`（24 槽 verbalizer bias）                | `distill_rps`  |
-| JEV-35B    | `jev`          | Qwen3.5 MoE（35B-A3B），决策头已并入权重（无 LoRA） | `decision_head.json` + `calibration.json`（264 槽 verbalizer bias，单次最多 256 选项） | `distill_rps`  |
-| Clef       | `clef`         | 已合并 LoRA 的 Qwen3.5 多模态        | `joint_head.safetensors` + `joint_head_config.json`                            | `smooth_brier` |
+| JEV-27B-VL | `jev`          | Qwen3-VL + PEFT adapter          | `decision_head.json` + `calibration.json`（24 槽 verbalizer bias）                | `distill_rps`  |
+| JEV-35B    | `jev`          | Qwen3.5 MoE（35B-A3B）+ PEFT adapter | `decision_head.json` + `calibration.json`（264 槽 verbalizer bias，wide256 布局）      | `distill_rps`  |
+| Clef       | `clef`         | 已合并 LoRA 的 Qwen3-VL              | `joint_head.safetensors` + `joint_head_config.json`                            | `smooth_brier` |
 | OmniJev    | `omnijev`      | Qwen3.5-4B hybrid + PEFT adapter | `head.pt`（FiLM）+ `ord.pt`（有序回归）+ `new_tok_emb.pt`（2 新 token）+ `head_meta.json` | `ce_rps`       |
 | Kev        | `kev`          | Qwen3.5-{0.8,4,9}B-Base hybrid + PEFT adapter | `head.pt`（pointer head，fp32）+ 拟合 `temperature`（仅 eval 生效）                 | `scoring`      |
 | THX-02     | `thx02`        | 已合并的 Qwen3.5 hybrid（非因果 full attention） | `readout.safetensors`（255 个答案码上的线性 readout）+ `decision_config.json`（标定温度） | `distill_rps`  |
 | Laya       | `laya`         | ModernBERT-large（双向，无 adapter）   | `model.safetensors`（编码器 + 头同文件）+ `rl_agent_config.json`（结构 + per-kind/per-bucket 温度） | `ce_rps`       |
 | StartLux   | `startlux`     | 已合并的 Qwen3.5 hybrid（视觉塔，因果） | `decision_config.json`（26 个字母 token id + per-kind read-out 温度）                 | `distill_rps`  |
+| H2O-4B     | `h2o`          | 已合并 LoRA 的 Qwen3.5-4B hybrid | `label_rows.safetensors`（255×hidden 固定 readout）+ `serve_config.json`（255 个标签 + per-kind 温度） | `scoring`      |
 
 
 开发者可以将任意 CausalLM 转为决策模型，只需指定：
@@ -365,6 +368,20 @@ THX-02 在**单次非因果前向中联合读取一条记录的全部问题**，
 - `answers`：每个问题 ID 的 gold：选项 key、选项下标、`noul` 的 bool，或按选项顺序给出的完整分布。也可用 `targets` 给出软分布（例如蒸馏时教师模型的概率）。
 - `images`：可选，图像路径、URL 或 data URI 列表。
 
+### H2O
+
+H2O 使用自己的请求格式：`questions` 是**列表**，一次前向只读一个问题，readout 取 `Answer:` 预填前缀最后一个 token（即下一个待生成位置）的隐状态，与固定的 255 行 label 矩阵做点积。
+
+```json lines
+{"state": "I was charged twice for the same order.", "questions": [{"type": "choice", "instructions": "Which team should handle this?", "criteria": {"billing": "Charges and refunds", "support": "Technical problems"}}, {"type": "noul", "instructions": "Does the customer ask for a refund?"}], "answers": {"0": "billing", "1": false}}
+{"state": {"order": 48213, "status": "delivered"}, "questions": [{"type": "score", "instructions": "How late is the parcel?", "criteria": ["on time", "a day late", "later"]}], "gold": 1}
+```
+
+- `state`：字符串或任意 JSON 值；结构化 state 以紧凑 JSON 渲染进 prompt。
+- `questions`：列表；每项含 `type`（`noul`/`choice`/`score`）、可选的 `instructions` 和 `criteria`（`choice` 为 `{选项名: 描述}`，保持给定顺序；`score` 为档位描述列表；`noul` 可省略）。
+- gold 可写在题目内（`gold`/`answer`/`label`/`target`），或在记录级用 `answers`/`golds`/`targets`（列表题目按**下标**、字典题目按 key 索引）。取值可以是选项名、下标，或按选项顺序的完整分布。
+- 与 THX-02 的差异：`questions` 是列表而非字典；选项渲染为 `A) 选项名: 描述`，字母只是展示，readout 的 255 行按 `criteria` 顺序与选项一一对应；每条记录只渲染一个问题。
+
 ## 训练
 
 ms-swift 为每个已接入模型提供训练脚本 `examples/train/decision/<model_type>.sh`（使用**本地 mini 数据集**，无需联网下载），通过 `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据；同时支持使用**远程数据集**（`--dataset open_jev_<model_type>:all`，需在线下载 Open-Jev 语料）。两种方式仅数据来源不同，其余参数完全一致，详见[数据集](#数据集)章节。各模型的完整可运行命令（含 `--adapters` 路径获取、头制品环境变量导出等）见对应脚本。
@@ -451,7 +468,63 @@ swift sft \
 - 记录永不截断：超过 `--max_length` 的记录会抛出 `MaxLengthError`（与默认 `--truncation_strategy raise` 下其他超长样本一样被跳过），无论 `--truncation_strategy` 设为何值，因为截断会丢失问题或图像 patch 并使所有 readout 位置错位
 - 图像分辨率：图像上限为 `decision_config.json` 中的 `max_pixels`（THX-02 训练时的上限），下限为 65536 像素。`--max_pixels` 先生效，因此可以把分辨率降低到该下限，但不能超过上限
 
+### H2O
 
+H2O 的发布仓库同时包含底座、已合并的发布版 LoRA 与 255 行 readout。在其上训练新 LoRA 时 readout 保持固定（`label_rows` 以 buffer 保存，不参与训练），只有 LoRA 更新。
+
+H2O 的请求格式与 THX-02 不同（`questions` 为列表），需要先用一个外部插件注册数据集（样例数据与训练脚本不在仓库内分发）：
+
+```python
+# h2o_dataset.py
+from swift.dataset import DatasetMeta, register_dataset
+from swift.dataset.preprocessor.decision import H2OPreprocessor
+
+register_dataset(
+    DatasetMeta(dataset_name='h2o_decision', dataset_path='data/h2o.jsonl',
+                preprocess_func=H2OPreprocessor()),
+    exist_ok=True)
+```
+
+```bash
+USE_HF=0 \
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --external_plugins h2o_dataset.py \
+    --model h2oai/h2o-lightning-4b \
+    --model_type h2o \
+    --task_type decision \
+    --loss_type scoring \
+    --dataset h2o_decision \
+    --tuner_type lora \
+    --target_modules q_proj k_proj v_proj o_proj in_proj_qkv in_proj_z in_proj_a in_proj_b out_proj gate_proj up_proj down_proj \
+    --lora_rank 64 \
+    --lora_alpha 128 \
+    --freeze_vit true \
+    --torch_dtype bfloat16 \
+    --attn_impl sdpa \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --learning_rate 1e-5 \
+    --gradient_accumulation_steps 8 \
+    --gradient_checkpointing true \
+    --logging_steps 1 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --max_length 4096 \
+    --split_dataset_ratio 0 \
+    --output_dir output \
+    --dataloader_num_workers 1
+```
+
+关键参数：
+
+- `--model_type h2o` — 按 checkpoint 自带的 `config.json`（`qwen3_5`）加载 hybrid 底座，并把 `label_rows.safetensors` 挂载为 `scoring_head`；读头无参数，只有 LoRA 参与训练
+- `--loss_type scoring` — 255 个答案码上的 masked soft cross-entropy
+- 发布权重**已包含** H2O 的 LoRA，不要再把模型目录里的 adapter 传给 `--adapters`，否则会叠加两次
+- 不支持 packing / `--padding_free`（单题单序列）；记录永不截断，超过 `--max_length` 抛 `MaxLengthError`
+- 注意力模式跟随 checkpoint 自带的 `serve_config.json`（`two_way.default = bidirectional`），即**默认双向**，gated-deltanet 层保持因果；`H2O_TWO_WAY=1/0` 可显式覆盖（`1` 双向、`0` 单向）
+- 双向需要 `transformers>=5.13.0`，低版本只能用 `H2O_TWO_WAY=0` 走单向；两种模式的 per-kind 温度分别取自 `two_way.temperature` 与顶层 `temperature`，不要混用
+- 训练输出目录包含 adapter、`scoring_head.safetensors`（255 行 readout）与 `scoring_head.json`（`head_temperature` + per-kind `temperatures`）
 
 ### StartLux
 
@@ -499,6 +572,18 @@ swift sft \
 - **Instant**（prompt 双向注意力）StartLux 目录会被 loader 拒绝 —— 它需要本集成未实现的注意力模式；`--model` 请指向 AutoThink checkpoint
 
 
+
+训练后可合并 adapter，供官方决策服务器使用：
+
+```bash
+swift export --adapters output/checkpoint-xxx --merge_lora true --output_dir output/startlux-merged
+```
+
+StartLux 合并后的底座权重不再包含 vLLM 无法加载的 `scoring_head.*`。导出会把训练后的 read-out 写入
+`decision_config.json`：`letter_bias` 按 A–Z 顺序保存 26 个偏置，`temperature_by_type` 包含全局和 per-kind
+校准温度的乘积，同时保留原目录的 prompt 和 AutoThink 设置。**请保留导出的配置；用原始配置覆盖它会丢失
+训练后的 read-out。** 推理需要支持 `letter_bias` 的 `startlux-decide` 版本；旧版本会忽略这些偏置。
+计算时先将偏置加到对应字母的 log-probability 上，再除以该问题类型的温度。
 
 ### 从零训练任意 CausalLM
 
@@ -751,10 +836,34 @@ swift infer \
 
 Decision 模型携带**可插拔打分头**，与 backbone（或 LoRA adapter）联合训练。头权重**单独存储**，避开「config 声明生成模型但权重含分类器」的不一致问题：
 
-- **存盘**：`ScoringTrainer._save` 先通过标准路径存 adapter（或全量模型），然后在旁边写入头制品。对于 adapter（LoRA）训练，写入 `scoring_head.safetensors`（头参数）和 `scoring_head.json`（头类型 + 标定元数据）。对于全量微调训练，只写入 `scoring_head.json`——头参数已在模型的 safetensors 分片中（`from_pretrained` 因 `scoring_head` 尚未挂载而忽略了它们）。
-- **读回**：`maybe_load_trained_scoring_head(model, adapter_dir)` 在 `Swift.from_pretrained` 之后自动调用，覆盖续训、断点恢复、推理三条路径。处理两种场景：当 `scoring_head.safetensors` 存在时（adapter checkpoint），从中加载权重；当仅 `scoring_head.json` 存在时（全量微调 checkpoint），从模型的 safetensors 分片中提取头权重。对非 decision 模型是**受守卫的空操作**。
+- **存盘**：`ScoringTrainer._save` 先通过标准路径存 adapter（或全量模型），然后在旁边写入头制品。对于 adapter（LoRA）训练，写入 `scoring_head.safetensors`（头参数）和 `scoring_head.json`（头类型 + 标定元数据）。对于全量微调训练，只写入 `scoring_head.json`——头参数已在模型权重中（`from_pretrained` 因 `scoring_head` 尚未挂载而忽略了它们）。
+- **读回**：`maybe_load_trained_scoring_head(model, adapter_dir)` 在 `Swift.from_pretrained` 之后自动调用，覆盖续训、断点恢复、推理三条路径。处理两种场景：当 `scoring_head.safetensors` 存在时（adapter checkpoint），从中加载权重；当仅 `scoring_head.json` 存在时（全量微调 checkpoint），从模型权重中提取头权重，支持 safetensors 和 PyTorch `.bin` 的单文件与分片格式，优先读取 safetensors。对非 decision 模型是**受守卫的空操作**。
 
-训完的 checkpoint 可直接部署——`swift infer` 或 `--adapters <checkpoint>` 会自动读回训好的头。
+- **LoRA 合并导出**：`swift export --merge_lora true` 对 JEV、StartLux、Clef、THX-02、OmniJev、Kev、
+  Laya 七类头统一处理：骨干权重文件及分片索引不含 `scoring_head.*`，训练后的头参数写入
+  `scoring_head/scoring_head.safetensors`，构造参数与校准元数据写入 `scoring_head.json`。请保留这两个文件，
+  在 Swift 中以 `--model <合并目录>` 和对应的 `--model_type` 加载，无需再传 adapter。
+  头权重放在子目录中，避免被扫描顶层权重文件的推理引擎误加载。
+  仅加载骨干模型的推理引擎不会自动执行这些打分头；原生决策服务仍需要各自的头格式和推理支持。
+  StartLux 还会将训练后的字母偏置及有效温度导出到 `decision_config.json`，其推理版本要求见上文。
+
+加载全量微调 checkpoint 时，将 checkpoint 目录传给 `--model`，并指定对应的 `--model_type`
+（`jev`、`startlux`、`clef`、`omnijev`、`kev`、`thx02` 或 `laya`）。当目录中缺少原始头制品时，
+共享 loader 从 `scoring_head.json` 重建头，再恢复训练后的权重与校准状态。元数据包含
+`head_type` 类型标识和构造参数，包括非默认的头维度；类型不匹配时会报错。原始头制品和环境变量
+覆盖路径仍优先，原始制品不完整或格式错误时仍报错。
+
+新保存的 OmniJev 全量 checkpoint 会在 `config.json` 中记录选项 token ID，并保留训练后的
+embedding，重载时不再用 `new_tok_emb.pt` 重新初始化这些行。新保存的 THX-02 全量 checkpoint
+会在 `config.json` 中保留实际使用的答案编码、注意力模式、温度和图像尺寸限制。仍兼容没有类型
+标识的旧元数据，但缺少结构参数或上述处理器／tokenizer 设置的旧 checkpoint 仍需原始制品。
+若旧全量 checkpoint 将输出 embedding 存在 `scoring_head._output_embeddings.*` 别名下，
+则需要先迁移权重；loader 会明确拒绝该旧布局，避免用随机输出头悄悄替代训练后的权重。
+LoRA checkpoint 使用原基座模型配合 `--adapters <checkpoint>` 加载。
+
+新增 decision head 时，定义 `head_type`、原始制品位置和 `_from_factory` 加载方法。
+`extra_state_for_save()` 应返回可被 `cls(**meta)` 接收的 JSON 可序列化构造参数；基类负责
+元数据保存和 checkpoint 重建。模型专用的处理器或 tokenizer 状态也必须经过正常保存／加载路径保留。
 
 ## OmniJev：`MSO_BRANCH_CKPT` 与 `gradient_checkpointing` 互斥说明
 
@@ -803,6 +912,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 | `LAYA_CHECKPOINT`         | `laya` | checkpoint 目录           | 指向仓库自带三个 checkpoint（根目录 / `typed-decisions` / `multilingual）之一 |
 | `LAYA_CONFIG`             | `laya` | `rl_agent_config.json`   | 覆盖头结构 + 温度标定配置加载路径 |
 | `STARTLUX_DECISION_CONFIG` | `startlux` | `decision_config.json` | 覆盖字母 token id + per-kind read-out 温度配置加载路径 |
+| `H2O_LABEL_ROWS`          | `h2o`  | `label_rows.safetensors` | 覆盖 255 行 readout 权重加载路径 |
 
 
 未设置时，加载器会自动在 `model_dir`（及 `jev` 的 `adapter_vllm/` 子目录）下查找对应文件。文件缺失时报错信息中会提示设置对应环境变量。
@@ -817,6 +927,10 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 - **`thx02` 截断**：超长记录抛出 `MaxLengthError` 而不是被截断；`--max_pixels` 只能在 [65536 像素, `decision_config.json` 的 `max_pixels`] 范围内降低图像分辨率。
 - **`laya` 须用 `--tuner_type full`**：双向编码器无生成头，默认 LoRA/PeftModel 因果封装不适用。
 - **`startlux` 仅单遍 read-out**：AutoThink 门控/思考循环不在范围内（需要时请用官方 `startlux-decide` 包）；choice 单次至多 26 个选项（官方服务器的淘汰赛轮次未实现）；Instant（prompt 双向）目录会被拒绝；记录永不截断（超长记录抛 `MaxLengthError`）。
+- **`h2o` 单题单序列**：每次前向只读一个问题，`--packing` / `--padding_free` 会被拒绝；记录永不截断（超长记录抛 `MaxLengthError`）。
+- **`h2o` 读头固定**：`label_rows` 以 buffer 保存，不参与训练；`serve_config.json`（255 个标签 + per-kind 温度）必须随 checkpoint 一起提供。
+- **`h2o` 双向注意力**：默认跟随 `serve_config.json` 的 `two_way.default`（bidirectional），可用 `H2O_TWO_WAY=0` 回退单向；双向需 `transformers>=5.13.0`，Ascend NPU 上 full-attention mask 展开为 `[B,1,S,S]`。
+- **`h2o` 暂不支持图像输入**：模板层已能透传图像，但数据集侧尚未从记录中抽取图片，当前仅支持文本 `state`；后续补充。
 - `tie_word_embeddings=True` **adapter 合并**：仅影响合并/转格式，训练与推理不受影响。
 
 

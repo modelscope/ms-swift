@@ -36,8 +36,8 @@ if TYPE_CHECKING:
                                      unwrap_model_for_generation)
     from .url_utils import SafeUrlFetcher
     from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
-                        find_node_ip, format_time, get_env_args, get_external_files, import_external_file,
-                        json_parse_to_dict, lower_bound, parse_args, parse_args_from_dict,
+                        find_node_ip, format_time, get_env_args, get_external_files, get_nested_submodule,
+                        import_external_file, json_parse_to_dict, lower_bound, parse_args, parse_args_from_dict,
                         patch_dataloader_external_plugins, patch_getattr, read_multi_line, remove_response,
                         retry_decorator, seed_everything, shutdown_event_loop_in_daemon, split_list,
                         start_event_loop_in_daemon, subprocess_run, swanlab_get_run, test_time, to_abspath, upper_bound)
@@ -85,8 +85,8 @@ else:
         'url_utils': ['SafeUrlFetcher'],
         'utils': [
             'add_version_to_work_dir', 'check_json_format', 'copy_files_by_pattern', 'deep_getattr', 'find_free_port',
-            'find_node_ip', 'format_time', 'get_env_args', 'get_external_files', 'import_external_file',
-            'json_parse_to_dict', 'lower_bound', 'parse_args', 'parse_args_from_dict',
+            'find_node_ip', 'format_time', 'get_env_args', 'get_external_files', 'get_nested_submodule',
+            'import_external_file', 'json_parse_to_dict', 'lower_bound', 'parse_args', 'parse_args_from_dict',
             'patch_dataloader_external_plugins', 'patch_getattr', 'read_multi_line', 'remove_response',
             'retry_decorator', 'seed_everything', 'shutdown_event_loop_in_daemon', 'split_list',
             'start_event_loop_in_daemon', 'subprocess_run', 'swanlab_get_run', 'test_time', 'to_abspath', 'upper_bound'

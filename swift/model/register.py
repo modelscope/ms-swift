@@ -100,8 +100,11 @@ def _patch_awq_compat(model_info):
         return
 
     try:
-        # compat transformers>=4.50 (autoawq)
-        from transformers.integrations import get_keys_to_not_convert
+        # compat transformers>=4.50 (autoawq); get_keys_to_not_convert moved to quantizers.base in transformers>=5.23
+        try:
+            from transformers.quantizers.base import get_keys_to_not_convert
+        except ImportError:
+            from transformers.integrations import get_keys_to_not_convert
         from transformers.quantizers.quantizer_awq import AwqQuantizer
         _process_model_before_weight_loading = AwqQuantizer._process_model_before_weight_loading
 

@@ -11,12 +11,14 @@ from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
 from .hy_v3 import HyV3AgentTemplate, HyV3PreviewAgentTemplate
 from .kimi_k3 import KimiK3AgentTemplate
 from .kimi_k25 import KimiK25AgentTemplate
+from .lfm3 import LFM3AgentTemplate
 from .ling3 import Ling3AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minicpm5 import MiniCPM5AgentTemplate
 from .minimax_m2 import MinimaxM2AgentTemplate
 from .minimax_m3 import MinimaxM3AgentTemplate
 from .mistral import MistralAgentTemplate
+from .nemotron import Nemotron3_5AgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .qwen3_coder import Qwen3_5AgentTemplate, Qwen3CoderAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
@@ -35,6 +37,7 @@ agent_template_map = {
     'qwen_zh': QwenZhAgentTemplate,
     'qwen_en_parallel': QwenEnParallelAgentTemplate,
     'qwen_zh_parallel': QwenZhParallelAgentTemplate,
+    'lfm3': LFM3AgentTemplate,
     'qwen3_coder': Qwen3CoderAgentTemplate,
     'qwen3_5': Qwen3_5AgentTemplate,
     'hermes': HermesAgentTemplate,
@@ -65,6 +68,8 @@ agent_template_map = {
     'gemma4': Gemma4AgentTemplate,
     # ref: https://modelscope.cn/models/RecursiveSI/flint
     'flint': FlintAgentTemplate,
+    # ref: https://modelscope.cn/models/nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16
+    'nemotron3_5': Nemotron3_5AgentTemplate,
     # extra
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate,

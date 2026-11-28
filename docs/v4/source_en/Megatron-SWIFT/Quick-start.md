@@ -53,9 +53,18 @@ MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 Alternatively, you can also use the image: (See historical images [here](../GetStarted/SWIFT-installation.md#mirror))
 ```
 # cu130 (fp8 training)
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.38.1-swift4.4.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.38.1-swift4.4.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.38.1-swift4.4.1
+# swift4.6.0
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.14.0-vllm0.33.0-modelscope1.40.3-swift4.6.0
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.14.0-vllm0.33.0-modelscope1.40.3-swift4.6.0
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.14.0-vllm0.33.0-modelscope1.40.3-swift4.6.0
+# swift4.5.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.13.0-vllm0.28.0-modelscope1.40.0-swift4.5.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.13.0-vllm0.28.0-modelscope1.40.0-swift4.5.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.13.0-vllm0.28.0-modelscope1.40.0-swift4.5.3
+# swift4.4.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.25.1-modelscope1.39.0-swift4.4.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.25.1-modelscope1.39.0-swift4.4.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.25.1-modelscope1.39.0-swift4.4.3
 
 # cu128
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.1-modelscope1.34.0-swift4.0.3
@@ -74,15 +83,15 @@ Recommended Operating Environment:
 |--------------|--------------|-------------|--------------------|
 | python       | >=3.10        | 3.12    |                    |
 | cuda         |              | cuda12.8/13.0   |                    |
-| torch        | >=2.0        | 2.8.0/2.11.0    |                    |
+| torch        | >=2.0        |                 |                    |
 | transformer-engine    | >=2.3       |  2.16.0  |                  |
 | apex |   |  0.1 | |
-| megatron-core    |    >=0.18,<0.20    | 0.18.0      |                  |
-| mcore-bridge    |    >=1.3.0    |   1.6.0   |                  |
+| megatron-core    |    >=0.18,<0.21    | 0.20.0      |  or dev branch    |
+| mcore-bridge    |    >=1.6.5    |   1.6.5   |                  |
 | flash-attn    |        | 2.8.3/4.0.0b15   |                  |
-| transformers | >=4.33       | 4.57.6/5.12.1    |                    |
+| transformers | >=4.33       | 5.23.0          |                    |
 | modelscope   | >=1.23       |             |                    |
-| peft         | >=0.11,<0.20 |             |      LoRA          |
+| peft         | >=0.11,<0.23 |             |      LoRA          |
 | trl          | >=0.15,<1.0 |       |      RLHF        |
 
 

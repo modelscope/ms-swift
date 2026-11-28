@@ -3,12 +3,15 @@
 
 目前Megatron-SWIFT支持了DeepSeek-V4的微调与RL支持，包括MTP、FP8等特性。（FP4 blockwise训练暂时不支持，会在加载权重时自动转成FP8/BF16）
 
-你需要使用Megatron-Core dev分支以及mcore-bridge、ms-swift main分支。
+你需要 Megatron-Core dev 分支或 0.20 版本，以及最新版本的 mcore-bridge 和 ms-swift。
 
 ```shell
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@dev
 pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
+
+# 可选：使用 0.20 release 代替 dev 分支
+# pip install "megatron-core>=0.20"
 
 # Megatron-LM在以下commit hash下进行测试
 # pip install git+https://github.com/NVIDIA/Megatron-LM.git@fd1121b8ff7e3a4f83a28d35aed172d7bc0260e1
@@ -192,7 +195,7 @@ megatron sft \
 --pipeline_model_parallel_size 8 \
 --pipeline_model_parallel_layout Et*5|t*5|t*6|t*6|t*6|t*5|t*5|t*5mL \
 ```
-- Packing/CP的支持：需安装mcore-bridge/ms-swift main分支。参考这两个PR：[ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705)、[mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140)。若要使用CP，你需要额外设置：
+- Packing/CP的支持：需要 mcore-bridge/ms-swift 的最新版本。参考这两个PR：[ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705)、[mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140)。若要使用CP，你需要额外设置：
 ```
 --sequence_packing_scheduler dp_balanced \
 --cp_partition_mode contiguous \

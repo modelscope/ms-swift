@@ -1,0 +1,20 @@
+{
+"_description": "FSDP configuration for HYV4 Flash",
+    "_note": "Uses FSDP with full_shard auto_wrap. HYV4FlashDecoderLayer for Flash model.",
+
+    "fsdp": "full_shard auto_wrap",
+    "fsdp_config": {
+        "version": 1,
+        "reshard_after_forward": "full_shard",
+        "auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
+        "transformer_layer_cls_to_wrap": ["HYV4FlashDecoderLayer"],
+        "cpu_ram_efficient_loading": true,
+        "state_dict_type": "FULL_STATE_DICT",
+        "activation_checkpointing": true,
+        "use_orig_params": true,
+        "sync_module_states": true,
+        "forward_prefetch": false,
+        "backward_prefetch": "NO_PREFETCH",
+        "limit_all_gathers": true
+    }
+}

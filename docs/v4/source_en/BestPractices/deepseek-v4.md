@@ -3,12 +3,15 @@
 
 Megatron-SWIFT currently supports fine-tuning and RL for DeepSeek-V4, including features such as MTP and FP8. (FP4 blockwise training is not yet supported; FP4 weights are automatically converted to FP8/BF16 when loaded.)
 
-You need to use the `dev` branch of Megatron-Core, together with the `main` branches of `mcore-bridge` and `ms-swift`.
+You need the Megatron-Core `dev` branch or the 0.20 release, together with the latest `mcore-bridge` and `ms-swift`.
 
 ```shell
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@dev
 pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
+
+# Optional: use the 0.20 release instead of the dev branch
+# pip install "megatron-core>=0.20"
 
 # Megatron-LM is tested under the following commit hash
 # pip install git+https://github.com/NVIDIA/Megatron-LM.git@fd1121b8ff7e3a4f83a28d35aed172d7bc0260e1
@@ -192,7 +195,7 @@ Tips:
 --pipeline_model_parallel_size 8 \
 --pipeline_model_parallel_layout Et*5|t*5|t*6|t*6|t*6|t*5|t*5|t*5mL \
 ```
-- Packing/CP support: Requires installing the mcore-bridge/ms-swift main branch. Refer to these two PRs: [ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705), [mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140). To use CP, you need to additionally configure:
+- Packing/CP support: Requires the latest mcore-bridge and ms-swift. Refer to these two PRs: [ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705), [mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140). To use CP, you need to additionally configure:
 
 ```
 --sequence_packing_scheduler dp_balanced \

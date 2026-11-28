@@ -13,7 +13,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
                                 is_torch_musa_available, is_torch_npu_available, strtobool)
 from types import MethodType
-from typing import List, Optional, TypeVar, Union
+from typing import Dict, List, Optional, TypeVar, Union
 
 from swift.utils import (HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_env_args, get_logger, is_mp,
                          to_device)
@@ -301,10 +301,13 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     safe_serialization: bool = True,
                     max_shard_size: Union[int, str] = '5GB',
                     model_dirs: List[str] = None,
-                    additional_saved_files: Optional[List[str]] = None) -> None:
+                    additional_saved_files: Optional[List[str]] = None,
+                    state_dict: Optional[Dict[str, torch.Tensor]] = None) -> None:
     if model is not None:
         if model.__class__.__name__ != 'SentenceTransformer':
-            model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+            kwargs = {'state_dict': state_dict} if state_dict is not None else {}
+            model.save_pretrained(
+                output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size, **kwargs)
         else:
             model.save_pretrained(output_dir, safe_serialization=safe_serialization)
             # copy sentencetransformers files

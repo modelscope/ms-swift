@@ -130,6 +130,7 @@ class MinimaxM2TemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['[e~[\n'])
     agent_template: Optional[str] = 'minimax_m2'
     is_thinking: bool = True
+    force_thinking: bool = True
     thinking_prefix: str = '<think>\n'
 
 
@@ -298,4 +299,5 @@ class MinimaxM3VLTemplateMeta(TemplateMeta):
     history_thinking_prefix: str = '</mm:think>'
 
 
-register_template(MinimaxM3VLTemplateMeta(MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate))
+register_template(
+    MinimaxM3VLTemplateMeta(MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate, preserve_thinking=True))
