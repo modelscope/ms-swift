@@ -1102,17 +1102,22 @@ def _check_chord(cfg: 'RLConfig') -> None:
 
 
 def _check_router_replay(cfg: 'RLConfig') -> None:
-    """Reject routing-replay combinations dev cannot honour (GRPO-only, never silently dropped).
+    """Reject routing-replay combinations dev cannot honour (never silently dropped).
 
-    The RECORD/REPLAY driving lives in the GRPO assembler; MoE/sampler-export checks surface at runtime.
+    The RECORD/REPLAY driving (``prepare_routing_replay``) is wired by the GRPO and PPO
+    recipes, whose policy losses compare the training log-probs against the sampling ones under
+    the SAME routing; the other recipes' losses never compare the two. MoE/sampler-export checks
+    surface at runtime.
     """
     mode = cfg.router_replay_mode
     if mode == 'disabled':
         return
-    if cfg.rl_type != 'grpo':
-        raise ValueError(f'router_replay_mode={mode!r} is GRPO-only: R2/R3 routing replay is driven by '
-                         'the GRPO assembler, and the other recipes build their own forward_backward kwargs '
-                         'without it. Use rl_type=grpo, or router_replay_mode=disabled.')
+    if cfg.rl_type not in ('grpo', 'ppo'):
+        raise ValueError(f'router_replay_mode={mode!r} is supported by rl_type=grpo and rl_type=ppo only: '
+                         'R2/R3 routing replay makes the training forward read the log-probs under the '
+                         'routing that sampled the tokens, which only a clipped-ratio policy loss '
+                         '(GRPO) or a clipped surrogate (PPO) compares against. Use rl_type=grpo, '
+                         'rl_type=ppo, or router_replay_mode=disabled.')
     if cfg.chord_sft_dataset:
         raise ValueError(f'router_replay_mode={mode!r} is incompatible with CHORD (--chord_sft_dataset): '
                          'CHORD auxiliary SFT rows carry no expert routing and cannot share the replay '

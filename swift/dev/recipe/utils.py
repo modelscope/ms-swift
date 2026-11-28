@@ -2507,6 +2507,48 @@ def single_teacher_id(teacher_model: Optional[List[str]], *, algo: str) -> Optio
     return teacher_model[0]
 
 
+def prepare_routing_replay(
+    model: Any,
+    routing: Any,
+    rl_config: 'RLConfig',
+    trajs: List[Any],
+    train_batch_size: int,
+    batching_kwargs: Optional[Dict[str, Any]] = None,
+) -> List[Any]:
+    """Establish each trajectory's MoE expert routing BEFORE the training forward replays it.
+
+    Shared by every recipe whose policy loss compares the training log-probs against the sampling
+    ones under the SAME routing (GRPO's clipped ratio, PPO's clipped surrogate). ``R3`` replays the
+    sampler-exported routing: the check reads the trajectories' real ``routed_experts`` fields where
+    they live (not a boolean proxy), and fails loudly when the engine exported none. ``R2`` RECORDS
+    the training model's own routing under the just-synced weights -- ONE whole-batch
+    ``forward_only`` (the dispatch splits it per rank, ``micro_batch_size`` keeps each rank's forward
+    at one per-device block). ``routing`` (a ``RoutingReplay``) stitches the recorded rows into new
+    trajectories where the forward handle and each trajectory resolve and returns them as
+    references, so the heavy columns never pass through the driver. Returns the trajectories to
+    train on: ``disabled`` returns the input unchanged, and the other forwards on the same batch
+    (value / reference / teacher) run without ``router_replay_mode``, where the model ignores the
+    routing columns.
+    """
+    from swift.dev.utils.scoring import copy_inputs
+
+    mode = rl_config.router_replay_mode
+    if mode == 'disabled':
+        return trajs
+    if mode == 'R3':
+        # verify is declared sync=True: a missing routed_experts raises at this call.
+        routing.verify(trajs)
+        return trajs
+    if mode != 'R2':
+        raise ValueError(f'Unknown router_replay_mode {mode!r}; expected one of disabled/R2/R3.')
+    micro_batch_size = max(1, train_batch_size // model.device_mesh.data_world_size)
+    out = model.forward_only(
+        inputs=copy_inputs(trajs), router_replay_mode='R2',
+        **{"micro_batch_size": micro_batch_size, **(batching_kwargs or {})},
+    )
+    return list(collect(routing(trajs, out))[0])
+
+
 def optimizer_batch_slices(num_samples: int, train_batch_size: int, ga: int):
     """Yield full GA update windows, dropping samples that cannot fill one GBS."""
     update_batch_size = train_batch_size * ga

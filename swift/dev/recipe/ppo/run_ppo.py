@@ -17,6 +17,7 @@ from swift.dev.recipe.utils import (
     finalize_rl_resources,
     initialize_rl_devices,
     optimizer_batch_slices,
+    prepare_routing_replay,
     prompt_rows_from_dataset,
     resolve_generation_batch_size,
     resolve_rollout_max_steps,
@@ -82,10 +83,16 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
     steps the policy (the clipped surrogate: ``advantages`` / ``old_logps`` off its inputs) and
     then the critic (the clipped value loss: ``task='value'`` over ``returns`` / ``old_values``)
     within the SAME update; the anchors stay fixed across every replay (PPO's batch re-use).
+    The policy's forward replays the expert routing the trajectories carry (``router_replay_mode``
+    on every optimizer step, since the anchors and the routing must be read under the SAME policy
+    state the sampler used); the critic's forward never does.
     Returns the optimizer steps actually run.
     """
     model = cluster.model
     value_model = cluster.value_model
+    policy_kwargs: Dict[str, Any] = {}
+    if rl_config.router_replay_mode != 'disabled':
+        policy_kwargs['router_replay_mode'] = rl_config.router_replay_mode
     update_batch_size = train_batch_size * state.ga
     total_samples = len(trajs) * max(1, rl_config.num_ppo_epochs)
     dropped = total_samples % update_batch_size
@@ -117,6 +124,7 @@ def _train_ppo_batch(cluster: Cluster, state: StepState, rl_config: 'RLConfig', 
             gradient_accumulation_steps=1,
             micro_batch_size=micro_batch_size,
             temperature=temperature,
+            **policy_kwargs,
         )
         state.handler.on_pre_optimizer_step()
         model.clip_grad_and_step(max_grad_norm=state.max_grad_norm, gradient_accumulation_steps=1)
@@ -232,6 +240,10 @@ def _train_loop(cluster: Cluster, driver: Any, rl_config: 'RLConfig',
                     gae_summary['unscored_flags'] = [
                         gae_summary['unscored_flags'][position] for position in lane_restore]
             unscored_cell[0] = sum(gae_summary.get('unscored_flags') or ())
+            # The MoE routing is established once per delivered batch (R3: the sampler-exported
+            # routing verified present; R2: recorded on the just-synced policy), on the caller's
+            # order the value model trains; every replay below reads it off the trajectories.
+            trajs = prepare_routing_replay(cluster.model, cluster.routing, rl_config, trajs, train_batch_size)
             # the reward telemetry reflects exactly the batch the upcoming optimizer steps train on
             reward_metric.reset()
             reward_metric.accumulate(

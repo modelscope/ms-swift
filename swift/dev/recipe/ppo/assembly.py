@@ -71,7 +71,9 @@ class Cluster(NamedTuple):
     ``advantage`` is the GAE estimator + its formula knobs (kl=k1, the token-reward KL coef, gamma /
     lambda / whitening): it owns the per-token math inside its call, reading the named score
     columns the driver wrote. ``traj_filter`` runs the row-selection rules in the worker where the
-    trajectories live (the nonempty-response rule, and any user rule).
+    trajectories live (the nonempty-response rule, and any user rule). ``routing`` stitches the
+    recorded MoE expert routing into the trajectories the policy's forward replays (``None`` when
+    ``router_replay_mode='disabled'``).
     """
 
     model: Any
@@ -90,6 +92,7 @@ class Cluster(NamedTuple):
     advantage: Any
     traj_filter: Any
     prm_segment: Any = None
+    routing: Any = None
 
 
 def initialize_ppo_cluster(
@@ -122,7 +125,7 @@ def initialize_ppo_cluster(
     batch (it bounds the episodes in flight).
     """
     from twinkle.advantage import GAEAdvantage
-    from twinkle.processor import TrajectoryFilter
+    from twinkle.processor import RoutingReplay, TrajectoryFilter
 
     from swift.dev.builder import apply_full_param_freeze, build_dp_mesh, build_model, build_ref_model
     from swift.dev.builder.adapter import apply_tuner
@@ -172,6 +175,7 @@ def initialize_ppo_cluster(
         quantize_config=quantize_config,
         megatron_config=megatron_config,
         moe_config=moe_config,
+        enable_router_replay=rl_config.router_replay_mode != "disabled",
         torch_dtype="float32",
     )
     if has_adapter(tuner_config):
@@ -386,6 +390,7 @@ def initialize_ppo_cluster(
                                **prm_kwargs, **group),
         traj_filter=TrajectoryFilter(**group),
         prm_segment=build_prm_segment(reward_config, rollout_config, remote_group=group['remote_group']),
+        routing=RoutingReplay(**group) if rl_config.router_replay_mode != "disabled" else None,
     )
 
 
