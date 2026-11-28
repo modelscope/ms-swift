@@ -173,51 +173,6 @@ def rollout_metrics(
     return values
 
 
-def rollout_iteration_metrics(state, *, stream_stats=None, resource_metrics=None, terminal=False, publications=0):
-    """Back-compat shim: see :meth:`RolloutStepState.fold_iteration_metrics`."""
-    return state.fold_iteration_metrics(
-        stream_stats=stream_stats, resource_metrics=resource_metrics, terminal=terminal, publications=publications
-    )
-
-
-def init_rollout_metrics(
-    state, device_groups, *, mode="colocate", parameter_sync_step=1, num_generations=1, attributes=None
-):
-    """Back-compat shim: see :meth:`RolloutStepState.setup_rollout_metrics`."""
-    state.setup_rollout_metrics(
-        device_groups,
-        mode=mode,
-        parameter_sync_step=parameter_sync_step,
-        num_generations=num_generations,
-        attributes=attributes,
-    )
-
-
-def begin_rollout_iteration(state):
-    """Back-compat shim: see :meth:`RolloutStepState.begin_rollout_iteration`."""
-    state.begin_rollout_iteration()
-
-
-def observe_rollout_batch(state, summary):
-    """Back-compat shim: see :meth:`RolloutStepState.observe_rollout_batch`."""
-    state.observe_rollout_batch(summary)
-
-
-def record_rollout_training(state, indices):
-    """Back-compat shim: see :meth:`RolloutStepState.record_rollout_training`."""
-    state.record_rollout_training(indices)
-
-
-def rollout_memory_metrics(state):
-    """Back-compat shim: see :meth:`RolloutStepState.rollout_memory_metrics`."""
-    return state.rollout_memory_metrics()
-
-
-def finish_rollout_metrics(state, *, stream_stats=None, status="completed"):
-    """Back-compat shim: see :meth:`RolloutStepState.finish_rollout_metrics`."""
-    state.finish_rollout_metrics(stream_stats=stream_stats, status=status)
-
-
 class SaveKnobs(NamedTuple):
     """One training run's checkpoint-writing settings (the dissolved CheckpointSaver half)."""
 
@@ -1467,7 +1422,6 @@ def initialize_rl_devices(
         tuner_config,
         rl_config,
         rollout_config=rollout_config,
-        megatron_config=megatron_config,
         quantize_config=quantize_config,
         plugin_config=None,
     )
@@ -1664,7 +1618,8 @@ def build_rl_sampler(
         # quant-aware subclass so an FP8 / MXFP4 engine can absorb the trainer's BF16 stream;
         # it is a pass-through when the engine is not quantized. An explicit engine arg wins.
         from twinkle.sampler.vllm_sampler.quant_sync import QUANT_SYNC_WORKER_EXTENSION
-        sampler_engine_args.setdefault('worker_extension_cls', QUANT_SYNC_WORKER_EXTENSION)
+
+        sampler_engine_args.setdefault("worker_extension_cls", QUANT_SYNC_WORKER_EXTENSION)
     if colocate:
         sampler_engine_args["enable_sleep_mode" if backend == "vllm" else "enable_memory_saver"] = True
     if enable_sampling_replay:
@@ -1796,19 +1751,6 @@ def teacher_group(index: int) -> str:
     placement builds all K into the single shared :data:`TEACHER_GROUP` and scores them serially.
     """
     return f"teacher_{index}"
-
-
-def spec_world_size(parallel_spec: Optional[str], default: int = 1) -> int:
-    """The DeviceGroup rank count a frozen auxiliary's ``parallel_spec`` needs (``default`` if none).
-
-    The value MUST equal what the group plan allocated, since the frozen build reads its
-    ``nproc_per_node`` as the group size.
-    """
-    if not parallel_spec:
-        return default
-    from twinkle import DeviceMesh
-
-    return DeviceMesh.from_spec(parallel_spec).world_size
 
 
 def _messages_under_system(messages: List[dict], system: Optional[str]) -> List[dict]:
@@ -1968,7 +1910,6 @@ def process_and_validate(
         tuner_config,
         rl_config,
         rollout_config=None,
-        megatron_config=megatron_config,
         quantize_config=quantize_config,
         plugin_config=None,
     )
@@ -2113,6 +2054,7 @@ def build_generative_eval(
     from twinkle.checkpoint_engine import CheckpointEngineManager
 
     from swift.dev.builder import build_dp_mesh, build_sampler
+
     # The hand-over sleeps the engine to free the GPU for the trainer, which each backend permits
     # only with its own memory-saver flag on (vLLM: enable_sleep_mode, sglang: enable_memory_saver).
     sleep_arg = "enable_sleep_mode" if backend == "vllm" else "enable_memory_saver"
@@ -2510,6 +2452,7 @@ def save_training_checkpoint(
         # rollout engine (DeepSeek-V4's FlashMLA o_proj reads FP8 weight_scale_inv).
         # Restore the source's packed format in place, using the trained weights.
         from twinkle.sampler.vllm_sampler.quant_sync.requantize import requantize_checkpoint
+
         requantize_checkpoint(ckpt_dir, requantize_source)
     return ckpt_dir
 
