@@ -498,6 +498,29 @@ class TestQwen3_5Fp32Weights(unittest.TestCase):
                 {value
                  for key, value in saved_dtypes.items() if key.endswith(_QWEN3_5_KEEP_IN_FP32_MODULES)}, {'F32'})
 
+    def test_fla_causal_conv1d_fallback_when_standalone_missing(self):
+        calls = []
+
+        def fake_fla_conv1d(x, weight, bias=None, activation=None, cu_seqlens=None):
+            calls.append((tuple(x.shape), tuple(weight.shape), activation, cu_seqlens))
+            return x + 1, None
+
+        def fake_origin_conv1d(x, weight, bias=None, activation=None, **kwargs):
+            return x + 2
+
+        dummy_mod = SimpleNamespace(causal_conv1d_fn=fake_origin_conv1d)
+        with patch.object(qwen_module.importlib.util, 'find_spec', return_value=None), \
+                patch.object(qwen_module, '_try_import_flash_linear_attention_kernels'), \
+                patch.object(qwen_module, 'causal_conv1d', fake_fla_conv1d):
+            qwen_module._patch_qwen3_5_fla_causal_conv1d_fallback(dummy_mod)
+            self.assertTrue(getattr(dummy_mod.causal_conv1d_fn, '_ms_swift_fla_conv1d_patched', False))
+            self.assertIs(inspect.unwrap(dummy_mod.causal_conv1d_fn), fake_origin_conv1d)
+            x_cpu = torch.zeros(1, 8, 4)
+            w_cpu = torch.ones(8, 2)
+            out_cpu = dummy_mod.causal_conv1d_fn(x_cpu, w_cpu, activation='silu')
+            self.assertTrue(torch.equal(out_cpu, x_cpu + 2))
+            self.assertEqual(calls, [])
+
 
 if __name__ == '__main__':
     unittest.main()
