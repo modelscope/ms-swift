@@ -2,6 +2,7 @@
 import json
 import os
 import torch.distributed as dist
+import uuid
 from accelerate.utils import gather_object
 from queue import Queue
 from threading import Thread
@@ -117,6 +118,9 @@ def update_last_checkpoint_symlink(checkpoint_dir: str) -> Optional[str]:
     target is relative (just the checkpoint directory name) so the output directory stays movable, and it is
     swapped in with `os.replace` so readers never observe a missing link. Returns the link path, or None if it
     could not be created (e.g. a filesystem without symlink support).
+
+    Concurrent updates use independent temporary links. The last successful `os.replace` wins, regardless of
+    checkpoint step or save start order.
     """
     if not os.path.isdir(checkpoint_dir):
         return None
@@ -125,16 +129,16 @@ def update_last_checkpoint_symlink(checkpoint_dir: str) -> Optional[str]:
     if os.path.lexists(link_path) and not os.path.islink(link_path):
         logger.warning(f'`{link_path}` already exists and is not a symlink; skip updating it.')
         return None
-    tmp_path = f'{link_path}.tmp'
+    tmp_path = f'{link_path}.tmp.{uuid.uuid4().hex}'
     try:
-        if os.path.lexists(tmp_path):
-            os.remove(tmp_path)
         os.symlink(os.path.basename(checkpoint_dir), tmp_path)
-        os.replace(tmp_path, link_path)
+        try:
+            os.replace(tmp_path, link_path)
+        finally:
+            if os.path.lexists(tmp_path):
+                os.remove(tmp_path)
     except OSError as e:
         logger.warning(f'Failed to update the symlink `{link_path}`: {e}')
-        if os.path.lexists(tmp_path):
-            os.remove(tmp_path)
         return None
     return link_path
 
