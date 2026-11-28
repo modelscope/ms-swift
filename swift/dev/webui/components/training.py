@@ -508,7 +508,7 @@ class CheckpointStage(StageComponent):
         # optimizer state. Default 'model' keeps the weights-only save (small,
         # deploy-oriented) that profiles without training semantics expect.
         save_optimizer = str(self.params.get('profile') or 'model') == 'training'
-        from swift.dev.builders.remote import RemoteModel
+        from swift.dev.builder.remote import RemoteModel
         if isinstance(model, RemoteModel):
             # mode='remote': the server owns the checkpoint store, so the save
             # carries only the name (plus the optimizer flag above) -- the
