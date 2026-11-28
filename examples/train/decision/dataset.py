@@ -2,8 +2,9 @@
 import os
 
 from swift.dataset import DatasetMeta, register_dataset
-from swift.dataset.preprocessor.decision import (ClefPreprocessor, JevPreprocessor, KevPreprocessor, LayaPreprocessor,
-                                                 OmniJevPreprocessor, StartLuxPreprocessor, Thx02Preprocessor)
+from swift.dataset.preprocessor.decision import (ClefPreprocessor, D3Preprocessor, JevPreprocessor, KevPreprocessor,
+                                                 LayaPreprocessor, OmniJevPreprocessor, StartLuxPreprocessor,
+                                                 Thx02Preprocessor)
 
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 
@@ -63,11 +64,23 @@ register_dataset(
     ),
     exist_ok=True)
 
+for name, variable, filename in (
+    ('d3_decision', 'D3_TRAIN_FILE', 'd3flash.jsonl'),
+    ('d3_decision_val', 'D3_VAL_FILE', 'd3flash_val.jsonl'),
+):
+    register_dataset(
+        DatasetMeta(
+            dataset_name=name,
+            dataset_path=os.environ.get(variable) or os.path.join(_DATA_DIR, filename),
+            preprocess_func=D3Preprocessor(),
+        ),
+        exist_ok=True)
+
 if __name__ == '__main__':
     # Quick self-check: load each dataset and print the normalized decision row contract.
     from swift.dataset import load_dataset
     for name in ('clef_decision', 'jev_decision', 'omnijev_decision', 'kev_decision', 'thx02_decision', 'laya_decision',
-                 'startlux_decision'):
+                 'startlux_decision', 'd3_decision', 'd3_decision_val'):
         ds = load_dataset([name], num_proc=1)[0]
         print(f'==== {name}: {len(ds)} rows ====')
         row = ds[0]

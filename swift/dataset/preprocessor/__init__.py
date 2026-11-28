@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .core import (DATASET_TYPE, AlpacaPreprocessor, AnthropicMessagesPreprocessor, AutoPreprocessor, ClsPreprocessor,
                    MessagesPreprocessor, OpenAIMessagesPreprocessor, ResponsePreprocessor, RowPreprocessor)
-from .decision import (ClefPreprocessor, DecisionAugmentConfig, GenericDecisionPreprocessor, H2OPreprocessor,
-                       JevPreprocessor, KevPreprocessor, LayaPreprocessor, OmniJevPreprocessor, ScoringPreprocessor,
-                       StartLuxPreprocessor, Thx02Preprocessor, augment_decision_row)
+from .decision import (ClefPreprocessor, D3Preprocessor, DecisionAugmentConfig, GenericDecisionPreprocessor,
+                       H2OPreprocessor, JevPreprocessor, KevPreprocessor, LayaPreprocessor, OmniJevPreprocessor,
+                       ScoringPreprocessor, StartLuxPreprocessor, Thx02Preprocessor, augment_decision_row)
 from .extra import ClsGenerationPreprocessor, GroundingMixin, TextGenerationPreprocessor

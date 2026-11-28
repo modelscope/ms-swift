@@ -31,6 +31,8 @@ pip install "ms-swift>=4.6.0"
   - [ModelScope 4B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-4B-AutoThink) / [9B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-9B-AutoThink) / [27B](https://modelscope.cn/models/StartLuxAI/StartLux-Decision-v1.1-27B-AutoThink)
 8. H2O-4B：已合并发布版 LoRA 的 Qwen3.5-4B hybrid + 固定 255 行 label readout，单题单序列
   - [ModelScope](https://modelscope.cn/models/h2oai/h2o-lightning-4b) / [HuggingFace](https://huggingface.co/h2oai/h2o-lightning-4b)
+9. D3-Flash 使用 Qwen3.5 混合注意力骨干。全注意力层采用双向注意力，Gated DeltaNet 层保持因果扫描。模型从最后一个提示词 token 的隐藏状态为各选项打分。
+  - [ModelScope](https://www.modelscope.cn/models/vllm-sr/d3-flash) / [HuggingFace](https://huggingface.co/vllm-sr/d3-flash)
 
 
 | 模型         | `--model_type` | 底座                               | 头制品                                                                            | `--loss_type`  |
@@ -44,6 +46,7 @@ pip install "ms-swift>=4.6.0"
 | Laya       | `laya`         | ModernBERT-large（双向，无 adapter）   | `model.safetensors`（编码器 + 头同文件）+ `rl_agent_config.json`（结构 + per-kind/per-bucket 温度） | `ce_rps`       |
 | StartLux   | `startlux`     | 已合并的 Qwen3.5 hybrid（视觉塔，因果） | `decision_config.json`（26 个字母 token id + per-kind read-out 温度）                 | `distill_rps`  |
 | H2O-4B     | `h2o`          | 已合并 LoRA 的 Qwen3.5-4B hybrid | `label_rows.safetensors`（255×hidden 固定 readout）+ `serve_config.json`（255 个标签 + per-kind 温度） | `scoring`      |
+| D3-Flash | `d3` | Qwen3.5 hybrid | `readout.safetensors`（可训练的 255 行 FP32 读出头）+ `decision_config.json` | `scoring` |
 
 
 开发者可以将任意 CausalLM 转为决策模型，只需指定：
@@ -382,6 +385,16 @@ H2O 使用自己的请求格式：`questions` 是**列表**，一次前向只读
 - gold 可写在题目内（`gold`/`answer`/`label`/`target`），或在记录级用 `answers`/`golds`/`targets`（列表题目按**下标**、字典题目按 key 索引）。取值可以是选项名、下标，或按选项顺序的完整分布。
 - 与 THX-02 的差异：`questions` 是列表而非字典；选项渲染为 `A) 选项名: 描述`，字母只是展示，readout 的 255 行按 `criteria` 顺序与选项一一对应；每条记录只渲染一个问题。
 
+### D3-Flash
+
+D3-Flash 使用通用 JSONL 加载器。每行包含一个 `state` 和一个 `questions` 列表，`D3Preprocessor` 将列表展开为每题一条样本。
+
+```json lines
+{"state":"订单已付款，尚未发货。","questions":[{"kind":"choice","question":"选择订单状态","options":["paid: 已付款","shipped: 已发货"],"gold":[1,0]},{"kind":"noul","question":"订单是否已发货？","gold":[1,0]}]}
+```
+
+`choice` 按展示顺序列出 1–255 个选项文本，`noul` 默认按 `false, true` 排列，`score` 列出 2–10 个互异的有序等级。`gold` 可以是从 0 开始的下标，也可以是按选项顺序排列的分布。同一文件内的字段类型应一致。混用硬标签与软标签时，将硬标签写成 one-hot 数组；混用文本和结构化状态时，将结构化状态写成 JSON 字符串。训练集和验证集先按原始记录划分。
+
 ## 训练
 
 ms-swift 为每个已接入模型提供训练脚本 `examples/train/decision/<model_type>.sh`（使用**本地 mini 数据集**，无需联网下载），通过 `--external_plugins examples/train/decision/dataset.py --dataset <model_type>_decision` 加载本地数据；同时支持使用**远程数据集**（`--dataset open_jev_<model_type>:all`，需在线下载 Open-Jev 语料）。两种方式仅数据来源不同，其余参数完全一致，详见[数据集](#数据集)章节。各模型的完整可运行命令（含 `--adapters` 路径获取、头制品环境变量导出等）见对应脚本。
@@ -525,6 +538,39 @@ swift sft \
 - 注意力模式跟随 checkpoint 自带的 `serve_config.json`（`two_way.default = bidirectional`），即**默认双向**，gated-deltanet 层保持因果；`H2O_TWO_WAY=1/0` 可显式覆盖（`1` 双向、`0` 单向）
 - 双向需要 `transformers>=5.13.0`，低版本只能用 `H2O_TWO_WAY=0` 走单向；两种模式的 per-kind 温度分别取自 `two_way.temperature` 与顶层 `temperature`，不要混用
 - 训练输出目录包含 adapter、`scoring_head.safetensors`（255 行 readout）与 `scoring_head.json`（`head_temperature` + per-kind `temperatures`）
+
+### D3-Flash
+
+D3-Flash 从发布目录加载 Qwen3.5 骨干和 `readout.safetensors`。示例按 Qwen3.5 的多模态架构映射选择语言骨干中的 LoRA 目标层，并同时更新 255 行 FP32 读出头。使用 `transformers>=5.13.1`，在仓库根目录运行以下命令，将 `--model` 替换为本地模型目录。
+
+```bash
+swift sft \
+    --model /path/to/d3-flash \
+    --model_type d3 --task_type decision \
+    --external_plugins examples/train/decision/dataset.py \
+    --dataset d3_decision --val_dataset d3_decision_val --split_dataset_ratio 0 \
+    --tuner_type lora --tuner_backend peft \
+    --lora_rank 8 --lora_alpha 16 --lora_dropout 0 \
+    --loss_type scoring --padding_side left --attn_impl sdpa \
+    --torch_dtype bfloat16 --max_length 2048 \
+    --gradient_checkpointing true \
+    --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
+    --per_device_train_batch_size 1 --per_device_eval_batch_size 1 \
+    --learning_rate 1e-4 --gradient_accumulation_steps 1 --max_steps 4 \
+    --eval_strategy steps --eval_steps 2 --save_steps 2 --logging_steps 1 \
+    --output_dir output/d3
+```
+
+**关键参数**
+
+- 插件为训练集和验证集注册 `D3Preprocessor`。使用自有数据时，设置 `D3_TRAIN_FILE` 和 `D3_VAL_FILE` 指向对应的 JSONL 文件。
+- `--loss_type scoring` 在每道题的有效选项上计算交叉熵，监督目标取自 `target_probs`。
+- `--padding_side left` 使批内每道题的最后一个提示词 token 对齐到序列末尾，供读出头打分。`--attn_impl sdpa` 用于双向的 full-attention 层，Gated DeltaNet 层保持因果扫描。
+- D3-Flash 每条序列处理一个文本问题，训练时关闭 packing 和 padding-free。提示词超过长度上限时会抛出 `MaxLengthError`。
+
+示例运行 4 个优化步，每 2 步评估并保存一次。也可设置 `D3_MODEL_DIR` 和 `D3_OUTPUT_DIR`，运行[训练脚本](../../../examples/train/decision/d3.sh)。
+
+加载已合并的 LoRA 导出模型或全量微调 checkpoint 时，将 `--model` 指向对应目录，并传入 `--model_type d3 --task_type decision`。加载器从 `scoring_head.json` 读取决策配置，并恢复训练后的读出头和校准参数。加载未合并的 LoRA checkpoint 时，将 `--model` 指向发布模型，并传入 `--adapters /path/to/checkpoint`。
 
 ### StartLux
 

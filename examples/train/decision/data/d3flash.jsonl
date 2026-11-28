@@ -1,0 +1,2 @@
+{"state": "订单已付款，但尚未发货。", "questions": [{"kind": "choice", "question": "选择订单状态", "options": ["paid: 已付款", "delivered: 已送达"], "gold": [1.0, 0.0]}, {"kind": "noul", "question": "订单是否已发货？", "gold": [1.0, 0.0]}, {"kind": "score", "question": "订单进度", "options": ["未付款", "已付款", "已送达"], "gold": [0.0, 1.0, 0.0]}]}
+{"state": "{\"status\": \"delivered\", \"note\": \"客户已经签收\"}", "questions": [{"kind": "noul", "question": "客户是否已收到包裹？", "gold": [0.0, 1.0]}, {"kind": "score", "options": ["未付款", "运输中", "已签收"], "gold": [0.0, 0.1, 0.9]}]}

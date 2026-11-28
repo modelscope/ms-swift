@@ -140,6 +140,7 @@ class LLMTemplateType:
     spark2_5 = 'spark2_5'
 
     generic_decision = 'generic_decision'
+    d3 = 'd3'
     laya = 'laya'
 
 
