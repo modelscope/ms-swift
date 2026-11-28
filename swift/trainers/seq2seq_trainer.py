@@ -224,10 +224,14 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                         dist.all_reduce(num_items_in_batch, op=dist.ReduceOp.SUM)
                 loss = outputs.loss.sum() / num_items_in_batch
             else:
-                if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
-                    loss = self.label_smoother(outputs, labels, shift_labels=True)
-                else:
-                    loss = self.label_smoother(outputs, labels)
+                shift_labels = model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values()
+                loss = self.label_smoother(outputs, labels, shift_labels=shift_labels)
+                if num_items_in_batch is not None:
+                    # Older LabelSmoother versions only return a microbatch mean.
+                    # Normalize over the same token count as the unsmoothed loss.
+                    loss_labels = labels[..., 1:] if shift_labels else labels
+                    num_active_tokens = loss_labels.ne(self.label_smoother.ignore_index).sum().to(loss.device)
+                    loss = loss * (num_active_tokens / torch.as_tensor(num_items_in_batch, device=loss.device))
 
             if self.model.model_info.is_moe_model and self.args.router_aux_loss_coef is not None:
                 aux_loss = outputs.get('aux_loss')
