@@ -31,19 +31,22 @@ def infer_cli(
     template_config: TemplateConfig,
     generation_config: Optional[GenerationConfig] = None,
     *,
-    backend: Literal['vllm', 'sglang', 'transformers'] = 'vllm',
+    backend: Literal['vllm', 'sglang', 'transformers', 'openai'] = 'vllm',
     engine_args: Optional[Dict[str, Any]] = None,
     adapters: Optional[List[str]] = None,
     quantize_config: Optional[QuantizeConfig] = None,
     multi_round: bool = True,
     rollout_config: Optional[RolloutConfig] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> None:
     """Interactive REPL. Commands: ``clear`` / ``reset-system`` / ``multi-line`` / ``single-line`` / ``quit``.
 
     History is kept across turns unless ``multi_round`` is False. With ``rollout_config.tools`` and
-    ``max_turns`` set, each turn runs the tool-calling rollout (streamed live); otherwise a plain
-    chat turn (streamed when ``generation_config.stream``). A multimodal template prompts for media
-    paths first, matching legacy's ``input_mm_data``.
+    ``max_turns`` set, each turn runs the tool-calling rollout (streamed live when the sampler
+    streams); otherwise a plain chat turn (streamed when ``generation_config.stream``). A multimodal
+    template prompts for media paths first, matching legacy's ``input_mm_data``. ``backend='openai'``
+    chats with a served model over its OpenAI API (``base_url`` / ``api_key``), one request per turn.
     """
     from dataclasses import asdict
 
@@ -59,7 +62,9 @@ def infer_cli(
         engine_args=engine_args,
         template=template,
         adapters=adapters,
-        quantize_config=quantize_config)
+        quantize_config=quantize_config,
+        base_url=base_url,
+        api_key=api_key)
     adapter_path = adapters[0] if adapters else None
     apply_generation_baseline(generation_config, model_config.model)
     params = to_sampling_params(generation_config)
@@ -115,7 +120,10 @@ def infer_cli(
         try:
             if rollout is not None:
                 rollout.close()
-            sampler.shutdown()
+            # An API sampler holds no engine to release; a local one spins down its workers here.
+            shutdown = getattr(sampler, 'shutdown', None)
+            if shutdown is not None:
+                shutdown()
         except KeyboardInterrupt:
             # The OS reclaims the workers' memory and IPC objects once the process dies, and atexit's
             # shutdown is idempotent -- acknowledge instead of propagating a scary stack.
@@ -159,10 +167,13 @@ def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any]) -> str:
     ``rollout.stream`` yields the episode as it happens: ``StreamDelta`` deltas echo as they arrive
     (across every tool-loop turn), ``StreamToolCall`` traces each turn's dispatched tools, and the
     final ``StreamDone`` carries the transcript. Only the final assistant text re-enters the history
-    -- the tool plumbing is per-turn, and the next human turn starts from the answer.
+    -- the tool plumbing is per-turn, and the next human turn starts from the answer. A sampler
+    without ``sample_stream`` (an API sampler) runs the same loop as one batch call instead.
     """
     from twinkle_agentic.rollout import StreamDelta, StreamDone, StreamToolCall
 
+    if not hasattr(rollout.sampler, 'sample_stream'):
+        return _run_tool_turn_batch(rollout, trajectory)
     print(f'{_CYAN}Agent:{_RESET} ', end='', flush=True)
     response = ''
     truncated = False
@@ -186,6 +197,18 @@ def _run_tool_turn(rollout: Any, trajectory: Dict[str, Any]) -> str:
     print(flush=True)
     if truncated:
         print(f'  {_YELLOW}[trajectory truncated at max_turns / max_trajectory_tokens]{_RESET}')
+    return response
+
+
+def _run_tool_turn_batch(rollout: Any, trajectory: Dict[str, Any]) -> str:
+    """One human turn through the tool-calling rollout as a single batch call (no live streaming)."""
+    from twinkle.data_format import last_assistant_text
+
+    rows = rollout([trajectory])
+    response = last_assistant_text(rows[0]) if rows else ''
+    if rows and rows[0].get('truncated'):
+        print(f'  {_YELLOW}[trajectory truncated at max_turns / max_trajectory_tokens]{_RESET}')
+    print(f'{_CYAN}Agent:{_RESET} {response}', flush=True)
     return response
 
 

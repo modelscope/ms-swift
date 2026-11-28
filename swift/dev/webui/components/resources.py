@@ -400,27 +400,11 @@ class SamplerComponent(ResourceComponent):
             raise ComponentError(f'{self.node_id}: model_config: {exc}') from None
         engine = str(self.params.get('engine', 'vllm') or 'vllm')
         if self.remote_target is not None:
-            # A remote session serves the engines on the twinkle-server: the sampler is the
-            # client handle over the served one (build_sampler's own 'twinkle' tier -- the
-            # transport is already bound by the session bootstrap). Local placement knobs
-            # have nothing to size, so setting them is refused rather than dropped.
-            if engine != 'twinkle':
-                raise ComponentError(
-                    f'{self.node_id}: a remote resource page serves the engines on a '
-                    "twinkle-server -- set the sampler's engine to 'twinkle' (the client "
-                    'handle over the served one) instead of a local engine.')
-            if self.params.get('engine_args') or self.params.get('parallel_spec'):
-                raise ComponentError(
-                    f'{self.node_id}: engine_args / parallel_spec size a LOCAL engine layout; '
-                    'a served engine owns its layout server-side. Drop them.')
-            from twinkle import DeviceMesh
-
-            self.obj = build_sampler(
-                model_config,
-                backend='twinkle',
-                device_mesh=DeviceMesh.from_sizes(dp_size=1),
-                template=template)
-            return self.obj
+            # A remote session serves its engines on the twinkle-server; generation is an OpenAI call
+            # against that server (see the served-model resource), not a sampler swift builds.
+            raise ComponentError(
+                f'{self.node_id}: a remote resource page has no local sampler -- the engines are '
+                'served by the twinkle-server; drive generation through its OpenAI API.')
         engine_args = dict(self.params.get('engine_args') or {})
         # The engine's shape mirrors its DeviceGroup: tp GPUs per worker,
         # cards/tp workers. Derived from the declared spec exactly as the
@@ -595,7 +579,7 @@ class LossComponent(ResourceComponent):
 class ScorerComponent(ResourceComponent):
     """r(tau) as a resident callable: a registered reward family, or user code.
 
-    ``kind`` names the ``orms`` plugin registry under the SAME dual
+    ``kind`` names the ``reward_rules`` plugin registry under the SAME dual
     construction the recipes use (SwiftPlugin rules take a filled
     RewardConfig; native rules take typed kwargs directly); ``code`` replaces
     it with the user's ``score(rows)`` callable. The object rides the SCORER
@@ -611,14 +595,14 @@ class ScorerComponent(ResourceComponent):
         if code:
             self.obj = load_code_component(code, 'score')
             return self.obj
-        from swift.dev.reward import orms
+        from swift.dev.reward import reward_rules
         from swift.dev.utils.plugin import SwiftPlugin
         kind = str(self.params.get('kind') or 'math')
-        cls = orms.get(kind)
+        cls = reward_rules.get(kind)
         if cls is None:
             raise ComponentError(
                 f'{self.node_id}: unknown scorer {kind!r}; available kinds: '
-                f'{sorted(orms)} -- the registry is open, plugins extend it '
+                f'{sorted(reward_rules)} -- the registry is open, plugins extend it '
                 'through swift.dev.reward')
         kwargs = dict(self.params.get('scorer_kwargs') or {})
         # 注册表双构造协议：SwiftPlugin 型规则吃 args=Config（超参从 Config

@@ -248,12 +248,12 @@ def _check_remote_mode(distributed_config: 'DistributedConfig', is_megatron: boo
             'requires_grad in-process on the training side, which cannot cross HTTP. Keep the '
             'remote run LoRA, or apply the freeze with mode=local/ray.')
     if train_config is not None and train_config.predict_with_generate:
-        # Generative eval builds a LOCAL sampler; the remote client sampler for it is a separate
-        # wiring (the infer 'twinkle' backend) not yet threaded through build_generative_eval.
+        # Generative eval builds a LOCAL sampler; a served engine is reached through its OpenAI API,
+        # which build_generative_eval does not drive.
         raise ValueError(
             '--mode remote does not support --predict_with_generate yet: the generative-eval '
-            'sampler is built in-process. Evaluate the saved twinkle:// checkpoint with '
-            '`swift infer --sampler twinkle`, or use val-loss eval (the default) remotely.')
+            'sampler is built in-process. Evaluate the saved twinkle:// checkpoint by serving it with '
+            '`swift deploy` and calling its OpenAI API, or use val-loss eval (the default) remotely.')
 
 
 def _check_remote_rl(rl_config: 'RLConfig', rollout_config: Optional['RolloutConfig'],
@@ -849,6 +849,21 @@ def validate_infer_config(infer_config: Optional['InferConfig']) -> None:
     # A store format is an open registry key, so check the name resolves (and is writable) here -- after
     # --external_plugins is imported -- rather than after the run has generated rows it cannot write.
     validate_store_format(infer_config.store_format, writable=True)
+    if infer_config.sampler == 'openai':
+        # The served model answers over its chat-completions API: no local engine, no logprobs, no
+        # engine knobs. Anything that needs one of those is refused here, not dropped silently.
+        if not infer_config.infer_url:
+            raise ValueError("--sampler openai needs --infer_url (the OpenAI-compatible base_url, e.g. "
+                             'http://127.0.0.1:8100/v1).')
+        if infer_config.save_rollout_tokens:
+            raise ValueError('--sampler openai cannot --save_rollout_tokens: the OpenAI API returns text, '
+                             'not per-token logprobs. Use a local sampler for rollout tokens.')
+        if infer_config.engine_kwargs:
+            raise ValueError(f'--sampler openai ignores --engine_kwargs {sorted(infer_config.engine_kwargs)}: '
+                             'no local engine is built; tune the served model on its own server.')
+    elif infer_config.infer_url or infer_config.infer_api_key:
+        raise ValueError(f'--infer_url / --infer_api_key need --sampler openai (got sampler='
+                         f'{infer_config.sampler!r}); they would be silently ignored.')
     # Resume eligibility is the format's own incremental capability, not a hard-coded name -- a plugin
     # declaring incremental=True earns it the same way. Non-incremental formats write once at the end.
     if not STORAGE_MAPPING[infer_config.store_format].incremental and infer_config.resume:
