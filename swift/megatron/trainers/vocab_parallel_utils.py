@@ -36,11 +36,15 @@ class _AllReduceAcrossVocabShards(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, tensor: torch.Tensor, group) -> torch.Tensor:
-        ctx.group = group
+    def forward(tensor: torch.Tensor, group) -> torch.Tensor:
         tensor = tensor.clone()
         torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.SUM, group=group)
         return tensor
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        # Also support torch.func.grad_and_value in Liger's chunked loss.
+        ctx.group = inputs[1]
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, None]:
