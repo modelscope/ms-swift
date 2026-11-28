@@ -890,7 +890,7 @@ The OmniJev adapter also requires four head artifacts pointed to via environment
 | `OMNIJEV_HEAD` | `head.pt` | FiLM dual-MLP scoring head |
 | `OMNIJEV_ORD` | `ord.pt` | Ordinal regression (CORAL/CORN) head |
 | `OMNIJEV_HEAD_META` | `head_meta.json` | Head metadata (kind temperatures, etc.) |
-| `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | Embeddings for 2 new tokens (`<|opt|>`/`<|/opt|>`) |
+| `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | Embeddings for 2 new tokens (`<\|opt\|>`/`<\|/opt\|>`) |
 
 ### Head Artifact Env Overrides
 

@@ -890,7 +890,7 @@ OmniJev adapter 还需通过环境变量指向四个头制品（位于 adapter �
 | `OMNIJEV_HEAD`        | `head.pt`        | FiLM 双 MLP 打分头    |
 | `OMNIJEV_ORD`         | `ord.pt`         | 有序回归（CORAL/CORN）头 |
 | `OMNIJEV_HEAD_META`   | `head_meta.json` | 头元数据（各 kind 温度等）  |
-| `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | 2 个新 token（`<     |
+| `OMNIJEV_NEW_TOK_EMB` | `new_tok_emb.pt` | 2 个新 token（`<\|opt\|>`/`<\|/opt\|>`） |
 
 
 
